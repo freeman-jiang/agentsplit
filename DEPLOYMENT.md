@@ -62,7 +62,11 @@ and data together. This Compose file creates a fresh PostgreSQL 17 database; it
 does not migrate an existing `postgres-data` directory from another deployment.
 
 Garage is pinned to v2.4.1 and PostgreSQL to 17.11-alpine, both with immutable
-image digests. Container images have not been downloaded for this deployment.
+image digests. Node is pinned to 26.10.0-bookworm with an immutable digest; that
+image includes OpenSSL, avoiding a separate live OS-package installation. The
+build installs only the npm lockfile with scripts disabled, generates the Prisma
+client explicitly, and reuses those production dependencies for migrations.
+Container images have not been downloaded for this deployment.
 Local dependency installation and application checks are recorded in
 `INSTALL_REVIEW.md`. Compose configuration validation passed, but an actual
 Garage upload/view/restart test on Coolify is still needed.
@@ -72,3 +76,7 @@ built-in AI features, and automatic third-party exchange rates remain disabled.
 Changing `STORAGE_HOST` requires rebuilding the app image because Next.js bakes
 the storage image/CSP allowlist at build time. Keep the storage hostname stable
 to preserve previously saved receipt URLs.
+
+The standard AWS SDK setting `AWS_REQUEST_CHECKSUM_CALCULATION=WHEN_REQUIRED`
+avoids signing a checksum for an empty body before the browser sends the receipt.
+The application uses its existing upload library and does not proxy file uploads.
