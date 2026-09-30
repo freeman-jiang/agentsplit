@@ -89,7 +89,7 @@ services:
       traefik.docker.network: coolify
 
       # Preserve the signed Host and full path for authenticated S3 uploads.
-      traefik.http.routers.agentsplit-s3.rule: Host(`${STORAGE_HOST}`)
+      traefik.http.routers.agentsplit-s3.rule: Host(`agentsplit-receipts.freemanjiang.com`)
       traefik.http.routers.agentsplit-s3.entrypoints: https
       traefik.http.routers.agentsplit-s3.tls: 'true'
       traefik.http.routers.agentsplit-s3.tls.certresolver: letsencrypt
@@ -100,7 +100,7 @@ services:
 
       # Spliit stores durable /bucket/key URLs. Route image reads to Garage's
       # website endpoint, which supports anonymous object reads without listing.
-      traefik.http.routers.agentsplit-receipts.rule: Host(`${STORAGE_HOST}`) && PathPrefix(`/agentsplit-receipts/`) && (Method(`GET`) || Method(`HEAD`))
+      traefik.http.routers.agentsplit-receipts.rule: Host(`agentsplit-receipts.freemanjiang.com`) && PathPrefix(`/agentsplit-receipts/`) && (Method(`GET`) || Method(`HEAD`))
       traefik.http.routers.agentsplit-receipts.entrypoints: https
       traefik.http.routers.agentsplit-receipts.tls: 'true'
       traefik.http.routers.agentsplit-receipts.tls.certresolver: letsencrypt
@@ -113,7 +113,7 @@ services:
 
       # Preflights are answered by Traefik. Only the app origin may upload
       # through the browser; no public-write or public-list bucket permission.
-      traefik.http.middlewares.agentsplit-storage-cors.headers.accesscontrolalloworiginlist: ${BASE_URL}
+      traefik.http.middlewares.agentsplit-storage-cors.headers.accesscontrolalloworiginlist: https://agentsplit.freemanjiang.com
       traefik.http.middlewares.agentsplit-storage-cors.headers.accesscontrolallowmethods: GET,HEAD,PUT,POST,OPTIONS
       traefik.http.middlewares.agentsplit-storage-cors.headers.accesscontrolallowheaders: '*'
       traefik.http.middlewares.agentsplit-storage-cors.headers.accesscontrolexposeheaders: ETag

@@ -28,6 +28,8 @@ Garage is S3-compatible. No additional application storage code is needed.
 4. Point both app and storage hostnames to this server. Assign the app's HTTPS
    domain to the `app` service, using internal port 3000. Leave `garage`'s
    automatic Domains field empty: its explicit Traefik labels handle routing.
+   The labels use the production app/storage domains literally so Coolify label
+   escaping can remain enabled; update those labels if deploying at other domains.
 5. Build/deploy the stack. In the Garage service terminal, enable receipt reads:
 
    ```sh
