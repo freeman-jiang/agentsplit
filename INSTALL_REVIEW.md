@@ -56,7 +56,8 @@ tested. Next.js and Prisma telemetry remained disabled.
 ## Verification checkpoint
 
 The privacy baseline is committed locally as `a599e5e`. Work continues on branch
-`codex/mcp`. Nothing has been pushed or deployed.
+`codex/mcp`. At this original local-verification checkpoint, nothing had been
+pushed or deployed. Later live-deployment checks are recorded in `VERIFICATION.md`.
 The temporary standalone server and disposable database were stopped after the
 smoke test; its synthetic group and expense were discarded with the database.
 Dependencies remain installed in `node_modules`.

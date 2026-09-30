@@ -73,10 +73,10 @@ image digests. Node is pinned to 26.10.0-bookworm with an immutable digest; that
 image includes OpenSSL, avoiding a separate live OS-package installation. The
 build installs only the npm lockfile with scripts disabled, generates the Prisma
 client explicitly, and reuses those production dependencies for migrations.
-Container images have not been downloaded for this deployment.
 Local dependency installation and application checks are recorded in
-`INSTALL_REVIEW.md`. Compose configuration validation passed, but an actual
-Garage upload/view/restart test on Coolify is still needed.
+`INSTALL_REVIEW.md`. The deployed application and Garage PNG upload/save/reopen
+flow were verified on September 30, 2026; see `VERIFICATION.md` for evidence and
+remaining checks, including service-restart persistence.
 
 Attachments are enabled in this deployment. Analytics, Next.js/Prisma telemetry,
 built-in AI features, and automatic third-party exchange rates remain disabled.
