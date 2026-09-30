@@ -65,12 +65,15 @@ describe('MCP access grants', () => {
     expect('response' in result && result.response.status).toBe(403)
   })
 
-  it('rejects an unrelated Host even with a valid credential', () => {
-    const req = request(`Bearer ${token}`)
-    req.headers.set('host', 'untrusted.test')
-    const result = authorizeMcpRequest(req, config)
-    expect('response' in result && result.response.status).toBe(403)
-  })
+  it.each(['untrusted.test', '[invalid-ipv6', 'app.test/unexpected'])(
+    'rejects an unrelated or malformed Host even with a valid credential: %s',
+    (host) => {
+      const req = request(`Bearer ${token}`)
+      req.headers.set('host', host)
+      const result = authorizeMcpRequest(req, config)
+      expect('response' in result && result.response.status).toBe(403)
+    },
+  )
 
   it('rejects credentials ambiguously assigned to two identities', () => {
     expect(() =>

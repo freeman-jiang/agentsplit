@@ -83,6 +83,11 @@ one in a prompt. Codex must open a fresh connection/session after configuration
 changes. The same endpoint can support ChatGPT after an OAuth authorization
 flow is added; ChatGPT cannot present this personal API-style key directly.
 
+The configured local connection instead uses a static Authorization header in
+the private, mode-0600 user configuration, so the desktop connection survives
+restarts without depending on a shell environment variable. No literal key is
+stored in this repository. Start a fresh Codex connection/chat to load its tools.
+
 ## Verification boundaries
 
 Tests exercise actual SDK HTTP handling with mocked database reads: discovery,
@@ -91,3 +96,7 @@ cross-group expense ownership, and denial of mutation tools. Separate tests
 cover credentials, inherited permissions, recurrence suppression, and the CSV
 correction. Live deployment and an actual Codex-agent run are recorded in
 `VERIFICATION.md` after completion.
+
+When expanding the registry, audit each query's side effects and permission
+checks. The query-only type is not by itself a database read-only guarantee;
+this release explicitly suppresses recurrence for its selected read paths.

@@ -38,8 +38,42 @@ AgentSplit deployment test group.
 
 ## Remaining boundaries
 
-The CSV correction needs deployment and a live export recheck. A controlled
-service restart, backup restore, JPEG/oversized-file checks, and an exhaustive
-browser E2E suite have not been completed in this verification run. No remote
-CI results were reported for the draft PR. Existing group-link sharing remains
+Backup restore, JPEG/oversized-file checks, and an exhaustive browser E2E suite
+have not been completed in this verification run. No remote CI results were
+reported for the draft PR. Existing group-link sharing remains
 Spliit's account-free bearer-link model; receipt URLs also grant read access.
+
+## MCP deployment and actual-agent verification
+
+The MCP implementation was deployed as commit `d3238b4` through the scoped
+AgentSplit Coolify resource. The application, PostgreSQL, and Garage were
+recreated and returned healthy with their data intact. The previously uploaded
+PNG remained byte-for-byte unchanged. Live CSV output now gives Alice +$40,
+Bob -$20, and Carol -$20 for the saved $60 expense.
+
+The live `/api/mcp` endpoint passed initialization, discovery of all seven
+read-only tools, permitted group discovery, expense/receipt reads, and balances.
+Invalid keys returned HTTP 401. A foreign-group request with a forged `userId`
+was denied, and a mutation-tool request was rejected. Server configuration
+contains key hashes and separate user-access records; keys inherit user access.
+
+An ephemeral Codex CLI 0.154.0 agent completed eight MCP calls across six tools:
+`list_groups`, `get_group`, `list_expenses`, `get_balances`, `get_expense`, and
+three paginated `list_activity` calls. It discovered the test group without
+supplied IDs, converted 6000 USD minor units to $60, reported two receipt
+attachments, and correctly concluded Bob/Carol owe Alice $20 each. It retrieved
+all three activity records and recognized that the endpoint has no write tools
+and the legacy feed lacks immutable snapshots and verified actors.
+
+The installed CLI rejected the user's configured `gpt-6.1-sol` before running
+tools. The successful isolated test used the CLI-advertised `gpt-5.5`; the user's
+global model preference was not changed. Other configured MCPs were disabled
+only for this ephemeral test. The agent made no shell/tool calls outside
+AgentSplit. Database row counts and total expense amount were identical before
+and after the deployment, protocol checks, and actual-agent run. No bearer key
+appeared in the captured agent events or final response.
+
+The local Codex connection is configured persistently in the private user
+configuration. Its credential file is mode 0600 and excluded from Git/build
+context; no live keys are in this repository. User/account invitation and
+self-service key UI remain a design proposal in `IDENTITY_DESIGN.md`.

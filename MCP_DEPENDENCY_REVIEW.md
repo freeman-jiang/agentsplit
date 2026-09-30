@@ -1,6 +1,8 @@
 # MCP dependency review
 
-Proposed local and AgentSplit-only deployment installation, September 30, 2026.
+Reviewed and approved local and AgentSplit-only deployment installation,
+September 30, 2026. The two packages were installed with scripts disabled;
+all 742 installed local platform entries matched the reviewed lockfile.
 
 | Package                        | Exact version | npm publication (UTC)   |
 | ------------------------------ | ------------- | ----------------------- |
