@@ -12,6 +12,7 @@ postgres-data
 src/generated
 .git
 references
+.mcp-credentials
 .env
 .env.*
 container.env

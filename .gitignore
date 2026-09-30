@@ -54,3 +54,6 @@ postgres-data
 
 # Upstream reference checkouts
 /references/
+
+# Private MCP connection keys
+/.mcp-credentials/

@@ -7,6 +7,10 @@ attachments use the existing S3 upload flow, backed by self-hosted Garage in the
 details and audit limitations. The upstream instructions below remain for
 reference; analytics and AI environment flags cannot re-enable those features.
 
+The read-only agent interface is documented in [MCP.md](MCP.md). Its tool catalog
+maps to the existing tRPC API. [Identity design](IDENTITY_DESIGN.md) records the
+follow-up plan for persistent users, invitations, and delegated agent keys.
+
 Spliit is a free and open source alternative to Splitwise. You can either use the official instance at [Spliit.app](https://spliit.app), or deploy your own instance:
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fspliit-app%2Fspliit&project-name=my-spliit-instance&repository-name=my-spliit-instance&stores=%5B%7B%22type%22%3A%22postgres%22%7D%5D&)

@@ -11,19 +11,22 @@ export const listGroupExpensesProcedure = baseProcedure
       filter: z.string().max(200).optional(),
     }),
   )
-  .query(async ({ input: { groupId, cursor = 0, limit = 10, filter } }) => {
-    const expenses = await getGroupExpenses(groupId, {
-      offset: cursor,
-      length: limit + 1,
-      filter,
-    })
-    return {
-      expenses: expenses.slice(0, limit).map((expense) => ({
-        ...expense,
-        createdAt: new Date(expense.createdAt),
-        expenseDate: new Date(expense.expenseDate),
-      })),
-      hasMore: !!expenses[limit],
-      nextCursor: cursor + limit,
-    }
-  })
+  .query(
+    async ({ ctx, input: { groupId, cursor = 0, limit = 10, filter } }) => {
+      const expenses = await getGroupExpenses(groupId, {
+        offset: cursor,
+        length: limit + 1,
+        filter,
+        readOnly: ctx.readOnly,
+      })
+      return {
+        expenses: expenses.slice(0, limit).map((expense) => ({
+          ...expense,
+          createdAt: new Date(expense.createdAt),
+          expenseDate: new Date(expense.expenseDate),
+        })),
+        hasMore: !!expenses[limit],
+        nextCursor: cursor + limit,
+      }
+    },
+  )

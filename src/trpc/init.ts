@@ -12,7 +12,13 @@ superjson.registerCustom<Prisma.Decimal, string>(
   'decimal.js',
 )
 
-export const createTRPCContext = cache(async () => {
+export type TRPCContext = {
+  /** MCP reads must not materialize recurring expenses as a side effect. */
+  readOnly?: boolean
+  principal?: { userId: string; connectionId: string; groupIds: string[] }
+}
+
+export const createTRPCContext = cache(async (): Promise<TRPCContext> => {
   /**
    * @see: https://trpc.io/docs/server/context
    */
@@ -23,7 +29,7 @@ export const createTRPCContext = cache(async () => {
 // since it's not very descriptive.
 // For instance, the use of a t variable
 // is common in i18n libraries.
-const t = initTRPC.create({
+const t = initTRPC.context<TRPCContext>().create({
   /**
    * @see https://trpc.io/docs/server/data-transformers
    */

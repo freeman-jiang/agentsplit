@@ -351,9 +351,14 @@ export async function getCategories() {
 
 export async function getGroupExpenses(
   groupId: string,
-  options?: { offset?: number; length?: number; filter?: string },
+  options?: {
+    offset?: number
+    length?: number
+    filter?: string
+    readOnly?: boolean
+  },
 ) {
-  await createRecurringExpenses()
+  if (!options?.readOnly) await createRecurringExpenses()
 
   return prisma.expense.findMany({
     select: {
@@ -426,7 +431,7 @@ export async function getActiveRecurringExpenses(groupId: string) {
 
 export async function getExpense(groupId: string, expenseId: string) {
   return prisma.expense.findUnique({
-    where: { id: expenseId },
+    where: { id: expenseId, groupId },
     include: {
       paidBy: true,
       paidFor: true,

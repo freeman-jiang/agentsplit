@@ -18,6 +18,7 @@ services:
       ANALYTICS_PROVIDER: ''
       NEXT_TELEMETRY_DISABLED: '1'
       CHECKPOINT_DISABLE: '1'
+      MCP_ACCESS_GRANTS: ${MCP_ACCESS_GRANTS:-}
       S3_UPLOAD_ENDPOINT: https://${STORAGE_HOST}
       S3_UPLOAD_BUCKET: agentsplit-receipts
       S3_UPLOAD_REGION: garage
