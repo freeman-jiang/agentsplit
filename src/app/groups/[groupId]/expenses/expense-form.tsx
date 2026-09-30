@@ -43,7 +43,11 @@ import {
   convertToOriginalCurrency,
 } from '@/lib/currency-conversion'
 import { RuntimeFeatureFlags } from '@/lib/featureFlags'
-import { useActiveUser, useCurrencyRate } from '@/lib/hooks'
+import {
+  AUTOMATIC_CURRENCY_RATES_ENABLED,
+  useActiveUser,
+  useCurrencyRate,
+} from '@/lib/hooks'
 import { randomId } from '@/lib/random'
 import {
   EXPENSE_NOTES_MAX,
@@ -466,7 +470,8 @@ export function ExpenseForm({
   }, [shareEdits, form.watch('amount'), form.watch('splitMode')])
 
   const [usingCustomConversionRate, setUsingCustomConversionRate] = useState(
-    !!form.formState.defaultValues?.conversionRate,
+    !AUTOMATIC_CURRENCY_RATES_ENABLED ||
+      !!form.formState.defaultValues?.conversionRate,
   )
 
   useEffect(() => {
@@ -815,13 +820,15 @@ export function ExpenseForm({
                 open={usingCustomConversionRate}
                 onOpenChange={setUsingCustomConversionRate}
               >
-                <CollapsibleTrigger asChild>
-                  <Button variant="link" className="-mx-4">
-                    {usingCustomConversionRate
-                      ? t('conversionRateField.useApi')
-                      : t('conversionRateField.useCustom')}
-                  </Button>
-                </CollapsibleTrigger>
+                {AUTOMATIC_CURRENCY_RATES_ENABLED && (
+                  <CollapsibleTrigger asChild>
+                    <Button variant="link" className="-mx-4">
+                      {usingCustomConversionRate
+                        ? t('conversionRateField.useApi')
+                        : t('conversionRateField.useCustom')}
+                    </Button>
+                  </CollapsibleTrigger>
+                )}
                 <CollapsibleContent>
                   <FormField
                     control={form.control}

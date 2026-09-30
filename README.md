@@ -1,5 +1,11 @@
 [<img alt="Spliit" height="60" src="https://github.com/spliit-app/spliit/blob/main/public/logo-with-text.png?raw=true" />](https://spliit.app)
 
+This is the AgentSplit fork of Spliit. Analytics, automatic exchange-rate lookups,
+external flag images, and the built-in OpenAI/S3 features are disabled. See
+[the AgentSplit privacy profile](PRIVACY.md) for details and audit limitations.
+The upstream optional-feature instructions below describe Spliit; enabling their
+environment variables does not re-enable these features in AgentSplit.
+
 Spliit is a free and open source alternative to Splitwise. You can either use the official instance at [Spliit.app](https://spliit.app), or deploy your own instance:
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fspliit-app%2Fspliit&project-name=my-spliit-instance&repository-name=my-spliit-instance&stores=%5B%7B%22type%22%3A%22postgres%22%7D%5D&)

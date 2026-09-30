@@ -72,6 +72,9 @@ interface FrankfurterAPIResponse {
   rates: Record<string, number>
 }
 
+// AgentSplit uses manually entered rates instead of contacting a third party.
+export const AUTOMATIC_CURRENCY_RATES_ENABLED = false
+
 const fetcher: Fetcher<FrankfurterAPIResponse> = (url: string) =>
   fetch(url).then(async (res) => {
     if (!res.ok)
@@ -92,6 +95,7 @@ export function useCurrencyRate(
 
   // Only send request if both currency codes are given and not the same
   const url =
+    AUTOMATIC_CURRENCY_RATES_ENABLED &&
     isValidDate &&
     !!baseCurrency.length &&
     !!targetCurrency.length &&

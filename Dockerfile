@@ -1,5 +1,8 @@
 FROM node:26-alpine AS base
 
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV CHECKPOINT_DISABLE=1
+
 WORKDIR /usr/app
 COPY ./package.json \
      ./package-lock.json \
@@ -29,8 +32,6 @@ COPY ./messages ./messages
 # Prisma 7 generates the client into ./src/generated/prisma instead of
 # node_modules, so this has to run after the source tree is in place.
 RUN npx prisma generate
-
-ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY scripts/build.env .env
 RUN npm run build
@@ -76,6 +77,7 @@ WORKDIR /usr/app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV CHECKPOINT_DISABLE=1
 # The standalone server binds to localhost by default, which is unreachable
 # from outside the container.
 ENV HOSTNAME=0.0.0.0

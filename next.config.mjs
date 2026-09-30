@@ -2,26 +2,6 @@ import createNextIntlPlugin from 'next-intl/plugin'
 
 const withNextIntl = createNextIntlPlugin()
 
-/**
- * Undefined entries are not supported. Push optional patterns to this array only if defined.
- * @type {import('next/dist/shared/lib/image-config').RemotePattern}
- */
-const remotePatterns = []
-
-// S3 Storage
-if (process.env.S3_UPLOAD_ENDPOINT) {
-  // custom endpoint for providers other than AWS
-  const url = new URL(process.env.S3_UPLOAD_ENDPOINT);
-  remotePatterns.push({
-    hostname: url.hostname,
-  })
-} else if (process.env.S3_UPLOAD_BUCKET && process.env.S3_UPLOAD_REGION) {
-  // default provider
-  remotePatterns.push({
-    hostname: `${process.env.S3_UPLOAD_BUCKET}.s3.${process.env.S3_UPLOAD_REGION}.amazonaws.com`,
-  })
-}
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Emit a self-contained server into .next/standalone, containing only the
@@ -29,7 +9,8 @@ const nextConfig = {
   // stage copies that instead of a full production `node_modules`.
   output: 'standalone',
   images: {
-    remotePatterns
+    // Do not let the image optimizer fetch external storage on the server.
+    remotePatterns: [],
   },
   reactCompiler: true,
   // Required to run in a codespace (see https://github.com/vercel/next.js/issues/58019)
@@ -66,7 +47,7 @@ const nextConfig = {
           {
             key: 'Content-Security-Policy',
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
           },
         ],
       },

@@ -185,12 +185,8 @@ const CurrencyButton = forwardRef<HTMLButtonElement, CurrencyButtonProps>(
 CurrencyButton.displayName = 'CurrencyButton'
 
 function CurrencyLabel({ currency }: { currency: Currency }) {
-  const flagUrl = `https://flagcdn.com/h24/${
-    currency?.code.length ? currency.code.slice(0, 2).toLowerCase() : 'un'
-  }.png`
   return (
     <div className="flex items-center gap-3">
-      <img src={flagUrl} className="w-4" alt="" />
       {currency.name}
       {currency.code ? ` (${currency.code})` : ''}
     </div>

@@ -7,14 +7,14 @@
     "npm": ">=11"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "NEXT_TELEMETRY_DISABLED=1 CHECKPOINT_DISABLE=1 next dev",
+    "build": "NEXT_TELEMETRY_DISABLED=1 CHECKPOINT_DISABLE=1 next build",
+    "start": "NEXT_TELEMETRY_DISABLED=1 CHECKPOINT_DISABLE=1 next start",
     "lint": "oxlint",
     "check-types": "tsc --noEmit",
     "check-formatting": "prettier -c src e2e perf playwright.config.ts",
     "prettier": "prettier -w src e2e perf playwright.config.ts",
-    "postinstall": "prisma migrate deploy && prisma generate",
+    "postinstall": "CHECKPOINT_DISABLE=1 prisma migrate deploy && CHECKPOINT_DISABLE=1 prisma generate",
     "build-image": "./scripts/build-image.sh",
     "start-container": "docker compose --env-file container.env up",
     "test": "jest",
