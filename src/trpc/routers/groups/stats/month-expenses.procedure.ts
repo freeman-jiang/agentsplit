@@ -19,8 +19,10 @@ export const getStatsMonthExpensesProcedure = baseProcedure
       to: z.string().optional(),
     }),
   )
-  .query(async ({ input: { groupId, month, from, to } }) => {
-    const allExpenses = await getGroupExpenses(groupId)
+  .query(async ({ ctx, input: { groupId, month, from, to } }) => {
+    const allExpenses = await getGroupExpenses(groupId, {
+      readOnly: ctx.readOnly,
+    })
     const expenses = filterExpensesByDateRange(allExpenses, from, to)
 
     return {

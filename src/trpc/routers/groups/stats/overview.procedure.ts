@@ -35,15 +35,17 @@ export const getStatsOverviewProcedure = baseProcedure
       to: z.string().optional(),
     }),
   )
-  .query(async ({ input: { groupId, participantId, from, to } }) => {
+  .query(async ({ ctx, input: { groupId, participantId, from, to } }) => {
     // getGroupExpenses and getActiveRecurringExpenses both materialize due
     // recurring frames; run them sequentially so the two passes don't race
     // each other (the second is a no-op once the first has materialized).
     const [group, allExpenses] = await Promise.all([
       getGroup(groupId),
-      getGroupExpenses(groupId),
+      getGroupExpenses(groupId, { readOnly: ctx.readOnly }),
     ])
-    const recurringExpenses = await getActiveRecurringExpenses(groupId)
+    const recurringExpenses = await getActiveRecurringExpenses(groupId, {
+      readOnly: ctx.readOnly,
+    })
 
     const expenses = filterExpensesByDateRange(allExpenses, from, to)
     const participants = group?.participants ?? []

@@ -135,14 +135,17 @@ export function assertGroupAccess(
     .object({
       groupId: z.string().optional(),
       groupIds: z.array(z.string()).optional(),
+      groups: z.array(z.object({ groupId: z.string() })).optional(),
     })
     .parse(argumentsValue)
   const requested =
     procedure === 'groups.list'
       ? (input.groupIds ?? principal.groupIds)
-      : input.groupId
-        ? [input.groupId]
-        : undefined
+      : procedure === 'groups.balances.forUser'
+        ? input.groups?.map((group) => group.groupId)
+        : input.groupId
+          ? [input.groupId]
+          : undefined
   if (!requested || requested.some((id) => !principal.groupIds.includes(id))) {
     throw new Error('This connection cannot access the requested group')
   }

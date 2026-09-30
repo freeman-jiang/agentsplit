@@ -1,4 +1,5 @@
 import { authorizeMcpRequest } from '@/lib/mcp/access'
+import { limitMcpRequest } from '@/lib/mcp/rate-limit'
 import { createAgentSplitMcpServer } from '@/lib/mcp/server'
 import { createMcpHandler, isLegacyRequest } from '@modelcontextprotocol/server'
 
@@ -8,6 +9,19 @@ export const dynamic = 'force-dynamic'
 async function handleRequest(request: Request) {
   const authorization = authorizeMcpRequest(request)
   if ('response' in authorization) return authorization.response
+  const retryAfter = limitMcpRequest(authorization.principal.userId)
+  if (retryAfter) {
+    return Response.json(
+      { error: 'MCP request rate exceeded' },
+      {
+        status: 429,
+        headers: {
+          'Cache-Control': 'no-store',
+          'Retry-After': String(retryAfter),
+        },
+      },
+    )
+  }
 
   // SDK 2.0.0 leaves this modern-protocol header check to the mounting server.
   if (
@@ -15,8 +29,20 @@ async function handleRequest(request: Request) {
     !(await isLegacyRequest(request)) &&
     !request.headers.get('mcp-protocol-version')
   ) {
+    const body: unknown = await request.clone().json()
+    const id =
+      body &&
+      typeof body === 'object' &&
+      'id' in body &&
+      (typeof body.id === 'string' || typeof body.id === 'number')
+        ? body.id
+        : null
     return Response.json(
-      { error: 'MCP-Protocol-Version is required' },
+      {
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32020, message: 'MCP-Protocol-Version is required' },
+      },
       { status: 400, headers: { 'Cache-Control': 'no-store' } },
     )
   }

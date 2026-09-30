@@ -1,5 +1,38 @@
 # AgentSplit verification
 
+## Complete read-query MCP surface and HTTP hardening
+
+The reviewed catalog now maps all twelve existing tRPC queries, including group
+details, balances across group/participant pairs, and all three statistics views.
+This change has passed local verification; live deployment remains pending a
+renewed Tailscale SSH authentication check. The previously deployed seven-tool
+release and its actual-agent results below are separate evidence.
+
+- 536 Jest tests passed in 46 suites across both configured timezones.
+- TypeScript, formatting, diff checks, and Oxlint passed (zero errors, the same
+  20 inherited warnings).
+- Production compilation, static generation, and build tracing passed with
+  `bun --env-file=scripts/build.env run build --webpack`, using the non-secret
+  build fixture used by the Docker build. The default local Turbopack build was
+  blocked by this Mac's sandbox denying its CSS worker port; this does not
+  establish that the default Docker/Turbopack build passed for this revision.
+- SDK HTTP integration tests discover twelve tools with input/output schemas,
+  serve legacy 2025 and modern 2026-07-28 requests, and reject standard-header
+  mismatches with JSON-RPC `HeaderMismatch` (`-32020`).
+- New tool results validate against wire contracts checked against tRPC types;
+  malformed database results produce generic errors without parser diagnostics.
+- Statistical totals, date-filtered drilldowns, minor units, user isolation,
+  and cross-group denial are exercised. A mixed authorized/unauthorized balance
+  request is rejected before any expense query.
+- All MCP expense/statistics/balance paths suppress recurrence materialization;
+  web recurring-expense behavior remains covered separately.
+- The per-process token bucket rejects excess requests with HTTP 429 before
+  dispatch, shares a user's budget across keys, isolates other users, and refills.
+
+No dependencies were added or updated. OAuth, account/invitation/key-management
+UI, an immutable audit ledger, and writes remain outside this read-only release.
+The limiter must use shared storage before deploying multiple app processes.
+
 Checked September 30, 2026. The live deployment was running commit `2a07b92`
 on the Oracle server. Verification used only synthetic data in the existing
 AgentSplit deployment test group.

@@ -9,10 +9,56 @@ procedure paths. Its type admits queries only. The shared adapter derives the
 existing input schemas and leaves validation and execution to tRPC. Adding a
 tool does not require another implementation of its business logic.
 
-Tools: `list_groups`, `get_group`, `list_expenses`, `get_expense`, `get_balances`,
-`list_activity`, and `list_categories`. Expense and balance reads skip recurrence
-materialization. Activity is Spliit's existing paginated feed, not an immutable
-before/after event ledger. Amounts use the group's currency minor units.
+The complete existing read-query surface is reviewed and explicitly registered:
+
+| Tool                       | Existing tRPC procedure         |
+| -------------------------- | ------------------------------- |
+| `list_groups`              | `groups.list`                   |
+| `get_group`                | `groups.get`                    |
+| `get_group_details`        | `groups.getDetails`             |
+| `list_expenses`            | `groups.expenses.list`          |
+| `get_expense`              | `groups.expenses.get`           |
+| `get_balances`             | `groups.balances.list`          |
+| `get_participant_balances` | `groups.balances.forUser`       |
+| `list_activity`            | `groups.activities.list`        |
+| `list_categories`          | `categories.list`               |
+| `get_spending_stats`       | `groups.stats.overview`         |
+| `list_category_expenses`   | `groups.stats.categoryExpenses` |
+| `list_month_expenses`      | `groups.stats.monthExpenses`    |
+
+Expense, balance, and statistics reads skip recurrence materialization, including
+the active-recurring-expense statistics loader. Activity is Spliit's existing
+paginated feed, not an immutable before/after event ledger. Amounts use the
+group's currency minor units; different currencies must not be added together.
+Participant IDs select bookkeeping records, not authenticated identities.
+
+`src/lib/mcp/output-schemas.ts` defines JSON output contracts, checked against
+the tRPC return types at compile time. Dates serialize to ISO strings and
+Decimal exchange rates to strings. The adapter validates/filters successful
+results before returning identical structured JSON and serialized text; invalid
+results return a generic tool error without database or parser diagnostics.
+All twelve tools advertise output schemas. No-argument tools accept only `{}`.
+Titles, names, notes, and activity descriptions remain untrusted user content.
+
+## HTTP safeguards and protocol support
+
+Host/Origin validation and per-request bearer authentication precede dispatch.
+Both legacy 2025 Codex traffic and modern 2026-07-28 requests use the same
+registry. Modern missing-version-header responses carry JSON-RPC
+`HeaderMismatch` (`-32020`); the SDK validates other protocol headers.
+
+An authenticated user's connections share a token bucket: capacity 120 requests,
+refilled at two requests per second. Exhaustion returns HTTP 429 with
+`Retry-After` and never dispatches a tool. Idle buckets expire after one minute.
+The limit covers discovery and protocol requests as well as tool calls, and
+does not affect ordinary web/tRPC traffic. It is in memory in the currently
+deployed single Node process; process restarts reset the budget. Before scaling
+to multiple replicas/workers, replace the store with a shared limiter.
+
+Bearer keys implement the private Codex integration, not the MCP OAuth profile:
+OAuth authorization-server discovery, Protected Resource Metadata, and OAuth
+scope challenges are not implemented. Persistent identities and OAuth remain
+the separately scoped design in `IDENTITY_DESIGN.md`.
 
 ## Identity and keys
 
@@ -93,8 +139,10 @@ stored in this repository. Start a fresh Codex connection/chat to load its tools
 Tests exercise actual SDK HTTP handling with mocked database reads: discovery,
 initialization, schema validation, scoped reads, concurrent user isolation,
 cross-group expense ownership, and denial of mutation tools. Separate tests
-cover credentials, inherited permissions, recurrence suppression, and the CSV
-correction. Live deployment and an actual Codex-agent run are recorded in
+cover credentials, inherited permissions, recurrence suppression, shared user
+rate budgets, output validation, and the CSV correction. Discovery tests compare
+the reviewed registry with all current tRPC queries; future queries are not
+automatically exposed. Live deployment and an actual Codex-agent run are recorded in
 `VERIFICATION.md` after completion.
 
 When expanding the registry, audit each query's side effects and permission

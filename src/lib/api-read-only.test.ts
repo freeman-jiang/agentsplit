@@ -1,6 +1,6 @@
 /** @jest-environment node */
 
-import { getExpense, getGroupExpenses } from './api'
+import { getActiveRecurringExpenses, getExpense, getGroupExpenses } from './api'
 
 var mockExpenses = jest.fn()
 var mockRecurringLinks = jest.fn()
@@ -44,6 +44,13 @@ it('does not process recurrence while serving a read-only expense list', async (
 
 it('keeps the existing web recurrence behavior outside read-only access', async () => {
   await getGroupExpenses('group-a')
+  expect(mockRecurringLinks).toHaveBeenCalledTimes(1)
+})
+
+it('skips recurrence for read-only recurring stats but preserves the web behavior', async () => {
+  await getActiveRecurringExpenses('group-a', { readOnly: true })
+  expect(mockRecurringLinks).not.toHaveBeenCalled()
+  await getActiveRecurringExpenses('group-a')
   expect(mockRecurringLinks).toHaveBeenCalledTimes(1)
 })
 

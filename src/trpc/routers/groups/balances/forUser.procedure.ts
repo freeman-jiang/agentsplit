@@ -25,7 +25,7 @@ export const forUserBalancesProcedure = baseProcedure
         .max(MAX_GROUPS_PER_QUERY),
     }),
   )
-  .query(async ({ input: { groups } }) => {
+  .query(async ({ ctx, input: { groups } }) => {
     const balances = await Promise.all(
       groups.map(async ({ groupId, participantId }) => {
         const group = await getGroup(groupId)
@@ -36,7 +36,9 @@ export const forUserBalancesProcedure = baseProcedure
         )
         if (!participant) return null
 
-        const expenses = await getGroupExpenses(groupId)
+        const expenses = await getGroupExpenses(groupId, {
+          readOnly: ctx.readOnly,
+        })
         const amount = getBalances(expenses)[participantId]?.total ?? 0
 
         return {

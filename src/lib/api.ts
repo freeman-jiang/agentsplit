@@ -407,8 +407,11 @@ export async function getGroupExpenseCount(groupId: string) {
  * link ensures a single subscription is counted only once. Used for recurring
  * stats (#508).
  */
-export async function getActiveRecurringExpenses(groupId: string) {
-  await createRecurringExpenses()
+export async function getActiveRecurringExpenses(
+  groupId: string,
+  options?: { readOnly?: boolean },
+) {
+  if (!options?.readOnly) await createRecurringExpenses()
 
   return prisma.expense.findMany({
     select: {
