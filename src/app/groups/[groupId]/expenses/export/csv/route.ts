@@ -148,17 +148,16 @@ export async function GET(
       ...Object.fromEntries(
         group.participants.map((participant) => {
           const isPaidByParticipant = expense.paidById === participant.id
-          // The same apportionment the balances tab uses, so a participant's
-          // column here matches what they are actually charged: whole minor
-          // units, honouring the split mode, adding up to the expense amount.
-          const participantAmountShare = +formatAmountAsDecimal(
-            shares.get(participant.id) ?? 0,
-            currency,
-          )
+          // Export the same net balance change as the balances tab: credit
+          // the amount paid, then subtract this participant's apportioned share.
+          // Work in whole minor units so every row's balances sum to zero.
+          const participantBalance =
+            (isPaidByParticipant ? expense.amount : 0) -
+            (shares.get(participant.id) ?? 0)
 
           return [
             participant.name,
-            participantAmountShare * (isPaidByParticipant ? 1 : -1),
+            +formatAmountAsDecimal(participantBalance, currency),
           ]
         }),
       ),
