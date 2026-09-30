@@ -355,6 +355,8 @@ export async function getGroupExpenses(
     offset?: number
     length?: number
     filter?: string
+    from?: string
+    to?: string
     readOnly?: boolean
   },
 ) {
@@ -387,8 +389,19 @@ export async function getGroupExpenses(
       title: options?.filter
         ? { contains: options.filter, mode: 'insensitive' }
         : undefined,
+      expenseDate:
+        options?.from || options?.to
+          ? {
+              gte: options.from
+                ? new Date(`${options.from}T00:00:00.000Z`)
+                : undefined,
+              lte: options.to
+                ? new Date(`${options.to}T00:00:00.000Z`)
+                : undefined,
+            }
+          : undefined,
     },
-    orderBy: [{ expenseDate: 'desc' }, { createdAt: 'desc' }],
+    orderBy: [{ expenseDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
     skip: options && options.offset,
     take: options && options.length,
   })

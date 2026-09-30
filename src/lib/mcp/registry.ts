@@ -17,7 +17,10 @@ type ToolDefinition = {
   procedure: ReadProcedurePath
 }
 
-/** The sole catalog of MCP tools. Mutations cannot be mapped by this registry. */
+/**
+ * Prefer broad, composable tools over one tool per UI view or special case.
+ * This reviewed catalog admits queries only; not every query needs an MCP tool.
+ */
 export const MCP_TOOL_REGISTRY = [
   {
     name: 'list_groups',
@@ -34,7 +37,7 @@ export const MCP_TOOL_REGISTRY = [
   {
     name: 'list_expenses',
     description:
-      'Read a page of saved expenses. Amounts are integer currency minor units, not whole dollars. Follow nextCursor while hasMore is true. This read does not generate recurring expenses.',
+      'Read saved expenses across all time, or filter by inclusive from/to expense dates (YYYY-MM-DD) and case-insensitive title filter. For a month, use its first and last dates. Results include reimbursements and are newest first. Request up to 100 per page and follow nextCursor while hasMore is true, keeping the same filters. Amounts are integer currency minor units. This read does not generate recurring expenses.',
     procedure: 'groups.expenses.list',
   },
   {
@@ -83,11 +86,5 @@ export const MCP_TOOL_REGISTRY = [
     description:
       'Read saved expenses contributing to category spending, excluding reimbursements. Use category IDs from list_categories. Optional from/to dates use YYYY-MM-DD. Amounts use currency minor units. No recurring expenses are generated.',
     procedure: 'groups.stats.categoryExpenses',
-  },
-  {
-    name: 'list_month_expenses',
-    description:
-      'Read saved expenses contributing to spending for a YYYY-MM month, excluding reimbursements. Optional from/to dates use YYYY-MM-DD. Amounts use currency minor units. No recurring expenses are generated.',
-    procedure: 'groups.stats.monthExpenses',
   },
 ] as const satisfies readonly ToolDefinition[]

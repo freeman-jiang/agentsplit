@@ -6,7 +6,7 @@ import {
 import type { AppRouter } from '@/trpc/routers/_app'
 import type { inferRouterOutputs } from '@trpc/server'
 import * as z from 'zod'
-import type { ReadProcedurePath } from './registry'
+import type { MCP_TOOL_REGISTRY } from './registry'
 
 // These describe the JSON wire format, after Date/Decimal serialization.
 // No expense calculation or database behavior is implemented here.
@@ -29,7 +29,7 @@ type AtPath<T, P extends string> = P extends `${infer K}.${infer Rest}`
     ? T[P]
     : never
 type OutputSchemas = {
-  [P in ReadProcedurePath]: z.ZodType<
+  [P in (typeof MCP_TOOL_REGISTRY)[number]['procedure']]: z.ZodType<
     Wire<AtPath<inferRouterOutputs<AppRouter>, P>>
   >
 }
@@ -146,7 +146,7 @@ const monthlyCategory = z.object({
   incomeAmount: money,
 })
 
-/** Exhaustive over existing queries; additions need a reviewed wire contract. */
+/** Every registered tool needs a reviewed wire contract matching its query. */
 export const MCP_OUTPUT_SCHEMAS = {
   'groups.list': z.object({
     groups: z.array(
@@ -258,5 +258,4 @@ export const MCP_OUTPUT_SCHEMAS = {
     }),
   }),
   'groups.stats.categoryExpenses': drilldown,
-  'groups.stats.monthExpenses': drilldown,
 } satisfies OutputSchemas

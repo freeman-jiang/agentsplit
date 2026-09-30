@@ -15,6 +15,16 @@ import { POST } from './route'
 
 var mockExpenseReads = jest.fn()
 var mockRecurringReads = jest.fn()
+type ExpenseQuery = {
+  where: {
+    groupId: string
+    recurrenceRule?: unknown
+    expenseDate?: { gte?: Date; lte?: Date }
+    title?: { contains: string }
+  }
+  skip?: number
+  take?: number
+}
 const token = 'alice-integration-key-with-more-than-thirty-two-characters'
 const secondToken = 'bob-integration-key-with-more-than-thirty-two-characters'
 const groupA = {
@@ -139,13 +149,25 @@ beforeEach(() => {
   jest.spyOn(Date, 'now').mockReturnValue(clock)
   mockExpenseReads
     .mockReset()
-    .mockImplementation(
-      ({ where }: { where: { groupId: string; recurrenceRule?: unknown } }) =>
-        where.recurrenceRule
-          ? []
-          : savedExpenses.filter(
-              (expense) => expense.groupId === where.groupId,
-            ),
+    .mockImplementation(({ where, skip = 0, take }: ExpenseQuery) =>
+      where.recurrenceRule
+        ? []
+        : savedExpenses
+            .filter(
+              (expense) =>
+                expense.groupId === where.groupId &&
+                (!where.title ||
+                  expense.title
+                    .toLowerCase()
+                    .includes(where.title.contains.toLowerCase())) &&
+                (!where.expenseDate ||
+                  (expense.expenseDate &&
+                    (!where.expenseDate.gte ||
+                      expense.expenseDate >= where.expenseDate.gte) &&
+                    (!where.expenseDate.lte ||
+                      expense.expenseDate <= where.expenseDate.lte))),
+            )
+            .slice(skip, take === undefined ? undefined : skip + take),
     )
   mockRecurringReads.mockReset().mockResolvedValue([])
   process.env.MCP_ACCESS_GRANTS = JSON.stringify({
@@ -222,7 +244,8 @@ describe('authenticated MCP protocol', () => {
     const { status, body } = await rpc('tools/list')
     expect(status).toBe(200)
     const { tools } = ListToolsResultSchema.parse(body.result)
-    expect(tools).toHaveLength(12)
+    expect(tools).toHaveLength(11)
+    expect(tools.map((tool) => tool.name)).not.toContain('list_month_expenses')
     expect(tools.every((tool) => tool.annotations?.readOnlyHint)).toBe(true)
     expect(tools.every((tool) => tool.outputSchema?.type === 'object')).toBe(
       true,
@@ -232,11 +255,19 @@ describe('authenticated MCP protocol', () => {
         .additionalProperties,
     ).toBe(false)
     const router: AnyTRPCRouter = appRouter
-    const queries = Object.keys(router._def.procedures)
-      .filter((path) => router._def.procedures[path]._def.type === 'query')
-      .sort()
-    expect(MCP_TOOL_REGISTRY.map((tool) => tool.procedure).sort()).toEqual(
-      queries,
+    expect(
+      MCP_TOOL_REGISTRY.every(
+        (tool) => router._def.procedures[tool.procedure]._def.type === 'query',
+      ),
+    ).toBe(true)
+    expect(
+      tools.find((tool) => tool.name === 'list_expenses')?.inputSchema
+        .properties,
+    ).toEqual(
+      expect.objectContaining({
+        from: expect.any(Object),
+        to: expect.any(Object),
+      }),
     )
     expect(
       tools.find((tool) => tool.name === 'get_expense')?.inputSchema.required,
@@ -342,6 +373,181 @@ describe('authenticated MCP protocol', () => {
     expect(mockExpenseReads).not.toHaveBeenCalled()
   })
 
+  it('does not expose the removed month-specific tool', async () => {
+    const { body } = await rpc('tools/call', {
+      name: 'list_month_expenses',
+      arguments: { groupId: 'group-a', month: '2026-09' },
+    })
+    expect(
+      body.error || CallToolResultSchema.parse(body.result).isError,
+    ).toBeTruthy()
+    expect(mockExpenseReads).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { from: '2026-09-31' },
+    { from: '2026-02-29' },
+    { to: '2026-09-30T12:00:00Z' },
+    { from: '2026-10-01', to: '2026-09-30' },
+  ])(
+    'rejects invalid or reversed date bounds before a database read: %j',
+    async (range) => {
+      const { body } = await rpc('tools/call', {
+        name: 'list_expenses',
+        arguments: { groupId: 'group-a', ...range },
+      })
+      expect(CallToolResultSchema.parse(body.result).isError).toBe(true)
+      expect(mockExpenseReads).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each([
+    [{ from: '2026-09-30' }, ['expense-a']],
+    [{ to: '2026-09-30' }, ['expense-a']],
+    [{ from: '2026-09-30', to: '2026-09-30' }, ['expense-a']],
+    [{ from: '2026-10-01' }, []],
+    [{ to: '2026-09-29' }, []],
+    [{ from: '2024-02-29', to: '2024-02-29' }, []],
+  ] as const)(
+    'supports inclusive and open date ranges: %j',
+    async (range, expected) => {
+      const { body } = await rpc('tools/call', {
+        name: 'list_expenses',
+        arguments: { groupId: 'group-a', ...range },
+      })
+      const output = CallToolResultSchema.parse(body.result)
+      expect(output.isError).not.toBe(true)
+      const page = z
+        .object({ expenses: z.array(z.object({ id: z.string() })) })
+        .parse(output.structuredContent)
+      expect(page.expenses.map((expense) => expense.id)).toEqual(expected)
+    },
+  )
+
+  it('paginates a date range with title filtering, including reimbursements and both boundary dates', async () => {
+    const rows = [
+      {
+        ...savedExpenses[0],
+        id: 'before',
+        expenseDate: new Date('2026-08-31T00:00:00Z'),
+      },
+      {
+        ...savedExpenses[0],
+        id: 'first',
+        expenseDate: new Date('2026-09-01T00:00:00Z'),
+      },
+      {
+        ...savedExpenses[0],
+        id: 'repayment',
+        title: 'DINNER repayment',
+        isReimbursement: true,
+        expenseDate: new Date('2026-09-15T00:00:00Z'),
+      },
+      {
+        ...savedExpenses[0],
+        id: 'other-title',
+        title: 'Lunch',
+        expenseDate: new Date('2026-09-20T00:00:00Z'),
+      },
+      {
+        ...savedExpenses[0],
+        id: 'foreign-group',
+        groupId: 'group-b',
+        expenseDate: new Date('2026-09-25T00:00:00Z'),
+      },
+      {
+        ...savedExpenses[0],
+        id: 'last',
+        expenseDate: new Date('2026-09-30T00:00:00Z'),
+      },
+      {
+        ...savedExpenses[0],
+        id: 'after',
+        expenseDate: new Date('2026-10-01T00:00:00Z'),
+      },
+    ]
+    mockExpenseReads.mockImplementation(
+      ({ where, skip = 0, take }: ExpenseQuery) =>
+        rows
+          .filter(
+            (row) =>
+              row.groupId === where.groupId &&
+              (!where.title ||
+                row.title
+                  .toLowerCase()
+                  .includes(where.title.contains.toLowerCase())) &&
+              (!where.expenseDate?.gte ||
+                row.expenseDate >= where.expenseDate.gte) &&
+              (!where.expenseDate?.lte ||
+                row.expenseDate <= where.expenseDate.lte),
+          )
+          .sort((a, b) => b.expenseDate.getTime() - a.expenseDate.getTime())
+          .slice(skip, take === undefined ? undefined : skip + take),
+    )
+    const found: { id: string; isReimbursement: boolean }[] = []
+    let cursor = 0
+    let hasMore = true
+    while (hasMore) {
+      const { body } = await rpc('tools/call', {
+        name: 'list_expenses',
+        arguments: {
+          groupId: 'group-a',
+          from: '2026-09-01',
+          to: '2026-09-30',
+          filter: 'DiNnEr',
+          limit: 1,
+          cursor,
+        },
+      })
+      const output = CallToolResultSchema.parse(body.result)
+      expect(output.isError).not.toBe(true)
+      const page = z
+        .object({
+          expenses: z.array(
+            z.object({ id: z.string(), isReimbursement: z.boolean() }),
+          ),
+          nextCursor: z.number(),
+          hasMore: z.boolean(),
+        })
+        .parse(output.structuredContent)
+      found.push(...page.expenses)
+      expect(page.nextCursor).toBe(cursor + 1)
+      cursor = page.nextCursor
+      hasMore = page.hasMore
+      if (cursor > rows.length) throw new Error('Pagination did not terminate')
+    }
+    expect(found).toEqual([
+      { id: 'last', isReimbursement: false },
+      { id: 'repayment', isReimbursement: true },
+      { id: 'first', isReimbursement: false },
+    ])
+    expect(mockExpenseReads).toHaveBeenCalledTimes(3)
+    expect(mockRecurringReads).not.toHaveBeenCalled()
+    const allTime = CallToolResultSchema.parse(
+      (
+        await rpc('tools/call', {
+          name: 'list_expenses',
+          arguments: { groupId: 'group-a', limit: 100 },
+        })
+      ).body.result,
+    )
+    const allTimePage = z
+      .object({
+        expenses: z.array(z.object({ id: z.string() })),
+        hasMore: z.boolean(),
+      })
+      .parse(allTime.structuredContent)
+    expect(allTimePage.expenses.map((expense) => expense.id)).toEqual([
+      'after',
+      'last',
+      'other-title',
+      'repayment',
+      'first',
+      'before',
+    ])
+    expect(allTimePage.hasMore).toBe(false)
+  })
+
   it.each([
     ['get_group', { groupId: 'group-a' }],
     ['get_group_details', { groupId: 'group-a' }],
@@ -354,7 +560,6 @@ describe('authenticated MCP protocol', () => {
     ],
     ['get_spending_stats', { groupId: 'group-a', participantId: 'alice' }],
     ['list_category_expenses', { groupId: 'group-a', categoryId: 0 }],
-    ['list_month_expenses', { groupId: 'group-a', month: '2026-09' }],
   ] as const)(
     'returns a validated result for %s without materializing recurrence',
     async (name, args) => {
@@ -480,13 +685,19 @@ describe('authenticated MCP protocol', () => {
     const month = CallToolResultSchema.parse(
       (
         await rpc('tools/call', {
-          name: 'list_month_expenses',
-          arguments: { groupId: 'group-a', month: '2026-09' },
+          name: 'list_expenses',
+          arguments: {
+            groupId: 'group-a',
+            from: '2026-09-01',
+            to: '2026-09-30',
+          },
         })
       ).body.result,
     ).structuredContent
     expect(month).toEqual({
       expenses: [expect.objectContaining({ id: 'expense-a', amount: 6000 })],
+      hasMore: false,
+      nextCursor: 10,
     })
   })
 
@@ -494,7 +705,7 @@ describe('authenticated MCP protocol', () => {
     'get_group_details',
     'get_spending_stats',
     'list_category_expenses',
-    'list_month_expenses',
+    'list_expenses',
   ])('rejects unauthorized reads through %s', async (name) => {
     const { body } = await rpc('tools/call', {
       name,
@@ -548,7 +759,7 @@ describe('authenticated MCP protocol', () => {
       if (name)
         expect(CallToolResultSchema.parse(reply.result).isError).not.toBe(true)
       else
-        expect(ListToolsResultSchema.parse(reply.result).tools).toHaveLength(12)
+        expect(ListToolsResultSchema.parse(reply.result).tools).toHaveLength(11)
       headers['Mcp-Method'] = 'wrong-method'
       const mismatch = await POST(
         new Request('https://app.test/api/mcp', {

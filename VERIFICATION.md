@@ -1,8 +1,29 @@
 # AgentSplit verification
 
-## Complete read-query MCP surface and HTTP hardening
+## Composable expense history
 
-The reviewed catalog now maps all twelve existing tRPC queries, including group
+The catalog now has eleven selected read-only tools. `list_month_expenses` was
+removed from MCP; `list_expenses` now combines pagination, title search, and
+optional inclusive `from`/`to` expense dates. The web statistics page retains
+its existing month query. Tool output contracts now cover the selected registry
+instead of requiring a separate contract for every backend query.
+
+- 560 Jest tests passed in 46 suites across both configured timezones.
+- Type checking, formatting, diff checks, lint, and the production webpack
+  build passed; the same 20 inherited lint warnings remain.
+- New regressions cover invalid/reversed dates, leap dates, open-ended and
+  inclusive date boundaries, combined title/date filtering before pagination,
+  full-history reads, reimbursements, and denial of the removed tool.
+- Date predicates use UTC midnight against the database's date-only column;
+  an ID tie breaker gives deterministic ordering for tied dates/timestamps.
+
+These changes are locally verified. Deployment is still pending renewed
+Tailscale SSH authentication; live and actual-agent evidence below applies to
+the previous seven-tool deployment.
+
+## MCP HTTP hardening baseline
+
+Commit `868bfa5` initially mapped twelve existing tRPC queries, including group
 details, balances across group/participant pairs, and all three statistics views.
 This change has passed local verification; live deployment remains pending a
 renewed Tailscale SSH authentication check. The previously deployed seven-tool

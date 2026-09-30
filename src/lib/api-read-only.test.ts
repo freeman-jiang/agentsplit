@@ -58,3 +58,30 @@ it('cannot retrieve an expense through another group ID', async () => {
   expect(await getExpense('group-b', 'expense-a')).toBeNull()
   expect(await getExpense('group-a', 'expense-a')).toEqual(storedExpense)
 })
+
+it('applies inclusive UTC expense-date bounds together with title filtering before pagination', async () => {
+  await getGroupExpenses('group-a', {
+    readOnly: true,
+    from: '2024-02-01',
+    to: '2024-02-29',
+    filter: 'dinner',
+    offset: 10,
+    length: 11,
+  })
+  expect(mockExpenses).toHaveBeenCalledWith(
+    expect.objectContaining({
+      where: {
+        groupId: 'group-a',
+        title: { contains: 'dinner', mode: 'insensitive' },
+        expenseDate: {
+          gte: new Date('2024-02-01T00:00:00.000Z'),
+          lte: new Date('2024-02-29T00:00:00.000Z'),
+        },
+      },
+      skip: 10,
+      take: 11,
+      orderBy: [{ expenseDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+    }),
+  )
+  expect(mockRecurringLinks).not.toHaveBeenCalled()
+})

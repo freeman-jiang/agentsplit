@@ -9,7 +9,11 @@ procedure paths. Its type admits queries only. The shared adapter derives the
 existing input schemas and leaves validation and execution to tRPC. Adding a
 tool does not require another implementation of its business logic.
 
-The complete existing read-query surface is reviewed and explicitly registered:
+Prefer fewer broad, composable tools: use options for date ranges and other
+variations, and let agents compose the tools to solve tasks. The MCP catalog
+does not need one tool for each web UI view or backend query.
+
+The reviewed read-only tools are explicitly registered:
 
 | Tool                       | Existing tRPC procedure         |
 | -------------------------- | ------------------------------- |
@@ -24,7 +28,6 @@ The complete existing read-query surface is reviewed and explicitly registered:
 | `list_categories`          | `categories.list`               |
 | `get_spending_stats`       | `groups.stats.overview`         |
 | `list_category_expenses`   | `groups.stats.categoryExpenses` |
-| `list_month_expenses`      | `groups.stats.monthExpenses`    |
 
 Expense, balance, and statistics reads skip recurrence materialization, including
 the active-recurring-expense statistics loader. Activity is Spliit's existing
@@ -37,8 +40,33 @@ the tRPC return types at compile time. Dates serialize to ISO strings and
 Decimal exchange rates to strings. The adapter validates/filters successful
 results before returning identical structured JSON and serialized text; invalid
 results return a generic tool error without database or parser diagnostics.
-All twelve tools advertise output schemas. No-argument tools accept only `{}`.
+All eleven tools advertise output schemas. No-argument tools accept only `{}`.
 Titles, names, notes, and activity descriptions remain untrusted user content.
+
+## Expense history and date filtering
+
+`list_expenses` covers all history when dates are omitted. Optional `from` and
+`to` are inclusive expense dates in `YYYY-MM-DD` format; either boundary may be
+omitted. The server rejects invalid dates or `from > to`. Date and title filters
+are combined in the database before pagination, including reimbursements.
+Results are newest first with an ID tie breaker. Pages contain up to 100 rows;
+reuse the same filters and pass `nextCursor` while `hasMore` is true.
+Pagination uses offsets; concurrent edits can shift subsequent pages.
+
+For September 2026, for example:
+
+```json
+{
+  "groupId": "GROUP_ID",
+  "from": "2026-09-01",
+  "to": "2026-09-30",
+  "limit": 100
+}
+```
+
+To review all groups, discover them with `list_groups` and paginate each group.
+`list_month_expenses` is no longer exposed. The existing month-specific tRPC
+query remains available to the web statistics page.
 
 ## HTTP safeguards and protocol support
 
@@ -140,9 +168,9 @@ Tests exercise actual SDK HTTP handling with mocked database reads: discovery,
 initialization, schema validation, scoped reads, concurrent user isolation,
 cross-group expense ownership, and denial of mutation tools. Separate tests
 cover credentials, inherited permissions, recurrence suppression, shared user
-rate budgets, output validation, and the CSV correction. Discovery tests compare
-the reviewed registry with all current tRPC queries; future queries are not
-automatically exposed. Live deployment and an actual Codex-agent run are recorded in
+rate budgets, output validation, expense-date filtering/pagination, and the CSV
+correction. Discovery tests check the selected registry and rejected tools;
+backend queries are not automatically exposed. Live deployment and an actual Codex-agent run are recorded in
 `VERIFICATION.md` after completion.
 
 When expanding the registry, audit each query's side effects and permission
