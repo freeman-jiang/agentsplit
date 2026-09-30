@@ -70,10 +70,8 @@ services:
       GARAGE_DEFAULT_ACCESS_KEY: ${S3_UPLOAD_KEY}
       GARAGE_DEFAULT_SECRET_KEY: ${S3_UPLOAD_SECRET}
       GARAGE_DEFAULT_BUCKET: agentsplit-receipts
-    configs:
-      - source: garage-config
-        target: /etc/garage.toml
     volumes:
+      - ./deploy/garage.toml:/etc/garage.toml:ro
       - garage-meta:/var/lib/garage/meta
       - garage-data:/var/lib/garage/data
     healthcheck:
@@ -120,10 +118,6 @@ services:
       traefik.http.middlewares.agentsplit-storage-cors.headers.accesscontrolallowheaders: '*'
       traefik.http.middlewares.agentsplit-storage-cors.headers.accesscontrolexposeheaders: ETag
       traefik.http.middlewares.agentsplit-storage-cors.headers.addvaryheader: 'true'
-
-configs:
-  garage-config:
-    file: ./deploy/garage.toml
 
 volumes:
   postgres-data:

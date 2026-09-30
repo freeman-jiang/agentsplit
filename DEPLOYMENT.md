@@ -12,9 +12,14 @@ Garage is S3-compatible. No additional application storage code is needed.
 
 1. Create a Docker Compose resource from this repository and branch in Coolify.
    Select `/compose.coolify.yaml` as the Compose file.
+   Enable **Preserve Repository During Deployment** so the repository-backed
+   Garage configuration is available for its read-only file mount.
 2. Set the values listed in `coolify.env.example` in that resource's environment.
    `BASE_URL` must be the exact HTTPS app origin, without a trailing slash.
    `STORAGE_HOST` is a hostname only, such as `receipts.example.com`.
+   Mark the referenced Compose variables as available at build time as well as
+   runtime: Compose validates the full definition during the build. Credentials
+   are not declared as Dockerfile build arguments or copied into the image.
 3. Generate independent secrets with `openssl rand -hex 32` for
    `POSTGRES_PASSWORD`, `GARAGE_RPC_SECRET`, and `S3_UPLOAD_SECRET`. The access
    key is `GK` followed by the output of `openssl rand -hex 16`.
