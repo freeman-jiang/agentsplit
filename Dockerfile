@@ -33,6 +33,9 @@ COPY ./messages ./messages
 # node_modules, so this has to run after the source tree is in place.
 RUN npx prisma generate
 
+# This public endpoint is needed to bake the image/CSP allowlist into Next.js.
+# Bucket credentials are supplied only at runtime.
+ARG S3_UPLOAD_ENDPOINT
 COPY scripts/build.env .env
 RUN npm run build
 

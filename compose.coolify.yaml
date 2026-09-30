@@ -1,0 +1,125 @@
+# Coolify's standard Traefik proxy and external `coolify` network are required.
+# Set variables in coolify.env.example in the resource's environment settings.
+services:
+  app:
+    build:
+      context: .
+      args:
+        S3_UPLOAD_ENDPOINT: https://${STORAGE_HOST:?Set STORAGE_HOST}
+    expose:
+      - '3000'
+    environment:
+      BASE_URL: ${BASE_URL:?Set BASE_URL}
+      POSTGRES_PRISMA_URL: postgresql://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/agentsplit
+      POSTGRES_URL_NON_POOLING: postgresql://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/agentsplit
+      ENABLE_EXPENSE_DOCUMENTS: 'true'
+      ENABLE_RECEIPT_EXTRACT: 'false'
+      ENABLE_CATEGORY_EXTRACT: 'false'
+      ANALYTICS_PROVIDER: ''
+      NEXT_TELEMETRY_DISABLED: '1'
+      CHECKPOINT_DISABLE: '1'
+      S3_UPLOAD_ENDPOINT: https://${STORAGE_HOST}
+      S3_UPLOAD_BUCKET: agentsplit-receipts
+      S3_UPLOAD_REGION: garage
+      S3_UPLOAD_KEY: ${S3_UPLOAD_KEY:?Set S3_UPLOAD_KEY}
+      S3_UPLOAD_SECRET: ${S3_UPLOAD_SECRET:?Set S3_UPLOAD_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+      garage:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - coolify
+      - backend
+
+  db:
+    image: postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    environment:
+      POSTGRES_DB: agentsplit
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d agentsplit']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - backend
+
+  garage:
+    image: dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020
+    command: ['/garage', 'server', '--single-node', '--default-bucket']
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?Set GARAGE_RPC_SECRET}
+      GARAGE_DEFAULT_ACCESS_KEY: ${S3_UPLOAD_KEY}
+      GARAGE_DEFAULT_SECRET_KEY: ${S3_UPLOAD_SECRET}
+      GARAGE_DEFAULT_BUCKET: agentsplit-receipts
+    configs:
+      - source: garage-config
+        target: /etc/garage.toml
+    volumes:
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+    healthcheck:
+      test: ['CMD', '/garage', 'health']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - coolify
+      - backend
+    labels:
+      traefik.enable: 'true'
+      traefik.docker.network: coolify
+
+      # Preserve the signed Host and full path for authenticated S3 uploads.
+      traefik.http.routers.agentsplit-s3.rule: Host(`${STORAGE_HOST}`)
+      traefik.http.routers.agentsplit-s3.entrypoints: https
+      traefik.http.routers.agentsplit-s3.tls: 'true'
+      traefik.http.routers.agentsplit-s3.tls.certresolver: letsencrypt
+      traefik.http.routers.agentsplit-s3.priority: '10'
+      traefik.http.routers.agentsplit-s3.service: agentsplit-s3
+      traefik.http.routers.agentsplit-s3.middlewares: agentsplit-storage-cors
+      traefik.http.services.agentsplit-s3.loadbalancer.server.port: '3900'
+
+      # Spliit stores durable /bucket/key URLs. Route image reads to Garage's
+      # website endpoint, which supports anonymous object reads without listing.
+      traefik.http.routers.agentsplit-receipts.rule: Host(`${STORAGE_HOST}`) && PathPrefix(`/agentsplit-receipts/`) && (Method(`GET`) || Method(`HEAD`))
+      traefik.http.routers.agentsplit-receipts.entrypoints: https
+      traefik.http.routers.agentsplit-receipts.tls: 'true'
+      traefik.http.routers.agentsplit-receipts.tls.certresolver: letsencrypt
+      traefik.http.routers.agentsplit-receipts.priority: '100'
+      traefik.http.routers.agentsplit-receipts.service: agentsplit-receipts
+      traefik.http.routers.agentsplit-receipts.middlewares: agentsplit-storage-cors,agentsplit-receipts-path,agentsplit-receipts-host
+      traefik.http.services.agentsplit-receipts.loadbalancer.server.port: '3902'
+      traefik.http.middlewares.agentsplit-receipts-path.stripprefix.prefixes: /agentsplit-receipts
+      traefik.http.middlewares.agentsplit-receipts-host.headers.customrequestheaders.Host: agentsplit-receipts
+
+      # Preflights are answered by Traefik. Only the app origin may upload
+      # through the browser; no public-write or public-list bucket permission.
+      traefik.http.middlewares.agentsplit-storage-cors.headers.accesscontrolalloworiginlist: ${BASE_URL}
+      traefik.http.middlewares.agentsplit-storage-cors.headers.accesscontrolallowmethods: GET,HEAD,PUT,POST,OPTIONS
+      traefik.http.middlewares.agentsplit-storage-cors.headers.accesscontrolallowheaders: '*'
+      traefik.http.middlewares.agentsplit-storage-cors.headers.accesscontrolexposeheaders: ETag
+      traefik.http.middlewares.agentsplit-storage-cors.headers.addvaryheader: 'true'
+
+configs:
+  garage-config:
+    file: ./deploy/garage.toml
+
+volumes:
+  postgres-data:
+  garage-meta:
+  garage-data:
+
+networks:
+  coolify:
+    external: true
+  backend:
+    internal: true

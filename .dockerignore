@@ -11,6 +11,11 @@ postgres-data
 # or built for another platform.
 src/generated
 .git
+references
+.env
+.env.*
+container.env
+coolify.env
 .github
 .devcontainer
 .claude

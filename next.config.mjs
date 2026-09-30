@@ -2,6 +2,15 @@ import createNextIntlPlugin from 'next-intl/plugin'
 
 const withNextIntl = createNextIntlPlugin()
 
+// Allow only the configured storage origin. Other third-party assets and
+// browser connections stay blocked. This configuration is baked at build time.
+const storageUrl = (() => {
+  if (!process.env.S3_UPLOAD_ENDPOINT) return null
+  const url = new URL(process.env.S3_UPLOAD_ENDPOINT)
+  return ['http:', 'https:'].includes(url.protocol) ? url : null
+})()
+const storageSource = storageUrl ? ` ${storageUrl.origin}` : ''
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Emit a self-contained server into .next/standalone, containing only the
@@ -9,8 +18,16 @@ const nextConfig = {
   // stage copies that instead of a full production `node_modules`.
   output: 'standalone',
   images: {
-    // Do not let the image optimizer fetch external storage on the server.
-    remotePatterns: [],
+    remotePatterns: storageUrl
+      ? [
+          {
+            protocol: storageUrl.protocol === 'https:' ? 'https' : 'http',
+            hostname: storageUrl.hostname,
+            port: storageUrl.port,
+            pathname: '/**',
+          },
+        ]
+      : [],
   },
   reactCompiler: true,
   // Required to run in a codespace (see https://github.com/vercel/next.js/issues/58019)
@@ -46,8 +63,7 @@ const nextConfig = {
           },
           {
             key: 'Content-Security-Policy',
-            value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+            value: `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:${storageSource}; font-src 'self' data:; connect-src 'self'${storageSource}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
           },
         ],
       },

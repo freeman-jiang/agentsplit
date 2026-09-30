@@ -1,10 +1,11 @@
 [<img alt="Spliit" height="60" src="https://github.com/spliit-app/spliit/blob/main/public/logo-with-text.png?raw=true" />](https://spliit.app)
 
 This is the AgentSplit fork of Spliit. Analytics, automatic exchange-rate lookups,
-external flag images, and the built-in OpenAI/S3 features are disabled. See
-[the AgentSplit privacy profile](PRIVACY.md) for details and audit limitations.
-The upstream optional-feature instructions below describe Spliit; enabling their
-environment variables does not re-enable these features in AgentSplit.
+external flag images, and built-in OpenAI features are disabled. Receipt image
+attachments use the existing S3 upload flow, backed by self-hosted Garage in the
+[Coolify deployment](DEPLOYMENT.md). See [the privacy profile](PRIVACY.md) for
+details and audit limitations. The upstream instructions below remain for
+reference; analytics and AI environment flags cannot re-enable those features.
 
 Spliit is a free and open source alternative to Splitwise. You can either use the official instance at [Spliit.app](https://spliit.app), or deploy your own instance:
 
