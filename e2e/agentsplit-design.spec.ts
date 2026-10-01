@@ -97,7 +97,7 @@ test('mobile currency selection and saving preserve face-value money without ove
   await openExpense(page, 'Mobile expense')
   await expect(
     page.getByRole('combobox', { name: 'Currency of expense', exact: true }),
-  ).toContainText('JPY')
+  ).toHaveValue('JPY')
   await expect(page.locator('input[name="amount"]')).toHaveValue('6000')
   await expect(page.locator('body')).not.toContainText('Application error')
   expect(

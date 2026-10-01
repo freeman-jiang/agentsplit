@@ -367,3 +367,33 @@ The final polish commit `48d4a3410aa35a69bc56313b50f97b05d092a380` deployed in
 browser receipt/create/edit/delete workflow passed again, now also asserting
 zero thumbnail border radius. MCP audit read-back and original-ledger/balance
 restoration passed, with zero captured browser errors at 320px in dark mode.
+
+# Responsive forms, simpler selectors and agent setup
+
+The reported settings overlap was reproduced on production at 488px: the group
+name input shrank to 26px while the page itself did not overflow. An unconditional
+two-column span created an implicit second column in a single-column grid.
+The information field now spans the declared grid, and children can shrink
+within their intended tracks. Regression checks assert field widths, positions
+and separation on create/settings pages at 320, 375, 488, 639, 640, 768 and 1280px.
+
+Currency and category use controlled native selects instead of responsive
+drawers/popovers. The participant prompt uses the same compact dialog on mobile
+and desktop. Expense/activity date headings use theme colors, and search/date
+headings/expense rows share an inset. Search has an accessible clear button.
+Group currency help now correctly describes a default for new expenses, with a
+browser check confirming that changing it preserves existing expense amounts
+and currencies.
+
+The landing page has only the groups and agent-setup calls to action. `/agents`
+provides this instance's runtime MCP endpoint, copyable Codex/Claude Code configs
+and agent instructions, and explicitly explains host-issued keys and the absence
+of a self-service key screen. GitHub links were removed from the public landing
+page; plain-text upstream credit is retained.
+
+Verification passes 31 production-build browser scenarios, 678 Jest tests,
+types, formatting and the production build. Lint has zero errors and two
+remaining inherited warnings. Light/dark screenshots of settings, expenses,
+agent setup and the landing page were inspected at the reported intermediate
+width, with no captured JavaScript errors. The setup test verifies that the
+endpoint copy button actually places the instance endpoint on the clipboard.

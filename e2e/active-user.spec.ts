@@ -4,7 +4,7 @@ import { money } from './ui'
 
 // The rest of the suite seeds `newGroup-activeUser` so this dialog stays shut.
 // Here it is the subject, so the seeding is switched off.
-test.use({ seedActiveUser: false })
+test.use({ seedActiveUser: false, viewport: { width: 488, height: 950 } })
 
 /**
  * Puts the browser in the state a first-time visitor is in: the group exists,
@@ -37,6 +37,7 @@ test('asks who you are and personalises the expense list', async ({ page }) => {
 
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible()
+  await expect(page.locator('[data-vaul-drawer]')).toHaveCount(0)
   await expect(dialog).toContainText('Who are you?')
 
   await dialog.getByLabel('Bob', { exact: true }).click()

@@ -116,7 +116,7 @@ const ExpenseListForSearch = ({
 
   if (expenses.length === 0)
     return (
-      <p className="px-6 text-sm py-6">
+      <p className="text-sm py-6">
         {t('noExpenses')}{' '}
         <Button variant="link" asChild className="-m-4">
           <Link href={`/groups/${groupId}/expenses/create`}>
@@ -135,8 +135,9 @@ const ExpenseListForSearch = ({
         return (
           <div key={expenseGroup}>
             <div
+              data-testid="expense-date-heading"
               className={
-                'text-muted-foreground text-xs pl-4 sm:pl-6 py-1 font-semibold sticky top-16 bg-white dark:bg-[#1b1917]'
+                'pb-2 pt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground'
               }
             >
               {t(`Groups.${expenseGroup}`)}
@@ -161,11 +162,11 @@ const ExpenseListForSearch = ({
 const ExpensesLoading = forwardRef<HTMLDivElement>((_, ref) => {
   return (
     <div ref={ref}>
-      <Skeleton className="mx-4 sm:mx-6 mt-1 mb-2 h-3 w-32 rounded-full" />
+      <Skeleton className="mt-1 mb-2 h-3 w-32 rounded-full" />
       {[0, 1, 2].map((i) => (
         <div
           key={i}
-          className="flex justify-between items-start px-2 sm:px-6 py-4 text-sm gap-2"
+          className="flex justify-between items-start px-0 py-4 text-sm gap-2"
         >
           <div className="flex-0 pl-2 pr-1">
             <Skeleton className="h-4 w-4 rounded-full" />

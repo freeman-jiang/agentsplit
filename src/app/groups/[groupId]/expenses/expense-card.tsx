@@ -80,7 +80,7 @@ export function ExpenseCard({
       data-testid="expense-card"
       data-expense-id={expense.id}
       className={cn(
-        'flex justify-between sm:mx-6 px-4  sm:pr-2 sm:pl-4 py-4 text-sm cursor-pointer border-b hover:bg-accent gap-2 items-stretch',
+        'flex justify-between px-0 py-4 text-sm cursor-pointer border-b hover:bg-accent gap-2 items-stretch',
         expense.isReimbursement && 'italic',
       )}
       onClick={() => {
@@ -126,10 +126,13 @@ export function ExpenseCard({
       <Button
         size="icon"
         variant="link"
-        className="self-center hidden sm:flex"
+        className="self-center hidden h-8 w-6 sm:flex"
         asChild
       >
-        <Link href={`/groups/${groupId}/expenses/${expense.id}/edit`}>
+        <Link
+          href={`/groups/${groupId}/expenses/${expense.id}/edit`}
+          aria-label={expense.title}
+        >
           <ChevronRight className="w-4 h-4" />
         </Link>
       </Button>

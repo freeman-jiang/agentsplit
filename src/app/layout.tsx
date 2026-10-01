@@ -115,16 +115,7 @@ function Content({ children }: { children: React.ReactNode }) {
         </div>
         <p>
           {t.rich('Footer.upstream', {
-            source: (text) => (
-              <a
-                href="https://github.com/spliit-app/spliit"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline underline-offset-4"
-              >
-                {text}
-              </a>
-            ),
+            source: (text) => <span>{text}</span>,
           })}
         </p>
       </footer>

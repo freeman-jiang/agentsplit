@@ -80,7 +80,7 @@ export function GroupForm({
       : {
           name: '',
           information: '',
-          currency: '',
+          currency: getCurrency(defaultCurrencyCode).symbol,
           currencyCode: defaultCurrencyCode, // TODO: derive from the locale when not configured
           participants: [
             { name: t('Participants.John') },
@@ -144,7 +144,7 @@ export function GroupForm({
           <CardHeader>
             <CardTitle>{t('title')}</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&>*]:min-w-0">
             <FormField
               control={form.control}
               name="name"
@@ -172,32 +172,34 @@ export function GroupForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('CurrencyCodeField.label')}</FormLabel>
-                  <CurrencySelector
-                    currencies={defaultCurrencyList(
-                      locale as Locale,
-                      t('CurrencyCodeField.customOption'),
-                    )}
-                    defaultValue={form.watch(field.name) ?? ''}
-                    onValueChange={(newCurrency) => {
-                      field.onChange(newCurrency)
-                      const currency = getCurrency(newCurrency)
-                      if (
-                        currency.code.length ||
-                        form.getFieldState('currency').isTouched
-                      )
-                        form.setValue('currency', currency.symbol, {
-                          shouldValidate: true,
-                          shouldTouch: true,
-                          shouldDirty: true,
-                        })
-                    }}
-                    isLoading={false}
-                  />
+                  <FormControl>
+                    <CurrencySelector
+                      currencies={defaultCurrencyList(
+                        locale as Locale,
+                        t('CurrencyCodeField.customOption'),
+                      )}
+                      defaultValue={form.watch(field.name) ?? ''}
+                      onValueChange={(newCurrency) => {
+                        field.onChange(newCurrency)
+                        const currency = getCurrency(newCurrency)
+                        if (
+                          currency.code.length ||
+                          form.getFieldState('currency').isTouched
+                        )
+                          form.setValue('currency', currency.symbol, {
+                            shouldValidate: true,
+                            shouldTouch: true,
+                            shouldDirty: true,
+                          })
+                      }}
+                      isLoading={false}
+                    />
+                  </FormControl>
                   <FormDescription>
                     {t(
                       group
-                        ? 'CurrencyCodeField.editDescription'
-                        : 'CurrencyCodeField.createDescription',
+                        ? 'CurrencyCodeField.defaultEditDescription'
+                        : 'CurrencyCodeField.defaultCreateDescription',
                     )}
                   </FormDescription>
                   <FormMessage />
@@ -227,7 +229,7 @@ export function GroupForm({
               )}
             />
 
-            <div className="col-span-2">
+            <div className="col-span-full">
               <FormField
                 control={form.control}
                 name="information"

@@ -978,14 +978,16 @@ export function ExpenseForm({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>{t('categoryField.label')}</FormLabel>
-                          <CategorySelector
-                            categories={categories}
-                            defaultValue={
-                              watchedCategory ?? 0 // may be overwritten externally
-                            }
-                            onValueChange={field.onChange}
-                            isLoading={isCategoryLoading}
-                          />
+                          <FormControl>
+                            <CategorySelector
+                              categories={categories}
+                              defaultValue={
+                                watchedCategory ?? 0 // may be overwritten externally
+                              }
+                              onValueChange={field.onChange}
+                              isLoading={isCategoryLoading}
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}

@@ -1,12 +1,7 @@
 import { Button } from '@/components/ui/button'
-// lucide-react v1 dropped its brand icons, so the GitHub mark comes from Radix.
 import { TrackPage } from '@/lib/analytics/track-page'
-import { GitHubLogoIcon } from '@radix-ui/react-icons'
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
-
-// FIX for https://github.com/vercel/next.js/issues/58615
-// export const dynamic = 'force-dynamic'
 
 export default function HomePage() {
   const t = useTranslations()
@@ -30,10 +25,7 @@ export default function HomePage() {
               <Link href="/groups">{t('Homepage.button.groups')}</Link>
             </Button>
             <Button asChild variant="secondary">
-              <Link href="https://github.com/freeman-jiang/agentsplit">
-                <GitHubLogoIcon className="w-4 h-4 mr-2" />
-                {t('Homepage.button.github')}
-              </Link>
+              <Link href="/agents">{t('Homepage.button.agents')}</Link>
             </Button>
           </div>
         </div>

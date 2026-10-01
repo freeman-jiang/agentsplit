@@ -55,6 +55,8 @@ export async function createGroup(
   opts: { name: string; participants: string[] },
 ): Promise<string> {
   await page.goto('/groups/create')
+  // This selector is mounted by an effect, so it proves the form is hydrated.
+  await expect(page.getByText('Active user', { exact: true })).toBeVisible()
 
   // fillStable doubles as the hydration gate: once RHF keeps a value, React is
   // live and later clicks are safe.

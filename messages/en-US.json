@@ -5,7 +5,8 @@
     "description": "Keep track of everyday expenses with the people you share them with. In your browser, or with your agent.",
     "button": {
       "groups": "Go to groups",
-      "github": "GitHub"
+      "github": "GitHub",
+      "agents": "Set up an agent"
     }
   },
   "Header": {
@@ -49,7 +50,9 @@
       "earlierThisYear": "Earlier this year",
       "lastYear": "Last year",
       "older": "Older"
-    }
+    },
+    "searchLabel": "Search expenses",
+    "clearSearch": "Clear search"
   },
   "ExpenseCard": {
     "paidBy": "Paid by <strong>{paidBy}</strong> for <paidFor></paidFor>",
@@ -129,10 +132,10 @@
       "description": "We’ll use it to display amounts."
     },
     "CurrencyCodeField": {
-      "label": "Main currency",
-      "createDescription": "All amounts and balances will be in this currency.",
-      "editDescription": "All amounts and balances will be in this currency. Changing this will NOT convert expenses already entered, except when the currency has different \"minor units\" than the current one (e.g. changing from US Dollar to Japanese Yen)",
-      "customOption": "Custom"
+      "label": "Default currency",
+      "customOption": "Custom",
+      "defaultCreateDescription": "The starting currency for new expenses. Each expense can use a different currency.",
+      "defaultEditDescription": "Changes the default for new expenses only. Existing amounts, currencies and balances stay unchanged."
     },
     "Participants": {
       "title": "Participants",
@@ -599,11 +602,37 @@
     },
     "other": {
       "heading": "Other currencies"
-    }
+    },
+    "select": "Select currency"
   },
   "Pwa": {
     "updateTitle": "Update available",
     "updateDescription": "A new version of AgentSplit is available.",
     "reload": "Reload"
+  },
+  "AgentSetup": {
+    "title": "Set up your agent",
+    "intro": "Connect your agent to AgentSplit to review expenses, record payments and keep your shared ledger up to date.",
+    "keyTitle": "1. Get your API key",
+    "keyDescription": "Each person should have their own key. It identifies whose agent made a change and inherits that person’s group access.",
+    "keyAvailability": "API keys are currently issued by the person hosting AgentSplit. Ask your host for a key; there is no self-service key screen in the app yet.",
+    "keyPrivacy": "Keep the key in your client’s private settings or environment. Do not paste it into an agent conversation or a group note.",
+    "connectTitle": "2. Connect your client",
+    "endpoint": "MCP endpoint · Streamable HTTP",
+    "copyEndpoint": "Copy MCP endpoint",
+    "environment": "The examples read your key from AGENTSPLIT_MCP_TOKEN in the environment that launches your agent. If your desktop client does not inherit terminal variables, use its private Authorization header setting instead.",
+    "codexDescription": "Add this to your private ~/.codex/config.toml, then reconnect the MCP server or restart Codex.",
+    "claudeDescription": "Save this MCP configuration privately and load it with claude --mcp-config /path/to/config.json.",
+    "copyCodex": "Copy Codex configuration",
+    "copyClaude": "Copy Claude Code configuration",
+    "otherClients": "Other clients and private header settings",
+    "otherDescription": "Use the endpoint above with Streamable HTTP and a bearer Authorization header. Replace YOUR_API_KEY with your key only in the client’s private configuration.",
+    "noOauth": "This server uses API keys. OAuth sign-in is not available.",
+    "references": "Official client instructions:",
+    "useTitle": "3. Give your agent a group",
+    "useDescription": "Once connected, give your agent the group’s share link. These instructions can be copied without exposing your key.",
+    "copyInstructions": "Copy agent instructions",
+    "instructions": "Use AgentSplit at {endpoint} through MCP. Authenticate with the API key in my client configuration.\n\nStart with list_groups. If I provide a group share link, use manage_group_access to join it. Read get_group to discover participant IDs, and get_reference_data for currencies, categories and split modes.\n\nUse exact decimal strings for money and keep currencies separate. Read the current revision before editing or deleting. Record payments with create_expense and isReimbursement=true. Only make changes I request, and confirm the committed result.",
+    "capabilities": "Agents can create and edit expenses, split equally or unevenly, record payments, attach receipts, review balances by currency, and read the audit history."
   }
 }

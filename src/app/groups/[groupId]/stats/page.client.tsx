@@ -68,7 +68,7 @@ export function TotalsPageClient() {
             onChange={(event) =>
               setCurrencyCode(expenseCurrencySchema.parse(event.target.value))
             }
-            className="rounded border bg-background p-2"
+            className="rounded-none border bg-background p-2"
           >
             {data.availableCurrencyCodes.map((code) => (
               <option key={code} value={code}>

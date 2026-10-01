@@ -86,7 +86,7 @@ export function ActivityRevision({ activity }: { activity: Activity }) {
         {label('view', 'View saved revision')} {snapshot.expense.revision}
         {deleted ? ` · ${label('deleted', 'Deleted')}` : ''}
       </summary>
-      <div className="mt-2 space-y-2 rounded border p-3">
+      <div className="mt-2 space-y-2 rounded-none border p-3">
         {deleted && (
           <p>
             {label(
