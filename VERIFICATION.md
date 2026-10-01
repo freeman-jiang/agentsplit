@@ -361,3 +361,9 @@ The complete live MCP verifier also passed discovery, schemas, signed upload,
 attachment finalization, revision conflicts, actor attribution, rounding,
 currency changes, export and cleanup on this deployment. A final visual polish
 replaces the legacy rounded receipt-thumbnail class with square corners.
+
+The final polish commit `48d4a3410aa35a69bc56313b50f97b05d092a380` deployed in
+`8s6c3pncu6sjsig57jbsazoi`. All three services were healthy. The complete live
+browser receipt/create/edit/delete workflow passed again, now also asserting
+zero thumbnail border radius. MCP audit read-back and original-ledger/balance
+restoration passed, with zero captured browser errors at 320px in dark mode.
