@@ -154,7 +154,7 @@ export function DocumentThumbnail({
       <DialogTrigger asChild>
         <Button
           variant="secondary"
-          className="w-full h-full border overflow-hidden rounded shadow-inner"
+          className="w-full h-full border overflow-hidden rounded-none shadow-inner"
         >
           <Image
             width={300}

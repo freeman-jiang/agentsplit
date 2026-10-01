@@ -348,3 +348,16 @@ light and dark modes, including open optional sections and dropdown padding.
 Every group page (expenses, balances, information, stats, activity and settings)
 loaded without captured JavaScript errors. No schema migration or new dependency
 is required for this release.
+
+The UI release at `1efb4791b388fe2d6e047486e6cd862109e79006` deployed through
+Coolify deployment `5mxu3ayvk80v2lgbdbggft7d`; application, PostgreSQL and Garage
+were healthy. The live browser created a synthetic expense, uploaded a PNG to
+Garage, checked invalid-amount feedback, edited the expense while preserving
+its notes and receipt, and soft-deleted it. MCP read-back confirmed the audit
+history, retained receipt and original active ledger/balances. The browser
+captured no JavaScript errors and passed a 320px dark-mode overflow check.
+
+The complete live MCP verifier also passed discovery, schemas, signed upload,
+attachment finalization, revision conflicts, actor attribution, rounding,
+currency changes, export and cleanup on this deployment. A final visual polish
+replaces the legacy rounded receipt-thumbnail class with square corners.
