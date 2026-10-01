@@ -222,3 +222,25 @@ group and three participants, cleared the two expense/six activity rows, created
 `NUMERIC(30,12)` money fields, and restored both truncate guards. The temporary
 container was removed. The production backup is
 `/home/ubuntu/agentsplit-backups/20260930-pre-decimal-money.dump` (mode 0600).
+
+## Live currency deployment
+
+Coolify deployment `uytrv8qq5iqcur8smufda0yt` finished at application commit
+`15e503e7b534ce76b6ee87b8f1add1b6e0566b85`. The application, PostgreSQL and
+Garage containers are healthy. The scoped beta ledger reset preserved the group
+and participants as intended.
+
+The live MCP verifier passed with all eleven tools. Synthetic create/edit/delete
+operations retained three ordered audit revisions; USD and JPY amounts round
+tripped as face-value strings; currency buckets and pre-pagination filtering
+worked; the payer received the first rounding remainder; and a fractional JPY
+write was rejected. The verifier soft-deleted its synthetic records and confirmed
+that the original active expense list and balances were unchanged. Receipt
+reference copying was not tested live in this run because the reset group had no
+active receipts; the real-PostgreSQL suite covers pointer retention.
+
+The original OAuth push was rejected for lacking workflow-file scope. The
+authorized existing GitHub SSH identity successfully pushed the same commit;
+no OAuth scopes or global Git settings were changed. The live image and API
+behavior both confirm the application commit, rather than relying on deployment
+metadata alone.
