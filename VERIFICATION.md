@@ -212,7 +212,7 @@ verification used a separate temporary tab. Screenshot:
 
 These are local pre-deployment results. The approved precision policy rejects
 finer amounts instead of rounding inputs. The payer receives the first rounding
-remainder; explicit splits remain unchanged. CI now runs these PostgreSQL
+remainder; explicit splits remain unchanged. CI is configured to run these PostgreSQL
 integration checks against the exact pinned PostgreSQL 17 image used in
 production. See `MONEY.md` for the contract and authorized beta-ledger reset scope.
 
@@ -244,3 +244,14 @@ authorized existing GitHub SSH identity successfully pushed the same commit;
 no OAuth scopes or global Git settings were changed. The live image and API
 behavior both confirm the application commit, rather than relying on deployment
 metadata alone.
+
+The deployed web form also showed Bob receiving $3.34 while Alice and Carol
+each received $3.33 from a $10 split. No browser console errors were captured.
+That synthetic preview was not submitted. Screenshot:
+`/private/tmp/agentsplit-live-payer-rounding.png`.
+
+GitHub Actions reports zero workflow runs so far, despite repository Actions
+being enabled and the CI workflow including a direct work-branch push trigger.
+The CI definition is committed, but no remote CI pass is claimed. Local checks,
+the portable Node integration entry point, and live application verification
+have all passed.
