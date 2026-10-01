@@ -6,6 +6,7 @@ import {
 } from '@/generated/prisma/client'
 import {
   activitySnapshotSchema,
+  assertActorWriteAccess,
   baselineExpense,
   createExpenseRevision,
   groupSnapshotSchema,
@@ -19,34 +20,77 @@ import { randomId } from '@/lib/random'
 import {
   expenseFormSchema,
   groupFormSchema,
+  type ExpenseChanges,
   type ExpenseFormValues,
+  type GroupChanges,
   type GroupFormValues,
 } from '@/lib/schemas'
 import { TRPCError } from '@trpc/server'
 import { expenseCurrencySchema } from './currency'
+import type { FinalizedUploads } from './expense-uploads'
+import { assertRevision } from './revision'
 
 // Re-exported for backwards compatibility with existing server-side importers.
 export { randomId }
 
-export async function createGroup(groupFormValues: GroupFormValues) {
+export async function createGroup(
+  groupFormValues: GroupFormValues,
+  actor?: AuditActor,
+  groupId = randomId(),
+) {
   groupFormValues = groupFormSchema.parse(groupFormValues)
-  return prisma.group.create({
-    data: {
-      id: randomId(),
-      name: groupFormValues.name,
-      information: groupFormValues.information,
-      currency: groupFormValues.currency,
-      currencyCode: groupFormValues.currencyCode,
-      participants: {
-        createMany: {
-          data: groupFormValues.participants.map(({ name }) => ({
-            id: randomId(),
-            name,
-          })),
+  return prisma.$transaction(async (tx) => {
+    const prior = await tx.group.findUnique({
+      where: { id: groupId },
+      include: { participants: true },
+    })
+    if (prior)
+      throw new TRPCError({
+        code: 'CONFLICT',
+        message:
+          'Group ID is already in use; read it before retrying or choose a new ID',
+      })
+    const group = await tx.group.create({
+      data: {
+        id: groupId,
+        name: groupFormValues.name,
+        information: groupFormValues.information,
+        currency: groupFormValues.currency,
+        currencyCode: groupFormValues.currencyCode,
+        revision: 1,
+        participants: {
+          createMany: {
+            data: groupFormValues.participants.map(({ name }) => ({
+              id: randomId(),
+              name,
+            })),
+          },
         },
       },
-    },
-    include: { participants: true },
+      include: { participants: true },
+    })
+    if (actor)
+      await tx.userGroupAccess.create({
+        data: { userId: actor.userId, groupId: group.id },
+      })
+    await tx.activity.create({
+      data: {
+        id: randomId(),
+        groupId: group.id,
+        activityType: 'CREATE_GROUP',
+        data: group.name,
+        actorUserId: actor?.userId,
+        actorName: actor?.userId,
+        agentKeyId: actor?.connectionId,
+        source: actor ? 'agent' : 'web',
+        snapshot: groupSnapshotSchema.parse({
+          schemaVersion: 1,
+          kind: 'group',
+          group,
+        }),
+      },
+    })
+    return group
   })
 }
 
@@ -59,87 +103,106 @@ export async function createExpense(
   actor?: AuditActor,
 ): Promise<DecimalStrings<Expense>> {
   expenseFormValues = expenseFormSchema.parse(expenseFormValues)
-  return withGroupWrite(groupId, async (tx) => {
-    const group = await tx.group.findUnique({
-      where: { id: groupId },
-      include: { participants: true },
-    })
-    if (!group) throw new Error(`Invalid group ID: ${groupId}`)
-    const currencyCode = expenseCurrencySchema.parse(
-      expenseFormValues.currencyCode ?? group.currencyCode,
-    )
-    if (
-      expenseFormValues.originalAmount !== undefined ||
-      expenseFormValues.conversionRate !== undefined ||
-      expenseFormValues.originalCurrency
-    )
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message:
-          'Choose an expense currency and amount; currency conversion is not supported',
+  return withGroupWrite(
+    groupId,
+    async (tx) => {
+      const group = await tx.group.findUnique({
+        where: { id: groupId },
+        include: { participants: true },
       })
+      if (!group) throw new Error(`Invalid group ID: ${groupId}`)
+      if (
+        await tx.expense.findFirst({
+          where: { id: expenseId, groupId },
+          select: { id: true },
+        })
+      )
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message:
+            'Expense ID already exists. Read it before retrying; use a new ID only for a distinct expense.',
+        })
+      const currencyCode = expenseCurrencySchema.parse(
+        expenseFormValues.currencyCode ?? group.currencyCode,
+      )
+      if (
+        expenseFormValues.originalAmount !== undefined ||
+        expenseFormValues.conversionRate !== undefined ||
+        expenseFormValues.originalCurrency
+      )
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message:
+            'Choose an expense currency and amount; currency conversion is not supported',
+        })
 
-    for (const participant of [
-      expenseFormValues.paidBy,
-      ...expenseFormValues.paidFor.map((p) => p.participant),
-    ]) {
-      if (!group.participants.some((p) => p.id === participant))
-        throw new Error(`Invalid participant ID: ${participant}`)
-    }
+      for (const participant of [
+        expenseFormValues.paidBy,
+        ...expenseFormValues.paidFor.map((p) => p.participant),
+      ]) {
+        if (!group.participants.some((p) => p.id === participant))
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Payer and beneficiary IDs must belong to this group',
+          })
+      }
 
-    const isCreateRecurrence =
-      expenseFormValues.recurrenceRule !== RecurrenceRule.NONE
-    const recurringExpenseLinkPayload = createPayloadForNewRecurringExpenseLink(
-      expenseFormValues.recurrenceRule as RecurrenceRule,
-      expenseFormValues.expenseDate,
-      groupId,
-    )
+      const isCreateRecurrence =
+        expenseFormValues.recurrenceRule !== RecurrenceRule.NONE
+      const recurringExpenseLinkPayload =
+        createPayloadForNewRecurringExpenseLink(
+          expenseFormValues.recurrenceRule as RecurrenceRule,
+          expenseFormValues.expenseDate,
+          groupId,
+        )
 
-    const expense = await createExpenseRevision(
-      tx,
-      {
-        id: expenseId,
-        groupId,
-        expenseDate: expenseFormValues.expenseDate,
-        categoryId: expenseFormValues.category,
-        amount: expenseFormValues.amount,
-        currencyCode,
-        title: expenseFormValues.title,
-        paidById: expenseFormValues.paidBy,
-        splitMode: expenseFormValues.splitMode,
-        recurrenceRule: expenseFormValues.recurrenceRule,
-        recurringExpenseLink: {
-          ...(isCreateRecurrence
-            ? {
-                create: recurringExpenseLinkPayload,
-              }
-            : {}),
-        },
-        paidFor: {
-          createMany: {
-            data: expenseFormValues.paidFor.map((paidFor) => ({
-              participantId: paidFor.participant,
-              shares: paidFor.shares,
-            })),
+      const expense = await createExpenseRevision(
+        tx,
+        {
+          id: expenseId,
+          groupId,
+          expenseDate: expenseFormValues.expenseDate,
+          categoryId: expenseFormValues.category,
+          amount: expenseFormValues.amount,
+          currencyCode,
+          title: expenseFormValues.title,
+          paidById: expenseFormValues.paidBy,
+          splitMode: expenseFormValues.splitMode,
+          recurrenceRule: expenseFormValues.recurrenceRule,
+          recurringExpenseLink: {
+            ...(isCreateRecurrence
+              ? {
+                  create: recurringExpenseLinkPayload,
+                }
+              : {}),
           },
-        },
-        isReimbursement: expenseFormValues.isReimbursement,
-        documents: {
-          createMany: {
-            data: expenseFormValues.documents.map((doc) => ({
-              id: randomId(),
-              url: doc.url,
-              width: doc.width,
-              height: doc.height,
-            })),
+          paidFor: {
+            createMany: {
+              data: expenseFormValues.paidFor.map((paidFor) => ({
+                participantId: paidFor.participant,
+                shares: paidFor.shares,
+              })),
+            },
           },
+          isReimbursement: expenseFormValues.isReimbursement,
+          documents: {
+            createMany: {
+              data: expenseFormValues.documents.map((doc) => ({
+                id: randomId(),
+                url: doc.url,
+                width: doc.width,
+                height: doc.height,
+              })),
+            },
+          },
+          notes: expenseFormValues.notes,
         },
-        notes: expenseFormValues.notes,
-      },
-      { participantId, actor },
-    )
-    return decimalStrings(expense)
-  })
+        { participantId, actor },
+      )
+      return decimalStrings(expense)
+    },
+    actor,
+  )
 }
 
 export async function deleteExpense(
@@ -147,44 +210,51 @@ export async function deleteExpense(
   expenseId: string,
   participantId?: string,
   actor?: AuditActor,
+  expectedRevision?: number,
 ) {
-  return withGroupWrite(groupId, async (tx) => {
-    const existingExpense = await tx.expense.findFirst({
-      where: { id: expenseId, groupId, deletedAt: null },
-    })
-    if (!existingExpense)
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Expense not found' })
-    await baselineExpense(tx, existingExpense)
-    const deletedAt = new Date()
-    const expense = await tx.expense.update({
-      where: { id: expenseId },
-      data: { deletedAt, revision: { increment: 1 } },
-    })
-    await tx.recurringExpenseLink.updateMany({
-      where: { currentFrameExpenseId: expenseId, nextExpenseCreatedAt: null },
-      data: { nextExpenseCreatedAt: deletedAt },
-    })
-    const claimedActor = participantId
-      ? await tx.participant.findFirst({
-          where: { id: participantId, groupId },
-        })
-      : null
-    await tx.activity.create({
-      data: {
-        id: randomId(),
-        groupId,
-        expenseId,
-        expenseRevision: expense.revision,
-        activityType: ActivityType.DELETE_EXPENSE,
-        data: existingExpense.title,
-        participantId: claimedActor?.id,
-        actorName: claimedActor?.name,
-        actorUserId: actor?.userId,
-        agentKeyId: actor?.connectionId,
-        source: actor ? 'agent' : 'web',
-      },
-    })
-  })
+  return withGroupWrite(
+    groupId,
+    async (tx) => {
+      const existingExpense = await tx.expense.findFirst({
+        where: { id: expenseId, groupId, deletedAt: null },
+      })
+      if (!existingExpense)
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Expense not found' })
+      assertRevision(existingExpense.revision, expectedRevision, actor)
+      await baselineExpense(tx, existingExpense)
+      const deletedAt = new Date()
+      const expense = await tx.expense.update({
+        where: { id: expenseId },
+        data: { deletedAt, revision: { increment: 1 } },
+      })
+      await tx.recurringExpenseLink.updateMany({
+        where: { currentFrameExpenseId: expenseId, nextExpenseCreatedAt: null },
+        data: { nextExpenseCreatedAt: deletedAt },
+      })
+      const claimedActor = participantId
+        ? await tx.participant.findFirst({
+            where: { id: participantId, groupId },
+          })
+        : null
+      await tx.activity.create({
+        data: {
+          id: randomId(),
+          groupId,
+          expenseId,
+          expenseRevision: expense.revision,
+          activityType: ActivityType.DELETE_EXPENSE,
+          data: existingExpense.title,
+          participantId: actor ? undefined : claimedActor?.id,
+          actorName: actor?.userId ?? claimedActor?.name,
+          actorUserId: actor?.userId,
+          agentKeyId: actor?.connectionId,
+          source: actor ? 'agent' : 'web',
+        },
+      })
+      return { expenseId, revision: expense.revision, deleted: true as const }
+    },
+    actor,
+  )
 }
 
 export async function getGroupExpensesParticipants(groupId: string) {
@@ -224,216 +294,315 @@ export async function getGroups(groupIds: string[]) {
 export async function updateExpense(
   groupId: string,
   expenseId: string,
-  expenseFormValues: ExpenseFormValues,
+  expenseFormValues: ExpenseChanges,
   participantId?: string,
   actor?: AuditActor,
+  expectedRevision?: number,
+  attachUploadIds: string[] = [],
 ) {
-  expenseFormValues = expenseFormSchema.parse(expenseFormValues)
-  return withGroupWrite(groupId, async (tx) => {
-    const group = await tx.group.findUnique({
-      where: { id: groupId },
-      include: { participants: true },
-    })
-    if (!group) throw new Error(`Invalid group ID: ${groupId}`)
-
-    const existingExpense = await tx.expense.findUnique({
-      where: { id: expenseId, groupId, deletedAt: null },
-      include: { paidFor: true, documents: true, recurringExpenseLink: true },
-    })
-    if (!existingExpense) throw new Error(`Invalid expense ID: ${expenseId}`)
-    const currencyCode = expenseCurrencySchema.parse(
-      expenseFormValues.currencyCode ?? existingExpense.currencyCode,
-    )
-    if (
-      expenseFormValues.originalAmount !== undefined ||
-      expenseFormValues.conversionRate !== undefined ||
-      expenseFormValues.originalCurrency
-    )
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: 'Currency conversion is not supported',
-      })
-
-    for (const participant of [
-      expenseFormValues.paidBy,
-      ...expenseFormValues.paidFor.map((p) => p.participant),
-    ]) {
-      if (!group.participants.some((p) => p.id === participant))
-        throw new Error(`Invalid participant ID: ${participant}`)
-    }
-
-    await baselineExpense(tx, existingExpense)
-
-    const isDeleteRecurrenceExpenseLink =
-      existingExpense.recurrenceRule !== RecurrenceRule.NONE &&
-      expenseFormValues.recurrenceRule === RecurrenceRule.NONE &&
-      // Delete the existing RecurrenceExpenseLink only if it has not been acted upon yet
-      existingExpense.recurringExpenseLink?.nextExpenseCreatedAt === null
-
-    const isUpdateRecurrenceExpenseLink =
-      existingExpense.recurrenceRule !== expenseFormValues.recurrenceRule &&
-      // Update the exisiting RecurrenceExpenseLink only if it has not been acted upon yet
-      existingExpense.recurringExpenseLink?.nextExpenseCreatedAt === null
-    const isCreateRecurrenceExpenseLink =
-      existingExpense.recurrenceRule === RecurrenceRule.NONE &&
-      expenseFormValues.recurrenceRule !== RecurrenceRule.NONE &&
-      // Create a new RecurrenceExpenseLink only if one does not already exist for the expense
-      existingExpense.recurringExpenseLink === null
-
-    const newRecurringExpenseLink = createPayloadForNewRecurringExpenseLink(
-      expenseFormValues.recurrenceRule as RecurrenceRule,
-      expenseFormValues.expenseDate,
+  const uploads = attachUploadIds.length
+    ? await import('./expense-uploads')
+    : undefined
+  let finalized: FinalizedUploads | undefined
+  try {
+    const result = await withGroupWrite(
       groupId,
-    )
+      async (tx) => {
+        const group = await tx.group.findUnique({
+          where: { id: groupId },
+          include: { participants: true },
+        })
+        if (!group) throw new Error(`Invalid group ID: ${groupId}`)
 
-    const updatedRecurrenceExpenseLinkNextExpenseDate = calculateNextDate(
-      expenseFormValues.recurrenceRule as RecurrenceRule,
-      existingExpense.expenseDate,
-    )
-
-    const expense = await tx.expense.update({
-      where: { id: expenseId },
-      data: {
-        revision: { increment: 1 },
-        currencyCode,
-        expenseDate: expenseFormValues.expenseDate,
-        amount: expenseFormValues.amount,
-        ...(expenseFormValues.amount !== existingExpense.amount.toFixed() ||
-        currencyCode !== existingExpense.currencyCode
-          ? {
-              originalAmount: null,
-              originalCurrency: null,
-              conversionRate: null,
-            }
-          : {}),
-        title: expenseFormValues.title,
-        categoryId: expenseFormValues.category,
-        paidById: expenseFormValues.paidBy,
-        splitMode: expenseFormValues.splitMode,
-        recurrenceRule: expenseFormValues.recurrenceRule,
-        paidFor: {
-          deleteMany: {},
-          create: expenseFormValues.paidFor.map((paidFor) => ({
-            participantId: paidFor.participant,
-            shares: paidFor.shares,
+        const existingExpense = await tx.expense.findUnique({
+          where: { id: expenseId, groupId, deletedAt: null },
+          include: {
+            paidFor: true,
+            documents: true,
+            recurringExpenseLink: true,
+          },
+        })
+        if (!existingExpense)
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Expense not found',
+          })
+        assertRevision(existingExpense.revision, expectedRevision, actor)
+        let values = expenseFormSchema.parse({
+          title: existingExpense.title,
+          currencyCode: existingExpense.currencyCode,
+          amount: existingExpense.amount.toFixed(),
+          expenseDate: existingExpense.expenseDate,
+          category: existingExpense.categoryId,
+          paidBy: existingExpense.paidById,
+          paidFor: existingExpense.paidFor.map((person) => ({
+            participant: person.participantId,
+            shares: person.shares.toFixed(),
           })),
-        },
-        recurringExpenseLink: {
-          ...(isCreateRecurrenceExpenseLink
-            ? {
-                create: newRecurringExpenseLink,
-              }
-            : {}),
-          ...(isUpdateRecurrenceExpenseLink
-            ? {
-                update: {
-                  nextExpenseDate: updatedRecurrenceExpenseLinkNextExpenseDate,
-                },
-              }
-            : {}),
-          delete: isDeleteRecurrenceExpenseLink,
-        },
-        isReimbursement: expenseFormValues.isReimbursement,
-        documents: {
-          create: expenseFormValues.documents
-            .filter(
-              (doc) =>
-                !existingExpense.documents.some(
-                  (existing) => existing.id === doc.id,
-                ),
-            )
-            .map((doc) => ({ ...doc, id: randomId() })),
-          deleteMany: existingExpense.documents
-            .filter(
-              (existingDoc) =>
-                !expenseFormValues.documents.some(
-                  (doc) => doc.id === existingDoc.id,
-                ),
-            )
-            .map((doc) => ({
-              id: doc.id,
-            })),
-        },
-        notes: expenseFormValues.notes,
+          splitMode: existingExpense.splitMode,
+          isReimbursement: existingExpense.isReimbursement,
+          documents: existingExpense.documents,
+          notes: existingExpense.notes ?? '',
+          recurrenceRule: existingExpense.recurrenceRule ?? 'NONE',
+          ...expenseFormValues,
+        })
+        const currencyCode = expenseCurrencySchema.parse(
+          values.currencyCode ?? existingExpense.currencyCode,
+        )
+        if (
+          values.originalAmount !== undefined ||
+          values.conversionRate !== undefined ||
+          values.originalCurrency
+        )
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Currency conversion is not supported',
+          })
+
+        for (const participant of [
+          values.paidBy,
+          ...values.paidFor.map((p) => p.participant),
+        ]) {
+          if (!group.participants.some((p) => p.id === participant))
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Payer and beneficiary IDs must belong to this group',
+            })
+        }
+
+        if (attachUploadIds.length) {
+          finalized = await uploads!.finalizeExpenseUploads(
+            actor,
+            groupId,
+            expenseId,
+            attachUploadIds,
+          )
+          values = expenseFormSchema.parse({
+            ...values,
+            documents: [...values.documents, ...finalized.documents],
+          })
+        }
+        if (
+          Object.keys(expenseFormValues).length === 0 &&
+          attachUploadIds.length === 0
+        )
+          return decimalStrings(existingExpense)
+        await baselineExpense(tx, existingExpense)
+
+        const isDeleteRecurrenceExpenseLink =
+          existingExpense.recurrenceRule !== RecurrenceRule.NONE &&
+          values.recurrenceRule === RecurrenceRule.NONE &&
+          // Delete the existing RecurrenceExpenseLink only if it has not been acted upon yet
+          existingExpense.recurringExpenseLink?.nextExpenseCreatedAt === null
+
+        const isUpdateRecurrenceExpenseLink =
+          existingExpense.recurrenceRule !== values.recurrenceRule &&
+          // Update the exisiting RecurrenceExpenseLink only if it has not been acted upon yet
+          existingExpense.recurringExpenseLink?.nextExpenseCreatedAt === null
+        const isCreateRecurrenceExpenseLink =
+          existingExpense.recurrenceRule === RecurrenceRule.NONE &&
+          values.recurrenceRule !== RecurrenceRule.NONE &&
+          // Create a new RecurrenceExpenseLink only if one does not already exist for the expense
+          existingExpense.recurringExpenseLink === null
+
+        const newRecurringExpenseLink = createPayloadForNewRecurringExpenseLink(
+          values.recurrenceRule as RecurrenceRule,
+          values.expenseDate,
+          groupId,
+        )
+
+        const updatedRecurrenceExpenseLinkNextExpenseDate = calculateNextDate(
+          values.recurrenceRule as RecurrenceRule,
+          existingExpense.expenseDate,
+        )
+
+        const expense = await tx.expense.update({
+          where: { id: expenseId },
+          data: {
+            revision: { increment: 1 },
+            currencyCode,
+            expenseDate: values.expenseDate,
+            amount: values.amount,
+            ...(values.amount !== existingExpense.amount.toFixed() ||
+            currencyCode !== existingExpense.currencyCode
+              ? {
+                  originalAmount: null,
+                  originalCurrency: null,
+                  conversionRate: null,
+                }
+              : {}),
+            title: values.title,
+            categoryId: values.category,
+            paidById: values.paidBy,
+            splitMode: values.splitMode,
+            recurrenceRule: values.recurrenceRule,
+            paidFor: {
+              deleteMany: {},
+              create: values.paidFor.map((paidFor) => ({
+                participantId: paidFor.participant,
+                shares: paidFor.shares,
+              })),
+            },
+            recurringExpenseLink: {
+              ...(isCreateRecurrenceExpenseLink
+                ? {
+                    create: newRecurringExpenseLink,
+                  }
+                : {}),
+              ...(isUpdateRecurrenceExpenseLink
+                ? {
+                    update: {
+                      nextExpenseDate:
+                        updatedRecurrenceExpenseLinkNextExpenseDate,
+                    },
+                  }
+                : {}),
+              delete: isDeleteRecurrenceExpenseLink,
+            },
+            isReimbursement: values.isReimbursement,
+            documents: {
+              create: values.documents
+                .filter(
+                  (doc) =>
+                    !existingExpense.documents.some(
+                      (existing) => existing.id === doc.id,
+                    ),
+                )
+                .map((doc) => ({ ...doc, id: randomId() })),
+              deleteMany: existingExpense.documents
+                .filter(
+                  (existingDoc) =>
+                    !values.documents.some((doc) => doc.id === existingDoc.id),
+                )
+                .map((doc) => ({
+                  id: doc.id,
+                })),
+            },
+            notes: values.notes,
+          },
+        })
+        await recordExpenseSnapshot(
+          tx,
+          expense.id,
+          ActivityType.UPDATE_EXPENSE,
+          {
+            participantId,
+            actor,
+          },
+        )
+        return decimalStrings(expense)
       },
-    })
-    await recordExpenseSnapshot(tx, expense.id, ActivityType.UPDATE_EXPENSE, {
-      participantId,
       actor,
-    })
-    return decimalStrings(expense)
-  })
+    )
+    await uploads?.cleanupReceiptKeys(finalized?.temporaryKeys ?? [])
+    return result
+  } catch (error) {
+    await uploads?.cleanupReceiptKeys(finalized?.permanentKeys ?? [])
+    throw error
+  }
 }
 
 export async function updateGroup(
   groupId: string,
-  groupFormValues: GroupFormValues,
+  groupFormValues: GroupChanges,
   participantId?: string,
   actor?: AuditActor,
+  expectedRevision?: number,
 ) {
-  groupFormValues = groupFormSchema.parse(groupFormValues)
-  return withGroupWrite(groupId, async (tx) => {
-    const existingGroup = await tx.group.findUnique({
-      where: { id: groupId },
-      include: { participants: true },
-    })
-    if (!existingGroup) throw new Error('Invalid group ID')
+  return withGroupWrite(
+    groupId,
+    async (tx) => {
+      const existingGroup = await tx.group.findUnique({
+        where: { id: groupId },
+        include: { participants: true },
+      })
+      if (!existingGroup)
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Group not found' })
+      assertRevision(existingGroup.revision, expectedRevision, actor)
+      for (const person of groupFormValues.participants ?? []) {
+        if (
+          person.id &&
+          !existingGroup.participants.some(
+            (existing) => existing.id === person.id,
+          )
+        )
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message:
+              'Existing participant IDs must belong to this group; omit the ID to add someone new',
+          })
+      }
+      const values = groupFormSchema.parse({
+        name: existingGroup.name,
+        information: existingGroup.information ?? '',
+        currency: existingGroup.currency,
+        currencyCode: existingGroup.currencyCode,
+        participants: existingGroup.participants.map((person) => ({
+          id: person.id,
+          name: person.name,
+        })),
+        ...groupFormValues,
+      })
 
-    const group = await tx.group.update({
-      where: { id: groupId },
-      data: {
-        name: groupFormValues.name,
-        information: groupFormValues.information,
-        currency: groupFormValues.currency,
-        currencyCode: groupFormValues.currencyCode,
-        participants: {
-          deleteMany: existingGroup.participants.filter(
-            (p) => !groupFormValues.participants.some((p2) => p2.id === p.id),
-          ),
-          updateMany: groupFormValues.participants
-            .filter((participant) => participant.id !== undefined)
-            .map((participant) => ({
-              where: { id: participant.id },
-              data: {
-                name: participant.name,
-              },
-            })),
-          createMany: {
-            data: groupFormValues.participants
-              .filter((participant) => participant.id === undefined)
+      if (Object.keys(groupFormValues).length === 0) return existingGroup
+      const group = await tx.group.update({
+        where: { id: groupId },
+        data: {
+          revision: { increment: 1 },
+          name: values.name,
+          information: values.information,
+          currency: values.currency,
+          currencyCode: values.currencyCode,
+          participants: {
+            deleteMany: existingGroup.participants.filter(
+              (p) => !values.participants.some((p2) => p2.id === p.id),
+            ),
+            updateMany: values.participants
+              .filter((participant) => participant.id !== undefined)
               .map((participant) => ({
-                id: randomId(),
-                name: participant.name,
+                where: { id: participant.id },
+                data: {
+                  name: participant.name,
+                },
               })),
+            createMany: {
+              data: values.participants
+                .filter((participant) => participant.id === undefined)
+                .map((participant) => ({
+                  id: randomId(),
+                  name: participant.name,
+                })),
+            },
           },
         },
-      },
-      include: { participants: true },
-    })
-    const claimedActor = participantId
-      ? existingGroup.participants.find(
-          (participant) => participant.id === participantId,
-        )
-      : undefined
-    await tx.activity.create({
-      data: {
-        id: randomId(),
-        groupId,
-        activityType: ActivityType.UPDATE_GROUP,
-        participantId: claimedActor?.id,
-        actorName: claimedActor?.name,
-        actorUserId: actor?.userId,
-        agentKeyId: actor?.connectionId,
-        source: actor ? 'agent' : 'web',
-        snapshot: groupSnapshotSchema.parse({
-          schemaVersion: 1,
-          kind: 'group',
-          group,
-        }),
-      },
-    })
-    return group
-  })
+        include: { participants: true },
+      })
+      const claimedActor = participantId
+        ? existingGroup.participants.find(
+            (participant) => participant.id === participantId,
+          )
+        : undefined
+      await tx.activity.create({
+        data: {
+          id: randomId(),
+          groupId,
+          activityType: ActivityType.UPDATE_GROUP,
+          participantId: actor ? undefined : claimedActor?.id,
+          actorName: actor?.userId ?? claimedActor?.name,
+          actorUserId: actor?.userId,
+          agentKeyId: actor?.connectionId,
+          source: actor ? 'agent' : 'web',
+          snapshot: groupSnapshotSchema.parse({
+            schemaVersion: 1,
+            kind: 'group',
+            group,
+          }),
+        },
+      })
+      return group
+    },
+    actor,
+  )
 }
 
 export async function getGroup(groupId: string) {
@@ -456,6 +625,11 @@ export async function getGroupExpenses(
     from?: string
     to?: string
     currencyCode?: string
+    categoryId?: number
+    paidById?: string
+    participantId?: string
+    isReimbursement?: boolean
+    recurrenceRule?: RecurrenceRule
     readOnly?: boolean
   },
 ) {
@@ -488,6 +662,16 @@ export async function getGroupExpenses(
       groupId,
       deletedAt: null,
       currencyCode: options?.currencyCode,
+      categoryId: options?.categoryId,
+      paidById: options?.paidById,
+      isReimbursement: options?.isReimbursement,
+      recurrenceRule: options?.recurrenceRule,
+      OR: options?.participantId
+        ? [
+            { paidById: options.participantId },
+            { paidFor: { some: { participantId: options.participantId } } },
+          ]
+        : undefined,
       title: options?.filter
         ? { contains: options.filter, mode: 'insensitive' }
         : undefined,
@@ -664,7 +848,11 @@ export async function getActivities(
   )
 }
 
-async function createRecurringExpenses() {
+export async function createRecurringExpenses(
+  groupId?: string,
+  actor?: AuditActor,
+) {
+  const createdIds: string[] = []
   const localDate = new Date() // Current local date
   const utcDateFromLocal = new Date(
     Date.UTC(
@@ -680,6 +868,7 @@ async function createRecurringExpenses() {
   const recurringExpenseLinksWithExpensesToCreate =
     await prisma.recurringExpenseLink.findMany({
       where: {
+        groupId,
         nextExpenseCreatedAt: null,
         nextExpenseDate: {
           lte: utcDateFromLocal,
@@ -714,6 +903,11 @@ async function createRecurringExpenses() {
         .$transaction(
           async (transaction) => {
             await transaction.$queryRaw`SELECT "id" FROM "Group" WHERE "id" = ${currentExpenseRecord.groupId} FOR UPDATE`
+            await assertActorWriteAccess(
+              transaction,
+              currentExpenseRecord.groupId,
+              actor,
+            )
             // Re-read after acquiring the same group lock as edits and deletions.
             const openLink = await transaction.recurringExpenseLink.findFirst({
               where: {
@@ -781,7 +975,7 @@ async function createRecurringExpenses() {
                   },
                 },
               },
-              { source: 'system' },
+              { source: 'system', actor },
             )
 
             // Mark the RecurringExpenseLink as being "completed" since the new Expense was created
@@ -807,7 +1001,8 @@ async function createRecurringExpenses() {
           },
           { maxWait: 10_000, timeout: 15_000 },
         )
-        .catch(() => {
+        .catch((error) => {
+          if (actor) throw error
           console.error(
             'Failed to created recurringExpense for expenseId: %s',
             currentExpenseRecord.id,
@@ -819,6 +1014,7 @@ async function createRecurringExpenses() {
       if (newExpense === null) break
 
       // Set the values for the next iteration of the for-loop in case multiple recurring Expenses need to be created
+      createdIds.push(newExpense.id)
       currentExpenseRecord = newExpense
       currentReccuringExpenseLinkId = newRecurringExpenseLinkId
       newExpenseDate = calculateNextDate(
@@ -827,6 +1023,7 @@ async function createRecurringExpenses() {
       )
     }
   }
+  return { createdExpenseIds: createdIds }
 }
 
 function createPayloadForNewRecurringExpenseLink(

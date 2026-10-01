@@ -61,6 +61,7 @@ export const groupSnapshotSchema = z.object({
   kind: z.literal('group'),
   group: group.extend({
     information: z.string().nullable(),
+    revision: z.number().int().nonnegative().default(0),
     participants: z.array(person),
   }),
 })
@@ -70,7 +71,30 @@ export const activitySnapshotSchema = z.discriminatedUnion('kind', [
 ])
 export type ExpenseSnapshot = z.infer<typeof expenseSnapshotSchema>
 export type ActivitySnapshot = z.infer<typeof activitySnapshotSchema>
-export type AuditActor = { userId: string; connectionId: string }
+export type AuditActor = {
+  userId: string
+  connectionId: string
+  groupIds?: string[]
+}
+
+export async function assertActorWriteAccess(
+  tx: Prisma.TransactionClient,
+  groupId: string,
+  actor?: AuditActor,
+) {
+  if (!actor) return
+  const access = await tx.userGroupAccess.findUnique({
+    where: { userId_groupId: { userId: actor.userId, groupId } },
+  })
+  if (
+    access?.active === false ||
+    (actor.groupIds && !actor.groupIds.includes(groupId))
+  )
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'This connection cannot access the requested group',
+    })
+}
 
 export const snapshotInclude = {
   group: true,
@@ -87,6 +111,7 @@ type SnapshotExpense = Prisma.ExpenseGetPayload<{
 export function withGroupWrite<T>(
   groupId: string,
   write: (tx: Prisma.TransactionClient) => Promise<T>,
+  actor?: AuditActor,
 ) {
   return prisma.$transaction(
     async (tx) => {
@@ -95,6 +120,7 @@ export function withGroupWrite<T>(
       >`SELECT "id" FROM "Group" WHERE "id" = ${groupId} FOR UPDATE`
       if (!rows.length)
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Group not found' })
+      await assertActorWriteAccess(tx, groupId, actor)
       return write(tx)
     },
     { maxWait: 10_000, timeout: 15_000 },
@@ -153,8 +179,8 @@ export async function recordExpenseSnapshot(
       activityType: type,
       data: expense.title,
       snapshot,
-      participantId: claimedActor?.id,
-      actorName: claimedActor?.name,
+      participantId: options.actor ? undefined : claimedActor?.id,
+      actorName: options.actor?.userId ?? claimedActor?.name,
       actorUserId: options.actor?.userId,
       agentKeyId: options.actor?.connectionId,
       source: options.source ?? (options.actor ? 'agent' : 'web'),

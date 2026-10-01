@@ -72,3 +72,6 @@ jobs:
 
       - name: Verify audit transactions and currency accounting
         run: node node_modules/tsx/dist/cli.mjs scripts/test-expense-history.ts
+
+      - name: Verify complete MCP workflows
+        run: node node_modules/tsx/dist/cli.mjs scripts/test-mcp-writes.ts

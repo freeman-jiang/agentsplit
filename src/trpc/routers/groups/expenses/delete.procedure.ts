@@ -8,9 +8,20 @@ export const deleteGroupExpenseProcedure = baseProcedure
       expenseId: z.string().min(1),
       groupId: z.string().min(1),
       participantId: z.string().optional(),
+      expectedRevision: z.number().int().nonnegative().optional(),
     }),
   )
-  .mutation(async ({ ctx, input: { expenseId, groupId, participantId } }) => {
-    await deleteExpense(groupId, expenseId, participantId, ctx.principal)
-    return {}
-  })
+  .mutation(
+    async ({
+      ctx,
+      input: { expenseId, groupId, participantId, expectedRevision },
+    }) => {
+      return deleteExpense(
+        groupId,
+        expenseId,
+        participantId,
+        ctx.principal,
+        expectedRevision,
+      )
+    },
+  )

@@ -130,7 +130,12 @@ export function assertGroupAccess(
   argumentsValue: unknown,
   principal: McpPrincipal,
 ) {
-  if (!procedure.startsWith('groups.')) return
+  if (
+    !procedure.startsWith('groups.') ||
+    procedure === 'groups.create' ||
+    procedure === 'groups.access'
+  )
+    return
   const input = z
     .object({
       groupId: z.string().optional(),

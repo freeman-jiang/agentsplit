@@ -15,8 +15,8 @@ export const getStatsCategoryExpensesProcedure = baseProcedure
     z.object({
       groupId: z.string().min(1),
       categoryId: z.number().int(),
-      from: z.string().optional(),
-      to: z.string().optional(),
+      from: z.iso.date().optional(),
+      to: z.iso.date().optional(),
       currencyCode: expenseCurrencySchema.optional(),
     }),
   )

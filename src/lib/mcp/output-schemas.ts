@@ -3,7 +3,9 @@ import {
   RecurrenceRule,
   SplitMode,
 } from '@/generated/prisma/browser'
+import { expenseCurrencySchema } from '@/lib/currency'
 import { activitySnapshotSchema } from '@/lib/expense-history'
+import { uploadTargetSchema } from '@/lib/expense-uploads'
 import { decimalTextSchema } from '@/lib/money'
 import type { AppRouter } from '@/trpc/routers/_app'
 import type { inferRouterOutputs } from '@trpc/server'
@@ -52,6 +54,7 @@ const group = z.object({
   id,
   name: z.string(),
   information: z.string().nullable(),
+  revision: z.number().int().nonnegative().default(0),
   currency: z.string(),
   currencyCode: z.string().nullable(),
   createdAt: dateTime,
@@ -134,17 +137,6 @@ const pagination = {
   hasMore: z.boolean(),
   nextCursor: z.number().int().nonnegative(),
 }
-const drilldown = z.object({
-  expenses: z.array(
-    expenseFields.pick({
-      id: true,
-      title: true,
-      amount: true,
-      currencyCode: true,
-      expenseDate: true,
-    }),
-  ),
-})
 const monthlyCategory = z.object({
   key: z.string(),
   categoryId: z.number().int().nullable(),
@@ -155,8 +147,51 @@ const monthlyCategory = z.object({
   incomeAmount: money,
 })
 
+const expenseWrite = z.object({
+  expenseId: id,
+  revision: z.number().int().nonnegative(),
+  amount: money,
+  currencyCode: z.string(),
+  uploads: z.array(uploadTargetSchema),
+  uploadError: z.string().nullable(),
+})
+
 /** Every registered tool needs a reviewed wire contract matching its query. */
 export const MCP_OUTPUT_SCHEMAS = {
+  'groups.create': z.object({ groupId: id, group: groupWithParticipants }),
+  'groups.update': z.object({ groupId: id, group: groupWithParticipants }),
+  'groups.access': z.object({ groupId: id, joined: z.boolean() }),
+  'groups.expenses.create': expenseWrite,
+  'groups.expenses.update': expenseWrite,
+  'groups.expenses.delete': z.object({
+    expenseId: id,
+    revision: z.number().int().nonnegative(),
+    deleted: z.literal(true),
+  }),
+  'groups.processRecurring': z.object({ createdExpenseIds: z.array(id) }),
+  'groups.export': z.object({
+    filename: z.string(),
+    contentType: z.string(),
+    content: z.string(),
+  }),
+  'reference.get': z.object({
+    categories: z.array(category),
+    currencies: z.array(
+      z.object({
+        code: expenseCurrencySchema,
+        name: z.string(),
+        symbol: z.string(),
+        decimalPlaces: z.number().int().nonnegative(),
+      }),
+    ),
+    splitModes: z.array(z.enum(SplitMode)),
+    recurrenceRules: z.array(z.enum(RecurrenceRule)),
+    attachments: z.object({
+      enabled: z.boolean(),
+      contentTypes: z.array(z.string()),
+      maxBytes: z.number().int().positive(),
+    }),
+  }),
   'groups.list': z.object({
     groups: z.array(
       group.extend({
@@ -165,10 +200,10 @@ export const MCP_OUTPUT_SCHEMAS = {
     ),
     ...pagination,
   }),
-  'groups.get': z.object({ group: groupWithParticipants.nullable() }),
   'groups.getDetails': z.object({
     group: groupWithParticipants,
     participantsWithExpenses: z.array(id),
+    links: z.object({ share: z.string(), csv: z.string(), json: z.string() }),
   }),
   'groups.expenses.list': z.object({
     expenses: z.array(expenseSummary),
@@ -222,7 +257,6 @@ export const MCP_OUTPUT_SCHEMAS = {
     ),
     ...pagination,
   }),
-  'categories.list': z.object({ categories: z.array(category) }),
   'groups.stats.overview': z.object({
     currencyCode: z.string().nullable(),
     availableCurrencyCodes: z.array(z.string()),
@@ -280,5 +314,4 @@ export const MCP_OUTPUT_SCHEMAS = {
       ),
     }),
   }),
-  'groups.stats.categoryExpenses': drilldown,
 } satisfies OutputSchemas

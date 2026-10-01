@@ -88,6 +88,7 @@ const savedExpenses = [
 
 jest.mock('../../../lib/prisma', () => ({
   prisma: {
+    userGroupAccess: { findMany: async () => [] },
     group: {
       findUnique: ({ where }: { where: { id: string } }) =>
         [groupA, groupB].find((group) => group.id === where.id) ?? null,
@@ -140,8 +141,8 @@ jest.mock('../../../lib/random', () => ({
   randomId: () => 'test-record-id',
 }))
 jest.mock('../../../lib/env', () => ({
-  env: {},
   effectiveBaseUrl: 'https://app.test',
+  env: { NEXT_PUBLIC_ENABLE_EXPENSE_DOCUMENTS: false },
 }))
 jest.mock('superjson', () => ({
   __esModule: true,
@@ -250,26 +251,41 @@ describe('authenticated MCP protocol', () => {
     const initialized = InitializeResultSchema.parse(body.result)
     expect(initialized.serverInfo.name).toBe('agentsplit')
     expect(initialized.capabilities.tools).toBeDefined()
+    expect(initialized.instructions).toContain('decimal strings')
+    expect(initialized.instructions).not.toContain('minor units')
   })
 
-  it('advertises only the selected read-only tools with real input schemas', async () => {
+  it('advertises the reviewed read/write surface with real schemas', async () => {
     const { status, body } = await rpc('tools/list')
     expect(status).toBe(200)
     const { tools } = ListToolsResultSchema.parse(body.result)
-    expect(tools).toHaveLength(11)
+    expect(tools).toHaveLength(17)
     expect(tools.map((tool) => tool.name)).not.toContain('list_month_expenses')
-    expect(tools.every((tool) => tool.annotations?.readOnlyHint)).toBe(true)
+    expect(
+      tools.find((tool) => tool.name === 'list_expenses')?.annotations
+        ?.readOnlyHint,
+    ).toBe(true)
+    expect(
+      tools.find((tool) => tool.name === 'create_expense')?.annotations
+        ?.readOnlyHint,
+    ).toBe(false)
+    expect(
+      tools.find((tool) => tool.name === 'delete_expense')?.annotations
+        ?.destructiveHint,
+    ).toBe(true)
     expect(tools.every((tool) => tool.outputSchema?.type === 'object')).toBe(
       true,
     )
     expect(
-      tools.find((tool) => tool.name === 'list_categories')?.inputSchema
+      tools.find((tool) => tool.name === 'get_reference_data')?.inputSchema
         .additionalProperties,
     ).toBe(false)
     const router: AnyTRPCRouter = appRouter
     expect(
-      MCP_TOOL_REGISTRY.every(
-        (tool) => router._def.procedures[tool.procedure]._def.type === 'query',
+      MCP_TOOL_REGISTRY.every((tool) =>
+        ['query', 'mutation'].includes(
+          router._def.procedures[tool.procedure]._def.type,
+        ),
       ),
     ).toBe(true)
     expect(
@@ -284,6 +300,22 @@ describe('authenticated MCP protocol', () => {
     expect(
       tools.find((tool) => tool.name === 'get_expense')?.inputSchema.required,
     ).toEqual(expect.arrayContaining(['groupId', 'expenseId']))
+    const createInput = tools.find(
+      (tool) => tool.name === 'create_expense',
+    )!.inputSchema
+    expect(createInput.properties).toHaveProperty('expense')
+    expect(createInput.properties).not.toHaveProperty('expenseFormValues')
+    expect(createInput.properties).not.toHaveProperty('participantId')
+    const publicExpense = z
+      .object({ properties: z.record(z.string(), z.unknown()) })
+      .parse(createInput.properties?.expense)
+    expect(publicExpense.properties).not.toHaveProperty(
+      'saveDefaultSplittingOptions',
+    )
+    expect(publicExpense.properties).not.toHaveProperty('conversionRate')
+    expect(publicExpense.properties.expenseDate).toEqual(
+      expect.objectContaining({ type: 'string', format: 'date' }),
+    )
   })
 
   it('lists the current user groups without requiring the agent to know IDs', async () => {
@@ -634,16 +666,15 @@ describe('authenticated MCP protocol', () => {
 
   it.each([
     ['get_group', { groupId: 'group-a' }],
-    ['get_group_details', { groupId: 'group-a' }],
     ['get_expense', { groupId: 'group-a', expenseId: 'expense-a' }],
     ['list_activity', { groupId: 'group-a' }],
-    ['list_categories', {}],
+    ['get_reference_data', {}],
     [
       'get_participant_balances',
       { groups: [{ groupId: 'group-a', participantId: 'alice' }] },
     ],
     ['get_spending_stats', { groupId: 'group-a', participantId: 'alice' }],
-    ['list_category_expenses', { groupId: 'group-a', categoryId: 0 }],
+    ['list_expenses', { groupId: 'group-a', categoryId: 0 }],
   ] as const)(
     'returns a validated result for %s without materializing recurrence',
     async (name, args) => {
@@ -760,12 +791,12 @@ describe('authenticated MCP protocol', () => {
     const outsideRange = CallToolResultSchema.parse(
       (
         await rpc('tools/call', {
-          name: 'list_category_expenses',
+          name: 'list_expenses',
           arguments: { groupId: 'group-a', categoryId: 0, to: '2026-08-31' },
         })
       ).body.result,
     ).structuredContent
-    expect(outsideRange).toEqual({ expenses: [] })
+    expect(outsideRange).toEqual(expect.objectContaining({ expenses: [] }))
     const month = CallToolResultSchema.parse(
       (
         await rpc('tools/call', {
@@ -786,9 +817,9 @@ describe('authenticated MCP protocol', () => {
   })
 
   it.each([
-    'get_group_details',
+    'get_group',
     'get_spending_stats',
-    'list_category_expenses',
+    'list_expenses',
     'list_expenses',
   ])('rejects unauthorized reads through %s', async (name) => {
     const { body } = await rpc('tools/call', {
@@ -801,7 +832,7 @@ describe('authenticated MCP protocol', () => {
 
   it.each([
     ['tools/list', undefined],
-    ['tools/call', 'list_categories'],
+    ['tools/call', 'get_reference_data'],
   ])(
     'serves modern %s requests and validates standard header mismatches',
     async (method, name) => {
@@ -843,7 +874,7 @@ describe('authenticated MCP protocol', () => {
       if (name)
         expect(CallToolResultSchema.parse(reply.result).isError).not.toBe(true)
       else
-        expect(ListToolsResultSchema.parse(reply.result).tools).toHaveLength(11)
+        expect(ListToolsResultSchema.parse(reply.result).tools).toHaveLength(17)
       headers['Mcp-Method'] = 'wrong-method'
       const mismatch = await POST(
         new Request('https://app.test/api/mcp', {

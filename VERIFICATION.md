@@ -255,3 +255,25 @@ being enabled and the CI workflow including a direct work-branch push trigger.
 The CI definition is committed, but no remote CI pass is claimed. Local checks,
 the portable Node integration entry point, and live application verification
 have all passed.
+
+# Complete MCP API — local release checks
+
+The next release exposes 17 resource-oriented tools with input/output schemas,
+read/write/destructive/idempotency annotations and explicit actor attribution.
+Agent-facing writes use `group`, `expense` and `changes` objects. Browser-only
+fields and claimed actor labels are excluded from the MCP input surface.
+
+Local verification passes 678 Jest tests in two time zones, TypeScript and
+formatting; lint has zero errors and the six inherited UI warnings. The real
+PostgreSQL suites pass 24 audit/currency scenarios plus 11 full-MCP scenarios
+through the SDK HTTP handler. They cover persistent membership and multi-key
+inheritance, share-link joins, leave/revocation, foreign-group/participant denial,
+canonical writes, partial edits, stale/missing revisions, no-op edits, payments,
+filtered pagination, export, actor attribution, deletion history and scoped
+recurrence processing without duplicate frames.
+
+The real Garage service also passed signed PUT with size binding, ownership
+metadata, conditional reads, image validation and permanent-object storage.
+Only temporary synthetic images were used and were removed after the check.
+The end-to-end live expense/attachment verifier is `scripts/verify-live-mcp.ts`.
+Client connection examples and operational recovery guidance are in `MCP.md`.

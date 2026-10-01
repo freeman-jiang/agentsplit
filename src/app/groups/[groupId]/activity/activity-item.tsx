@@ -42,6 +42,12 @@ function useSummary(activity: Activity, participantName?: string) {
       strong: (chunks) => <strong>{chunks}</strong>,
     })
 
+  if (activity.activityType === ActivityType.CREATE_GROUP)
+    return <>{participant} created the group</>
+  if (activity.activityType === ActivityType.JOIN_GROUP)
+    return <>{participant} joined the group</>
+  if (activity.activityType === ActivityType.LEAVE_GROUP)
+    return <>{participant} left the group</>
   if (activity.activityType == ActivityType.UPDATE_GROUP) {
     return <>{tr('settingsModified')}</>
   } else if (activity.activityType == ActivityType.CREATE_EXPENSE) {

@@ -16,7 +16,12 @@ export const EditGroup = () => {
     <GroupForm
       group={data?.group}
       onSubmit={async (groupFormValues, participantId) => {
-        await mutateAsync({ groupId, participantId, groupFormValues })
+        await mutateAsync({
+          groupId,
+          participantId,
+          groupFormValues,
+          expectedRevision: data?.group.revision,
+        })
         await utils.groups.invalidate()
       }}
       protectedParticipantIds={data?.participantsWithExpenses}

@@ -1,90 +1,138 @@
 import type { AppRouter } from '@/trpc/routers/_app'
-import type { AnyTRPCQueryProcedure, TRPCRouterRecord } from '@trpc/server'
+import type { AnyTRPCProcedure, TRPCRouterRecord } from '@trpc/server'
 
-type QueryPaths<T extends TRPCRouterRecord> = {
-  [K in keyof T & string]: T[K] extends AnyTRPCQueryProcedure
+type ProcedurePaths<T extends TRPCRouterRecord> = {
+  [K in keyof T & string]: T[K] extends AnyTRPCProcedure
     ? K
     : T[K] extends TRPCRouterRecord
-      ? `${K}.${QueryPaths<T[K]>}`
+      ? `${K}.${ProcedurePaths<T[K]>}`
       : never
 }[keyof T & string]
-
-export type ReadProcedurePath = QueryPaths<AppRouter['_def']['record']>
-
-type ToolDefinition = {
+export type ProcedurePath = ProcedurePaths<AppRouter['_def']['record']>
+export type ToolDefinition = {
   name: string
   description: string
-  procedure: ReadProcedurePath
+  procedure: ProcedurePath
+  required?: readonly string[]
+  inputAliases?: Record<string, string>
+  destructive?: boolean
+  idempotent?: boolean
 }
-
-/**
- * Prefer broad, composable tools over one tool per UI view or special case.
- * This reviewed catalog admits queries only; not every query needs an MCP tool.
- */
+/** A reviewed resource-oriented API. Business rules stay in the shared backend. */
 export const MCP_TOOL_REGISTRY = [
   {
     name: 'list_groups',
-    description:
-      "List the authenticated user's expense groups. Omit groupIds to list all your groups, or supply a subset. Follow nextCursor while hasMore is true. Keys inherit user access; this never scans unrelated groups.",
     procedure: 'groups.list',
+    description:
+      'List all groups available to your user. Keys inherit the same memberships. Page with nextCursor while hasMore is true; optionally supply a subset of groupIds.',
   },
   {
     name: 'get_group',
+    procedure: 'groups.getDetails',
     description:
-      'Read a group, its currency, and participant IDs. Use these IDs for subsequent expense and balance reads.',
-    procedure: 'groups.get',
+      'Read group details, its revision, participant IDs, share/export links, and participant IDs referenced by expenses. Participants are bookkeeping people, distinct from the authenticated actor.',
+  },
+  {
+    name: 'create_group',
+    procedure: 'groups.create',
+    inputAliases: { group: 'groupFormValues' },
+    destructive: false,
+    description:
+      'Create a group and its participants. The creator immediately receives persistent access inherited by all their keys. Supply name, currency/default currencyCode, and participant names in group. An optional caller-minted 21-character groupId prevents accidental duplicate creation; check it before retrying an uncertain result.',
+  },
+  {
+    name: 'update_group',
+    procedure: 'groups.update',
+    inputAliases: { changes: 'groupFormValues' },
+    required: ['expectedRevision'],
+    description:
+      'Edit group settings or participants using a partial changes object and the current expectedRevision from get_group. Omitted fields stay unchanged. Existing participant IDs preserve identities; entries without IDs create participants. Historical participants cannot be erased.',
+  },
+  {
+    name: 'manage_group_access',
+    procedure: 'groups.access',
+    destructive: true,
+    idempotent: true,
+    description:
+      'Join a group using action=join and its shareUrl on this app, or leave using action=leave and groupId. Access changes apply to all your keys. Leaving does not delete the group or ledger.',
   },
   {
     name: 'list_expenses',
-    description:
-      'Read saved expenses across all time, or filter by inclusive from/to expense dates (YYYY-MM-DD) and case-insensitive title filter. For a month, use its first and last dates. Results include reimbursements and are newest first. Optional currencyCode filters expenses before pagination. Request up to 100 per page and follow nextCursor while hasMore is true, keeping the same filters. Amounts are exact decimal strings in each expense’s currency. This read does not generate recurring expenses.',
     procedure: 'groups.expenses.list',
+    description:
+      'Review all expenses with pagination and optional inclusive from/to calendar dates, currencyCode, title filter, categoryId, paidById, participantId, isReimbursement, or recurrenceRule. Include reimbursements by default. Follow nextCursor with the same filters. Amounts are exact face-value decimal strings. This read does not process recurrence.',
   },
   {
     name: 'get_expense',
-    description:
-      'Read a saved expense and its receipt URLs. Both expense ID and owning group ID are required. Amounts are exact decimal strings in each expense’s currency.',
     procedure: 'groups.expenses.get',
+    description:
+      'Read an expense, current revision, payer, splits and attached receipt URLs. Requires groupId and expenseId. Money and share values are exact decimal strings; receipts are permanent references.',
+  },
+  {
+    name: 'create_expense',
+    procedure: 'groups.expenses.create',
+    inputAliases: { expense: 'expenseFormValues' },
+    destructive: false,
+    description:
+      'Create an expense with expense. Money is a decimal string at face value in currencyCode. Split modes: EVENLY, BY_SHARES (relative weights), BY_PERCENTAGE (sum 100), BY_AMOUNT (sum amount). Set isReimbursement=true to record payments using sender as paidBy and recipients as paidFor. Recurrence uses NONE/DAILY/WEEKLY/MONTHLY. Optional uploads file metadata returns signed PUT targets; you may ignore them. After uploading, attach uploadIds with update_expense. No receipt is saved merely by requesting a target. Supply a stable 21-character expenseId and read it before retrying an uncertain create.',
+  },
+  {
+    name: 'update_expense',
+    procedure: 'groups.expenses.update',
+    inputAliases: { changes: 'expenseFormValues' },
+    required: ['expectedRevision'],
+    description:
+      'Partially edit an expense using changes and its current expectedRevision from get_expense. Omitted fields stay unchanged. Use documents to retain/remove existing receipt references. Optional uploads returns direct PUT targets; attachUploadIds finalizes already-uploaded images into this expense. Empty changes can request targets without changing the expense. Edits are audited; a stale revision fails rather than overwriting another edit.',
+  },
+  {
+    name: 'delete_expense',
+    procedure: 'groups.expenses.delete',
+    required: ['expectedRevision'],
+    description:
+      'Soft-delete an expense or recorded payment using its current expectedRevision. Current balances exclude it; immutable revisions and permanent receipt references remain in list_activity.',
   },
   {
     name: 'get_balances',
-    description:
-      'Read balances and suggested repayments in separate currency buckets; currencies are never converted or combined. Optional currencyCode filters the buckets. Amounts are exact decimal strings in each expense’s currency. This read does not generate recurring expenses.',
     procedure: 'groups.balances.list',
-  },
-  {
-    name: 'list_activity',
     description:
-      'Read append-only group history, including full expense revision snapshots and deletion markers. Filter by expenseId, activityType, or inclusive from/to UTC event dates (YYYY-MM-DD). Page with nextCursor until hasMore is false. Legacy events lack snapshots; source=baseline starts preserved history for older expenses. Actor names from web edits are unverified labels. Receipts are URL references.',
-    procedure: 'groups.activities.list',
-  },
-  {
-    name: 'list_categories',
-    description: 'Read the category IDs and names used by expense records.',
-    procedure: 'categories.list',
-  },
-  {
-    name: 'get_group_details',
-    description:
-      'Read group details and the participant IDs referenced by saved expenses. Participant IDs describe bookkeeping people, not the authenticated agent identity.',
-    procedure: 'groups.getDetails',
+      'Read balances and suggested repayments in separate currency buckets, optionally filtering currencyCode. Money is exact decimal text. Currency buckets must not be added or converted. Record suggestions through create_expense with isReimbursement=true.',
   },
   {
     name: 'get_participant_balances',
-    description:
-      'Read net balances for selected group/participant pairs across your groups. Discover participant IDs with get_group. Each amount is in that group exact decimal strings in the stated currency; do not add different currencies together. This does not establish participant identity or generate recurring expenses.',
     procedure: 'groups.balances.forUser',
+    description:
+      'Read net balances across selected group/participant pairs. Discover bookkeeping participant IDs with get_group. Each result includes its currency; never sum unlike currencies.',
   },
   {
     name: 'get_spending_stats',
-    description:
-      'Read group spending summaries by month, category, and participant, plus estimates for saved recurring expenses. Optional from/to dates use YYYY-MM-DD; participantId selects bookkeeping totals. Amounts use exact decimal strings in the stated currency. No recurring expenses are generated.',
     procedure: 'groups.stats.overview',
+    description:
+      'Read spending totals, participant shares, categories, monthly trends and recurrence estimates in one selected currency. Optional participantId and inclusive from/to dates select the view. Discover other available currencies in availableCurrencyCodes. Money is exact decimal text.',
   },
   {
-    name: 'list_category_expenses',
+    name: 'list_activity',
+    procedure: 'groups.activities.list',
     description:
-      'Read saved expenses contributing to category spending, excluding reimbursements. Use category IDs from list_categories. Optional from/to dates use YYYY-MM-DD. Amounts use exact decimal strings in the stated currency. No recurring expenses are generated.',
-    procedure: 'groups.stats.categoryExpenses',
+      'Paginate append-only audit history with optional expenseId, activityType, and inclusive UTC from/to event dates. Includes full snapshots, transient previousSnapshot, deletion markers and verified actorUserId/agentKeyId for MCP writes. Web participant labels are unverified. Uploaded bytes are not stored in snapshots.',
+  },
+  {
+    name: 'process_recurring_expenses',
+    procedure: 'groups.processRecurring',
+    destructive: false,
+    idempotent: true,
+    description:
+      'Explicitly materialize due recurring expenses only in the specified group, using the server clock. Returns created expense IDs. Reads never generate recurring entries; repeated processing does not duplicate frames.',
+  },
+  {
+    name: 'get_reference_data',
+    procedure: 'reference.get',
+    description:
+      'Discover category IDs, supported currencies and decimal precision, split modes, recurrence rules, and whether receipt uploads are enabled with their MIME/size limits.',
+  },
+  {
+    name: 'export_group',
+    procedure: 'groups.export',
+    description:
+      'Export the authorized group as CSV or JSON. Returns filename, contentType and complete UTF-8 content. JSON includes preserved audit history; deleted expenses are excluded from current expense rows. This read does not process recurrence.',
   },
 ] as const satisfies readonly ToolDefinition[]

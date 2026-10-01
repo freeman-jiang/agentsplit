@@ -1,3 +1,4 @@
+import { effectiveGroupIds } from '@/lib/group-access'
 import { authorizeMcpRequest } from '@/lib/mcp/access'
 import { limitMcpRequest } from '@/lib/mcp/rate-limit'
 import { createAgentSplitMcpServer } from '@/lib/mcp/server'
@@ -19,6 +20,21 @@ async function handleRequest(request: Request) {
           'Cache-Control': 'no-store',
           'Retry-After': String(retryAfter),
         },
+      },
+    )
+  }
+
+  try {
+    authorization.principal.groupIds = await effectiveGroupIds(
+      authorization.principal.userId,
+      authorization.principal.groupIds,
+    )
+  } catch {
+    return Response.json(
+      { error: 'MCP group access is temporarily unavailable' },
+      {
+        status: 503,
+        headers: { 'Cache-Control': 'no-store' },
       },
     )
   }

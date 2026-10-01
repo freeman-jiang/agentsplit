@@ -64,3 +64,15 @@ Dependencies remain installed in `node_modules`.
 
 Next: verify Garage receipt uploads with the deployment stack and configure the
 actual Coolify domains and credentials.
+
+# MCP upload SDK declarations (2026-10-01)
+
+The upload implementation directly imports the already installed
+`@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`, both pinned to 3.1110.0.
+They were part of the previously approved lockfile. Npm registry publication
+dates are 2026-08-13 for both packages, exceeding the seven-day cooldown. The
+current OSV query returned no advisories for these exact versions. This is not
+a guarantee against undisclosed vulnerabilities.
+
+Only root dependency declarations changed. Every resolved package version and
+integrity entry remains identical; no new package was downloaded or installed.

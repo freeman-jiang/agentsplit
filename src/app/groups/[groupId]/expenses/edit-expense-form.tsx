@@ -47,6 +47,7 @@ export function EditExpenseForm({
           groupId,
           expenseFormValues,
           participantId,
+          expectedRevision: expense.revision,
         })
         utils.groups.expenses.invalidate()
         utils.groups.stats.invalidate()

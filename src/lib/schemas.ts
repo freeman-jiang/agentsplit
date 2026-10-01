@@ -41,7 +41,24 @@ export type GroupFormValues = z.infer<typeof groupFormSchema>
 export const expenseFormSchema = z
   .strictObject({
     currencyCode: expenseCurrencySchema,
-    expenseDate: z.coerce.date(),
+    expenseDate: z
+      .union([
+        z.date(),
+        z.iso
+          .date()
+          .refine(
+            (value) =>
+              Number.isFinite(new Date(value).getTime()) &&
+              new Date(value).toISOString().slice(0, 10) === value,
+            'Invalid calendar date',
+          ),
+      ])
+      .transform((value) => (value instanceof Date ? value : new Date(value)))
+      .meta({
+        type: 'string',
+        format: 'date',
+        description: 'Calendar date in YYYY-MM-DD format',
+      }),
     title: z.string().min(2, 'min2').max(200, 'max200'),
     category: z.number().int().nonnegative().default(0),
     amount: decimalStringSchema
@@ -69,7 +86,7 @@ export const expenseFormSchema = z
       .min(1, 'paidForMin1')
       .max(100),
     splitMode: z.enum(SplitMode).default('EVENLY'),
-    saveDefaultSplittingOptions: z.boolean(),
+    saveDefaultSplittingOptions: z.boolean().default(false),
     isReimbursement: z.boolean(),
     documents: z
       .array(
@@ -139,6 +156,24 @@ export const expenseFormSchema = z
         path: ['paidFor'],
       })
   })
+
+/** Partial inputs only validate present fields; cross-field rules run after merging under the group lock. */
+export const expenseChangesSchema = z
+  .strictObject({
+    ...expenseFormSchema.shape,
+    category: expenseFormSchema.shape.category.removeDefault(),
+    splitMode: expenseFormSchema.shape.splitMode.removeDefault(),
+    saveDefaultSplittingOptions:
+      expenseFormSchema.shape.saveDefaultSplittingOptions.removeDefault(),
+    documents: expenseFormSchema.shape.documents.removeDefault(),
+    recurrenceRule: expenseFormSchema.shape.recurrenceRule.removeDefault(),
+  })
+  .partial()
+export const groupChangesSchema = z
+  .strictObject(groupFormSchema.shape)
+  .partial()
+export type ExpenseChanges = z.input<typeof expenseChangesSchema>
+export type GroupChanges = z.input<typeof groupChangesSchema>
 
 export type ExpenseFormValues = z.output<typeof expenseFormSchema>
 // Raw form input type (before zod transforms/coercions). react-hook-form

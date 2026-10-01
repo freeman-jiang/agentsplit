@@ -23,6 +23,19 @@ model Group {
   expenses     Expense[]
   activities   Activity[]
   createdAt    DateTime      @default(now())
+  revision     Int           @default(0)
+  userAccess   UserGroupAccess[]
+}
+
+model UserGroupAccess {
+  userId    String
+  groupId   String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([userId, groupId])
+  @@index([groupId])
 }
 
 model Participant {
@@ -143,6 +156,9 @@ model Activity {
 }
 
 enum ActivityType {
+  CREATE_GROUP
+  JOIN_GROUP
+  LEAVE_GROUP
   UPDATE_GROUP
   CREATE_EXPENSE
   UPDATE_EXPENSE

@@ -1,4 +1,5 @@
 import { getGroup, getGroupExpensesParticipants } from '@/lib/api'
+import { effectiveBaseUrl } from '@/lib/env'
 import { baseProcedure } from '@/trpc/init'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
@@ -15,5 +16,13 @@ export const getGroupDetailsProcedure = baseProcedure
     }
 
     const participantsWithExpenses = await getGroupExpensesParticipants(groupId)
-    return { group, participantsWithExpenses }
+    return {
+      group,
+      participantsWithExpenses,
+      links: {
+        share: `${effectiveBaseUrl}/groups/${group.id}`,
+        csv: `${effectiveBaseUrl}/groups/${group.id}/expenses/export/csv`,
+        json: `${effectiveBaseUrl}/groups/${group.id}/expenses/export/json`,
+      },
+    }
   })

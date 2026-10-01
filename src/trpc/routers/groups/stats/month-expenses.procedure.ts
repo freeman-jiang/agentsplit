@@ -16,8 +16,8 @@ export const getStatsMonthExpensesProcedure = baseProcedure
     z.object({
       groupId: z.string().min(1),
       month: z.string().regex(/^\d{4}-\d{2}$/),
-      from: z.string().optional(),
-      to: z.string().optional(),
+      from: z.iso.date().optional(),
+      to: z.iso.date().optional(),
       currencyCode: expenseCurrencySchema.optional(),
     }),
   )
