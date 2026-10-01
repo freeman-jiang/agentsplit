@@ -8,6 +8,7 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import superjson from 'superjson'
 import * as z from 'zod'
 import { expenseSnapshotSchema } from '../src/lib/expense-history'
+import { MCP_TOOL_REGISTRY } from '../src/lib/mcp/registry'
 import { expenseFormSchema } from '../src/lib/schemas'
 import { getExpenseShares } from '../src/lib/shares'
 import type { AppRouter } from '../src/trpc/routers/_app'
@@ -57,7 +58,7 @@ async function call(name: string, args: Record<string, unknown>) {
   return result.structuredContent
 }
 const catalog = ListToolsResultSchema.parse(await rpc('tools/list'))
-assert.equal(catalog.tools.length, 11)
+assert.equal(catalog.tools.length, MCP_TOOL_REGISTRY.length)
 const groups = z
   .object({ groups: z.array(z.object({ id: z.string(), name: z.string() })) })
   .parse(await call('list_groups', {})).groups
@@ -323,7 +324,7 @@ await writeFile(
       groupId: group.id,
       expenseId: created.expenseId,
       revisions: [3, 2, 1],
-      tools: 11,
+      tools: catalog.tools.length,
       originalExpensesAndBalancesUnchanged: true,
       currencies: ['USD', 'JPY'],
       payerFirstRounding: true,
@@ -336,7 +337,7 @@ await writeFile(
 )
 console.log(
   JSON.stringify({
-    tools: 11,
+    tools: catalog.tools.length,
     preservedRevisions: 3,
     receiptPointersRetained: form.documents.length > 0 ? true : null,
     originalExpensesAndBalancesUnchanged: true,

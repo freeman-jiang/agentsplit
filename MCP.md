@@ -260,3 +260,21 @@ invitation and self-service key management remain a separate phase.
 `node node_modules/tsx/dist/cli.mjs scripts/test-mcp-writes.ts` exercises complete
 MCP workflows against a disposable loopback database ending in `_audit_test`.
 See `VERIFICATION.md` for current local and deployed evidence.
+
+The opt-in production probe creates and deletes one synthetic expense only in
+the existing `AgentSplit deployment test` group. It verifies signed upload,
+receipt finalization, revision conflicts, currency changes, export and retained
+history, then checks that active expenses and balances match their baseline:
+
+```sh
+POSTGRES_PRISMA_URL=postgresql://unused:unused@127.0.0.1:1/unused \
+POSTGRES_URL_NON_POOLING=postgresql://unused:unused@127.0.0.1:1/unused \
+AGENTSPLIT_VERIFY_URL=https://agentsplit.freemanjiang.com \
+AGENTSPLIT_VERIFY_ALLOW_WRITE=synthetic-expense \
+bun scripts/verify-live-mcp.ts
+```
+
+The database placeholders satisfy imported schema configuration; this probe
+uses the HTTP endpoint and never connects to a database. Its credential is read
+from the ignored `.mcp-credentials/owner-codex.json` file. Synthetic revisions
+and their permanent receipt remain in the audit log intentionally.

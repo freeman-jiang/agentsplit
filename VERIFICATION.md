@@ -256,9 +256,9 @@ The CI definition is committed, but no remote CI pass is claimed. Local checks,
 the portable Node integration entry point, and live application verification
 have all passed.
 
-# Complete MCP API — local release checks
+# Complete MCP API — release verification
 
-The next release exposes 17 resource-oriented tools with input/output schemas,
+The deployed release exposes 17 resource-oriented tools with input/output schemas,
 read/write/destructive/idempotency annotations and explicit actor attribution.
 Agent-facing writes use `group`, `expense` and `changes` objects. Browser-only
 fields and claimed actor labels are excluded from the MCP input surface.
@@ -277,3 +277,43 @@ metadata, conditional reads, image validation and permanent-object storage.
 Only temporary synthetic images were used and were removed after the check.
 The end-to-end live expense/attachment verifier is `scripts/verify-live-mcp.ts`.
 Client connection examples and operational recovery guidance are in `MCP.md`.
+
+## Production deployment and real clients — 2026-10-01
+
+Commit `0ee30f87bb4e531057d49f1abf840e509cb88ff4` deployed successfully through
+Coolify deployment `uxtdv2v4a4h32r87mfyqnzrj`. The application image matches that
+commit, and the app, PostgreSQL and Garage containers report healthy. A scoped
+PostgreSQL backup was taken before the additive membership/revision migration.
+
+The live server reports version `0.2.0` and 17 tools. The HTTP verifier passed
+discovery and output schemas; expense creation; a real signed Garage PUT;
+attachment finalization and exact image-byte retrieval; optimistic revision
+conflicts; verified actor attribution; payer-first rounding; USD-to-JPY currency
+selection without conversion; JSON export; soft deletion; and retained receipt
+access through immutable audit history. Active expenses and balances exactly
+matched their pre-test baseline afterward.
+
+Two real installed clients independently used the production MCP:
+
+- **Codex:** discovered the group and participants, created one USD `"10"`
+  expense, read it, updated notes with the expected revision, deleted it, and
+  verified the three audit revisions. All tool calls succeeded.
+- **Claude Code:** completed the same workflow, including reading back its edit
+  and checking that a caller-selected ID was unused before creation. Two optional
+  reads (`list_expenses` and `get_spending_stats`) were denied by the smoke test's
+  client-side allowlist; they were not server failures. Its reported $3.34 payer
+  share was inferred from the documented rule; the independent live verifier
+  checked the actual accounting result.
+
+An independent read-back confirmed both clients' create/update/delete audit
+trails and verified actor IDs, with no test expense left in the active ledger.
+The probes used the existing owner connection key through private, temporary
+client configuration; no credentials or persistent client settings were changed.
+Synthetic deleted revisions and the verifier's tiny receipt remain intentionally
+available in history. Unauthenticated requests return 401 and foreign-Origin
+requests return 403. Every discovered tool has input/output schemas, descriptions
+and read/write annotations.
+
+Compatibility is verified for MCP Streamable HTTP with bearer authentication.
+OAuth-only clients are outside this release. GitHub Actions still reports zero
+runs; all automated-check claims above are local results, not a remote CI pass.
