@@ -16,6 +16,7 @@ export async function GET(
       currency: true,
       currencyCode: true,
       expenses: {
+        where: { deletedAt: null },
         select: {
           id: true,
           createdAt: true,
@@ -32,6 +33,10 @@ export async function GET(
           splitMode: true,
           recurrenceRule: true,
           notes: true,
+          revision: true,
+          documents: {
+            select: { id: true, url: true, width: true, height: true },
+          },
         },
         orderBy: [{ expenseDate: 'asc' }, { createdAt: 'asc' }],
       },
@@ -44,6 +49,12 @@ export async function GET(
           participantId: true,
           expenseId: true,
           data: true,
+          expenseRevision: true,
+          snapshot: true,
+          source: true,
+          actorName: true,
+          actorUserId: true,
+          agentKeyId: true,
         },
         orderBy: { time: 'asc' },
       },

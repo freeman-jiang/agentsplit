@@ -4,7 +4,7 @@ import { getActiveRecurringExpenses, getExpense, getGroupExpenses } from './api'
 
 var mockExpenses = jest.fn()
 var mockRecurringLinks = jest.fn()
-const storedExpense = { id: 'expense-a', groupId: 'group-a' }
+const storedExpense = { id: 'expense-a', groupId: 'group-a', deletedAt: null }
 
 jest.mock('./prisma', () => ({
   prisma: {
@@ -72,6 +72,7 @@ it('applies inclusive UTC expense-date bounds together with title filtering befo
     expect.objectContaining({
       where: {
         groupId: 'group-a',
+        deletedAt: null,
         title: { contains: 'dinner', mode: 'insensitive' },
         expenseDate: {
           gte: new Date('2024-02-01T00:00:00.000Z'),

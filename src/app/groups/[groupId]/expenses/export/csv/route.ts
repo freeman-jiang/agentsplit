@@ -54,6 +54,7 @@ export async function GET(
       currency: true,
       currencyCode: true,
       expenses: {
+        where: { deletedAt: null },
         select: {
           // Seeds which participant is offered the leftover minor unit of an
           // uneven split, so the export agrees with the balances tab.

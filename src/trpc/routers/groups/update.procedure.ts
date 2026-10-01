@@ -11,6 +11,8 @@ export const updateGroupProcedure = baseProcedure
       participantId: z.string().optional(),
     }),
   )
-  .mutation(async ({ input: { groupId, groupFormValues, participantId } }) => {
-    await updateGroup(groupId, groupFormValues, participantId)
-  })
+  .mutation(
+    async ({ ctx, input: { groupId, groupFormValues, participantId } }) => {
+      await updateGroup(groupId, groupFormValues, participantId, ctx.principal)
+    },
+  )

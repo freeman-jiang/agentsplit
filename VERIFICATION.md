@@ -1,5 +1,41 @@
 # AgentSplit verification
 
+## Preserved expense revisions
+
+One complete snapshot per create/edit revision is stored in Activity. Deletion
+keeps the expense and previous revisions while excluding it from current
+expenses, balances/statistics, and exports. The authoritative backend validates
+inputs and performs the write plus history inside a locked group transaction;
+recurring and normal creation share the same backend writer. Database guards
+reject expense hard deletion, Activity edits/deletions/truncation, invalid
+revision changes, and expense commits without their event.
+
+- 564 Jest tests passed in 48 suites across both configured timezones, plus
+  TypeScript, formatting, lint (zero errors, 20 inherited warnings), and the
+  production webpack build.
+- Eighteen real database integration scenarios passed on an isolated local
+  PostgreSQL 18 database, including a pre-migration data upgrade, all split
+  modes, simultaneous edits, intentional history-insert failure/rollback,
+  legacy baselines, deletion, rename/currency preservation, cascade protection,
+  receipt pointer retention, MCP scoping/read-only behavior, and CSV/JSON exports.
+  The runner is `bun run test:integration:audit`, guarded to allow only a
+  dedicated loopback database whose name ends in `_audit_test`.
+- The migration and database guards also passed on an isolated PostgreSQL
+  17.11 container using the exact image digest from the Coolify deployment.
+  Production data was not used in that test.
+- The built application was verified in the local browser against real test
+  data. Deleted expenses still display their saved revision; a changed split
+  displays both the previous and current allocations. Console warnings/errors
+  were empty. A screenshot is saved locally as
+  `/private/tmp/agentsplit-audit-history.png`.
+- A private pre-migration backup of the scoped AgentSplit database was created
+  on the deployment host. Live rollout verification will be recorded below.
+
+No dependency was added or updated. MCP remains read-only. Actor names in the
+account-free web application are explicitly unverified, legacy summaries cannot
+recover old values, and database administrators can disable safeguards. See
+`AUDIT.md` for the write path, retention policy, and operational boundaries.
+
 ## Composable expense history
 
 The catalog now has eleven selected read-only tools. `list_month_expenses` was

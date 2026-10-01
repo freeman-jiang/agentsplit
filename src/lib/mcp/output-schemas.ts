@@ -3,6 +3,7 @@ import {
   RecurrenceRule,
   SplitMode,
 } from '@/generated/prisma/browser'
+import { activitySnapshotSchema } from '@/lib/expense-history'
 import type { AppRouter } from '@/trpc/routers/_app'
 import type { inferRouterOutputs } from '@trpc/server'
 import * as z from 'zod'
@@ -75,6 +76,8 @@ const expenseFields = z.object({
   notes: z.string().nullable(),
   recurrenceRule: z.enum(RecurrenceRule).nullable(),
   recurringExpenseLinkId: id.nullable(),
+  deletedAt: dateTime.nullable(),
+  revision: z.number().int().nonnegative(),
 })
 const expenseSummary = expenseFields
   .pick({
@@ -196,6 +199,13 @@ export const MCP_OUTPUT_SCHEMAS = {
         participantId: id.nullable(),
         expenseId: id.nullable(),
         data: z.string().nullable(),
+        expenseRevision: z.number().int().nonnegative().nullable(),
+        snapshot: activitySnapshotSchema.nullable(),
+        previousSnapshot: activitySnapshotSchema.nullable(),
+        source: z.string(),
+        actorName: z.string().nullable(),
+        actorUserId: id.nullable(),
+        agentKeyId: id.nullable(),
         expense: expenseFields.optional(),
       }),
     ),

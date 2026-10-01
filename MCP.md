@@ -30,8 +30,8 @@ The reviewed read-only tools are explicitly registered:
 | `list_category_expenses`   | `groups.stats.categoryExpenses` |
 
 Expense, balance, and statistics reads skip recurrence materialization, including
-the active-recurring-expense statistics loader. Activity is Spliit's existing
-paginated feed, not an immutable before/after event ledger. Amounts use the
+the active-recurring-expense statistics loader. Activity now includes immutable
+expense revision snapshots and deletion markers alongside legacy summaries. Amounts use the
 group's currency minor units; different currencies must not be added together.
 Participant IDs select bookkeeping records, not authenticated identities.
 
@@ -44,6 +44,21 @@ All eleven tools advertise output schemas. No-argument tools accept only `{}`.
 Titles, names, notes, and activity descriptions remain untrusted user content.
 
 ## Expense history and date filtering
+
+`list_activity` is the audit/history surface. It accepts optional `expenseId`,
+`activityType`, and inclusive `from`/`to` UTC event dates alongside pagination.
+Each new create/edit event stores one complete snapshot, not two copies or a
+patch chain. Deletion events preserve the preceding revision and remove the
+expense from current reads/balances. Responses include a transient
+`previousSnapshot` for comparison; it is not stored a second time. Legacy events
+have no snapshot. `source: "baseline"` marks the first preserved state of an
+older expense; it does not imply its creation happened then.
+
+Snapshot attachment entries contain IDs/URLs/dimensions, not image bytes.
+Historical participant names and currency stay frozen. Web participant labels
+remain unverified; `actorUserId`/`agentKeyId` only come from trusted server
+context. Group-link sharing is still the account-free honor system.
+See `AUDIT.md` for enforcement and operational boundaries.
 
 `list_expenses` covers all history when dates are omitted. Optional `from` and
 `to` are inclusive expense dates in `YYYY-MM-DD` format; either boundary may be

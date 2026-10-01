@@ -20,6 +20,7 @@ export const createGroupExpenseProcedure = baseProcedure
   )
   .mutation(
     async ({
+      ctx,
       input: { groupId, expenseFormValues, participantId, expenseId },
     }) => {
       const expense = await createExpense(
@@ -27,6 +28,7 @@ export const createGroupExpenseProcedure = baseProcedure
         groupId,
         participantId,
         expenseId,
+        ctx.principal,
       )
       return { expenseId: expense.id }
     },

@@ -43,7 +43,7 @@ model Category {
 
 model Expense {
   id               String            @id
-  group            Group             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group            Group             @relation(fields: [groupId], references: [id], onDelete: Restrict)
   expenseDate      DateTime          @default(dbgenerated("CURRENT_DATE")) @db.Date
   title            String
   category         Category?         @relation(fields: [categoryId], references: [id])
@@ -52,7 +52,7 @@ model Expense {
   originalAmount   Int?
   originalCurrency String?
   conversionRate   Decimal?
-  paidBy           Participant       @relation(fields: [paidById], references: [id], onDelete: Cascade)
+  paidBy           Participant       @relation(fields: [paidById], references: [id], onDelete: Restrict)
   paidById         String
   paidFor          ExpensePaidFor[]
   groupId          String
@@ -61,10 +61,14 @@ model Expense {
   createdAt        DateTime          @default(now())
   documents        ExpenseDocument[]
   notes            String?
+  deletedAt        DateTime?
+  revision         Int               @default(0)
 
   recurrenceRule         RecurrenceRule?       @default(NONE)
   recurringExpenseLink   RecurringExpenseLink?
   recurringExpenseLinkId String?
+
+  @@index([groupId, deletedAt, expenseDate(sort: Desc)])
 }
 
 model ExpenseDocument {
@@ -108,7 +112,7 @@ enum RecurrenceRule {
 
 model ExpensePaidFor {
   expense       Expense     @relation(fields: [expenseId], references: [id], onDelete: Cascade)
-  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Restrict)
   expenseId     String
   participantId String
   shares        Int         @default(1)
@@ -118,13 +122,22 @@ model ExpensePaidFor {
 
 model Activity {
   id            String       @id
-  group         Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group         Group        @relation(fields: [groupId], references: [id], onDelete: Restrict)
   groupId       String
-  time          DateTime     @default(now())
+  time          DateTime     @default(dbgenerated("clock_timestamp()"))
   activityType  ActivityType
   participantId String?
   expenseId     String?
   data          String?
+  expenseRevision Int?
+  snapshot        Json?
+  source          String       @default("web")
+  actorName       String?
+  actorUserId     String?
+  agentKeyId      String?
+
+  @@unique([expenseId, expenseRevision])
+  @@index([groupId, time(sort: Desc), id(sort: Desc)])
 }
 
 enum ActivityType {

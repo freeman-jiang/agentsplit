@@ -55,7 +55,7 @@ export const MCP_TOOL_REGISTRY = [
   {
     name: 'list_activity',
     description:
-      'Read the existing group activity feed. Request pages using nextCursor until hasMore is false for the full feed. Events contain activity summaries, not immutable before/after snapshots.',
+      'Read append-only group history, including full expense revision snapshots and deletion markers. Filter by expenseId, activityType, or inclusive from/to UTC event dates (YYYY-MM-DD). Page with nextCursor until hasMore is false. Legacy events lack snapshots; source=baseline starts preserved history for older expenses. Actor names from web edits are unverified labels. Receipts are URL references.',
     procedure: 'groups.activities.list',
   },
   {
