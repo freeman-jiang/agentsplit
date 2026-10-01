@@ -14,6 +14,10 @@ splitting, persistence and audit functions.
 
 ## Connect
 
+The public `/agents` page provides this instance's endpoint, client configuration
+examples and copyable setup instructions. It clearly identifies API keys as
+host-issued; it does not create keys or introduce account/OAuth management.
+
 ```toml
 [mcp_servers.agentsplit]
 url = "https://agentsplit.freemanjiang.com/api/mcp"

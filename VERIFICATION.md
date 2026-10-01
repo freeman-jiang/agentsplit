@@ -397,3 +397,10 @@ remaining inherited warnings. Light/dark screenshots of settings, expenses,
 agent setup and the landing page were inspected at the reported intermediate
 width, with no captured JavaScript errors. The setup test verifies that the
 endpoint copy button actually places the instance endpoint on the clipboard.
+
+Deployed commit `4ce1444c0597399aecabdfee8734d84a0b4f9359` through Coolify run
+`ssgwruohmvbvrepl2pwc9rjy`; app, database and storage are healthy. Live verification
+passed the homepage/setup/clipboard flow, eight create/settings layout checks,
+native currency/category selection without a drawer, and a complete synthetic
+receipt/create/edit/delete lifecycle. MCP read-back confirmed preserved history
+and restored active expenses/balances. No browser JavaScript errors were captured.
