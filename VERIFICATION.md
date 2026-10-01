@@ -317,3 +317,34 @@ and read/write annotations.
 Compatibility is verified for MCP Streamable HTTP with bearer authentication.
 OAuth-only clients are outside this release. GitHub Actions still reports zero
 runs; all automated-check claims above are local results, not a remote CI pass.
+
+# AgentSplit branding and Japandi UI — 2026-10-01
+
+The interface now uses warm neutral surfaces, olive accents, square corners and
+serif headings, with the selected Diagonal split banknote mark. Branding covers
+the application chrome, translated product names, metadata, sharing text, export
+filenames, installable-app icons, offline page and social banner. Upstream Spliit
+attribution and its license remain intact. Vector source lives in
+`public/brand-mark.svg`; `scripts/generate-brand-assets.mjs` renders the icons.
+
+The expense form keeps its existing accounting handlers and exposes all split
+modes directly. Amount/currency controls are adjacent, participants show their
+calculated shares, and optional notes/receipts/settings use disclosures that
+retain values and open for existing content or errors. Error-state verification
+found and fixed a missing field-state subscription: invalid amounts now show
+their inline errors reliably. The empty multi-currency ledger also has explicit
+empty-state text.
+
+Release checks: 678 Jest tests across two time zones; TypeScript; formatting;
+Oxlint with zero errors and six inherited warnings; production Webpack build;
+and 18 Playwright scenarios against the production build and a separate local
+PostgreSQL database. Browser scenarios cover group creation, all four split
+modes, payer rounding, validation errors, editing/deletion, payments, collapsed
+notes retention, mobile currency selection, failed-create retry, service-worker
+registration, offline fallback and exclusion of API responses from caches.
+
+Visual inspection covers 1280px desktop and narrow 320px mobile layouts in both
+light and dark modes, including open optional sections and dropdown padding.
+Every group page (expenses, balances, information, stats, activity and settings)
+loaded without captured JavaScript errors. No schema migration or new dependency
+is required for this release.

@@ -133,6 +133,10 @@ export async function addExpense(
     await fillStable(page.locator('input[type="date"]'), expense.date)
   }
 
+  if (expense.category || expense.recurrence) {
+    await page.locator('summary').filter({ hasText: 'More options' }).click()
+  }
+
   if (expense.category) {
     // A cmdk Command in a Popover, not a Radix Select, but the trigger is still
     // role=combobox and the items are still role=option.
@@ -155,7 +159,9 @@ export async function addExpense(
     const wanted = expense.paidFor
     const rows = await page.locator('[data-id]').all()
     for (const row of rows) {
-      const label = (await row.innerText()).split('\n')[0].trim()
+      const label = (await row.locator('[data-participant-name]').innerText())
+        .split('\n')[0]
+        .trim()
       const name = label.replace(/\s*\(.*\)$/, '')
       await setChecked(row.getByRole('checkbox'), wanted.indexOf(name) !== -1)
     }
@@ -163,11 +169,6 @@ export async function addExpense(
 
   const splitMode = expense.splitMode ?? 'EVENLY'
   if (splitMode !== 'EVENLY') {
-    // Radix Collapsible unmounts its content, so the Split mode select does
-    // not exist in the DOM until this is opened.
-    await page
-      .getByRole('button', { name: /Advanced splitting options/ })
-      .click()
     await selectRadixOption(
       page,
       page.getByTestId('split-mode'),

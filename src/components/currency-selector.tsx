@@ -15,11 +15,13 @@ import {
 } from '@/components/ui/popover'
 import { Currency } from '@/lib/currency'
 import { useMediaQuery } from '@/lib/hooks'
+import { cn } from '@/lib/utils'
 import { ChevronDown, Loader2 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { forwardRef, useEffect, useState } from 'react'
 
-type Props = {
+type Props = Pick<ButtonProps, 'id' | 'aria-describedby' | 'aria-invalid'> & {
+  compact?: boolean
   currencies: Currency[]
   onValueChange: (currencyCode: Currency['code']) => void
   /** Currency code to be selected by default. Overwriting this value will update current selection, too. */
@@ -32,6 +34,8 @@ export function CurrencySelector({
   onValueChange,
   defaultValue,
   isLoading,
+  compact = false,
+  ...buttonProps
 }: Props) {
   const [open, setOpen] = useState(false)
   const [value, setValue] = useState<string>(defaultValue)
@@ -53,6 +57,8 @@ export function CurrencySelector({
         <PopoverTrigger asChild>
           <CurrencyButton
             currency={selectedCurrency}
+            compact={compact}
+            {...buttonProps}
             open={open}
             isLoading={isLoading}
           />
@@ -76,6 +82,8 @@ export function CurrencySelector({
       <DrawerTrigger asChild>
         <CurrencyButton
           currency={selectedCurrency}
+          compact={compact}
+          {...buttonProps}
           open={open}
           isLoading={isLoading}
         />
@@ -153,26 +161,40 @@ function CurrencyCommand({
 }
 
 type CurrencyButtonProps = {
+  compact?: boolean
   currency: Currency
   open: boolean
   isLoading: boolean
 }
 const CurrencyButton = forwardRef<HTMLButtonElement, CurrencyButtonProps>(
   (
-    { currency, open, isLoading, ...props }: ButtonProps & CurrencyButtonProps,
+    {
+      currency,
+      open,
+      isLoading,
+      compact,
+      ...props
+    }: ButtonProps & CurrencyButtonProps,
     ref,
   ) => {
-    const iconClassName = 'ml-2 h-4 w-4 shrink-0 opacity-50'
+    const iconClassName = 'h-4 w-4 shrink-0 opacity-60'
     return (
       <Button
         variant="outline"
         role="combobox"
         aria-expanded={open}
-        className="flex w-full justify-between"
+        className={cn(
+          'flex w-full min-w-0 justify-between gap-3 px-3',
+          compact && 'h-12 w-28 border-s-0 bg-card',
+        )}
         ref={ref}
         {...props}
       >
-        <CurrencyLabel currency={currency} />
+        {compact ? (
+          <span>{currency.code}</span>
+        ) : (
+          <CurrencyLabel currency={currency} />
+        )}
         {isLoading ? (
           <Loader2 className={`animate-spin ${iconClassName}`} />
         ) : (
@@ -186,7 +208,7 @@ CurrencyButton.displayName = 'CurrencyButton'
 
 function CurrencyLabel({ currency }: { currency: Currency }) {
   return (
-    <div className="flex items-center gap-3">
+    <div className="min-w-0 truncate text-start">
       {currency.name}
       {currency.code ? ` (${currency.code})` : ''}
     </div>

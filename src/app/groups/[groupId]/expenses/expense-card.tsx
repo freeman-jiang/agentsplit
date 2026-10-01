@@ -80,7 +80,7 @@ export function ExpenseCard({
       data-testid="expense-card"
       data-expense-id={expense.id}
       className={cn(
-        'flex justify-between sm:mx-6 px-4 sm:rounded-lg sm:pr-2 sm:pl-4 py-4 text-sm cursor-pointer hover:bg-accent gap-1 items-stretch',
+        'flex justify-between sm:mx-6 px-4  sm:pr-2 sm:pl-4 py-4 text-sm cursor-pointer border-b hover:bg-accent gap-2 items-stretch',
         expense.isReimbursement && 'italic',
       )}
       onClick={() => {
@@ -91,7 +91,7 @@ export function ExpenseCard({
         category={expense.category}
         className="w-4 h-4 mr-2 mt-0.5 text-muted-foreground"
       />
-      <div className="flex-1">
+      <div className="min-w-0 flex-1 break-words">
         <div className={cn('mb-1', expense.isReimbursement && 'italic')}>
           {expense.title}
         </div>
@@ -106,7 +106,7 @@ export function ExpenseCard({
         <div
           className={cn(
             'tabular-nums whitespace-nowrap',
-            expense.isReimbursement ? 'italic' : 'font-bold',
+            expense.isReimbursement ? 'italic' : 'font-medium',
           )}
         >
           {formatCurrency(currency, expense.amount, locale)}

@@ -1,5 +1,5 @@
 /*
- * Spliit service worker.
+ * AgentSplit service worker.
  *
  * A lightweight, dependency-free service worker that caches static assets to
  * save bandwidth and improve load performance, while always serving fresh data
@@ -17,10 +17,10 @@
  * Bump CACHE_VERSION to invalidate all previously cached content on deploy.
  */
 
-const CACHE_VERSION = 'v1'
-const PRECACHE = `spliit-precache-${CACHE_VERSION}`
-const RUNTIME = `spliit-runtime-${CACHE_VERSION}`
-const IMAGE_CACHE = `spliit-images-${CACHE_VERSION}`
+const CACHE_VERSION = 'v2'
+const PRECACHE = `agentsplit-precache-${CACHE_VERSION}`
+const RUNTIME = `agentsplit-runtime-${CACHE_VERSION}`
+const IMAGE_CACHE = `agentsplit-images-${CACHE_VERSION}`
 
 const OFFLINE_URL = '/offline.html'
 

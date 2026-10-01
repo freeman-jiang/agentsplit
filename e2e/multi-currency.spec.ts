@@ -139,8 +139,6 @@ test('keeps a by-amount split of a converted expense when reopened', async ({
   await setOriginalAmount(page, '80')
   await expect(page.locator('input[name="amount"]')).toHaveValue('100')
   await selectRadixOption(page, page.getByTestId('paid-by'), 'Alice')
-
-  await page.getByRole('button', { name: /Advanced splitting options/ }).click()
   await selectRadixOption(page, page.getByTestId('split-mode'), /By amount/)
 
   // A converted expense shows two inputs per row, the foreign amount and the

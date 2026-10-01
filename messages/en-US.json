@@ -1,8 +1,8 @@
 {
   "Homepage": {
-    "title": "Share <strong>Expenses</strong> with <strong>Friends & Family</strong>",
-    "metaTitle": "Spliit · Share Expenses with Friends & Family",
-    "description": "Welcome to your new <strong>Spliit</strong> instance !",
+    "title": "Shared expenses. <strong>Simply settled.</strong>",
+    "metaTitle": "AgentSplit · Shared expenses, simply settled",
+    "description": "Keep track of everyday expenses with the people you share them with. In your browser, or with your agent.",
     "button": {
       "groups": "Go to groups",
       "github": "GitHub"
@@ -20,7 +20,9 @@
   },
   "Footer": {
     "madeIn": "Made in Montréal, Québec 🇨🇦",
-    "builtBy": "Built by <author>Sebastien Castiel</author> and <source>contributors</source>"
+    "builtBy": "Built by <author>Sebastien Castiel</author> and <source>contributors</source>",
+    "upstream": "Built on <source>Spliit</source>, by Sebastien Castiel and contributors.",
+    "tagline": "A little less keeping track."
   },
   "Expenses": {
     "title": "Expenses",
@@ -163,7 +165,7 @@
       "create": "Create income",
       "edit": "Edit income",
       "TitleField": {
-        "label": "Income title",
+        "label": "Description",
         "placeholder": "Monday evening restaurant",
         "description": "Enter a description for the income."
       },
@@ -191,7 +193,7 @@
       "create": "Create expense",
       "edit": "Edit expense",
       "TitleField": {
-        "label": "Expense title",
+        "label": "Description",
         "placeholder": "Monday evening restaurant",
         "description": "Enter a description for the expense."
       },
@@ -281,10 +283,20 @@
     "attachDocuments": "Attach documents",
     "create": "Create",
     "creating": "Creating…",
-    "save": "Save",
+    "save": "Save changes",
     "saving": "Saving…",
     "cancel": "Cancel",
-    "reimbursement": "Reimbursement"
+    "reimbursement": "Reimbursement",
+    "Layout": {
+      "details": "Expense details",
+      "notesReceipt": "Notes & receipts",
+      "options": "More options",
+      "optional": "Optional",
+      "summary": "Expense total",
+      "people": "{count, plural, one {# person} other {# people}}",
+      "history": "Edits stay in the group’s activity history.",
+      "splitBetween": "Split between"
+    }
   },
   "ExpenseDocumentsInput": {
     "TooBigToast": {
@@ -331,7 +343,8 @@
       "noImbursements": "It looks like your group doesn’t need any reimbursement 😁",
       "owes": "<strong>{from}</strong> owes <strong>{to}</strong>",
       "markAsPaid": "Mark as paid"
-    }
+    },
+    "empty": "No expenses yet. Your balances will appear here."
   },
   "Stats": {
     "title": "Stats",
@@ -590,7 +603,7 @@
   },
   "Pwa": {
     "updateTitle": "Update available",
-    "updateDescription": "A new version of Spliit is available.",
+    "updateDescription": "A new version of AgentSplit is available.",
     "reload": "Reload"
   }
 }

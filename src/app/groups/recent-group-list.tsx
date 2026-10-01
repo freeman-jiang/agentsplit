@@ -218,7 +218,7 @@ function GroupList({
   refreshGroupsFromStorage: () => void
 }) {
   return (
-    <ul className="grid gap-2 sm:grid-cols-2">
+    <ul className="grid gap-4 sm:grid-cols-2">
       {groups.map((group) => (
         <RecentGroupListCard
           key={group.id}
@@ -243,7 +243,7 @@ function GroupsPage({
   return (
     <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <h1 className="font-bold text-2xl flex-1">
+        <h1 className="font-display text-3xl font-normal tracking-tight flex-1">
           <Link href="/groups">{t('myGroups')}</Link>
         </h1>
         <div className="flex gap-2">

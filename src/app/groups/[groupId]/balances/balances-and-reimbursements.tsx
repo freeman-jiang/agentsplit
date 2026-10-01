@@ -46,6 +46,8 @@ export default function BalancesAndReimbursements() {
         <CardContent>
           {isLoading ? (
             <BalancesLoading participantCount={group?.participants.length} />
+          ) : balancesData.currencies.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('empty')}</p>
           ) : (
             balancesData.currencies.map((entry) => (
               <section key={entry.currencyCode} className="mb-4">
@@ -70,6 +72,10 @@ export default function BalancesAndReimbursements() {
             <ReimbursementsLoading
               participantCount={group?.participants.length}
             />
+          ) : balancesData.currencies.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {t('Reimbursements.noImbursements')}
+            </p>
           ) : (
             balancesData.currencies.map((entry) => (
               <section key={entry.currencyCode} className="mb-4">

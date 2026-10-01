@@ -14,23 +14,23 @@ export default function HomePage() {
     <main>
       <TrackPage path="/" />
       <section className="py-16 md:py-24 lg:py-32">
-        <div className="container flex max-w-screen-md flex-col items-center gap-4 text-center">
-          <h1 className="!leading-none font-bold text-2xl sm:text-3xl md:text-4xl lg:text-5xl landing-header py-2">
+        <div className="container flex max-w-screen-md flex-col items-center gap-6 text-center">
+          <h1 className="!leading-none font-display font-normal text-4xl sm:text-5xl md:text-6xl landing-header py-2">
             {t.rich('Homepage.title', {
               strong: (chunks) => <strong>{chunks}</strong>,
             })}
           </h1>
-          <p className="max-w-[42rem] leading-normal text-muted-foreground sm:text-xl sm:leading-8">
+          <p className="max-w-lg leading-normal text-muted-foreground sm:text-xl sm:leading-8">
             {t.rich('Homepage.description', {
               strong: (chunks) => <strong>{chunks}</strong>,
             })}
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-center gap-3">
             <Button asChild>
               <Link href="/groups">{t('Homepage.button.groups')}</Link>
             </Button>
             <Button asChild variant="secondary">
-              <Link href="https://github.com/spliit-app/spliit">
+              <Link href="https://github.com/freeman-jiang/agentsplit">
                 <GitHubLogoIcon className="w-4 h-4 mr-2" />
                 {t('Homepage.button.github')}
               </Link>

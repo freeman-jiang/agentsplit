@@ -40,14 +40,14 @@ test('edits an expense and recomputes balances', async ({ page }) => {
   await fillStable(page.locator('input[name="amount"]'), '90')
   await setChecked(paidForRow(page, 'Carol').getByRole('checkbox'), false)
 
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
   await page.waitForURL(EXPENSES_URL, { timeout: 30_000 })
 
   const card = page
     .getByTestId('expense-card')
     .filter({ hasText: 'Groceries and wine' })
   await expect(card).toContainText(money(90))
-  await expect(card).toContainText('Paid by Alice for Alice, Bob')
+  await expect(card).toContainText(/Paid by Alice for (Alice, Bob|Bob, Alice)/)
 
   // 90 split between Alice and Bob only.
   await openTab(page, 'Balances')
@@ -84,8 +84,7 @@ test('deletes an expense and clears the balances', async ({ page }) => {
   await expect(page.getByText(/doesn.t contain any expense yet/)).toBeVisible()
 
   await openTab(page, 'Balances')
-  await expectBalance(page, 'Alice', 0)
-  await expectBalance(page, 'Bob', 0)
-  await expectBalance(page, 'Carol', 0)
+  // With no remaining expenses there are no currency buckets or balance rows.
+  await expect(page.getByTestId('balance-row')).toHaveCount(0)
   await expect(page.getByText(/doesn.t need any reimbursement/)).toBeVisible()
 })

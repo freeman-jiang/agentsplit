@@ -5,13 +5,7 @@ import { CreateFromReceiptButton } from '@/app/groups/[groupId]/expenses/create-
 import { ExpenseList } from '@/app/groups/[groupId]/expenses/expense-list'
 import ExportButton from '@/app/groups/[groupId]/export-button'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TrackPage } from '@/lib/analytics/track-page'
 import { Plus } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -29,21 +23,21 @@ export default function GroupExpensesPageClient({
   return (
     <>
       <TrackPage path={`/groups/${groupId}/expenses`} />
-      <Card className="mb-4 rounded-none -mx-4 border-x-0 sm:border-x sm:rounded-lg sm:mx-0">
+      <Card className="mb-4 border-0 bg-transparent">
         <div className="flex flex-1">
-          <CardHeader className="flex-1 p-4 sm:p-6">
+          <CardHeader className="flex-1 px-0 pt-0 pb-4">
             <CardTitle>{t('title')}</CardTitle>
-            <CardDescription>{t('description')}</CardDescription>
           </CardHeader>
-          <CardHeader className="p-4 sm:p-6 flex flex-row space-y-0 gap-2">
+          <CardHeader className="flex flex-row flex-wrap items-start space-y-0 gap-2 p-0 pb-4">
             <ExportButton groupId={groupId} />
             {enableReceiptExtract && <CreateFromReceiptButton />}
-            <Button asChild size="icon">
+            <Button asChild>
               <Link
                 href={`/groups/${groupId}/expenses/create`}
                 title={t('create')}
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="me-2 w-4 h-4" />
+                {t('create')}
               </Link>
             </Button>
           </CardHeader>

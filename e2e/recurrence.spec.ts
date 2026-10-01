@@ -32,7 +32,7 @@ test('round-trips a recurrence rule through the form', async ({ page }) => {
   // Turning a recurring expense back off is a distinct branch in
   // src/lib/api.ts, so assert the transition persists.
   await selectRadixOption(page, field, 'None')
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
   await page.waitForURL(EXPENSES_URL, { timeout: 30_000 })
 
   await openExpense(page, 'Netflix')
