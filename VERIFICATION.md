@@ -29,7 +29,29 @@ revision changes, and expense commits without their event.
   were empty. A screenshot is saved locally as
   `/private/tmp/agentsplit-audit-history.png`.
 - A private pre-migration backup of the scoped AgentSplit database was created
-  on the deployment host. Live rollout verification will be recorded below.
+  on the deployment host.
+
+### Live rollout
+
+Commit `97d2a7b` deployed successfully through the scoped Coolify application
+`6xpohwok1yiguyk3syzqgumj`. The default Docker/Turbopack build completed, the
+audit migration applied on PostgreSQL 17.11, and application/database/Garage
+containers returned healthy. The private pre-migration database backup remains
+on the deployment host with mode 0600.
+
+`scripts/verify-live-audit.ts` exercised the actual tRPC and authenticated MCP
+endpoints. It only operates with explicit write opt-in and an existing group
+named `AgentSplit deployment test`. One new synthetic expense was created,
+edited (amount and shares), and soft-deleted. Its three revisions are readable
+through MCP, previous values and receipt URL references survive deletion, all
+eleven tools are advertised, and the original active expenses and balances
+compare identical before/after. Only those synthetic verification records were
+added; original expense data was not edited. The verification runner also makes
+an attempted synthetic expense deletion in its `finally` cleanup path.
+
+The local preview remains running for user review. Local tests used disposable
+PostgreSQL 18 databases; the isolated PostgreSQL 17.11 migration-test container
+on the deployment host can be removed independently of the live application.
 
 No dependency was added or updated. MCP remains read-only. Actor names in the
 account-free web application are explicitly unverified, legacy summaries cannot
