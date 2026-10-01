@@ -4,6 +4,7 @@ import { Money } from '@/components/money'
 import { getBalances } from '@/lib/balances'
 import { Currency } from '@/lib/currency'
 import { useActiveUser } from '@/lib/hooks'
+import { Decimal } from '@/lib/money'
 import { useTranslations } from 'next-intl'
 
 type Props = {
@@ -24,7 +25,7 @@ export function ActiveUserBalance({ groupId, currency, expense }: Props) {
   if (Object.hasOwn(balances, activeUserId)) {
     const balance = balances[activeUserId]
     let balanceDetail = <></>
-    if (balance.paid > 0 && balance.paidFor > 0) {
+    if (new Decimal(balance.paid).gt(0) && new Decimal(balance.paidFor).gt(0)) {
       balanceDetail = (
         <>
           {' ('}

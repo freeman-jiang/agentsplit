@@ -9,9 +9,10 @@ import superjson from 'superjson'
 import * as z from 'zod'
 import { expenseSnapshotSchema } from '../src/lib/expense-history'
 import { expenseFormSchema } from '../src/lib/schemas'
+import { getExpenseShares } from '../src/lib/shares'
 import type { AppRouter } from '../src/trpc/routers/_app'
 
-// This opt-in runner creates, edits, and soft-deletes ONE synthetic expense.
+// This opt-in runner creates, edits, and soft-deletes synthetic expenses only.
 // It refuses to touch groups that aren't explicitly labeled deployment tests.
 assert.equal(process.env.AGENTSPLIT_VERIFY_ALLOW_WRITE, 'synthetic-expense')
 const base = new URL(process.env.AGENTSPLIT_VERIFY_URL ?? '')
@@ -81,26 +82,27 @@ const beforePage = z
   })
   .parse(before)
 assert.equal(beforePage.hasMore, false)
-assert(beforePage.expenses.length > 0)
-const saved = z
-  .object({
-    expense: z.object({
-      documents: z.array(
-        z.object({
-          id: z.string(),
-          url: z.string(),
-          width: z.number(),
-          height: z.number(),
+const saved = beforePage.expenses.length
+  ? z
+      .object({
+        expense: z.object({
+          documents: z.array(
+            z.object({
+              id: z.string(),
+              url: z.string(),
+              width: z.number(),
+              height: z.number(),
+            }),
+          ),
         }),
-      ),
-    }),
-  })
-  .parse(
-    await call('get_expense', {
-      groupId: group.id,
-      expenseId: beforePage.expenses[0].id,
-    }),
-  )
+      })
+      .parse(
+        await call('get_expense', {
+          groupId: group.id,
+          expenseId: beforePage.expenses[0].id,
+        }),
+      )
+  : { expense: { documents: [] } }
 const client = createTRPCClient<AppRouter>({
   links: [
     httpBatchLink({
@@ -113,13 +115,14 @@ const [alice, bob, carol] = details.group.participants
 assert(alice && bob && carol)
 const form = expenseFormSchema.parse({
   title: 'Synthetic audit verification',
-  amount: 6000,
+  currencyCode: 'USD',
+  amount: '60',
   expenseDate: new Date('2026-09-30T00:00:00Z'),
   category: 0,
   paidBy: alice.id,
   paidFor: [alice, bob, carol].map((person) => ({
     participant: person.id,
-    shares: 1,
+    shares: '1',
   })),
   splitMode: 'EVENLY',
   isReimbursement: false,
@@ -141,12 +144,12 @@ try {
     participantId: bob.id,
     expenseFormValues: {
       ...form,
-      amount: 9000,
+      amount: '90',
       splitMode: 'BY_SHARES',
       paidFor: [
-        { participant: alice.id, shares: 1 },
-        { participant: bob.id, shares: 3 },
-        { participant: carol.id, shares: 2 },
+        { participant: alice.id, shares: '1' },
+        { participant: bob.id, shares: '3' },
+        { participant: carol.id, shares: '2' },
       ],
     },
   })
@@ -170,8 +173,8 @@ try {
     history.activities.map((event) => event.expenseRevision),
     [2, 1],
   )
-  assert.equal(history.activities[0].snapshot?.expense.amount, 9000)
-  assert.equal(history.activities[1].snapshot?.expense.amount, 6000)
+  assert.equal(history.activities[0].snapshot?.expense.amount, '90')
+  assert.equal(history.activities[1].snapshot?.expense.amount, '60')
   assert.deepEqual(
     history.activities[0].snapshot?.expense.documents.map(
       (document) => document.url,
@@ -209,7 +212,102 @@ assert.deepEqual(
 )
 assert.equal(history.activities[0].activityType, 'DELETE_EXPENSE')
 assert.equal(history.activities[0].snapshot, null)
-assert.equal(history.activities[0].previousSnapshot?.expense.amount, 9000)
+assert.equal(history.activities[0].previousSnapshot?.expense.amount, '90')
+assert.deepEqual(
+  await call('list_expenses', { groupId: group.id, limit: 100 }),
+  before,
+)
+assert.deepEqual(
+  await call('get_balances', { groupId: group.id }),
+  balancesBefore,
+)
+const currencyExpenses: string[] = []
+try {
+  for (const currencyCode of ['USD', 'JPY'] as const) {
+    const result = await client.groups.expenses.create.mutate({
+      groupId: group.id,
+      expenseFormValues: {
+        ...form,
+        amount: '10',
+        currencyCode,
+        title: `Synthetic ${currencyCode} rounding verification`,
+      },
+    })
+    currencyExpenses.push(result.expenseId)
+    const savedExpense = z
+      .object({
+        expense: z.object({ amount: z.string(), currencyCode: z.string() }),
+      })
+      .parse(
+        await call('get_expense', {
+          groupId: group.id,
+          expenseId: result.expenseId,
+        }),
+      )
+    assert.equal(savedExpense.expense.amount, '10')
+    assert.equal(savedExpense.expense.currencyCode, currencyCode)
+  }
+  const balances = z
+    .object({
+      currencies: z.array(
+        z.object({
+          currencyCode: z.string(),
+          balances: z.record(z.string(), z.object({ total: z.string() })),
+          reimbursements: z.array(z.object({ amount: z.string() })),
+        }),
+      ),
+    })
+    .parse(await call('get_balances', { groupId: group.id }))
+  for (const currencyCode of ['USD', 'JPY'])
+    assert(
+      balances.currencies.some(
+        (bucket) => bucket.currencyCode === currencyCode,
+      ),
+    )
+  const history = z
+    .object({
+      activities: z.array(
+        z.object({ snapshot: expenseSnapshotSchema.nullable() }),
+      ),
+    })
+    .parse(
+      await call('list_activity', {
+        groupId: group.id,
+        expenseId: currencyExpenses[0],
+      }),
+    )
+  const snapshot = history.activities[0].snapshot
+  assert(snapshot)
+  const splits = getExpenseShares({
+    ...snapshot.expense,
+    paidById: snapshot.expense.paidBy.id,
+  })
+  assert.equal(splits.get(alice.id), '3.34')
+  const yenPage = z
+    .object({
+      expenses: z.array(
+        z.object({ currencyCode: z.string(), amount: z.string() }),
+      ),
+    })
+    .parse(
+      await call('list_expenses', {
+        groupId: group.id,
+        currencyCode: 'JPY',
+        limit: 100,
+      }),
+    )
+  assert(yenPage.expenses.every((expense) => expense.currencyCode === 'JPY'))
+  assert(yenPage.expenses.some((expense) => expense.amount === '10'))
+  await assert.rejects(
+    client.groups.expenses.create.mutate({
+      groupId: group.id,
+      expenseFormValues: { ...form, amount: '6000.5', currencyCode: 'JPY' },
+    }),
+  )
+} finally {
+  for (const expenseId of currencyExpenses)
+    await client.groups.expenses.delete.mutate({ groupId: group.id, expenseId })
+}
 assert.deepEqual(
   await call('list_expenses', { groupId: group.id, limit: 100 }),
   before,
@@ -227,6 +325,9 @@ await writeFile(
       revisions: [3, 2, 1],
       tools: 11,
       originalExpensesAndBalancesUnchanged: true,
+      currencies: ['USD', 'JPY'],
+      payerFirstRounding: true,
+      currencyPrecisionRejected: true,
     },
     null,
     2,
@@ -237,7 +338,7 @@ console.log(
   JSON.stringify({
     tools: 11,
     preservedRevisions: 3,
-    receiptPointersRetained: true,
+    receiptPointersRetained: form.documents.length > 0 ? true : null,
     originalExpensesAndBalancesUnchanged: true,
   }),
 )

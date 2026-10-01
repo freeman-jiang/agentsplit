@@ -9,9 +9,7 @@ export const createGroupExpenseProcedure = baseProcedure
       groupId: z.string().min(1),
       expenseFormValues: expenseFormSchema,
       participantId: z.string().optional(),
-      // Minted by the form with `randomId()` (a 21-character nanoid) so the
-      // split it previews is the one the saved expense gets. Optional so
-      // other callers keep getting a server-minted id.
+      // Optional caller-minted stable expense ID; otherwise minted server-side.
       expenseId: z
         .string()
         .regex(/^[A-Za-z0-9_-]{21}$/)

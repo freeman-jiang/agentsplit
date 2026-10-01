@@ -21,20 +21,27 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  expenseCurrencySchema,
+  getCurrency,
+  type supportedCurrencyCodeType,
+} from '@/lib/currency'
 import { useActiveUser } from '@/lib/hooks'
-import { getCurrencyFromGroup } from '@/lib/utils'
 import { trpc } from '@/trpc/client'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 
 export function TotalsPageClient() {
   const t = useTranslations('Stats')
-  const { groupId, group } = useCurrentGroup()
+  const { groupId } = useCurrentGroup()
   const activeUser = useActiveUser(groupId)
   const participantId =
     activeUser && activeUser !== 'None' ? activeUser : undefined
 
   const [period, setPeriod] = useState<StatsPeriod>('all')
+  const [currencyCode, setCurrencyCode] = useState<
+    supportedCurrencyCodeType | undefined
+  >()
   const [customRange, setCustomRange] = useState<StatsRange>({})
   const range = resolveStatsRange(period, customRange)
 
@@ -43,12 +50,34 @@ export function TotalsPageClient() {
     participantId,
     from: range.from,
     to: range.to,
+    currencyCode,
   })
 
-  const currency = group ? getCurrencyFromGroup(group) : undefined
+  const currency = data?.currencyCode
+    ? getCurrency(data.currencyCode)
+    : undefined
 
   return (
     <>
+      {data && data.availableCurrencyCodes.length > 0 && (
+        <label className="mb-4 flex items-center gap-2 text-sm">
+          Currency
+          <select
+            aria-label="Statistics currency"
+            value={data.currencyCode ?? ''}
+            onChange={(event) =>
+              setCurrencyCode(expenseCurrencySchema.parse(event.target.value))
+            }
+            className="rounded border bg-background p-2"
+          >
+            {data.availableCurrencyCodes.map((code) => (
+              <option key={code} value={code}>
+                {code}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <StatsRangeSelector
         period={period}
         customRange={customRange}

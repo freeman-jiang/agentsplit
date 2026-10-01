@@ -189,3 +189,36 @@ The local Codex connection is configured persistently in the private user
 configuration. Its credential file is mode 0600 and excluded from Git/build
 context; no live keys are in this repository. User/account invitation and
 self-service key UI remain a design proposal in `IDENTITY_DESIGN.md`.
+
+# Decimal money and per-expense currencies — local working changes
+
+The current local currency/decimal work passes 662 Jest tests across the two
+configured time zones, type checking, formatting, and a production Webpack
+build. Oxlint reports zero errors and six inherited warnings. No packages were
+installed for this change.
+
+The real PostgreSQL runner passes 24 scenarios, including face-value USD/JPY
+round trips, separate currency buckets, filtering before pagination, exact
+CAD 0.1 + 0.2 totals, currency-specific settlement, audited denomination edits,
+unchanged old expenses after group-default changes, and invalid writes leaving
+expense/activity counts unchanged. The database is disposable and loopback-only.
+
+A single browser check of the rebuilt expense form showed amount `6000` with
+USD selected and two $3,000 shares. There were no captured console errors or
+framework error overlays. The original edit tab was left untouched because
+automatic approval review rejected reloading it as a risk to unsaved input;
+verification used a separate temporary tab. Screenshot:
+`/private/tmp/agentsplit-decimal-preview.png`.
+
+These are local pre-deployment results. The approved precision policy rejects
+finer amounts instead of rounding inputs. The payer receives the first rounding
+remainder; explicit splits remain unchanged. CI now runs these PostgreSQL
+integration checks against the exact pinned PostgreSQL 17 image used in
+production. See `MONEY.md` for the contract and authorized beta-ledger reset scope.
+
+The reset was also applied to an isolated, network-disabled PostgreSQL 17.11
+container restored from the scoped deployment backup. It preserved the one
+group and three participants, cleared the two expense/six activity rows, created
+`NUMERIC(30,12)` money fields, and restored both truncate guards. The temporary
+container was removed. The production backup is
+`/home/ubuntu/agentsplit-backups/20260930-pre-decimal-money.dump` (mode 0600).

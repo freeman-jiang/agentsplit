@@ -1,6 +1,7 @@
 import { RecurrenceRule, SplitMode } from '@/generated/prisma/browser'
-import Decimal from 'decimal.js'
 import * as z from 'zod'
+import { expenseCurrencySchema, getCurrency } from './currency'
+import { Decimal, decimalStringSchema, decimalTextSchema } from './money'
 
 export const GROUP_INFORMATION_MAX = 10_000
 export const EXPENSE_NOTES_MAX = 5_000
@@ -37,66 +38,23 @@ export const groupFormSchema = z
 
 export type GroupFormValues = z.infer<typeof groupFormSchema>
 
-const inputCoercedToNumber = z.union([
-  z.number(),
-  z.string().transform((value, ctx) => {
-    const valueAsNumber = Number(value)
-    if (Number.isNaN(valueAsNumber))
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'invalidNumber',
-      })
-    return valueAsNumber
-  }),
-])
-
 export const expenseFormSchema = z
-  .object({
+  .strictObject({
+    currencyCode: expenseCurrencySchema,
     expenseDate: z.coerce.date(),
-    title: z
-      .string({
-        error: (issue) =>
-          issue.input === undefined ? 'titleRequired' : undefined,
-      })
-      .min(2, 'min2')
-      .max(200, 'max200'),
-    category: z.coerce.number().default(0),
-    amount: z
-      .union(
-        [
-          z.number(),
-          z.string().transform((value, ctx) => {
-            const valueAsNumber = Number(value)
-            if (Number.isNaN(valueAsNumber))
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: 'invalidNumber',
-              })
-            return valueAsNumber
-          }),
-        ],
-        {
-          error: (issue) =>
-            issue.input === undefined ? 'amountRequired' : undefined,
-        },
-      )
-      .refine((amount) => amount != 0, 'amountNotZero')
-      .refine((amount) => amount <= 10_000_000_00, 'amountTenMillion'),
-    originalAmount: z
-      .union([
-        z.literal('').transform(() => undefined),
-        inputCoercedToNumber
-          .refine((amount) => amount != 0, 'amountNotZero')
-          .refine((amount) => amount <= 10_000_000_00, 'amountTenMillion'),
-      ])
+    title: z.string().min(2, 'min2').max(200, 'max200'),
+    category: z.number().int().nonnegative().default(0),
+    amount: decimalStringSchema
+      .refine((value) => !new Decimal(value).isZero(), 'amountNotZero')
+      .refine(
+        (value) => new Decimal(value).abs().lte('10000000'),
+        'amountTenMillion',
+      ),
+    originalAmount: z.undefined().optional(),
+    originalCurrency: z
+      .union([z.literal(''), z.null(), z.undefined()])
       .optional(),
-    originalCurrency: z.union([z.string().length(3).nullish(), z.literal('')]),
-    conversionRate: z
-      .union([
-        z.literal('').transform(() => undefined),
-        inputCoercedToNumber.refine((amount) => amount > 0, 'ratePositive'),
-      ])
-      .optional(),
+    conversionRate: z.undefined().optional(),
     paidBy: z.string({
       error: (issue) =>
         issue.input === undefined ? 'paidByRequired' : undefined,
@@ -105,35 +63,11 @@ export const expenseFormSchema = z
       .array(
         z.object({
           participant: z.string().max(64),
-          originalAmount: z.string().optional(), // For converting shares by amounts in original currency, not saved.
-          shares: z.union([
-            z.number(),
-            z.string().transform((value, ctx) => {
-              const normalizedValue = value.replace(/,/g, '.')
-              const valueAsNumber = Number(normalizedValue)
-              if (Number.isNaN(valueAsNumber))
-                ctx.addIssue({
-                  code: z.ZodIssueCode.custom,
-                  message: 'invalidNumber',
-                })
-              return value
-            }),
-          ]),
+          shares: decimalStringSchema,
         }),
       )
       .min(1, 'paidForMin1')
-      .max(100)
-      .superRefine((paidFor, ctx) => {
-        for (const { shares } of paidFor) {
-          const shareNumber = Number(shares)
-          if (shareNumber <= 0) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: 'noZeroShares',
-            })
-          }
-        }
-      }),
+      .max(100),
     splitMode: z.enum(SplitMode).default('EVENLY'),
     saveDefaultSplittingOptions: z.boolean(),
     isReimbursement: z.boolean(),
@@ -152,73 +86,58 @@ export const expenseFormSchema = z
     recurrenceRule: z.enum(RecurrenceRule).default('NONE'),
   })
   .superRefine((expense, ctx) => {
-    switch (expense.splitMode) {
-      case 'EVENLY':
-        break // noop
-      case 'BY_SHARES':
-        break // noop
-      case 'BY_AMOUNT': {
-        const sum = expense.paidFor.reduce((sum, { shares }) => {
-          // Same normalisation as the share itself above. An emptied or
-          // half-typed input is reported as an invalid share on its own; it
-          // must not make the sum of the others throw.
-          const value = String(shares).replace(/,/g, '.').trim()
-          return value === '' || Number.isNaN(Number(value))
-            ? sum
-            : sum.add(value)
-        }, new Decimal(0))
-        if (!sum.equals(new Decimal(expense.amount))) {
-          // The message names the sum and how far off it is. Issue params do
-          // not survive the form resolver, so the expense form computes those
-          // values itself and hands them to the message.
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'amountSum',
-            path: ['paidFor'],
-          })
-        }
-        break
-      }
-      case 'BY_PERCENTAGE': {
-        const sum = expense.paidFor.reduce(
-          (sum, { shares }) =>
-            sum +
-            (typeof shares === 'string'
-              ? Math.round(Number(shares) * 100)
-              : Number(shares)),
-          0,
-        )
-        if (sum !== 10000) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'percentageSum',
-            path: ['paidFor'],
-          })
-        }
-        break
-      }
+    // Field errors can be non-aborting in Zod. Never calculate on invalid text.
+    if (
+      ![expense.amount, ...expense.paidFor.map((p) => p.shares)].every(
+        (value) => decimalTextSchema.safeParse(value).success,
+      )
+    )
+      return
+    const digits = getCurrency(expense.currencyCode).decimal_digits
+    const precision = (value: string, path: (string | number)[]) => {
+      if (new Decimal(value).decimalPlaces() > digits)
+        ctx.addIssue({
+          code: 'custom',
+          message: `${expense.currencyCode} amounts allow at most ${digits} decimal places`,
+          path,
+        })
     }
-  })
-  .transform((expense) => {
-    // Format the share split as a number (if from form submission)
-    return {
-      ...expense,
-      paidFor: expense.paidFor.map((paidFor) => {
-        const shares = paidFor.shares
-        if (typeof shares === 'string' && expense.splitMode !== 'BY_AMOUNT') {
-          // For splitting not by amount, preserve the previous behaviour of multiplying the share by 100
-          return {
-            ...paidFor,
-            shares: Math.round(Number(shares) * 100),
-          }
-        }
-        // Otherwise, no need as the number will have been formatted according to currency.
-        return {
-          ...paidFor,
-          shares: Number(shares),
-        }
-      }),
-    }
+    precision(expense.amount, ['amount'])
+    if (expense.splitMode === 'BY_AMOUNT')
+      expense.paidFor.forEach((person, index) =>
+        precision(person.shares, ['paidFor', index, 'shares']),
+      )
+    const sum = Decimal.sum(...expense.paidFor.map((p) => p.shares))
+    const ids = new Set<string>()
+    expense.paidFor.forEach((person, index) => {
+      if (ids.has(person.participant))
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Duplicate beneficiary',
+          path: ['paidFor', index, 'participant'],
+        })
+      ids.add(person.participant)
+      const share = new Decimal(person.shares)
+      const wrongSign =
+        expense.splitMode === 'BY_AMOUNT'
+          ? share.isZero() ||
+            share.isNegative() !== new Decimal(expense.amount).isNegative()
+          : !share.isPositive() || share.isZero()
+      if (wrongSign)
+        ctx.addIssue({
+          code: 'custom',
+          message: 'noZeroShares',
+          path: ['paidFor', index, 'shares'],
+        })
+    })
+    if (expense.splitMode === 'BY_AMOUNT' && !sum.eq(expense.amount))
+      ctx.addIssue({ code: 'custom', message: 'amountSum', path: ['paidFor'] })
+    if (expense.splitMode === 'BY_PERCENTAGE' && !sum.eq('100'))
+      ctx.addIssue({
+        code: 'custom',
+        message: 'percentageSum',
+        path: ['paidFor'],
+      })
   })
 
 export type ExpenseFormValues = z.output<typeof expenseFormSchema>

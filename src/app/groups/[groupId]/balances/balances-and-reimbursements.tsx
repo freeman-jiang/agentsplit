@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TrackPage } from '@/lib/analytics/track-page'
-import { getCurrencyFromGroup } from '@/lib/utils'
+import { getCurrency } from '@/lib/currency'
 import { trpc } from '@/trpc/client'
 import { useTranslations } from 'next-intl'
 import { Fragment, useEffect } from 'react'
@@ -47,11 +47,16 @@ export default function BalancesAndReimbursements() {
           {isLoading ? (
             <BalancesLoading participantCount={group?.participants.length} />
           ) : (
-            <BalancesList
-              balances={balancesData.balances}
-              participants={group?.participants}
-              currency={getCurrencyFromGroup(group)}
-            />
+            balancesData.currencies.map((entry) => (
+              <section key={entry.currencyCode} className="mb-4">
+                <h4 className="font-semibold">{entry.currencyCode}</h4>
+                <BalancesList
+                  balances={entry.balances}
+                  participants={group?.participants}
+                  currency={getCurrency(entry.currencyCode)}
+                />
+              </section>
+            ))
           )}
         </CardContent>
       </Card>
@@ -66,12 +71,17 @@ export default function BalancesAndReimbursements() {
               participantCount={group?.participants.length}
             />
           ) : (
-            <ReimbursementList
-              reimbursements={balancesData.reimbursements}
-              participants={group?.participants}
-              currency={getCurrencyFromGroup(group)}
-              groupId={groupId}
-            />
+            balancesData.currencies.map((entry) => (
+              <section key={entry.currencyCode} className="mb-4">
+                <h4 className="font-semibold">{entry.currencyCode}</h4>
+                <ReimbursementList
+                  reimbursements={entry.reimbursements}
+                  participants={group?.participants}
+                  currency={getCurrency(entry.currencyCode)}
+                  groupId={groupId}
+                />
+              </section>
+            ))
           )}
         </CardContent>
       </Card>

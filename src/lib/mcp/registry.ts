@@ -37,19 +37,19 @@ export const MCP_TOOL_REGISTRY = [
   {
     name: 'list_expenses',
     description:
-      'Read saved expenses across all time, or filter by inclusive from/to expense dates (YYYY-MM-DD) and case-insensitive title filter. For a month, use its first and last dates. Results include reimbursements and are newest first. Request up to 100 per page and follow nextCursor while hasMore is true, keeping the same filters. Amounts are integer currency minor units. This read does not generate recurring expenses.',
+      'Read saved expenses across all time, or filter by inclusive from/to expense dates (YYYY-MM-DD) and case-insensitive title filter. For a month, use its first and last dates. Results include reimbursements and are newest first. Optional currencyCode filters expenses before pagination. Request up to 100 per page and follow nextCursor while hasMore is true, keeping the same filters. Amounts are exact decimal strings in each expense’s currency. This read does not generate recurring expenses.',
     procedure: 'groups.expenses.list',
   },
   {
     name: 'get_expense',
     description:
-      'Read a saved expense and its receipt URLs. Both expense ID and owning group ID are required. Amounts are integer currency minor units.',
+      'Read a saved expense and its receipt URLs. Both expense ID and owning group ID are required. Amounts are exact decimal strings in each expense’s currency.',
     procedure: 'groups.expenses.get',
   },
   {
     name: 'get_balances',
     description:
-      'Read current balances and suggested reimbursements from saved expenses. Amounts are integer currency minor units. This read does not generate recurring expenses.',
+      'Read balances and suggested repayments in separate currency buckets; currencies are never converted or combined. Optional currencyCode filters the buckets. Amounts are exact decimal strings in each expense’s currency. This read does not generate recurring expenses.',
     procedure: 'groups.balances.list',
   },
   {
@@ -72,19 +72,19 @@ export const MCP_TOOL_REGISTRY = [
   {
     name: 'get_participant_balances',
     description:
-      'Read net balances for selected group/participant pairs across your groups. Discover participant IDs with get_group. Each amount is in that group currency minor units; do not add different currencies together. This does not establish participant identity or generate recurring expenses.',
+      'Read net balances for selected group/participant pairs across your groups. Discover participant IDs with get_group. Each amount is in that group exact decimal strings in the stated currency; do not add different currencies together. This does not establish participant identity or generate recurring expenses.',
     procedure: 'groups.balances.forUser',
   },
   {
     name: 'get_spending_stats',
     description:
-      'Read group spending summaries by month, category, and participant, plus estimates for saved recurring expenses. Optional from/to dates use YYYY-MM-DD; participantId selects bookkeeping totals. Amounts use currency minor units. No recurring expenses are generated.',
+      'Read group spending summaries by month, category, and participant, plus estimates for saved recurring expenses. Optional from/to dates use YYYY-MM-DD; participantId selects bookkeeping totals. Amounts use exact decimal strings in the stated currency. No recurring expenses are generated.',
     procedure: 'groups.stats.overview',
   },
   {
     name: 'list_category_expenses',
     description:
-      'Read saved expenses contributing to category spending, excluding reimbursements. Use category IDs from list_categories. Optional from/to dates use YYYY-MM-DD. Amounts use currency minor units. No recurring expenses are generated.',
+      'Read saved expenses contributing to category spending, excluding reimbursements. Use category IDs from list_categories. Optional from/to dates use YYYY-MM-DD. Amounts use exact decimal strings in the stated currency. No recurring expenses are generated.',
     procedure: 'groups.stats.categoryExpenses',
   },
 ] as const satisfies readonly ToolDefinition[]

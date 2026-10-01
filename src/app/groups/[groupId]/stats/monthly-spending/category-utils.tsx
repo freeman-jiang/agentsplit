@@ -2,6 +2,7 @@
 
 import { CategoryIcon } from '@/app/groups/[groupId]/expenses/category-icon'
 import { formatChartCurrency } from '@/lib/chart-currency'
+import { Decimal } from '@/lib/money'
 import {
   MonthlyCategorySpending,
   MonthlySpendingCategory,
@@ -99,7 +100,7 @@ export function getCategoryHoverLabel({
   roundAmounts,
   share,
 }: {
-  amount: number
+  amount: string
   categoryLabel: string
   currency: Parameters<typeof formatCurrency>[0]
   locale: string
@@ -119,9 +120,9 @@ export function getCategoryHoverLabel({
   })} (${formatPercent(share, locale)})`
 }
 
-export function getShare(amount: number, total: number) {
-  if (total <= 0) return 0
-  return amount / total
+export function getShare(amount: string, total: string) {
+  if (new Decimal(total).lte(0)) return 0
+  return new Decimal(amount).div(total).toNumber()
 }
 
 export function getMonthCategoriesInDisplayOrder(
@@ -136,7 +137,7 @@ export function getMonthCategoriesInDisplayOrder(
     .map((category) => categoriesByKey.get(category.key))
     .filter(
       (category): category is MonthlySpendingCategory =>
-        category !== undefined && category.expenseAmount > 0,
+        category !== undefined && new Decimal(category.expenseAmount).gt(0),
     )
 }
 

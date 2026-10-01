@@ -31,13 +31,20 @@ The reviewed read-only tools are explicitly registered:
 
 Expense, balance, and statistics reads skip recurrence materialization, including
 the active-recurring-expense statistics loader. Activity now includes immutable
-expense revision snapshots and deletion markers alongside legacy summaries. Amounts use the
-group's currency minor units; different currencies must not be added together.
+expense revision snapshots and deletion markers alongside legacy summaries.
+Amounts are exact decimal strings at face value: `"6000"` means 6000 of the
+expense's `currencyCode`, whether USD or JPY. Group currency is the default for
+new expenses. Different currencies are never converted or added together.
+`get_balances` returns `currencies: [{ currencyCode, balances, reimbursements }]`.
+`list_expenses` and `get_balances` accept an optional `currencyCode` filter;
+expense filtering happens before pagination. Spending statistics select one
+currency and return `availableCurrencyCodes` for discovery.
 Participant IDs select bookkeeping records, not authenticated identities.
 
 `src/lib/mcp/output-schemas.ts` defines JSON output contracts, checked against
 the tRPC return types at compile time. Dates serialize to ISO strings and
-Decimal exchange rates to strings. The adapter validates/filters successful
+monetary values to decimal strings. Calculated splits prioritize the payer for
+the first rounding remainder; explicit amounts are preserved. The adapter validates/filters successful
 results before returning identical structured JSON and serialized text; invalid
 results return a generic tool error without database or parser diagnostics.
 All eleven tools advertise output schemas. No-argument tools accept only `{}`.

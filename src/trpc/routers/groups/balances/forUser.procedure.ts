@@ -1,5 +1,6 @@
 import { getGroup, getGroupExpenses } from '@/lib/api'
-import { getBalances } from '@/lib/balances'
+import { getBalances, groupExpensesByCurrency } from '@/lib/balances'
+import { getCurrency } from '@/lib/currency'
 import { MAX_GROUPS_PER_QUERY } from '@/lib/group-query-limits'
 import { baseProcedure } from '@/trpc/init'
 import { z } from 'zod'
@@ -39,19 +40,19 @@ export const forUserBalancesProcedure = baseProcedure
         const expenses = await getGroupExpenses(groupId, {
           readOnly: ctx.readOnly,
         })
-        const amount = getBalances(expenses)[participantId]?.total ?? 0
-
-        return {
-          groupId,
-          groupName: group.name,
-          currency: group.currency,
-          currencyCode: group.currencyCode,
-          participantId,
-          participantName: participant.name,
-          amount,
-        }
+        return groupExpensesByCurrency(expenses).map(
+          ({ currencyCode, expenses }) => ({
+            groupId,
+            groupName: group.name,
+            currency: getCurrency(currencyCode).symbol,
+            currencyCode,
+            participantId,
+            participantName: participant.name,
+            amount: getBalances(expenses)[participantId]?.total ?? '0',
+          }),
+        )
       }),
     )
 
-    return { balances: balances.filter((balance) => balance !== null) }
+    return { balances: balances.flatMap((balance) => balance ?? []) }
   })

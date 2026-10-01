@@ -23,7 +23,8 @@ const original: ExpenseSnapshot = {
     groupId: 'group-a',
     revision: 1,
     title: 'Original dinner',
-    amount: 6000,
+    amount: '60',
+    currencyCode: 'USD',
     expenseDate: '2026-09-30T00:00:00.000Z',
     createdAt: '2026-09-30T00:00:00.000Z',
     categoryId: 0,
@@ -33,8 +34,8 @@ const original: ExpenseSnapshot = {
     conversionRate: null,
     paidBy: { id: 'alice', name: 'Alice' },
     paidFor: [
-      { participantId: 'alice', name: 'Alice', shares: 1 },
-      { participantId: 'bob', name: 'Bob', shares: 1 },
+      { participantId: 'alice', name: 'Alice', shares: '1' },
+      { participantId: 'bob', name: 'Bob', shares: '1' },
     ],
     splitMode: 'EVENLY',
     isReimbursement: false,
@@ -66,7 +67,7 @@ const event: Activity = {
   agentKeyId: null,
   snapshot: {
     ...original,
-    expense: { ...original.expense, revision: 2, amount: 9000 },
+    expense: { ...original.expense, revision: 2, amount: '90' },
   },
   previousSnapshot: original,
 }

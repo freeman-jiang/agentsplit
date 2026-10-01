@@ -1,6 +1,7 @@
 'use client'
 
 import { formatChartCurrency } from '@/lib/chart-currency'
+import { Decimal } from '@/lib/money'
 import { MonthlySpendingGrouping } from '@/lib/monthly-spending'
 import { formatCurrency } from '@/lib/utils'
 import { useTranslations } from 'next-intl'
@@ -106,7 +107,9 @@ function MonthlyCategoryStackedBars({
           month.expenseAmount,
           monthlyCategorySpending.maxExpenseAmount,
         )
-        const barUnits = month.expenseAmount > 0 ? Math.max(barShare, 0.03) : 0
+        const barUnits = new Decimal(month.expenseAmount).gt(0)
+          ? Math.max(barShare, 0.03)
+          : 0
         const remainderUnits = Math.max(0, 1 - barUnits)
 
         return (

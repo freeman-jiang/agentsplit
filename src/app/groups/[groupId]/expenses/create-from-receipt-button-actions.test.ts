@@ -51,14 +51,14 @@ describe('extractExpenseInformationFromImage', () => {
   it('returns every field the model read off the receipt', async () => {
     respondWith(
       JSON.stringify({
-        amount: 42.5,
+        amount: '42.5',
         categoryId: '4',
         date: '2026-03-01',
         title: 'Dinner',
       }),
     )
     expect(await extractExpenseInformationFromImage(IMAGE)).toEqual({
-      amount: 42.5,
+      amount: '42.5',
       categoryId: '4',
       date: '2026-03-01',
       title: 'Dinner',
@@ -68,7 +68,7 @@ describe('extractExpenseInformationFromImage', () => {
   it('keeps a title containing a comma intact', async () => {
     respondWith(
       JSON.stringify({
-        amount: 42.5,
+        amount: '42.5',
         categoryId: '4',
         date: '2026-03-01',
         title: 'Dinner, drinks and tip',
@@ -76,13 +76,13 @@ describe('extractExpenseInformationFromImage', () => {
     )
     const info = await extractExpenseInformationFromImage(IMAGE)
     expect(info.title).toBe('Dinner, drinks and tip')
-    expect(info.amount).toBe(42.5)
+    expect(info.amount).toBe('42.5')
   })
 
   it('asks for a strict JSON schema, and for the configured model', async () => {
     respondWith(
       JSON.stringify({
-        amount: 1,
+        amount: '1',
         categoryId: '0',
         date: '2026-03-01',
         title: 'x',
@@ -100,13 +100,13 @@ describe('extractExpenseInformationFromImage', () => {
     [
       'a field of the wrong type',
       JSON.stringify({
-        amount: '42.5',
+        amount: 42.5,
         categoryId: '4',
         date: '2026-03-01',
         title: 'x',
       }),
     ],
-    ['a missing field', JSON.stringify({ amount: 42.5, categoryId: '4' })],
+    ['a missing field', JSON.stringify({ amount: '42.5', categoryId: '4' })],
     ['a response that is not JSON', '42.5,4,2026-03-01,Dinner'],
     ['an empty response', ''],
   ])('reports nothing extracted for %s', async (_name, content) => {
@@ -124,7 +124,7 @@ describe('extractExpenseInformationFromImage', () => {
   })
 
   it('refuses an image URL the app did not upload', async () => {
-    respondWith(JSON.stringify({ amount: 1 }))
+    respondWith(JSON.stringify({ amount: '1' }))
     await expect(
       extractExpenseInformationFromImage('https://evil.example/receipt.jpg'),
     ).rejects.toThrow('Invalid image URL.')

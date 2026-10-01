@@ -1,3 +1,4 @@
+import { decimalStrings } from '@/lib/money'
 import { prisma } from '@/lib/prisma'
 import { create as contentDisposition } from 'content-disposition'
 import { NextResponse } from 'next/server'
@@ -24,6 +25,7 @@ export async function GET(
           title: true,
           category: { select: { grouping: true, name: true } },
           amount: true,
+          currencyCode: true,
           originalAmount: true,
           originalCurrency: true,
           conversionRate: true,
@@ -65,7 +67,7 @@ export async function GET(
 
   const date = new Date().toISOString().split('T')[0]
   const filename = `Spliit Export - ${date}`
-  return NextResponse.json(group, {
+  return NextResponse.json(decimalStrings(group), {
     headers: {
       'content-type': 'application/json',
       'content-disposition': contentDisposition(`${filename}.json`),

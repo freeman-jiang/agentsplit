@@ -4,6 +4,7 @@ import {
   SplitMode,
 } from '@/generated/prisma/browser'
 import { activitySnapshotSchema } from '@/lib/expense-history'
+import { decimalTextSchema } from '@/lib/money'
 import type { AppRouter } from '@/trpc/routers/_app'
 import type { inferRouterOutputs } from '@trpc/server'
 import * as z from 'zod'
@@ -36,7 +37,9 @@ type OutputSchemas = {
 }
 
 const id = z.string()
-const money = z.number().int().describe('Integer currency minor units')
+const money = decimalTextSchema.describe(
+  'Exact decimal string in the stated currency, e.g. 12.34',
+)
 const dateTime = z.iso.datetime()
 const person = z.object({ id, name: z.string() })
 const participant = person.extend({ groupId: id })
@@ -61,6 +64,7 @@ const expenseFields = z.object({
   groupId: id,
   title: z.string(),
   amount: money,
+  currencyCode: z.string(),
   createdAt: dateTime,
   expenseDate: dateTime,
   categoryId: z.number().int(),
@@ -84,6 +88,7 @@ const expenseSummary = expenseFields
     id: true,
     title: true,
     amount: true,
+    currencyCode: true,
     createdAt: true,
     expenseDate: true,
     originalAmount: true,
@@ -95,7 +100,7 @@ const expenseSummary = expenseFields
   .extend({
     paidBy: person,
     paidFor: z.array(
-      z.object({ participant: person, shares: z.number().int() }),
+      z.object({ participant: person, shares: decimalTextSchema }),
     ),
     category: category.nullable(),
     _count: z.object({ documents: z.number().int().nonnegative() }),
@@ -103,7 +108,7 @@ const expenseSummary = expenseFields
 const expense = expenseFields.extend({
   paidBy: participant,
   paidFor: z.array(
-    z.object({ expenseId: id, participantId: id, shares: z.number().int() }),
+    z.object({ expenseId: id, participantId: id, shares: decimalTextSchema }),
   ),
   category: category.nullable(),
   documents: z.array(
@@ -135,6 +140,7 @@ const drilldown = z.object({
       id: true,
       title: true,
       amount: true,
+      currencyCode: true,
       expenseDate: true,
     }),
   ),
@@ -170,11 +176,16 @@ export const MCP_OUTPUT_SCHEMAS = {
   }),
   'groups.expenses.get': z.object({ expense }),
   'groups.balances.list': z.object({
-    balances: z.record(
-      id,
-      z.object({ paid: money, paidFor: money, total: money }),
+    currencies: z.array(
+      z.object({
+        currencyCode: z.string(),
+        balances: z.record(
+          id,
+          z.object({ paid: money, paidFor: money, total: money }),
+        ),
+        reimbursements: z.array(z.object({ from: id, to: id, amount: money })),
+      }),
     ),
-    reimbursements: z.array(z.object({ from: id, to: id, amount: money })),
   }),
   'groups.balances.forUser': z.object({
     balances: z.array(
@@ -182,7 +193,7 @@ export const MCP_OUTPUT_SCHEMAS = {
         groupId: id,
         groupName: z.string(),
         currency: z.string(),
-        currencyCode: z.string().nullable(),
+        currencyCode: z.string(),
         participantId: id,
         participantName: z.string(),
         amount: money,
@@ -213,6 +224,8 @@ export const MCP_OUTPUT_SCHEMAS = {
   }),
   'categories.list': z.object({ categories: z.array(category) }),
   'groups.stats.overview': z.object({
+    currencyCode: z.string().nullable(),
+    availableCurrencyCodes: z.array(z.string()),
     totalGroupSpendings: money,
     totalParticipantSpendings: money.optional(),
     totalParticipantShare: money.optional(),

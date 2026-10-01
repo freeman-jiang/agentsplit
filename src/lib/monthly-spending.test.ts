@@ -17,7 +17,7 @@ function expense(
   isReimbursement = false,
 ): MonthlySpendingExpense {
   return {
-    amount,
+    amount: String(amount / 100),
     category,
     expenseDate: new Date(date),
     isReimbursement,
@@ -33,7 +33,7 @@ describe('getMonthlyCategorySpending', () => {
 
     expect(stats.months).toHaveLength(1)
     expect(stats.months[0]?.key).toBe('2026-06')
-    expect(stats.months[0]?.expenseAmount).toBe(1200)
+    expect(stats.months[0]?.expenseAmount).toBe('12')
   })
 
   it('excludes reimbursements from monthly spending', () => {
@@ -45,7 +45,7 @@ describe('getMonthlyCategorySpending', () => {
       { now: new Date('2026-06-15T00:00:00.000Z') },
     )
 
-    expect(stats.months[0]?.expenseAmount).toBe(1200)
+    expect(stats.months[0]?.expenseAmount).toBe('12')
     expect(stats.categories).toHaveLength(1)
   })
 
@@ -65,12 +65,12 @@ describe('getMonthlyCategorySpending', () => {
     expect(
       stats.categories.find((category) => category.key === '8'),
     ).toMatchObject({
-      amount: 2000,
-      expenseAmount: 2000,
+      amount: '20',
+      expenseAmount: '20',
     })
     expect(
       stats.categories.find((category) => category.key === '18')?.expenseAmount,
-    ).toBe(3000)
+    ).toBe('30')
   })
 
   it('sorts months chronologically and fills empty months in range', () => {
@@ -87,7 +87,7 @@ describe('getMonthlyCategorySpending', () => {
       '2026-02',
       '2026-03',
     ])
-    expect(stats.months[1]?.expenseAmount).toBe(0)
+    expect(stats.months[1]?.expenseAmount).toBe('0')
   })
 
   it('extends the window through the current month when the group is inactive', () => {
@@ -98,7 +98,7 @@ describe('getMonthlyCategorySpending', () => {
 
     expect(stats.months[0]?.key).toBe('2025-06')
     expect(stats.months[stats.months.length - 1]?.key).toBe('2026-09')
-    expect(stats.months[stats.months.length - 1]?.expenseAmount).toBe(0)
+    expect(stats.months[stats.months.length - 1]?.expenseAmount).toBe('0')
   })
 
   it('stops at an explicit to date so a past range is not padded to today', () => {
@@ -135,7 +135,7 @@ describe('getMonthlyCategorySpending', () => {
       '2026-02',
       '2026-03',
     ])
-    expect(stats.months[0]?.expenseAmount).toBe(0)
+    expect(stats.months[0]?.expenseAmount).toBe('0')
   })
 
   it('supports category group and detailed category modes', () => {
@@ -155,7 +155,7 @@ describe('getMonthlyCategorySpending', () => {
     })
 
     expect(groupedStats.categories).toMatchObject([
-      { key: 'Food and Drink', expenseAmount: 2000 },
+      { key: 'Food and Drink', expenseAmount: '20' },
     ])
     expect(
       detailedStats.categories.map((category) => category.key).sort(),

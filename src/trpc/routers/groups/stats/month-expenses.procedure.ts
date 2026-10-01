@@ -1,4 +1,5 @@
 import { getGroupExpenses } from '@/lib/api'
+import { expenseCurrencySchema } from '@/lib/currency'
 import { filterExpensesByDateRange, getExpensesByMonth } from '@/lib/totals'
 import { baseProcedure } from '@/trpc/init'
 import { z } from 'zod'
@@ -17,11 +18,13 @@ export const getStatsMonthExpensesProcedure = baseProcedure
       month: z.string().regex(/^\d{4}-\d{2}$/),
       from: z.string().optional(),
       to: z.string().optional(),
+      currencyCode: expenseCurrencySchema.optional(),
     }),
   )
-  .query(async ({ ctx, input: { groupId, month, from, to } }) => {
+  .query(async ({ ctx, input: { groupId, month, from, to, currencyCode } }) => {
     const allExpenses = await getGroupExpenses(groupId, {
       readOnly: ctx.readOnly,
+      currencyCode,
     })
     const expenses = filterExpensesByDateRange(allExpenses, from, to)
 
@@ -31,6 +34,7 @@ export const getStatsMonthExpensesProcedure = baseProcedure
         title: expense.title,
         amount: expense.amount,
         expenseDate: expense.expenseDate,
+        currencyCode: expense.currencyCode,
       })),
     }
   })

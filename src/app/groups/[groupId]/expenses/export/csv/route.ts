@@ -1,11 +1,8 @@
 import { getCurrency } from '@/lib/currency'
+import { decimalStrings, subtract } from '@/lib/money'
 import { prisma } from '@/lib/prisma'
 import { getExpenseShares } from '@/lib/shares'
-import {
-  dateOnlyToLocalDate,
-  formatAmountAsDecimal,
-  getCurrencyFromGroup,
-} from '@/lib/utils'
+import { dateOnlyToLocalDate, formatAmountAsDecimal } from '@/lib/utils'
 import { Parser } from '@json2csv/plainjs'
 import { create as contentDisposition } from 'content-disposition'
 import { NextResponse } from 'next/server'
@@ -56,13 +53,12 @@ export async function GET(
       expenses: {
         where: { deletedAt: null },
         select: {
-          // Seeds which participant is offered the leftover minor unit of an
-          // uneven split, so the export agrees with the balances tab.
           id: true,
           expenseDate: true,
           title: true,
           category: { select: { name: true } },
           amount: true,
+          currencyCode: true,
           originalAmount: true,
           originalCurrency: true,
           conversionRate: true,
@@ -123,16 +119,15 @@ export async function GET(
     })),
   ]
 
-  const currency = getCurrencyFromGroup(group)
-
-  const expenses = group.expenses.map((expense) => {
+  const expenses = decimalStrings(group.expenses).map((expense) => {
+    const currency = getCurrency(expense.currencyCode)
     const shares = getExpenseShares(expense)
 
     return {
       date: formatDate(expense.expenseDate),
       title: escapeCsvFormula(expense.title),
       categoryName: escapeCsvFormula(expense.category?.name || ''),
-      currency: group.currencyCode ?? group.currency,
+      currency: expense.currencyCode,
       amount: formatAmountAsDecimal(expense.amount, currency),
       originalAmount: expense.originalAmount
         ? formatAmountAsDecimal(
@@ -152,13 +147,14 @@ export async function GET(
           // Export the same net balance change as the balances tab: credit
           // the amount paid, then subtract this participant's apportioned share.
           // Work in whole minor units so every row's balances sum to zero.
-          const participantBalance =
-            (isPaidByParticipant ? expense.amount : 0) -
-            (shares.get(participant.id) ?? 0)
+          const participantBalance = subtract(
+            isPaidByParticipant ? expense.amount : '0',
+            shares.get(participant.id) ?? '0',
+          )
 
           return [
             participant.name,
-            +formatAmountAsDecimal(participantBalance, currency),
+            formatAmountAsDecimal(participantBalance, currency),
           ]
         }),
       ),

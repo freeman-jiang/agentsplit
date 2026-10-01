@@ -48,8 +48,9 @@ model Expense {
   title            String
   category         Category?         @relation(fields: [categoryId], references: [id])
   categoryId       Int               @default(0)
-  amount           Int
-  originalAmount   Int?
+  amount           Decimal           @db.Decimal(30, 12)
+  currencyCode     String
+  originalAmount   Decimal?          @db.Decimal(30, 12)
   originalCurrency String?
   conversionRate   Decimal?
   paidBy           Participant       @relation(fields: [paidById], references: [id], onDelete: Restrict)
@@ -69,6 +70,7 @@ model Expense {
   recurringExpenseLinkId String?
 
   @@index([groupId, deletedAt, expenseDate(sort: Desc)])
+  @@index([groupId, currencyCode, deletedAt])
 }
 
 model ExpenseDocument {
@@ -115,7 +117,7 @@ model ExpensePaidFor {
   participant   Participant @relation(fields: [participantId], references: [id], onDelete: Restrict)
   expenseId     String
   participantId String
-  shares        Int         @default(1)
+  shares        Decimal     @default(1) @db.Decimal(30, 12)
 
   @@id([expenseId, participantId])
 }

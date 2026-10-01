@@ -18,7 +18,7 @@ import { ReactNode } from 'react'
 export type DialogExpense = {
   id: string
   title: string
-  amount: number
+  amount: string
   expenseDate: Date
 }
 

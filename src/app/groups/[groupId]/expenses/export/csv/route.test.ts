@@ -34,12 +34,16 @@ async function exportedBalances({
         title: 'Dinner',
         expenseDate: new Date('2026-09-30T00:00:00Z'),
         category: null,
-        amount,
+        amount: typeof amount === 'string' ? amount : String(amount / 100),
+        currencyCode: 'USD',
         originalAmount: null,
         originalCurrency: null,
         conversionRate: null,
         paidById,
-        paidFor: paidFor.map((participantId) => ({ participantId, shares: 1 })),
+        paidFor: paidFor.map((participantId) => ({
+          participantId,
+          shares: '1',
+        })),
         isReimbursement,
         splitMode: 'EVENLY',
       },
@@ -52,7 +56,11 @@ async function exportedBalances({
   expect(response.status).toBe(200)
   const csv = await response.text()
   expect(csv).toContain('2026-09-30')
-  return csv.split(/\r?\n/)[1].split(',').slice(-3).map(Number)
+  return csv
+    .split(/\r?\n/)[1]
+    .split(',')
+    .slice(-3)
+    .map((value) => Number(value.replaceAll('"', '')))
 }
 
 describe('CSV participant balances', () => {

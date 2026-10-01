@@ -16,6 +16,27 @@ jobs:
   checks:
     runs-on: ubuntu-latest
 
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      CHECKPOINT_DISABLE: '1'
+      POSTGRES_PRISMA_URL: postgresql://postgres:agentsplit-ci-only@127.0.0.1:5432/agentsplit_audit_test
+      POSTGRES_URL_NON_POOLING: postgresql://postgres:agentsplit-ci-only@127.0.0.1:5432/agentsplit_audit_test
+
+    services:
+      postgres:
+        image: postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: agentsplit-ci-only
+          POSTGRES_DB: agentsplit_audit_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d agentsplit_audit_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -45,3 +66,9 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Set up disposable integration database
+        run: node node_modules/prisma/build/index.js migrate deploy
+
+      - name: Verify audit transactions and currency accounting
+        run: node node_modules/tsx/dist/cli.mjs scripts/test-expense-history.ts

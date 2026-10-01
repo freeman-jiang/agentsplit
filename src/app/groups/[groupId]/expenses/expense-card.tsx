@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Locale } from '@/i18n/request'
 import { getGroupExpenses } from '@/lib/api'
 import { Currency, getCurrency } from '@/lib/currency'
+import { Decimal } from '@/lib/money'
 import { cn, formatCurrency, formatDateOnly } from '@/lib/utils'
 import { ChevronRight } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
@@ -24,7 +25,7 @@ function Participants({
   participantCount: number
 }) {
   const t = useTranslations('ExpenseCard')
-  const key = expense.amount > 0 ? 'paidBy' : 'receivedBy'
+  const key = new Decimal(expense.amount).gt(0) ? 'paidBy' : 'receivedBy'
   const paidFor =
     expense.paidFor.length == participantCount && participantCount >= 4 ? (
       <strong>{t('everyone')}</strong>

@@ -214,9 +214,8 @@ function ReceiptDialogContent() {
                   <>
                     {formatCurrency(
                       getCurrencyFromGroup(group),
-                      receiptInfo.amount,
+                      String(receiptInfo.amount),
                       locale,
-                      true,
                     )}
                   </>
                 ) : (

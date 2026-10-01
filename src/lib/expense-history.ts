@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma'
 import { randomId } from '@/lib/random'
 import { TRPCError } from '@trpc/server'
 import * as z from 'zod'
+import { expenseCurrencySchema } from './currency'
+import { decimalStrings, decimalTextSchema } from './money'
 
 const person = z.object({ id: z.string(), name: z.string() })
 const group = z.object({
@@ -21,14 +23,15 @@ export const expenseSnapshotSchema = z.object({
     groupId: z.string(),
     revision: z.number().int().nonnegative(),
     title: z.string(),
-    amount: z.number().int(),
+    amount: decimalTextSchema,
+    currencyCode: expenseCurrencySchema,
     expenseDate: z.iso.datetime(),
     createdAt: z.iso.datetime(),
     categoryId: z.number().int(),
     category: z
       .object({ id: z.number().int(), name: z.string(), grouping: z.string() })
       .nullable(),
-    originalAmount: z.number().int().nullable(),
+    originalAmount: decimalTextSchema.nullable(),
     originalCurrency: z.string().nullable(),
     conversionRate: z.string().nullable(),
     paidBy: person,
@@ -36,7 +39,7 @@ export const expenseSnapshotSchema = z.object({
       z.object({
         participantId: z.string(),
         name: z.string(),
-        shares: z.number().int(),
+        shares: decimalTextSchema,
       }),
     ),
     splitMode: z.enum(SplitMode),
@@ -99,24 +102,26 @@ export function withGroupWrite<T>(
 }
 
 export function makeExpenseSnapshot(expense: SnapshotExpense): ExpenseSnapshot {
-  return expenseSnapshotSchema.parse({
-    schemaVersion: 1,
-    kind: 'expense',
-    group: expense.group,
-    expense: {
-      ...expense,
-      expenseDate: expense.expenseDate.toISOString(),
-      createdAt: expense.createdAt.toISOString(),
-      conversionRate: expense.conversionRate?.toString() ?? null,
-      paidFor: expense.paidFor
-        .map(({ participant, shares }) => ({
-          participantId: participant.id,
-          name: participant.name,
-          shares,
-        }))
-        .sort((a, b) => a.participantId.localeCompare(b.participantId)),
-    },
-  })
+  return expenseSnapshotSchema.parse(
+    decimalStrings({
+      schemaVersion: 1,
+      kind: 'expense',
+      group: expense.group,
+      expense: {
+        ...expense,
+        expenseDate: expense.expenseDate.toISOString(),
+        createdAt: expense.createdAt.toISOString(),
+        conversionRate: expense.conversionRate?.toString() ?? null,
+        paidFor: expense.paidFor
+          .map(({ participant, shares }) => ({
+            participantId: participant.id,
+            name: participant.name,
+            shares,
+          }))
+          .sort((a, b) => a.participantId.localeCompare(b.participantId)),
+      },
+    }),
+  )
 }
 
 export async function recordExpenseSnapshot(

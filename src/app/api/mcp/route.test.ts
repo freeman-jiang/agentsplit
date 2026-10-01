@@ -18,6 +18,7 @@ var mockRecurringReads = jest.fn()
 type ExpenseQuery = {
   where: {
     groupId: string
+    currencyCode?: string
     recurrenceRule?: unknown
     expenseDate?: { gte?: Date; lte?: Date }
     title?: { contains: string }
@@ -46,7 +47,8 @@ const savedExpenses = [
     id: 'expense-a',
     groupId: 'group-a',
     title: 'Dinner',
-    amount: 6000,
+    amount: '60',
+    currencyCode: 'USD',
     createdAt: new Date('2026-09-30T00:00:00Z'),
     expenseDate: new Date('2026-09-30T00:00:00Z'),
     paidById: 'alice',
@@ -58,13 +60,13 @@ const savedExpenses = [
         expenseId: 'expense-a',
         participantId: 'alice',
         participant: { id: 'alice', name: 'Alice' },
-        shares: 1,
+        shares: '1',
       },
       {
         expenseId: 'expense-a',
         participantId: 'bob',
         participant: { id: 'bob', name: 'Bob' },
-        shares: 1,
+        shares: '1',
       },
     ],
     splitMode: 'EVENLY',
@@ -164,6 +166,8 @@ beforeEach(() => {
             .filter(
               (expense) =>
                 expense.groupId === where.groupId &&
+                (!where.currencyCode ||
+                  expense.currencyCode === where.currencyCode) &&
                 (!where.title ||
                   expense.title
                     .toLowerCase()
@@ -336,19 +340,24 @@ describe('authenticated MCP protocol', () => {
       arguments: { groupId: 'group-a' },
     })
     const expenseData = z
-      .object({ expenses: z.array(z.object({ amount: z.number() })) })
+      .object({ expenses: z.array(z.object({ amount: z.string() })) })
       .parse(CallToolResultSchema.parse(expenses.body.result).structuredContent)
-    expect(expenseData.expenses[0].amount).toBe(6000)
+    expect(expenseData.expenses[0].amount).toBe('60')
     const balances = await rpc('tools/call', {
       name: 'get_balances',
       arguments: { groupId: 'group-a' },
     })
     const balanceData = z
       .object({
-        balances: z.record(z.string(), z.object({ total: z.number() })),
+        currencies: z.array(
+          z.object({
+            currencyCode: z.string(),
+            balances: z.record(z.string(), z.object({ total: z.string() })),
+          }),
+        ),
       })
       .parse(CallToolResultSchema.parse(balances.body.result).structuredContent)
-    expect(balanceData.balances.alice.total).toBe(3000)
+    expect(balanceData.currencies[0].balances.alice.total).toBe('30')
     expect(mockRecurringReads).not.toHaveBeenCalled()
   })
 
@@ -359,6 +368,73 @@ describe('authenticated MCP protocol', () => {
     })
     expect(CallToolResultSchema.parse(body.result).isError).toBe(true)
     expect(JSON.stringify(body)).not.toContain('Private group B expense')
+  })
+
+  it('returns decimal-string balances per currency and filters before pagination', async () => {
+    const dinner = savedExpenses[0]
+    if (dinner.amount === undefined) throw new Error('Missing dinner fixture')
+    savedExpenses.push({
+      ...dinner,
+      id: 'yen-expense',
+      amount: '6000',
+      currencyCode: 'JPY',
+    })
+    try {
+      const balances = CallToolResultSchema.parse(
+        (
+          await rpc('tools/call', {
+            name: 'get_balances',
+            arguments: { groupId: 'group-a' },
+          })
+        ).body.result,
+      )
+      expect(balances.isError).not.toBe(true)
+      const result = MCP_OUTPUT_SCHEMAS['groups.balances.list'].parse(
+        balances.structuredContent,
+      )
+      expect(result.currencies.map((bucket) => bucket.currencyCode)).toEqual([
+        'JPY',
+        'USD',
+      ])
+      expect(result.currencies[0].balances.alice.total).toBe('3000')
+      expect(result.currencies[1].balances.alice.total).toBe('30')
+      const page = CallToolResultSchema.parse(
+        (
+          await rpc('tools/call', {
+            name: 'list_expenses',
+            arguments: { groupId: 'group-a', currencyCode: 'JPY', limit: 1 },
+          })
+        ).body.result,
+      )
+      expect(page.isError).not.toBe(true)
+      const expenses = MCP_OUTPUT_SCHEMAS['groups.expenses.list'].parse(
+        page.structuredContent,
+      )
+      expect(expenses.hasMore).toBe(false)
+      expect(
+        expenses.expenses.map((expense) => [
+          expense.amount,
+          expense.currencyCode,
+        ]),
+      ).toEqual([['6000', 'JPY']])
+      const stats = CallToolResultSchema.parse(
+        (
+          await rpc('tools/call', {
+            name: 'get_spending_stats',
+            arguments: { groupId: 'group-a', currencyCode: 'JPY' },
+          })
+        ).body.result,
+      )
+      expect(stats.isError).not.toBe(true)
+      expect(
+        MCP_OUTPUT_SCHEMAS['groups.stats.overview'].parse(
+          stats.structuredContent,
+        ).totalGroupSpendings,
+      ).toBe('6000')
+      expect(mockRecurringReads).not.toHaveBeenCalled()
+    } finally {
+      savedExpenses.pop()
+    }
   })
 
   it('isolates two concurrent users with identical JSON-RPC request IDs', async () => {
@@ -659,9 +735,9 @@ describe('authenticated MCP protocol', () => {
     ).structuredContent
     expect(stats).toEqual(
       expect.objectContaining({
-        totalGroupSpendings: 6000,
-        totalParticipantShare: 3000,
-        totalParticipantSpendings: 6000,
+        totalGroupSpendings: '60',
+        totalParticipantShare: '30',
+        totalParticipantSpendings: '60',
       }),
     )
     const balances = CallToolResultSchema.parse(
@@ -675,7 +751,7 @@ describe('authenticated MCP protocol', () => {
     expect(balances).toEqual({
       balances: [
         expect.objectContaining({
-          amount: -3000,
+          amount: '-30',
           currencyCode: 'USD',
           participantId: 'bob',
         }),
@@ -703,7 +779,7 @@ describe('authenticated MCP protocol', () => {
       ).body.result,
     ).structuredContent
     expect(month).toEqual({
-      expenses: [expect.objectContaining({ id: 'expense-a', amount: 6000 })],
+      expenses: [expect.objectContaining({ id: 'expense-a', amount: '60' })],
       hasMore: false,
       nextCursor: 10,
     })

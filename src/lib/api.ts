@@ -13,6 +13,7 @@ import {
   withGroupWrite,
   type AuditActor,
 } from '@/lib/expense-history'
+import { decimalStrings, type DecimalStrings } from '@/lib/money'
 import { prisma } from '@/lib/prisma'
 import { randomId } from '@/lib/random'
 import {
@@ -22,6 +23,7 @@ import {
   type GroupFormValues,
 } from '@/lib/schemas'
 import { TRPCError } from '@trpc/server'
+import { expenseCurrencySchema } from './currency'
 
 // Re-exported for backwards compatibility with existing server-side importers.
 export { randomId }
@@ -52,12 +54,10 @@ export async function createExpense(
   expenseFormValues: ExpenseFormValues,
   groupId: string,
   participantId?: string,
-  // The expense form mints the id up front so the split it previews is the
-  // one the saved expense gets (the id seeds who takes the leftover minor
-  // unit, see `getExpenseShares`).
+  // A caller may mint a stable expense ID before saving.
   expenseId: string = randomId(),
   actor?: AuditActor,
-): Promise<Expense> {
+): Promise<DecimalStrings<Expense>> {
   expenseFormValues = expenseFormSchema.parse(expenseFormValues)
   return withGroupWrite(groupId, async (tx) => {
     const group = await tx.group.findUnique({
@@ -65,6 +65,19 @@ export async function createExpense(
       include: { participants: true },
     })
     if (!group) throw new Error(`Invalid group ID: ${groupId}`)
+    const currencyCode = expenseCurrencySchema.parse(
+      expenseFormValues.currencyCode ?? group.currencyCode,
+    )
+    if (
+      expenseFormValues.originalAmount !== undefined ||
+      expenseFormValues.conversionRate !== undefined ||
+      expenseFormValues.originalCurrency
+    )
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message:
+          'Choose an expense currency and amount; currency conversion is not supported',
+      })
 
     for (const participant of [
       expenseFormValues.paidBy,
@@ -90,9 +103,7 @@ export async function createExpense(
         expenseDate: expenseFormValues.expenseDate,
         categoryId: expenseFormValues.category,
         amount: expenseFormValues.amount,
-        originalAmount: expenseFormValues.originalAmount,
-        originalCurrency: expenseFormValues.originalCurrency,
-        conversionRate: expenseFormValues.conversionRate,
+        currencyCode,
         title: expenseFormValues.title,
         paidById: expenseFormValues.paidBy,
         splitMode: expenseFormValues.splitMode,
@@ -127,7 +138,7 @@ export async function createExpense(
       },
       { participantId, actor },
     )
-    return expense
+    return decimalStrings(expense)
   })
 }
 
@@ -230,6 +241,18 @@ export async function updateExpense(
       include: { paidFor: true, documents: true, recurringExpenseLink: true },
     })
     if (!existingExpense) throw new Error(`Invalid expense ID: ${expenseId}`)
+    const currencyCode = expenseCurrencySchema.parse(
+      expenseFormValues.currencyCode ?? existingExpense.currencyCode,
+    )
+    if (
+      expenseFormValues.originalAmount !== undefined ||
+      expenseFormValues.conversionRate !== undefined ||
+      expenseFormValues.originalCurrency
+    )
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Currency conversion is not supported',
+      })
 
     for (const participant of [
       expenseFormValues.paidBy,
@@ -272,11 +295,17 @@ export async function updateExpense(
       where: { id: expenseId },
       data: {
         revision: { increment: 1 },
+        currencyCode,
         expenseDate: expenseFormValues.expenseDate,
         amount: expenseFormValues.amount,
-        originalAmount: expenseFormValues.originalAmount,
-        originalCurrency: expenseFormValues.originalCurrency,
-        conversionRate: expenseFormValues.conversionRate,
+        ...(expenseFormValues.amount !== existingExpense.amount.toFixed() ||
+        currencyCode !== existingExpense.currencyCode
+          ? {
+              originalAmount: null,
+              originalCurrency: null,
+              conversionRate: null,
+            }
+          : {}),
         title: expenseFormValues.title,
         categoryId: expenseFormValues.category,
         paidById: expenseFormValues.paidBy,
@@ -332,7 +361,7 @@ export async function updateExpense(
       participantId,
       actor,
     })
-    return expense
+    return decimalStrings(expense)
   })
 }
 
@@ -426,14 +455,16 @@ export async function getGroupExpenses(
     filter?: string
     from?: string
     to?: string
+    currencyCode?: string
     readOnly?: boolean
   },
 ) {
   if (!options?.readOnly) await createRecurringExpenses()
 
-  return prisma.expense.findMany({
+  const result = await prisma.expense.findMany({
     select: {
       amount: true,
+      currencyCode: true,
       category: true,
       createdAt: true,
       expenseDate: true,
@@ -456,6 +487,7 @@ export async function getGroupExpenses(
     where: {
       groupId,
       deletedAt: null,
+      currencyCode: options?.currencyCode,
       title: options?.filter
         ? { contains: options.filter, mode: 'insensitive' }
         : undefined,
@@ -475,6 +507,7 @@ export async function getGroupExpenses(
     skip: options && options.offset,
     take: options && options.length,
   })
+  return decimalStrings(result)
 }
 
 export async function getGroupExpenseCount(groupId: string) {
@@ -496,7 +529,7 @@ export async function getActiveRecurringExpenses(
 ) {
   if (!options?.readOnly) await createRecurringExpenses()
 
-  return prisma.expense.findMany({
+  const result = await prisma.expense.findMany({
     select: {
       id: true,
       title: true,
@@ -504,6 +537,7 @@ export async function getActiveRecurringExpenses(
       category: true,
       recurrenceRule: true,
       isReimbursement: true,
+      currencyCode: true,
     },
     where: {
       groupId,
@@ -514,10 +548,11 @@ export async function getActiveRecurringExpenses(
     },
     orderBy: { amount: 'desc' },
   })
+  return decimalStrings(result)
 }
 
 export async function getExpense(groupId: string, expenseId: string) {
-  return prisma.expense.findUnique({
+  const result = await prisma.expense.findUnique({
     where: { id: expenseId, groupId, deletedAt: null },
     include: {
       paidBy: true,
@@ -527,6 +562,7 @@ export async function getExpense(groupId: string, expenseId: string) {
       recurringExpenseLink: true,
     },
   })
+  return decimalStrings(result)
 }
 
 export async function getActivities(
@@ -605,25 +641,27 @@ export async function getActivities(
     ]),
   )
 
-  return activities.map((activity) => ({
-    ...activity,
-    snapshot:
-      activity.snapshot === null
-        ? null
-        : activitySnapshotSchema.parse(activity.snapshot),
-    previousSnapshot: (() => {
-      const previous = previousByVersion.get(
-        `${activity.expenseId}:${(activity.expenseRevision ?? 0) - 1}`,
-      )
-      return previous === undefined || previous === null
-        ? null
-        : activitySnapshotSchema.parse(previous)
-    })(),
-    expense:
-      activity.expenseId !== null
-        ? expenses.find((expense) => expense.id === activity.expenseId)
-        : undefined,
-  }))
+  return decimalStrings(
+    activities.map((activity) => ({
+      ...activity,
+      snapshot:
+        activity.snapshot === null
+          ? null
+          : activitySnapshotSchema.parse(activity.snapshot),
+      previousSnapshot: (() => {
+        const previous = previousByVersion.get(
+          `${activity.expenseId}:${(activity.expenseRevision ?? 0) - 1}`,
+        )
+        return previous === undefined || previous === null
+          ? null
+          : activitySnapshotSchema.parse(previous)
+      })(),
+      expense:
+        activity.expenseId !== null
+          ? expenses.find((expense) => expense.id === activity.expenseId)
+          : undefined,
+    })),
+  )
 }
 
 async function createRecurringExpenses() {

@@ -66,14 +66,9 @@ describe('formatCurrency', () => {
   ]
 
   for (const variation of variations) {
-    it(`formats ${variation.amount} in ${variation.locale} without fractions`, () => {
+    it(`formats face-value decimal text in ${variation.locale}`, () => {
       expect(
-        formatCurrency(currency, variation.amount * 100, variation.locale),
-      ).toBe(variation.result)
-    })
-    it(`formats ${variation.amount} in ${variation.locale} with fractions`, () => {
-      expect(
-        formatCurrency(currency, variation.amount, variation.locale, true),
+        formatCurrency(currency, String(variation.amount), variation.locale),
       ).toBe(variation.result)
     })
   }
