@@ -10,7 +10,8 @@
     }
   },
   "Header": {
-    "groups": "Groups"
+    "groups": "Your groups",
+    "agentSetup": "Agent setup"
   },
   "Errors": {
     "title": "Something went wrong",

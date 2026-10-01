@@ -69,6 +69,26 @@ test('expense list uses consistent insets and theme surfaces, and search clears 
     ])
     expect(Math.abs(boxes[0]!.x - boxes[1]!.x)).toBeLessThanOrEqual(1)
     expect(Math.abs(boxes[0]!.x - boxes[2]!.x)).toBeLessThanOrEqual(1)
+    await row.hover()
+    const insets = await row.evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      const icon = element.querySelector('svg')!.getBoundingClientRect()
+      const style = getComputedStyle(element)
+      const children = [...element.children]
+        .map((child) => child.getBoundingClientRect())
+        .filter((rect) => rect.width > 0)
+      return {
+        left: parseFloat(style.paddingLeft),
+        right: parseFloat(style.paddingRight),
+        icon: icon.left - bounds.left,
+        rightContent:
+          bounds.right - Math.max(...children.map((rect) => rect.right)),
+      }
+    })
+    expect(insets.left).toBe(12)
+    expect(insets.right).toBe(12)
+    expect(insets.icon).toBeGreaterThanOrEqual(12)
+    expect(insets.rightContent).toBeGreaterThanOrEqual(12)
     await expect(date).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
     expect(
       await page.evaluate(

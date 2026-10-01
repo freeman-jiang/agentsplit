@@ -80,7 +80,7 @@ export function ExpenseCard({
       data-testid="expense-card"
       data-expense-id={expense.id}
       className={cn(
-        'flex justify-between px-0 py-4 text-sm cursor-pointer border-b hover:bg-accent gap-2 items-stretch',
+        'flex justify-between px-3 py-4 text-sm cursor-pointer border-b hover:bg-accent gap-3 items-stretch',
         expense.isReimbursement && 'italic',
       )}
       onClick={() => {
@@ -89,7 +89,7 @@ export function ExpenseCard({
     >
       <CategoryIcon
         category={expense.category}
-        className="w-4 h-4 mr-2 mt-0.5 text-muted-foreground"
+        className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground"
       />
       <div className="min-w-0 flex-1 break-words">
         <div className={cn('mb-1', expense.isReimbursement && 'italic')}>
@@ -102,7 +102,7 @@ export function ExpenseCard({
           <ActiveUserBalance {...{ groupId, currency, expense }} />
         </div>
       </div>
-      <div className="flex flex-col justify-between items-end">
+      <div className="flex shrink-0 flex-col justify-between items-end">
         <div
           className={cn(
             'tabular-nums whitespace-nowrap',

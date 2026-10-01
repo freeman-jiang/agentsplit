@@ -11,7 +11,6 @@ import { Analytics } from '@/lib/analytics/analytics'
 import { getAnalyticsConfig } from '@/lib/analytics/config'
 import { effectiveBaseUrl } from '@/lib/env'
 import { TRPCProvider } from '@/trpc/client'
-import { PanelsTopLeft } from 'lucide-react'
 import type { Metadata, Viewport } from 'next'
 import { NextIntlClientProvider, useTranslations } from 'next-intl'
 import { getLocale, getMessages, getTranslations } from 'next-intl/server'
@@ -72,35 +71,29 @@ function Content({ children }: { children: React.ReactNode }) {
   const t = useTranslations()
   return (
     <TRPCProvider>
-      <header className="sticky top-0 z-50 flex h-16 items-center justify-between gap-2 border-b bg-background/95 px-3 backdrop-blur-sm sm:px-8">
-        <Link className="flex items-center gap-2" href="/">
-          <Brand />
-        </Link>
-        <div role="navigation" aria-label="Menu" className="flex">
-          <ul className="flex items-center text-sm">
-            <li>
-              <Button
-                variant="ghost"
-                size="sm"
-                asChild
-                className="-my-3 w-11 px-2 text-primary sm:w-auto sm:px-3"
-              >
-                <Link href="/groups" aria-label={t('Header.groups')}>
-                  <PanelsTopLeft
-                    className="h-4 w-4 sm:hidden"
-                    aria-hidden="true"
-                  />
-                  <span className="hidden sm:inline">{t('Header.groups')}</span>
-                </Link>
-              </Button>
-            </li>
-            <li>
-              <LocaleSwitcher />
-            </li>
-            <li>
-              <ThemeToggle />
-            </li>
-          </ul>
+      <header className="sticky top-0 z-50 border-b bg-background/95 px-3 py-3 backdrop-blur-sm sm:px-8">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+          <Link className="flex items-center gap-2" href="/groups">
+            <Brand />
+          </Link>
+          <nav
+            aria-label="Workspace"
+            className="col-span-full row-start-2 flex gap-1 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:justify-end"
+          >
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/groups">{t('Header.groups')}</Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/agents">{t('Header.agentSetup')}</Link>
+            </Button>
+          </nav>
+          <div
+            aria-label="Preferences"
+            className="col-start-2 row-start-1 flex items-center sm:col-start-3"
+          >
+            <LocaleSwitcher />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
@@ -108,7 +101,7 @@ function Content({ children }: { children: React.ReactNode }) {
 
       <footer className="mt-12 flex flex-col gap-4 border-t px-4 py-6 text-xs text-muted-foreground sm:flex-row sm:items-end sm:justify-between sm:px-8">
         <div className="space-y-2">
-          <Link href="/" className="text-foreground">
+          <Link href="/groups" className="text-foreground">
             <Brand className="text-xl" />
           </Link>
           <p>{t('Footer.tagline')}</p>

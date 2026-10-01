@@ -404,3 +404,11 @@ passed the homepage/setup/clipboard flow, eight create/settings layout checks,
 native currency/category selection without a drawer, and a complete synthetic
 receipt/create/edit/delete lifecycle. MCP read-back confirmed preserved history
 and restored active expenses/balances. No browser JavaScript errors were captured.
+
+The expense-row hover state was subsequently checked with personal balances
+visible at 320, 488 and 1280px. Rows now have 12px horizontal padding, with no
+icon flush against the hover surface or viewport overflow. A regression checks
+the inner insets as well as outer alignment. Workspace navigation now labels
+Your groups and Agent setup explicitly on mobile; the brand links to the groups
+workspace. Four focused production-build browser checks, types, formatting,
+lint and the build passed for this spacing/navigation adjustment.
