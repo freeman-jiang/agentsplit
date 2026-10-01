@@ -412,3 +412,8 @@ the inner insets as well as outer alignment. Workspace navigation now labels
 Your groups and Agent setup explicitly on mobile; the brand links to the groups
 workspace. Four focused production-build browser checks, types, formatting,
 lint and the build passed for this spacing/navigation adjustment.
+
+Commit `475044a7f78cbffeb9075b25841cd27f115d068f` deployed through
+`yvwrrl9brm5fis9ypihyctlh`. Live hover checks confirmed 12px left/right padding
+and icon inset at 320, 488 and 1280px without viewport overflow. The temporary
+test expense was soft-deleted and the original active expense list restored.
