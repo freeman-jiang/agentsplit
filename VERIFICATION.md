@@ -467,7 +467,6 @@ test expense was soft-deleted and the original active expense list restored.
 - The final follow-up commit changes verification tooling/documentation only;
   the deployed application code remains the tested commit above.
 
-
 ## Simplified login and profile navigation — 2026-10-01
 
 The signed-out landing page now has one Log In action opening Google directly.
@@ -549,3 +548,33 @@ conflicting-key rejection. The live Agents page was visually inspected: Codex
 app instructions come first, and the normal guide has no bearer/env-field text.
 CLI/configuration examples remain collapsed and optional. No ledger writes were
 performed by this live verification.
+
+## Fixed member identities and personal expense rows — 2026-10-02
+
+New groups add their authenticated creator as a participant automatically. Each
+membership binds one account to one participant; invitations reserve an email,
+participant ID and recorded name. Acceptance checks the verified email. Database
+uniqueness, same-group foreign keys and an immutable-binding trigger prevent
+reassignment. Existing memberships require explicit admin linking; old unbound
+invitations must be reissued. This additive migration changes no existing ledger
+IDs, expense amounts, splits or audit snapshots.
+
+The web UI no longer reads browser storage to select an identity. Personal rows
+show you paid / you lent / you borrowed, with separate settlement/refund labels,
+and retain authenticated Added by / Edited by attribution independently of payer.
+MCP exposes the same bindings and attribution; historical expense attribution
+stops at the requested revision. Unbound groups are explicitly disclosed in
+personal-total responses and UI rather than being presented as settled.
+
+Local validation: 718 Jest executions in 62 suites across two time zones;
+11 fixed-identity, 31 private-account, 23 history-query and 11 full-MCP PostgreSQL
+scenarios passed. Forty browser scenarios were covered, including the corrected
+refund assertion and the final two-account invitation test. Screenshots were
+inspected at 320 and 1280 pixels; overflow checks also passed at 488 and 768.
+Production build, type, formatting and diff checks pass. Lint retains the two
+existing warnings. No dependencies were added. Tests use disposable loopback
+databases and synthetic verified accounts/sessions, not the owner's Google login.
+
+A fresh scoped production backup and ledger/audit fingerprints were captured
+before rollout. Production now contains real household data: no reset, destructive
+migration, or deletion of real records is permitted for testing or deployment.

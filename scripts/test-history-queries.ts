@@ -41,7 +41,8 @@ const group = await createGroup(
 )
 const groupId = group.id
 principal.groupIds.push(groupId)
-const [alice, bob] = group.participants
+const alice = group.participants.find((p) => p.name === 'Alice')!,
+  bob = group.participants.find((p) => p.name === 'Bob')!
 const expenseForm = {
   title: 'Original dinner',
   amount: '60',
@@ -96,6 +97,7 @@ await updateGroup(
   groupId,
   {
     participants: [
+      ...group.participants.filter((p) => p.id !== alice.id && p.id !== bob.id),
       { id: alice.id, name: 'Renamed Alice' },
       { id: bob.id, name: 'Renamed Bob' },
     ],

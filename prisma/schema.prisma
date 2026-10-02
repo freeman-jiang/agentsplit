@@ -34,10 +34,13 @@ model UserGroupAccess {
   groupId   String
   active    Boolean  @default(true)
   role      String   @default("member")
+  participantId String?
+  participant Participant? @relation(fields: [participantId, groupId], references: [id, groupId], onDelete: Restrict)
   createdAt DateTime @default(now())
   group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   @@id([userId, groupId])
+  @@unique([groupId, participantId])
   @@index([groupId])
 }
 
@@ -48,6 +51,9 @@ model Participant {
   groupId         String
   expensesPaidBy  Expense[]
   expensesPaidFor ExpensePaidFor[]
+  memberships UserGroupAccess[]
+  invitations GroupInvitation[]
+  @@unique([id, groupId])
 }
 
 model Category {
@@ -263,6 +269,9 @@ model GroupInvitation {
   groupId String
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   email String
+  participantId String?
+  participantName String?
+  participant Participant? @relation(fields: [participantId, groupId], references: [id, groupId], onDelete: Restrict)
   tokenHash String @unique
   createdBy String
   expiresAt DateTime

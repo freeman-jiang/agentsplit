@@ -73,10 +73,8 @@ and [Claude Code MCP](https://code.claude.com/docs/en/mcp).
 
 Keys identify connections and belong to a stable user ID. Each key inherits the
 same current database memberships and admin/member roles. Groups are private.
-Creators become admins; admins create expiring, single-use invitations bound to
-a Google-verified email. A plain group URL grants no access. Membership removal
-affects every key immediately. Ledger participants remain bookkeeping people,
-distinct from authenticated identities.
+Creators become admins and are automatically added as a participant using their account name. Admins create expiring, single-use invitations bound to a Google-verified email and an existing participant ID/name. A plain group URL grants no access. Membership removal
+affects every key immediately. Each member is permanently linked to one participant per group. Participants may exist before an account joins; payer selection is independent of authenticated authorship.
 
 ## Tools
 
@@ -86,7 +84,7 @@ distinct from authenticated identities.
 | `get_group`                  | Group revision, participants, protected historical participants, sharing/export links |
 | `create_group`               | Create a group and grant its creator access                                           |
 | `update_group`               | Partially update settings/participants with a revision check                          |
-| `manage_group_access`        | Accept invitations, leave; admins invite/revoke/remove/change roles                                                    |
+| `manage_group_access`        | Accept invitations, leave; admins invite/revoke/remove/change roles                   |
 | `list_expenses`              | Paginated expenses with composable filters                                            |
 | `get_expense`                | Full expense, revision and receipt references                                         |
 | `create_expense`             | Expenses, income, repayments and recurrence setup                                     |
@@ -136,7 +134,7 @@ ties. Explicit monetary splits are preserved. See `MONEY.md` for details.
    as `paidBy`, and recipient(s) as `paidFor`. This records a payment; it does not
    move money through a bank or payment provider.
 
-Create a group:
+Create a group (list **other** people in `participants`; the creator is added automatically, so `[]` is valid):
 
 ```json
 {
@@ -255,8 +253,9 @@ true, preserving filters. Concurrent changes can shift offset pages.
 `list_activity` filters by expense ID, activity type and inclusive UTC event dates.
 Snapshots preserve the names, money, splits and receipt references at each revision;
 `previousSnapshot` is derived, not duplicated in storage. MCP actor IDs come from
-the key; web actor IDs come from the authenticated session. Selecting a participant
-only changes the balance view or payer; it cannot impersonate the audit actor.
+the key; web actor IDs come from the authenticated session. Personal UI balances use the fixed membership, never localStorage. Choosing who paid does not change the author.
+
+Current `list_expenses` rows and `get_expense.expense` include `attribution: { createdBy, updatedBy }`. Each non-null actor contains `userId`, recorded `name`, and `source`; null means no authoritative actor is known. Historical `get_expense` attribution is limited to that revision. The separate `paidBy` field is the recorded payer, not proof of who entered the expense or of an actual bank transaction. `list_activity` preserves the full revisions and agent key IDs.
 
 Successful tool results contain matching `structuredContent` and JSON text.
 Operational errors use `isError: true`; the text contains an `error` object with
@@ -316,14 +315,15 @@ and their permanent receipt remain in the audit log intentionally.
 
 - `join`: `shareUrl`, an `/invite/<token>` link addressed to your verified email.
 - `leave`: `groupId`. The last admin must first promote another member.
-- `invite`: `groupId`, `email`; returns `invitation: { id, email, expiresAt, url }`.
+- `invite`: `groupId`, `email`, `participantId`; returns `invitation: { id, email, participantId, participantName, expiresAt, url }`. Add any new participant using `update_group` first.
 - `revoke_invitation`: `groupId`, `invitationId`.
 - `remove_member`: `groupId`, `userId`; preserves bookkeeping and audit records.
 - `set_role`: `groupId`, `userId`, `role` (`admin` or `member`).
+- `bind_member`: `groupId`, `userId`, verified `email`, `participantId`. One-time admin setup for an existing unbound legacy member only. Never infer the match from names; confirm the person explicitly.
 
-The last four actions require admin membership. `get_group.access` returns your
-role, members (`id`, `name`, `email`, `role`), and admins' pending invitations
-(`id`, `email`, `expiresAt`). Successful access writes return `groupId` and `joined`.
+The last five actions require admin membership. `get_group.access` returns your
+role and `participantId` (null for an unbound legacy account), `reservedParticipantIds`, members (`id`, `name`, `email`, `role`, `participantId`), and admins' pending invitations
+(`id`, `email`, `participantId`, `participantName`, `expiresAt`). Successful access writes return `groupId` and `joined`.
 Invite creates a fresh token; inspect pending invitations before retrying an
 uncertain result. The raw token is returned only at creation.
 
@@ -394,3 +394,9 @@ write versions: read current state before editing. Restoration is not performed
 by any historical read. `bun scripts/test-history-queries.ts` exercises the
 recorded-time semantics, pagination, missing legacy data, authorization and real
 MCP response contracts in the isolated local audit database.
+
+### Identity migration
+
+The additive migration leaves existing participant IDs, expenses, revisions and balances untouched. Existing memberships start unbound and require explicit admin linking in Settings (or `bind_member`). No browser storage or display-name heuristic is trusted. Unbound existing members retain authorized ledger access with authenticated audit attribution, but no personal balance is guessed. Old invitations without a participant must be revoked and reissued. Bindings survive leaving/removal and cannot be reassigned; the database enforces uniqueness and same-group foreign keys. Bound or previously invited participant identities cannot be renamed or removed through general group settings.
+
+`get_participant_balances.groups[]` may omit `participantId` to use the caller's bound identity; explicitly supplying a participant ID still allows legitimate ledger inspection of that person. This does not impersonate them or change the caller. The result also returns `unboundGroupIds`: excluded legacy groups that need identity setup. Never present a partial balance as a complete total.

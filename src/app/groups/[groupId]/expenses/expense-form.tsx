@@ -159,17 +159,14 @@ export function ExpenseForm({
   const locale = useLocale() as Locale
   const isCreate = expense === undefined
   const searchParams = useSearchParams()
+  const activeUserId = useActiveUser(group.id)
 
   /** Whether the form was opened from a suggested reimbursement ("Mark as paid"). */
   const isRepayment = isCreate && !!searchParams.get('reimbursement')
 
   const getSelectedPayer = (field?: { value: string }) => {
-    if (isCreate && typeof window !== 'undefined') {
-      const activeUser = localStorage.getItem(`${group.id}-activeUser`)
-      if (activeUser && activeUser !== 'None' && field?.value === undefined) {
-        return activeUser
-      }
-    }
+    if (isCreate && field?.value === undefined && activeUserId)
+      return activeUserId
     return field?.value
   }
 
@@ -286,7 +283,10 @@ export function ExpenseForm({
     ),
   )
   const [isCategoryLoading, setCategoryLoading] = useState(false)
-  const activeUserId = useActiveUser(group.id)
+  useEffect(() => {
+    if (isCreate && activeUserId && !form.getValues('paidBy'))
+      form.setValue('paidBy', activeUserId)
+  }, [activeUserId, isCreate, form])
   const sendEvent = useAnalytics()
 
   const submit = async (values: ExpenseFormValues) => {
@@ -467,6 +467,15 @@ export function ExpenseForm({
         <h1 className="mb-8 font-display text-3xl font-normal tracking-tight">
           {t(`${sExpense}.${isCreate ? 'create' : 'edit'}`)}
         </h1>
+        {expense && (
+          <p className="-mt-5 mb-8 text-xs text-muted-foreground">
+            {expense.attribution.createdBy
+              ? `Added by ${expense.attribution.createdBy.name}`
+              : 'Original author unavailable'}
+            {expense.attribution.updatedBy &&
+              ` · Last edited by ${expense.attribution.updatedBy.name}`}
+          </p>
+        )}
         <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_13rem]">
           <div className="min-w-0">
             <section aria-label={t('Layout.details')} className="space-y-4">

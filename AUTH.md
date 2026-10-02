@@ -36,11 +36,10 @@ Do not add a public bucket policy or re-enable the public website router.
 - The signed-out landing page has a single **Log In** action that opens Google.
   Signed-in visits to `/` redirect to `/groups`, which lists database memberships
   on every device.
-- Create a group: you become its admin. Participants are bookkeeping names and
-  need not already have accounts.
-- Open **Members** or group Settings. Admins enter a Google email and copy the
+- Create a group: you become its admin and are automatically added as a fixed participant using your account name. Add other participants separately; they need not already have accounts.
+- Open **Members** or group Settings. Admins select the intended participant, enter their Google email, and copy the
   invitation link to send themselves. Links expire after 7 days, are single-use,
-  stored as hashes, and require a matching verified email to accept.
+  stored as hashes, and require a matching verified email to accept as the fixed participant.
 - Members can read and manage expenses and record repayments. Admins also edit
   group settings, invite/revoke, remove members, and change roles. The last admin
   cannot leave or be removed/demoted without promoting a replacement.
@@ -48,8 +47,8 @@ Do not add a public bucket policy or re-enable the public website router.
   preferences and controls to create and revoke one key per agent. A key is shown once,
   stored hashed, and inherits all current memberships/roles. A key cannot mint
   other keys or authenticate as a browser session.
-- Payer/beneficiary selections and the selected balance view are bookkeeping
-  controls. Audit identity always comes from the real session or key.
+- Payer/beneficiary selections are bookkeeping controls: anyone can record another member as payer. Personal balances come from the fixed account-to-participant binding, never localStorage. The list displays you paid / you lent / you borrowed, with authenticated creator/editor attribution kept separate.
+- Existing unbound memberships require explicit one-time admin linking in Settings. IDs and ledger history are preserved; names are never used to guess ownership. Old unbound invitations must be reissued.
 
 Membership changes are serialized under the group write lock. Ledger writes
 recheck membership inside the transaction. Invitations and membership changes

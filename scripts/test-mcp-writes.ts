@@ -152,6 +152,7 @@ async function main() {
       action: 'invite',
       groupId,
       email: `${outsider}@example.com`,
+      participantId: bob.id,
     })
     await call(
       'manage_group_access',
@@ -180,7 +181,9 @@ async function main() {
       currencyCode: 'USD',
       category: 0,
       paidBy: bob.id,
-      paidFor: participants.map((p) => ({ participant: p.id, shares: '1' })),
+      paidFor: participants
+        .filter((p) => ['Alice', 'Bob', 'Carol'].includes(p.name))
+        .map((p) => ({ participant: p.id, shares: '1' })),
       splitMode: 'EVENLY',
       isReimbursement: false,
       notes: 'Keep these notes',
@@ -297,7 +300,7 @@ async function main() {
       expectedRevision: details.group.revision,
       changes: { name: 'Updated MCP group' },
     })
-    assert.equal(groupEdit.group.participants.length, 3)
+    assert.equal(groupEdit.group.participants.length, 4)
     await rejects('update_group', {
       groupId,
       expectedRevision: details.group.revision,
@@ -350,7 +353,7 @@ async function main() {
     })
     assert.equal(
       (await call('get_group', { groupId })).group.participants.length,
-      3,
+      4,
     )
     await rejects('process_recurring_expenses', { groupId: foreign.groupId })
     await rejects('export_group', { groupId: foreign.groupId })

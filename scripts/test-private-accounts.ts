@@ -115,6 +115,7 @@ await check('admin creates email-bound invitation', async () => {
     action: 'invite',
     groupId,
     email: bob.user.email,
+    participantId: group.group.participants.find((p) => p.name === 'Bob')!.id,
   })
   assert(result.invitation)
   invitation = result.invitation.url
@@ -162,6 +163,8 @@ await check('member cannot manage settings or invitations', async () => {
         action: 'invite',
         groupId,
         email: outsider.user.email,
+        participantId: group.group.participants.find((p) => p.name === 'Alice')!
+          .id,
       }),
     /admins/,
   )
@@ -450,6 +453,7 @@ await check('revoked invitation rejected', async () => {
     action: 'invite',
     groupId,
     email: bob.user.email,
+    participantId: group.group.participants.find((p) => p.name === 'Bob')!.id,
   })
   assert(result.invitation)
   await caller.groups.access({
@@ -471,6 +475,7 @@ await check('expired invitation rejected', async () => {
     action: 'invite',
     groupId,
     email: bob.user.email,
+    participantId: group.group.participants.find((p) => p.name === 'Bob')!.id,
   })
   assert(result.invitation)
   await prisma.groupInvitation.update({

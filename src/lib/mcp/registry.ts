@@ -30,7 +30,7 @@ export const MCP_TOOL_REGISTRY = [
     name: 'get_group',
     procedure: 'groups.getDetails',
     description:
-      'Read group details, its revision, participant IDs, member roles, pending invitations (admins only), group/export links, and participant IDs referenced by expenses. Participants are bookkeeping people, distinct from the authenticated actor.',
+      'Read group details, its revision, participant IDs, member roles, pending invitations (admins only), group/export links, and participant IDs referenced by expenses. access.participantId is your fixed identity (null means an admin must bind a legacy account). Each member is tied to one participant, but any member may record another participant as payer; authenticated authorship remains separate.',
   },
   {
     name: 'create_group',
@@ -38,7 +38,7 @@ export const MCP_TOOL_REGISTRY = [
     inputAliases: { group: 'groupFormValues' },
     destructive: false,
     description:
-      'Create a group and its participants. The creator immediately receives persistent access inherited by all their keys. Supply name, currency/default currencyCode, and participant names in group. An optional caller-minted 21-character groupId prevents accidental duplicate creation; check it before retrying an uncertain result.',
+      'Create a group. The authenticated creator is automatically added as a participant using their account name and becomes admin. Supply name, currency/default currencyCode, and OTHER participant names in group.participants (empty array allowed); do not include the creator. All keys inherit the fixed membership. An optional caller-minted 21-character groupId prevents accidental duplicate creation; check it before retrying an uncertain result.',
   },
   {
     name: 'update_group',
@@ -54,19 +54,19 @@ export const MCP_TOOL_REGISTRY = [
     destructive: true,
     idempotent: false,
     description:
-      'Manage membership: join with an email-bound invitation shareUrl; leave with groupId. Admin actions: invite with groupId and email (returns a single-use URL valid for 7 days; share it with the intended person), revoke_invitation with invitationId, remove_member with userId, set_role with userId and role=admin|member. Read members and pending invitation IDs with get_group. The last admin cannot leave or be demoted. A group URL grants no access. Changes apply immediately to all user keys; ledger history is preserved. Invitations are not idempotent: do not blindly retry an uncertain invite; inspect get_group first.',
+      'Manage membership: join with an email-bound invitation shareUrl; leave with groupId. Admin actions: invite with groupId, email and participantId (an existing unclaimed participant) (returns a single-use URL valid for 7 days; share it with the intended person), revoke_invitation with invitationId, remove_member with userId, set_role with userId and role=admin|member. Read members, their fixed participantId, and pending invitations with get_group. For an unbound legacy member only, an admin can bind_member with userId, verified email and participantId. Identity bindings cannot be changed; removal retains the identity and history. The last admin cannot leave or be demoted. A group URL grants no access. Changes apply immediately to all user keys; ledger history is preserved. Invitations are not idempotent: do not blindly retry an uncertain invite; inspect get_group first.',
   },
   {
     name: 'list_expenses',
     procedure: 'groups.expenses.list',
     description:
-      'Review all expenses with pagination and optional inclusive from/to calendar dates, currencyCode, title filter, categoryId, paidById, participantId, isReimbursement, or recurrenceRule. Include reimbursements by default. Follow nextCursor with the same filters. Amounts are exact face-value decimal strings. Optional asOf (timestamp) or atActivityId reconstructs saved historical state before applying filters. Reuse history.atActivityId for stable pages; history.complete=false identifies missing legacy snapshots. This read does not process recurrence.',
+      'Review all expenses with pagination and optional inclusive from/to calendar dates, currencyCode, title filter, categoryId, paidById, participantId, isReimbursement, or recurrenceRule. Include reimbursements by default. Follow nextCursor with the same filters. Current rows include attribution.createdBy and updatedBy from the immutable audit log, independently of paidBy. Null means the original actor is not known. Amounts are exact face-value decimal strings. Optional asOf (timestamp) or atActivityId reconstructs saved historical state before applying filters. Reuse history.atActivityId for stable pages; history.complete=false identifies missing legacy snapshots. This read does not process recurrence.',
   },
   {
     name: 'get_expense',
     procedure: 'groups.expenses.get',
     description:
-      'Read an expense, current revision, payer, splits and attached receipt pointers and downloadUrl values. Fetch downloadUrl with X-API-Key set to your API key; storage pointers are private and are kept unchanged in edits. Requires groupId and expenseId. Money and share values are exact decimal strings; receipts are permanent references. Optional revision, asOf timestamp, or atActivityId selects historical state (choose one). history includes the authoritative saved snapshot, recordedAt and deleted marker. A deletion revision retains the prior snapshot; expense.revision identifies the deletion event. Historical recurrence scheduling links are unavailable; use the saved recurrenceRule. Historical revisions are not current write versions.',
+      'Read an expense, current revision, payer, attribution.createdBy and updatedBy (authenticated authors, separate from payer), splits and attached receipt pointers and downloadUrl values. Fetch downloadUrl with X-API-Key set to your API key; storage pointers are private and are kept unchanged in edits. Requires groupId and expenseId. Money and share values are exact decimal strings; receipts are permanent references. Optional revision, asOf timestamp, or atActivityId selects historical state (choose one). history includes the authoritative saved snapshot, recordedAt and deleted marker. A deletion revision retains the prior snapshot; expense.revision identifies the deletion event. Historical recurrence scheduling links are unavailable; use the saved recurrenceRule. Historical revisions are not current write versions.',
   },
   {
     name: 'create_expense',
@@ -101,7 +101,7 @@ export const MCP_TOOL_REGISTRY = [
     name: 'get_participant_balances',
     procedure: 'groups.balances.forUser',
     description:
-      'Read net balances across selected group/participant pairs. Discover bookkeeping participant IDs with get_group. Each result includes its currency; never sum unlike currencies.',
+      'Read net balances across selected groups. Omit participantId to use your fixed membership; supply it to inspect a particular participant. unboundGroupIds lists legacy groups needing admin identity setup, so a partial result must not be reported as a complete total. Discover IDs with get_group. Each result includes its currency; never sum unlike currencies.',
   },
   {
     name: 'get_spending_stats',

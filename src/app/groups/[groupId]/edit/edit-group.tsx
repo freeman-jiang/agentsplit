@@ -27,7 +27,11 @@ export const EditGroup = () => {
             })
             await utils.groups.invalidate()
           }}
-          protectedParticipantIds={data?.participantsWithExpenses}
+          fixedParticipantIds={data?.access.reservedParticipantIds}
+          protectedParticipantIds={[
+            ...(data?.participantsWithExpenses ?? []),
+            ...(data?.access.reservedParticipantIds ?? []),
+          ]}
         />
       )}
       <GroupMembers groupId={groupId} />

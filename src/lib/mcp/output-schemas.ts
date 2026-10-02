@@ -90,6 +90,23 @@ const expenseFields = z.object({
   deletedAt: dateTime.nullable(),
   revision: z.number().int().nonnegative(),
 })
+const attribution = z.object({
+  createdBy: z
+    .object({
+      userId: id.nullable(),
+      name: z.string(),
+      source: z.string(),
+    })
+    .nullable(),
+  updatedBy: z
+    .object({
+      userId: id.nullable(),
+      name: z.string(),
+      source: z.string(),
+    })
+    .nullable(),
+})
+
 const expenseSummary = expenseFields
   .pick({
     id: true,
@@ -105,6 +122,7 @@ const expenseSummary = expenseFields
     recurrenceRule: true,
   })
   .extend({
+    attribution: attribution.optional(),
     paidBy: person,
     paidFor: z.array(
       z.object({ participant: person, shares: decimalTextSchema }),
@@ -113,6 +131,7 @@ const expenseSummary = expenseFields
     _count: z.object({ documents: z.number().int().nonnegative() }),
   })
 const expense = expenseFields.extend({
+  attribution,
   paidBy: participant,
   paidFor: z.array(
     z.object({ expenseId: id, participantId: id, shares: decimalTextSchema }),
@@ -173,7 +192,14 @@ export const MCP_OUTPUT_SCHEMAS = {
     groupId: id,
     joined: z.boolean(),
     invitation: z
-      .object({ id, email: z.string(), expiresAt: dateTime, url: z.string() })
+      .object({
+        id,
+        email: z.string(),
+        expiresAt: dateTime,
+        url: z.string(),
+        participantId: id,
+        participantName: z.string(),
+      })
       .optional(),
   }),
   'groups.expenses.create': expenseWrite,
@@ -218,11 +244,25 @@ export const MCP_OUTPUT_SCHEMAS = {
   'groups.getDetails': z.object({
     access: z.object({
       role: z.string(),
+      participantId: id.nullable(),
+      reservedParticipantIds: z.array(id),
       members: z.array(
-        z.object({ id, name: z.string(), email: z.string(), role: z.string() }),
+        z.object({
+          id,
+          name: z.string(),
+          email: z.string(),
+          role: z.string(),
+          participantId: id.nullable(),
+        }),
       ),
       invitations: z.array(
-        z.object({ id, email: z.string(), expiresAt: dateTime }),
+        z.object({
+          id,
+          email: z.string(),
+          expiresAt: dateTime,
+          participantId: id.nullable(),
+          participantName: z.string().nullable(),
+        }),
       ),
     }),
     group: groupWithParticipants,
@@ -260,6 +300,7 @@ export const MCP_OUTPUT_SCHEMAS = {
     ),
   }),
   'groups.balances.forUser': z.object({
+    unboundGroupIds: z.array(id),
     balances: z.array(
       z.object({
         groupId: id,

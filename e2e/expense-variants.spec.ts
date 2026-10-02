@@ -42,9 +42,9 @@ test('records a negative amount as an income', async ({ page }) => {
   await page.getByRole('button', { name: 'Create', exact: true }).click()
   await page.waitForURL(/\/groups\/[^/]+\/expenses(\?|$)/, { timeout: 30_000 })
 
-  await expect(expenseCard(page, 'Deposit refund')).toContainText(money(-90))
+  await expect(expenseCard(page, 'Deposit refund')).toContainText(money(90))
   await expect(expenseCard(page, 'Deposit refund')).toContainText(
-    'Received by Alice',
+    'you received',
   )
 
   // Income inverts the balances: Alice took the money in, so she owes it.

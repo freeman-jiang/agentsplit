@@ -52,7 +52,7 @@ export function dateOnlyToLocalDate(date: Date) {
 export function formatDateOnly(
   date: Date,
   locale: string,
-  options: { dateStyle?: DateTimeStyle; timeStyle?: DateTimeStyle } = {},
+  options: Intl.DateTimeFormatOptions = {},
 ) {
   return dateOnlyToLocalDate(date).toLocaleString(locale, {
     ...options,

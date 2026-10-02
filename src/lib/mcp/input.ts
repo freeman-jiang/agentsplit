@@ -29,7 +29,12 @@ export function toolInput(
   )
   const shape: Record<string, z.ZodType> = {}
   for (const [internal, raw] of Object.entries(parser.shape)) {
-    if (mutation && internal === 'participantId') continue
+    if (
+      mutation &&
+      internal === 'participantId' &&
+      definition.procedure !== 'groups.access'
+    )
+      continue
     let field = raw as z.ZodType
     if (internal === 'expenseFormValues') {
       const defaulted = field instanceof z.ZodDefault

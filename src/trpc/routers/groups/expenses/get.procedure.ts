@@ -1,5 +1,6 @@
 import { getExpense } from '@/lib/api'
 import { effectiveBaseUrl } from '@/lib/env'
+import { expenseAttributions } from '@/lib/expense-attribution'
 import {
   exclusiveHistorySelection,
   historicalExpense,
@@ -41,6 +42,7 @@ export const getGroupExpenseProcedure = baseProcedure
             snapshot: import('@/lib/expense-history').ExpenseSnapshot
           }
         | undefined
+      let throughSequence: number | undefined
       let expense: Awaited<ReturnType<typeof getExpense>>
       if (revision !== undefined || asOf || atActivityId) {
         const record = await historicalExpense(groupId, expenseId, {
@@ -48,6 +50,7 @@ export const getGroupExpenseProcedure = baseProcedure
           asOf,
           atActivityId,
         })
+        throughSequence = record.event.sequence
         const saved = record.snapshot.expense
         history = {
           activityId: record.event.id,
@@ -80,10 +83,14 @@ export const getGroupExpenseProcedure = baseProcedure
           message: 'Expense not found',
         })
       }
+      const attribution = (
+        await expenseAttributions(groupId, [expenseId], throughSequence)
+      ).get(expenseId) ?? { createdBy: null, updatedBy: null }
       return {
         history,
         expense: {
           ...expense,
+          attribution,
           documents: expense.documents.map((document) => ({
             ...document,
             downloadUrl: receiptDownloadUrl(

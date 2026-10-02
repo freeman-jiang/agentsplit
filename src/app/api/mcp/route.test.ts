@@ -107,10 +107,15 @@ jest.mock('../../../lib/prisma', () => ({
           role: 'admin',
         }))
       },
-      findUnique: async () => ({ active: true, role: 'admin' }),
+      findUnique: async () => ({
+        active: true,
+        role: 'admin',
+        participantId: null,
+      }),
     },
     user: { findMany: async () => [] },
     groupInvitation: { findMany: async () => [] },
+    participant: { findMany: async () => [] },
     group: {
       findUnique: ({ where }: { where: { id: string } }) =>
         [groupA, groupB].find((group) => group.id === where.id) ?? null,
@@ -778,7 +783,7 @@ describe('authenticated MCP protocol', () => {
     expect((await rpc('tools/list')).status).toBe(200)
   })
 
-  it('computes statistics and cross-group balances in minor units with matching drilldowns', async () => {
+  it('computes exact decimal statistics and cross-group balances with matching drilldowns', async () => {
     const stats = CallToolResultSchema.parse(
       (
         await rpc('tools/call', {
@@ -808,6 +813,7 @@ describe('authenticated MCP protocol', () => {
       ).body.result,
     ).structuredContent
     expect(balances).toEqual({
+      unboundGroupIds: [],
       balances: [
         expect.objectContaining({
           amount: '-30',

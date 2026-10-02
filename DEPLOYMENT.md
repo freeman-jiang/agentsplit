@@ -75,3 +75,9 @@ to preserve previously saved receipt URLs.
 The standard AWS SDK setting `AWS_REQUEST_CHECKSUM_CALCULATION=WHEN_REQUIRED`
 avoids signing a checksum for an empty body before the browser sends the receipt.
 The application uses its existing upload library and does not proxy file uploads.
+
+## Production data preservation
+
+AgentSplit now contains real household data. Never reset, truncate, reseed, destructively migrate, or delete production records as part of development, deployment, or testing. Earlier permission to reset unused data no longer applies. Take a scoped database backup before schema changes, apply additive migrations, and compare existing expenses, participant IDs, splits and immutable audit records afterward. Do not overwrite legitimate concurrent user edits when checking a baseline.
+
+Automated integration and browser tests use disposable loopback PostgreSQL databases and synthetic verified accounts/sessions. They do not log in as the owner's Google account. Production checks should be read-only against real ledgers; any synthetic production exercise must stay explicitly isolated and must not delete real data.

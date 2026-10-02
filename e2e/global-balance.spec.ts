@@ -1,14 +1,8 @@
-import { addExpense, createGroup, setActiveUser, uniqueSuffix } from './app'
+import { addExpense, createGroup, uniqueSuffix } from './app'
 import { expect, test } from './fixtures'
 import { cardByTitle, money } from './ui'
 
 const CARD_TITLE = 'Your total balance'
-
-/**
- * The card reads `<groupId>-activeUser` for every group in the recent list,
- * which lives in localStorage -- so each test's browser context sees only the
- * groups that test visited, even though the whole suite shares one database.
- */
 
 test('sums balances across groups once you are identified in them', async ({
   page,
@@ -35,9 +29,6 @@ test('sums balances across groups once you are identified in them', async ({
     paidBy: 'Alice',
   })
 
-  await setActiveUser(page, first, 'Alice')
-  await setActiveUser(page, second, 'Alice')
-
   await page.goto('/groups')
 
   const card = cardByTitle(page, CARD_TITLE)
@@ -61,8 +52,6 @@ test('reports being settled up when every balance is zero', async ({
     paidFor: ['Alice'],
   })
 
-  await setActiveUser(page, groupId, 'Alice')
-
   await page.goto('/groups')
 
   const card = cardByTitle(page, CARD_TITLE)
@@ -70,9 +59,9 @@ test('reports being settled up when every balance is zero', async ({
   await expect(card).toContainText('You are all settled up across your groups.')
 })
 
-test('stays hidden until you say who you are', async ({ page }) => {
-  // A visited group with no active user: there is nobody to aggregate for, so
-  // the card must not appear at all rather than render an empty shell.
+test('shows your balance immediately without an identity selector', async ({
+  page,
+}) => {
   const groupId = await createGroup(page, {
     name: `E2E Global Anonymous ${uniqueSuffix()}`,
     participants: ['Alice', 'Bob'],
@@ -90,5 +79,5 @@ test('stays hidden until you say who you are', async ({ page }) => {
   ).toBeVisible()
   await expect(
     page.getByRole('heading', { name: CARD_TITLE, exact: true }),
-  ).toHaveCount(0)
+  ).toBeVisible()
 })

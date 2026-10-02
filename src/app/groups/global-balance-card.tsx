@@ -16,7 +16,6 @@ import { add, Decimal } from '@/lib/money'
 import { cn, formatCurrency, getCurrencyFromGroup } from '@/lib/utils'
 import { trpc } from '@/trpc/client'
 import { useLocale, useTranslations } from 'next-intl'
-import { useEffect, useState } from 'react'
 
 type CurrencyBalance = {
   currency: Currency
@@ -24,39 +23,13 @@ type CurrencyBalance = {
 }
 
 export function GlobalBalanceCard({ groups }: { groups: RecentGroups }) {
-  const [activeUserGroups, setActiveUserGroups] = useState<
-    { groupId: string; participantId: string }[] | null
-  >(null)
-
-  useEffect(() => {
-    setActiveUserGroups(
-      groups.flatMap((group) => {
-        const participantId = localStorage.getItem(`${group.id}-activeUser`)
-        if (!participantId || participantId === 'None') return []
-        return [{ groupId: group.id, participantId }]
-      }),
-    )
-  }, [groups])
-
-  // Wait until local storage has been read on the client.
-  if (activeUserGroups === null) return null
-
-  // Nothing to aggregate until the user has told us who they are in a group.
-  if (activeUserGroups.length === 0) return null
-
-  return <GlobalBalanceCard_ activeUserGroups={activeUserGroups} />
-}
-
-function GlobalBalanceCard_({
-  activeUserGroups,
-}: {
-  activeUserGroups: { groupId: string; participantId: string }[]
-}) {
   const locale = useLocale()
   const t = useTranslations('Groups.GlobalBalance')
   const { data, isLoading, isError, refetch } =
     trpc.groups.balances.forUser.useQuery({
-      groups: activeUserGroups.slice(0, MAX_GROUPS_PER_QUERY),
+      groups: groups
+        .slice(0, MAX_GROUPS_PER_QUERY)
+        .map((group) => ({ groupId: group.id })),
     })
 
   if (isError) {
@@ -116,8 +89,19 @@ function GlobalBalanceCard_({
         <CardDescription>{t('description')}</CardDescription>
       </CardHeader>
       <CardContent>
+        {data.unboundGroupIds.length > 0 && (
+          <p className="mb-3 text-sm text-muted-foreground">
+            Link your participant identity in {data.unboundGroupIds.length}{' '}
+            group(s) to see a complete total. Only linked groups are included
+            below.
+          </p>
+        )}
         {isSettledUp ? (
-          <p className="text-muted-foreground text-sm">{t('settledUp')}</p>
+          <p className="text-muted-foreground text-sm">
+            {data.unboundGroupIds.length
+              ? 'No outstanding balance in linked groups.'
+              : t('settledUp')}
+          </p>
         ) : (
           <ul className="flex flex-col gap-1">
             {currencyBalances.map(({ currency, amount }) => {

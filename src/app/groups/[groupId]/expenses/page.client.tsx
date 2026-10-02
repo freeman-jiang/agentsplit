@@ -1,12 +1,12 @@
 'use client'
 
-import { ActiveUserModal } from '@/app/groups/[groupId]/expenses/active-user-modal'
 import { CreateFromReceiptButton } from '@/app/groups/[groupId]/expenses/create-from-receipt-button'
 import { ExpenseList } from '@/app/groups/[groupId]/expenses/expense-list'
 import ExportButton from '@/app/groups/[groupId]/export-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TrackPage } from '@/lib/analytics/track-page'
+import { trpc } from '@/trpc/client'
 import { Plus } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
@@ -19,9 +19,20 @@ export default function GroupExpensesPageClient({
 }) {
   const t = useTranslations('Expenses')
   const { groupId } = useCurrentGroup()
+  const { data } = trpc.groups.get.useQuery({ groupId })
 
   return (
     <>
+      {data && !data.membership.participantId && (
+        <p className="mb-4 border p-3 text-sm">
+          Your account is not linked to a participant yet. An admin can link it
+          once in{' '}
+          <Link className="underline" href={`/groups/${groupId}/edit#members`}>
+            group settings
+          </Link>
+          . Personal balances will appear after setup.
+        </p>
+      )}
       <TrackPage path={`/groups/${groupId}/expenses`} />
       <Card className="mb-4 border-0 bg-transparent">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -47,8 +58,6 @@ export default function GroupExpensesPageClient({
           <ExpenseList />
         </CardContent>
       </Card>
-
-      <ActiveUserModal groupId={groupId} />
     </>
   )
 }

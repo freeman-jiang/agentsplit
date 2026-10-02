@@ -1,12 +1,12 @@
 import { createGroup } from '@/lib/api'
-import { groupFormSchema } from '@/lib/schemas'
+import { groupCreateSchema } from '@/lib/schemas'
 import { baseProcedure } from '@/trpc/init'
 import { z } from 'zod'
 
 export const createGroupProcedure = baseProcedure
   .input(
     z.object({
-      groupFormValues: groupFormSchema,
+      groupFormValues: groupCreateSchema,
       groupId: z
         .string()
         .regex(/^[A-Za-z0-9_-]{21}$/)

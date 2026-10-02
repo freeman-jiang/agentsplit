@@ -4,6 +4,8 @@ import type { BrowserContext } from '@playwright/test'
 import { serializeSignedCookie } from 'better-call'
 import { Pool } from 'pg'
 
+const testUsers = new WeakMap<BrowserContext, string>()
+
 /** Test-only DB seeding. No production auth bypass or test endpoint is shipped. */
 export async function seedAccount(context: BrowserContext, baseURL: string) {
   const url = new URL(process.env.POSTGRES_PRISMA_URL ?? '')
@@ -51,5 +53,26 @@ export async function seedAccount(context: BrowserContext, baseURL: string) {
       sameSite: 'Lax',
     },
   ])
+  testUsers.set(context, id)
   return { id, email }
+}
+
+/** Fixture identity only: set the account name before creating a group through the UI. */
+export async function setTestAccountName(
+  context: BrowserContext,
+  name: string,
+) {
+  const id = testUsers.get(context)
+  assert(id, 'Only a session created by seedAccount may be changed')
+  const url = new URL(process.env.POSTGRES_PRISMA_URL ?? '')
+  assert(
+    ['localhost', '127.0.0.1'].includes(url.hostname) &&
+      /test|e2e/.test(url.pathname),
+  )
+  const pool = new Pool({ connectionString: url.href })
+  try {
+    await pool.query('UPDATE "User" SET name=$1 WHERE id=$2', [name, id])
+  } finally {
+    await pool.end()
+  }
 }

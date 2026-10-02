@@ -16,7 +16,7 @@ export const groupFormSchema = z
       .array(
         z.object({
           id: z.string().max(64).optional(),
-          name: z.string().min(2, 'min2').max(50, 'max50'),
+          name: z.string().min(1, 'min1').max(50, 'max50'),
         }),
       )
       .min(1)
@@ -35,6 +35,10 @@ export const groupFormSchema = z
       })
     })
   })
+
+export const groupCreateSchema = groupFormSchema.safeExtend({
+  participants: z.array(z.object({ name: z.string().min(1).max(50) })).max(99),
+})
 
 export type GroupFormValues = z.infer<typeof groupFormSchema>
 

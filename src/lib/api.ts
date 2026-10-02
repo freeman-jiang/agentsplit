@@ -19,6 +19,7 @@ import { prisma } from '@/lib/prisma'
 import { randomId } from '@/lib/random'
 import {
   expenseFormSchema,
+  groupCreateSchema,
   groupFormSchema,
   type ExpenseChanges,
   type ExpenseFormValues,
@@ -27,6 +28,10 @@ import {
 } from '@/lib/schemas'
 import { TRPCError } from '@trpc/server'
 import { expenseCurrencySchema } from './currency'
+import {
+  expenseAttributions,
+  type ExpenseAttribution,
+} from './expense-attribution'
 import type { FinalizedUploads } from './expense-uploads'
 import { assertReceiptOwnership } from './receipt-ownership'
 import { assertRevision } from './revision'
@@ -39,7 +44,9 @@ export async function createGroup(
   actor?: AuditActor,
   groupId = randomId(),
 ) {
-  groupFormValues = groupFormSchema.parse(groupFormValues)
+  groupFormValues = (actor ? groupCreateSchema : groupFormSchema).parse(
+    groupFormValues,
+  )
   return prisma.$transaction(async (tx) => {
     const prior = await tx.group.findUnique({
       where: { id: groupId },
@@ -51,6 +58,35 @@ export async function createGroup(
         message:
           'Group ID is already in use; read it before retrying or choose a new ID',
       })
+    const creator = actor
+      ? await tx.user.findUnique({ where: { id: actor.userId } })
+      : null
+    if (actor && !creator?.emailVerified)
+      throw new TRPCError({
+        code: 'UNAUTHORIZED',
+        message: 'A verified account is required',
+      })
+    const creatorId = actor ? randomId() : undefined
+    const participants = [
+      ...(creator
+        ? [
+            {
+              id: creatorId!,
+              name: creator.name.trim().slice(0, 50) || 'Member',
+            },
+          ]
+        : []),
+      ...groupFormValues.participants.map(({ name }) => ({
+        id: randomId(),
+        name,
+      })),
+    ]
+    if (new Set(participants.map((p) => p.name)).size !== participants.length)
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message:
+          'The creator is added automatically. Give each other participant a distinct name.',
+      })
     const group = await tx.group.create({
       data: {
         id: groupId,
@@ -61,10 +97,7 @@ export async function createGroup(
         revision: 1,
         participants: {
           createMany: {
-            data: groupFormValues.participants.map(({ name }) => ({
-              id: randomId(),
-              name,
-            })),
+            data: participants,
           },
         },
       },
@@ -72,7 +105,12 @@ export async function createGroup(
     })
     if (actor)
       await tx.userGroupAccess.create({
-        data: { userId: actor.userId, groupId: group.id, role: 'admin' },
+        data: {
+          userId: actor.userId,
+          groupId: group.id,
+          role: 'admin',
+          participantId: creatorId,
+        },
       })
     await tx.activity.create({
       data: {
@@ -567,6 +605,25 @@ export async function updateGroup(
         ...groupFormValues,
       })
 
+      // Bound identities and invitations cannot be renamed or removed by a general settings edit.
+      const identities = await tx.participant.findMany({
+        where: {
+          groupId,
+          OR: [{ memberships: { some: {} } }, { invitations: { some: {} } }],
+        },
+      })
+      for (const person of identities) {
+        if (
+          !values.participants.some(
+            (p) => p.id === person.id && p.name === person.name,
+          )
+        )
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message:
+              'Members and invited participant identities cannot be renamed or removed.',
+          })
+      }
       if (Object.keys(groupFormValues).length === 0) return existingGroup
       const group = await tx.group.update({
         where: { id: groupId },
@@ -714,7 +771,19 @@ export async function getGroupExpenses(
     skip: options && options.offset,
     take: options && options.length,
   })
-  return decimalStrings(result)
+  const attribution = await expenseAttributions(
+    groupId,
+    result.map((e) => e.id),
+  )
+  return decimalStrings(result).map(
+    (e): typeof e & { attribution?: ExpenseAttribution } => ({
+      ...e,
+      attribution: attribution.get(e.id) ?? {
+        createdBy: null,
+        updatedBy: null,
+      },
+    }),
+  )
 }
 
 export async function getGroupExpenseCount(groupId: string) {

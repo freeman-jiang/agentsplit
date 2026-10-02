@@ -1,3 +1,4 @@
+import { trpc } from '@/trpc/client'
 import { useEffect, useState } from 'react'
 import useSWR, { Fetcher } from 'swr'
 
@@ -50,20 +51,13 @@ export function useBaseUrl() {
   return baseUrl
 }
 
-/**
- * @returns The active user, or `null` until it is fetched from local storage
- */
+/** The signed-in account's fixed group identity; null means explicit admin setup is needed. */
 export function useActiveUser(groupId?: string) {
-  const [activeUser, setActiveUser] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (groupId) {
-      const activeUser = localStorage.getItem(`${groupId}-activeUser`)
-      if (activeUser) setActiveUser(activeUser)
-    }
-  }, [groupId])
-
-  return activeUser
+  const { data } = trpc.groups.get.useQuery(
+    { groupId: groupId ?? '' },
+    { enabled: !!groupId },
+  )
+  return data?.membership.participantId ?? null
 }
 
 interface FrankfurterAPIResponse {

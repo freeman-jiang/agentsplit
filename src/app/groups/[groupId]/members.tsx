@@ -11,6 +11,8 @@ export function GroupMembers({ groupId }: { groupId: string }) {
   const router = useRouter(),
     utils = trpc.useUtils()
   const { data } = trpc.groups.getDetails.useQuery({ groupId })
+  const [participantId, setParticipantId] = useState('')
+  const [bindings, setBindings] = useState<Record<string, string>>({})
   const [email, setEmail] = useState(''),
     [inviteUrl, setInviteUrl] = useState('')
   const mutation = trpc.groups.access.useMutation({
@@ -40,12 +42,40 @@ export function GroupMembers({ groupId }: { groupId: string }) {
           className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault()
-            mutation.mutate({ action: 'invite', groupId, email })
+            mutation.mutate({ action: 'invite', groupId, email, participantId })
           }}
         >
           <label htmlFor="invite-email" className="block text-sm font-medium">
             Invite by Google email
           </label>
+          <label
+            htmlFor="invite-participant"
+            className="block text-sm font-medium"
+          >
+            Participant
+          </label>
+          <select
+            id="invite-participant"
+            required
+            value={participantId}
+            onChange={(e) => setParticipantId(e.target.value)}
+            className="h-10 w-full border bg-background px-3 text-sm"
+          >
+            <option value="">Choose the person you are inviting</option>
+            {data.group.participants
+              .filter(
+                (p) =>
+                  !data.access.members.some((m) => m.participantId === p.id) &&
+                  !data.access.invitations.some(
+                    (i) => i.participantId === p.id,
+                  ),
+              )
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+          </select>
           <div className="flex flex-wrap gap-3">
             <Input
               id="invite-email"
@@ -60,7 +90,8 @@ export function GroupMembers({ groupId }: { groupId: string }) {
           </div>
           <p className="text-xs text-muted-foreground">
             Send the link yourself. It expires in 7 days and can only be
-            accepted by that email address.
+            accepted by that verified email address, as the selected
+            participant. Add new participants in group settings first.
           </p>
         </form>
       )}
@@ -91,6 +122,60 @@ export function GroupMembers({ groupId }: { groupId: string }) {
               <p className="break-all text-xs text-muted-foreground">
                 {member.email}
               </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {member.participantId
+                  ? `Participant: ${data.group.participants.find((p) => p.id === member.participantId)?.name ?? member.participantId}`
+                  : 'Identity needs setup'}
+              </p>
+              {admin && !member.participantId && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <select
+                    aria-label={`Participant for ${member.name}`}
+                    value={bindings[member.id] ?? ''}
+                    onChange={(e) =>
+                      setBindings({ ...bindings, [member.id]: e.target.value })
+                    }
+                    className="h-9 max-w-full border bg-background px-2 text-sm"
+                  >
+                    <option value="">Choose their participant</option>
+                    {data.group.participants
+                      .filter(
+                        (p) =>
+                          !data.access.members.some(
+                            (m) => m.participantId === p.id,
+                          ),
+                      )
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                  </select>
+                  <Button
+                    size="sm"
+                    disabled={!bindings[member.id] || mutation.isPending}
+                    onClick={() => {
+                      const name = data.group.participants.find(
+                        (p) => p.id === bindings[member.id],
+                      )?.name
+                      if (
+                        window.confirm(
+                          `Permanently link ${member.email} to ${name}? This identity cannot be switched later.`,
+                        )
+                      )
+                        mutation.mutate({
+                          action: 'bind_member',
+                          groupId,
+                          userId: member.id,
+                          email: member.email,
+                          participantId: bindings[member.id],
+                        })
+                    }}
+                  >
+                    Link identity
+                  </Button>
+                </div>
+              )}
             </div>
             {admin && (
               <div className="flex flex-wrap gap-2">
@@ -142,7 +227,10 @@ export function GroupMembers({ groupId }: { groupId: string }) {
                 key={invite.id}
                 className="flex gap-4 justify-between items-center py-3"
               >
-                <span className="break-all text-sm">{invite.email}</span>
+                <span className="break-all text-sm">
+                  {invite.email} ·{' '}
+                  {invite.participantName ?? 'Reissue: identity missing'}
+                </span>
                 <Button
                   size="sm"
                   variant="outline"
