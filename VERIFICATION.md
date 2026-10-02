@@ -578,3 +578,15 @@ databases and synthetic verified accounts/sessions, not the owner's Google login
 A fresh scoped production backup and ledger/audit fingerprints were captured
 before rollout. Production now contains real household data: no reset, destructive
 migration, or deletion of real records is permitted for testing or deployment.
+
+Live deployment `yn4ook3qyz0ctoac37pjvk36` finished on application commit
+`9d62026900f7596ee76c8fb3e6c737bb79f20597`. All 17 live tools advertise the updated
+contracts. The confirmed owner was linked to the existing household participant
+through the audited access API; no other membership was guessed. Live list/detail
+attribution and account-derived personal balances passed. The household export
+retained all 4 expenses, 3 participant identities and 12 prior group audit events
+exactly. Database-wide comparison retained all 18 expense records, 54 split rows,
+6 participants and all 50 prior audit records unchanged. One new identity-binding
+audit event was appended. Both audit protection triggers remain enabled. The live
+expense list was visually inspected with authenticated you paid / you lent and
+Added by / Edited by labels. No real expense was edited or deleted by verification.
