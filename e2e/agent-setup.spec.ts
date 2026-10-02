@@ -11,7 +11,7 @@ test('signed-in workspace offers usable agent connection instructions', async ({
   await expect(page.locator('a[href*="github.com"]')).toHaveCount(0)
   await page
     .getByRole('navigation', { name: 'Workspace' })
-    .getByRole('link', { name: 'Agent setup' })
+    .getByRole('link', { name: 'Agents' })
     .click()
   await expect(
     page.getByRole('heading', { name: 'Set up your agent' }),
