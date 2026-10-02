@@ -106,6 +106,7 @@ const bytes = await sharp({
 const expenseId = randomId()
 let revision: number | undefined
 let receiptUrl: string | undefined
+let receiptDownloadUrl: string | undefined
 try {
   const created = await call('create_expense', {
     groupId: group.id,
@@ -153,9 +154,14 @@ try {
   assert.equal(saved.expense.documents.length, 1)
   const document = saved.expense.documents[0]
   receiptUrl = document.url
+  receiptDownloadUrl = document.downloadUrl
   assert.equal(document.width, 2)
   assert.equal(document.height, 3)
-  const image = await fetch(receiptUrl)
+  assert.equal((await fetch(receiptUrl)).status, 403)
+  assert.equal((await fetch(receiptDownloadUrl)).status, 401)
+  const image = await fetch(receiptDownloadUrl, {
+    headers: { authorization: `Bearer ${credential.token}` },
+  })
   assert.equal(image.status, 200)
   assert.deepEqual(Buffer.from(await image.arrayBuffer()), bytes)
   const events = await call('list_activity', { groupId: group.id, expenseId })
@@ -231,7 +237,15 @@ assert(
       event.snapshot.expense.documents.some((doc) => doc.url === receiptUrl),
   ),
 )
-assert.equal((await fetch(receiptUrl!)).status, 200)
+assert.equal(
+  (
+    await fetch(receiptDownloadUrl!, {
+      headers: { authorization: `Bearer ${credential.token}` },
+    })
+  ).status,
+  200,
+)
+assert.equal((await fetch(receiptUrl!)).status, 403)
 await writeFile(
   '/private/tmp/agentsplit-full-mcp-live-result.json',
   JSON.stringify(

@@ -444,3 +444,25 @@ test expense was soft-deleted and the original active expense list restored.
   rollback precaution on the same host, not off-host disaster recovery.
 - Google Auth Platform publishing status was observed as In production after
   explicit approval. App deployment/live Google round-trip verification follows.
+
+### Private accounts — live verification
+
+- Coolify deployment `s4fiykorekfaerhrkb9tkty8` finished on application commit
+  `0c37ec01d8d99327c894a85f7b7d35d593c9d8db`, scoped to the existing AgentSplit resource.
+- Real Google authorization-code/PKCE round trip completed on the production
+  origin. The owner saw both pre-existing groups and the imported owner-codex
+  key in Account & keys. Google publishing status is In production.
+- Live signed-out group pages redirect to sign-in. Underlying tRPC reads and
+  JSON/CSV exports return 401; the old anonymous S3 signer returns 410.
+- Live MCP discovered all 17 tools and passed its schema/write/revision/rounding/
+  currency/export checks. Signed Garage upload/finalization passed. Anonymous
+  storage reads returned 403; app receipt reads returned 401 without credentials
+  and the exact uploaded bytes with the owner key. Test ledger baseline restored.
+- Live browser created a synthetic expense only in AgentSplit deployment test,
+  uploaded a 24x32 PNG, saved/reopened it, and loaded the authenticated thumbnail.
+  Browser deletion succeeded. MCP readback confirmed a verified web actor,
+  retained receipt and deleted revision; the active test ledger returned to empty.
+- Final focused browser rerun: all 11 recurrence/split cases pass, including the
+  two broad-run failures. Together with the broad run, all 55 scenarios pass.
+- The final follow-up commit changes verification tooling/documentation only;
+  the deployed application code remains the tested commit above.
