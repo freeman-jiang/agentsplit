@@ -483,3 +483,10 @@ and focused reruns: login request/error handling, invitation callback preservati
 protected agent setup, avatar navigation, persistent theme preferences, existing
 key/invitation flows and responsive layouts at 320, 488 and 1280 pixels. The local
 signed-out page was also visually inspected.
+
+Deployed application commit `93789a9b3215dfcf487d98446ca9e29321d70bc5` through
+Coolify run `xgkvcto8qck6afvzk6el346b`. Live signed-out HTML has exactly one Log In
+button and no workspace/profile controls; `/agents` redirects to login. In the
+existing signed-in browser, the top-right FJ avatar opened settings and the
+Preferences section showed theme/language controls. The deployed layout was
+visually inspected; the owner key remained present.
