@@ -18,6 +18,12 @@ services:
       ANALYTICS_PROVIDER: ''
       NEXT_TELEMETRY_DISABLED: '1'
       CHECKPOINT_DISABLE: '1'
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?Set GOOGLE_CLIENT_SECRET}
+      AUTH_BOOTSTRAP_EMAIL: ${AUTH_BOOTSTRAP_EMAIL:-}
+      AUTH_BOOTSTRAP_LEGACY_USER_ID: ${AUTH_BOOTSTRAP_LEGACY_USER_ID:-}
+      BETTER_AUTH_TELEMETRY: '0'
       MCP_ACCESS_GRANTS: ${MCP_ACCESS_GRANTS:-}
       S3_UPLOAD_ENDPOINT: https://${STORAGE_HOST}
       S3_UPLOAD_BUCKET: agentsplit-receipts
@@ -98,19 +104,6 @@ services:
       traefik.http.routers.agentsplit-s3.service: agentsplit-s3
       traefik.http.routers.agentsplit-s3.middlewares: agentsplit-storage-cors
       traefik.http.services.agentsplit-s3.loadbalancer.server.port: '3900'
-
-      # Spliit stores durable /bucket/key URLs. Route image reads to Garage's
-      # website endpoint, which supports anonymous object reads without listing.
-      traefik.http.routers.agentsplit-receipts.rule: Host(`agentsplit-receipts.freemanjiang.com`) && PathPrefix(`/agentsplit-receipts/`) && (Method(`GET`) || Method(`HEAD`))
-      traefik.http.routers.agentsplit-receipts.entrypoints: https
-      traefik.http.routers.agentsplit-receipts.tls: 'true'
-      traefik.http.routers.agentsplit-receipts.tls.certresolver: letsencrypt
-      traefik.http.routers.agentsplit-receipts.priority: '100'
-      traefik.http.routers.agentsplit-receipts.service: agentsplit-receipts
-      traefik.http.routers.agentsplit-receipts.middlewares: agentsplit-storage-cors,agentsplit-receipts-path,agentsplit-receipts-host
-      traefik.http.services.agentsplit-receipts.loadbalancer.server.port: '3902'
-      traefik.http.middlewares.agentsplit-receipts-path.stripprefix.prefixes: /agentsplit-receipts
-      traefik.http.middlewares.agentsplit-receipts-host.headers.customrequestheaders.Host: agentsplit-receipts
 
       # Preflights are answered by Traefik. Only the app origin may upload
       # through the browser; no public-write or public-list bucket permission.

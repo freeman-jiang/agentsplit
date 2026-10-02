@@ -43,7 +43,7 @@ export const uploadTargetSchema = z.object({
   expiresAt: z.iso.datetime(),
 })
 
-function storage() {
+export function storage() {
   if (
     !env.S3_UPLOAD_KEY ||
     !env.S3_UPLOAD_SECRET ||
@@ -81,7 +81,7 @@ const targetHash = (actor: AuditActor, groupId: string, expenseId: string) =>
     )
     .digest('hex')
 const stagedKey = (id: string) => `pending-receipts/${id}`
-function publicUrl(bucket: string, key: string) {
+export function publicUrl(bucket: string, key: string) {
   const endpoint =
     env.S3_UPLOAD_ENDPOINT?.replace(/\/$/, '') ??
     `https://${bucket}.s3.${env.S3_UPLOAD_REGION}.amazonaws.com`
@@ -230,7 +230,7 @@ export async function finalizeExpenseUploads(
           Key: permanent,
           Body: bytes,
           ContentType: image.format === 'jpeg' ? 'image/jpeg' : 'image/png',
-          CacheControl: 'public,max-age=31536000,immutable',
+          CacheControl: 'private,no-store',
         }),
       )
       result.permanentKeys.push(permanent)

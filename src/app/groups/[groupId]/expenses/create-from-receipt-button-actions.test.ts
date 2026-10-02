@@ -1,5 +1,16 @@
 import { extractExpenseInformationFromImage } from './create-from-receipt-button-actions'
 
+jest.mock('../../../../lib/session', () => ({ requireWebGroup: jest.fn() }))
+jest.mock('../../../../lib/prisma', () => ({
+  prisma: { receiptObject: { findUnique: async () => ({ id: 'receipt' }) } },
+}))
+jest.mock('../../../../lib/receipt-storage', () => ({
+  readReceipt: async () => ({
+    ContentType: 'image/jpeg',
+    Body: { transformToByteArray: async () => new Uint8Array([1, 2]) },
+  }),
+}))
+
 // See the note in src/components/expense-form-actions.test.ts on why this is a
 // `var` reached through an arrow.
 var mockCreate = jest.fn()
@@ -57,7 +68,7 @@ describe('extractExpenseInformationFromImage', () => {
         title: 'Dinner',
       }),
     )
-    expect(await extractExpenseInformationFromImage(IMAGE)).toEqual({
+    expect(await extractExpenseInformationFromImage(IMAGE, 'group')).toEqual({
       amount: '42.5',
       categoryId: '4',
       date: '2026-03-01',
@@ -74,7 +85,7 @@ describe('extractExpenseInformationFromImage', () => {
         title: 'Dinner, drinks and tip',
       }),
     )
-    const info = await extractExpenseInformationFromImage(IMAGE)
+    const info = await extractExpenseInformationFromImage(IMAGE, 'group')
     expect(info.title).toBe('Dinner, drinks and tip')
     expect(info.amount).toBe('42.5')
   })
@@ -88,7 +99,7 @@ describe('extractExpenseInformationFromImage', () => {
         title: 'x',
       }),
     )
-    await extractExpenseInformationFromImage(IMAGE)
+    await extractExpenseInformationFromImage(IMAGE, 'group')
 
     const request = mockCreate.mock.calls[0][0]
     expect(request.model).toBe('test-vision-model')
@@ -111,14 +122,14 @@ describe('extractExpenseInformationFromImage', () => {
     ['an empty response', ''],
   ])('reports nothing extracted for %s', async (_name, content) => {
     respondWith(content)
-    expect(await extractExpenseInformationFromImage(IMAGE)).toEqual(
+    expect(await extractExpenseInformationFromImage(IMAGE, 'group')).toEqual(
       NOTHING_EXTRACTED,
     )
   })
 
   it('reports nothing extracted when there is no content at all', async () => {
     respondWith(null)
-    expect(await extractExpenseInformationFromImage(IMAGE)).toEqual(
+    expect(await extractExpenseInformationFromImage(IMAGE, 'group')).toEqual(
       NOTHING_EXTRACTED,
     )
   })
@@ -126,7 +137,10 @@ describe('extractExpenseInformationFromImage', () => {
   it('refuses an image URL the app did not upload', async () => {
     respondWith(JSON.stringify({ amount: '1' }))
     await expect(
-      extractExpenseInformationFromImage('https://evil.example/receipt.jpg'),
+      extractExpenseInformationFromImage(
+        'https://evil.example/receipt.jpg',
+        'group',
+      ),
     ).rejects.toThrow('Invalid image URL.')
     expect(mockCreate).not.toHaveBeenCalled()
   })

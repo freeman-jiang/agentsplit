@@ -1,4 +1,5 @@
 import { test as base, expect } from '@playwright/test'
+import { seedAccount } from './auth'
 
 /**
  * Shared test fixture.
@@ -41,6 +42,7 @@ export const test = base.extend<Options>({
   // eslint-plugin-react-hooks would otherwise read `use(...)` as React's hook.
   page: async ({ page, baseURL, seedActiveUser, exchangeRate }, runTest) => {
     if (baseURL) {
+      await seedAccount(page.context(), baseURL)
       await page
         .context()
         .addCookies([{ name: 'NEXT_LOCALE', value: 'en-US', url: baseURL }])

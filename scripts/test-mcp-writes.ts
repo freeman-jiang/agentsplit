@@ -9,6 +9,7 @@ import { expenseSnapshotSchema } from '../src/lib/expense-history'
 import { hashAccessKey } from '../src/lib/mcp/access'
 import { prisma } from '../src/lib/prisma'
 import { randomId } from '../src/lib/random'
+import { seedTestAgent } from './auth-test-utils'
 
 const database = new URL(process.env.POSTGRES_PRISMA_URL ?? '')
 assert(
@@ -37,6 +38,9 @@ process.env.MCP_ACCESS_GRANTS = JSON.stringify({
 })
 const passed: string[] = []
 async function main() {
+  const primaryKeyId = await seedTestAgent(owner, token)
+  await seedTestAgent(owner, secondToken)
+  await seedTestAgent(outsider, otherToken)
   const { POST } = await import('../src/app/api/mcp/route')
   async function rpc(
     method: string,
@@ -144,9 +148,14 @@ async function main() {
       'group creation persists membership for all owner keys and excludes another user',
     )
     const details = await call('get_group', { groupId })
+    const invitation = await call('manage_group_access', {
+      action: 'invite',
+      groupId,
+      email: `${outsider}@example.com`,
+    })
     await call(
       'manage_group_access',
-      { action: 'join', shareUrl: details.links.share },
+      { action: 'join', shareUrl: invitation.invitation.url },
       otherToken,
     )
     assert(
@@ -162,7 +171,7 @@ async function main() {
       otherToken,
     )
     check(
-      'same-app share URLs grant membership; leaving and foreign-origin rejection enforce scope',
+      'email-bound invitation URLs grant membership; leaving and foreign-origin rejection enforce scope',
     )
     const form = {
       title: 'MCP dinner',
@@ -190,7 +199,7 @@ async function main() {
     const events = await call('list_activity', { groupId, expenseId })
     assert.equal(events.activities[0].actorUserId, owner)
     assert.equal(events.activities[0].actorName, owner)
-    assert.equal(events.activities[0].agentKeyId, 'primary')
+    assert.equal(events.activities[0].agentKeyId, primaryKeyId)
     assert.equal(events.activities[0].participantId, null)
     await rejects('create_expense', { groupId, expenseId, expense: form })
     check(

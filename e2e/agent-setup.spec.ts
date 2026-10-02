@@ -18,7 +18,7 @@ test('landing page offers groups or agent setup with usable connection instructi
     page.getByRole('heading', { name: 'Set up your agent' }),
   ).toBeVisible()
   await expect(
-    page.getByText(/there is no self-service key screen/),
+    page.getByRole('link', { name: 'Create an API key' }),
   ).toBeVisible()
   await expect(
     page.getByText(`${baseURL}/api/mcp`, { exact: true }),

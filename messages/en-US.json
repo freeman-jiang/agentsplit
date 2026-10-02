@@ -615,8 +615,8 @@
     "title": "Set up your agent",
     "intro": "Connect your agent to AgentSplit to review expenses, record payments and keep your shared ledger up to date.",
     "keyTitle": "1. Get your API key",
-    "keyDescription": "Each person should have their own key. It identifies whose agent made a change and inherits that person’s group access.",
-    "keyAvailability": "API keys are currently issued by the person hosting AgentSplit. Ask your host for a key; there is no self-service key screen in the app yet.",
+    "keyDescription": "Create a key in Account & keys. It acts as you and inherits your current group permissions.",
+    "keyAvailability": "Sign in with Google to create and revoke your own agent keys.",
     "keyPrivacy": "Keep the key in your client’s private settings or environment. Do not paste it into an agent conversation or a group note.",
     "connectTitle": "2. Connect your client",
     "endpoint": "MCP endpoint · Streamable HTTP",
@@ -631,9 +631,9 @@
     "noOauth": "This server uses API keys. OAuth sign-in is not available.",
     "references": "Official client instructions:",
     "useTitle": "3. Give your agent a group",
-    "useDescription": "Once connected, give your agent the group’s share link. These instructions can be copied without exposing your key.",
+    "useDescription": "Once connected, your agent can discover your groups. Accept new invitations in the app or give your agent the email-bound invitation link.",
     "copyInstructions": "Copy agent instructions",
-    "instructions": "Use AgentSplit at {endpoint} through MCP. Authenticate with the API key in my client configuration.\n\nStart with list_groups. If I provide a group share link, use manage_group_access to join it. Read get_group to discover participant IDs, and get_reference_data for currencies, categories and split modes.\n\nUse exact decimal strings for money and keep currencies separate. Read the current revision before editing or deleting. Record payments with create_expense and isReimbursement=true. Only make changes I request, and confirm the committed result.",
+    "instructions": "Use AgentSplit at {endpoint} through MCP. Authenticate with the API key in my client configuration.\n\nStart with list_groups. A group URL alone does not grant access. If I provide an invitation link addressed to my Google email, use manage_group_access with action=join and shareUrl. Read get_group for members, roles and participant IDs, and get_reference_data for currencies, categories and split modes.\n\nUse exact decimal strings for money and keep currencies separate. Read the current revision before editing or deleting. Record payments with create_expense and isReimbursement=true. Fetch receipt downloadUrl values with the same Bearer key. Only make changes I request, and confirm the committed result.",
     "capabilities": "Agents can create and edit expenses, split equally or unevenly, record payments, attach receipts, review balances by currency, and read the audit history."
   }
 }

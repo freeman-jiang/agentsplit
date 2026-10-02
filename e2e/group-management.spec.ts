@@ -98,8 +98,8 @@ test('records group and expense changes in the activity log', async ({
 
   const activity = page.getByText(/Expense .*Cinema.* created by/)
   await expect(activity).toBeVisible()
-  // The active user is 'None', so the actor renders as the generic fallback.
-  await expect(activity).toContainText('Someone')
+  // The audit actor is the authenticated account, regardless of selected participant.
+  await expect(activity).toContainText('E2E Owner')
 })
 
 test('exports the expenses as JSON', async ({ page }) => {

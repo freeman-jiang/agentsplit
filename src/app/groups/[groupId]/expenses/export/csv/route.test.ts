@@ -2,6 +2,10 @@
 
 import { GET } from './route'
 
+jest.mock('../../../../../../lib/session', () => ({
+  authorizeGroupRequest: async () => ({ userId: 'test' }),
+}))
+
 var mockFindUnique = jest.fn()
 
 jest.mock('../../../../../../lib/prisma', () => ({

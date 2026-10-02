@@ -1,6 +1,6 @@
 # Persistent identities and delegated agent access
 
-Design proposal for the next phase; the read-only MCP bootstrap is in `MCP.md`.
+Historical design notes. Implemented behavior is now documented in `AUTH.md` and `MCP.md`: Google sign-in, private groups, admin/member roles, email-bound invitations and self-service API keys. Earlier alternatives below are not the deployed contract.
 
 ## Distinct identities
 

@@ -283,7 +283,9 @@ test('saves an even split with the leftover cent where it was previewed', async 
   await expectBalance(page, 'Bob', -bobOwes)
 })
 
-test('can retry a create whose response was lost', async ({ page }) => {
+test('recovers a create whose response was lost without duplicating it', async ({
+  page,
+}) => {
   const groupId = await createGroup(page, {
     name: `E2E LostResponse ${uniqueSuffix()}`,
     participants: ['Alice', 'Bob'],
@@ -309,11 +311,10 @@ test('can retry a create whose response was lost', async ({ page }) => {
   })
   await submit.click()
   await expect.poll(() => lost).toBe(true)
-  await expect(submit).toBeEnabled()
-
-  await submit.click()
-  await page.waitForURL(EXPENSES_URL, { timeout: 30_000 })
+  await page.waitForURL(/\/expenses\/[^/]+\/edit$/)
+  await expect(page.locator('input[name="title"]')).toHaveValue('Lost')
+  await page.goto(`/groups/${groupId}/expenses`)
   await expect(
     page.getByTestId('expense-card').filter({ hasText: 'Lost' }),
-  ).toHaveCount(2)
+  ).toHaveCount(1)
 })

@@ -31,7 +31,11 @@ test('records a negative amount as an income', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'Create income' }),
   ).toBeVisible()
-  await expect(page.getByText('Received by')).toBeVisible()
+  await expect(
+    page
+      .getByRole('region', { name: 'Expense details' })
+      .getByText('Received by'),
+  ).toBeVisible()
 
   await page.getByTestId('paid-by').click()
   await page.getByRole('option', { name: 'Alice' }).click()
@@ -64,8 +68,11 @@ test('assigns a category to an expense', async ({ page }) => {
   })
 
   await openExpense(page, 'Weekly shop')
+  await page.locator('summary').filter({ hasText: 'More options' }).click()
   await expect(
-    fieldByLabel(page, 'Category').getByRole('combobox'),
+    fieldByLabel(page, 'Category')
+      .getByRole('combobox')
+      .locator('option:checked'),
   ).toContainText('Groceries')
 })
 

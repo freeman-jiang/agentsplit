@@ -18,12 +18,15 @@ import {
 import { ToastAction } from '@/components/ui/toast'
 import { useToast } from '@/components/ui/use-toast'
 import { randomId } from '@/lib/random'
+import { receiptDownloadUrl } from '@/lib/receipt-url'
 import { ExpenseFormValues } from '@/lib/schemas'
+import { ReceiptFileInput, useReceiptUpload } from '@/lib/use-receipt-upload'
 import { formatFileSize } from '@/lib/utils'
 import { Loader2, Plus, Trash, X } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
-import { getImageData, usePresignedUpload } from 'next-s3-upload'
+import { getImageData } from 'next-s3-upload'
 import Image from 'next/image'
+import { useParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 type Props = {
@@ -43,7 +46,7 @@ export function ExpenseDocumentsInput({
   const locale = useLocale()
   const t = useTranslations('ExpenseDocumentsInput')
   const [pending, setPending] = useState(false)
-  const { FileInput, openFileDialog, uploadToS3 } = usePresignedUpload() // use presigned uploads to addtionally support providers other than AWS
+  const { inputRef, openFileDialog, uploadToS3 } = useReceiptUpload() // use presigned uploads to addtionally support providers other than AWS
   const { toast } = useToast()
 
   const handleFileChange = async (file: File) => {
@@ -91,7 +94,11 @@ export function ExpenseDocumentsInput({
 
   return (
     <div>
-      <FileInput onChange={handleFileChange} accept="image/jpeg,image/png" />
+      <ReceiptFileInput
+        inputRef={inputRef}
+        onChange={handleFileChange}
+        accept="image/jpeg,image/png"
+      />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 [&_*]:aspect-square">
         {documents.map((doc) => (
@@ -134,6 +141,7 @@ export function DocumentThumbnail({
   documents: ExpenseFormValues['documents']
   deleteDocument: (document: ExpenseFormValues['documents'][number]) => void
 }) {
+  const { groupId } = useParams<{ groupId: string }>()
   const [open, setOpen] = useState(false)
   const [api, setApi] = useState<CarouselApi>()
   const [currentDocument, setCurrentDocument] = useState<number | null>(null)
@@ -160,7 +168,8 @@ export function DocumentThumbnail({
             width={300}
             height={300}
             className="object-contain"
-            src={document.url}
+            unoptimized
+            src={receiptDownloadUrl(groupId, document.url)}
             alt=""
           />
         </Button>
@@ -203,7 +212,8 @@ export function DocumentThumbnail({
                 <CarouselItem key={index}>
                   <Image
                     className="object-contain w-[calc(100vw-32px)] h-[calc(100dvh-32px-40px-16px-48px)] sm:w-[calc(100vw-32px-32px)] sm:h-[calc(100dvh-32px-40px-16px-32px-48px)]"
-                    src={document.url}
+                    unoptimized
+                    src={receiptDownloadUrl(groupId, document.url)}
                     width={document.width}
                     height={document.height}
                     alt=""

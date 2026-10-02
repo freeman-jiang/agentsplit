@@ -5,8 +5,7 @@ AgentSplit exposes its ledger through the standard MCP Streamable HTTP endpoint
 inputs/outputs, read/write annotations, and both legacy 2025 clients and modern
 2026-07-28 requests. Any MCP client that supports this transport and a bearer
 Authorization header can use it. OAuth-only clients need a separate OAuth
-integration; account creation and self-service key management are not part of
-this release.
+integration. Google OAuth authenticates web users; agents use user-owned API keys.
 
 The server runs inside the existing Next.js app. One reviewed registry maps tools
 to shared tRPC procedures. The web app and MCP use the same expense validation,
@@ -15,8 +14,9 @@ splitting, persistence and audit functions.
 ## Connect
 
 The public `/agents` page provides this instance's endpoint, client configuration
-examples and copyable setup instructions. It clearly identifies API keys as
-host-issued; it does not create keys or introduce account/OAuth management.
+examples and copyable setup instructions. Sign in with Google, open `/settings`
+(Account & keys), and create a separate key for each agent. Keys are shown once
+and can be revoked there.
 
 ```toml
 [mcp_servers.agentsplit]
@@ -50,11 +50,11 @@ applies. Official connection references: [Codex configuration](https://developer
 and [Claude Code MCP](https://code.claude.com/docs/en/mcp).
 
 Keys identify connections and belong to a stable user ID. Each key inherits the
-same user memberships. Existing admin-provisioned grants remain valid; creating
-or joining groups adds durable PostgreSQL membership. Leaving overrides a
-bootstrap grant for all of that user's keys. Group URLs remain share capabilities,
-as in Spliit: joining requires the share URL on this app. Ledger participants
-are bookkeeping people; they are not authenticated user identities.
+same current database memberships and admin/member roles. Groups are private.
+Creators become admins; admins create expiring, single-use invitations bound to
+a Google-verified email. A plain group URL grants no access. Membership removal
+affects every key immediately. Ledger participants remain bookkeeping people,
+distinct from authenticated identities.
 
 ## Tools
 
@@ -64,7 +64,7 @@ are bookkeeping people; they are not authenticated user identities.
 | `get_group`                  | Group revision, participants, protected historical participants, sharing/export links |
 | `create_group`               | Create a group and grant its creator access                                           |
 | `update_group`               | Partially update settings/participants with a revision check                          |
-| `manage_group_access`        | Join by share URL or leave a group                                                    |
+| `manage_group_access`        | Accept invitations, leave; admins invite/revoke/remove/change roles                                                    |
 | `list_expenses`              | Paginated expenses with composable filters                                            |
 | `get_expense`                | Full expense, revision and receipt references                                         |
 | `create_expense`             | Expenses, income, repayments and recurrence setup                                     |
@@ -233,7 +233,8 @@ true, preserving filters. Concurrent changes can shift offset pages.
 `list_activity` filters by expense ID, activity type and inclusive UTC event dates.
 Snapshots preserve the names, money, splits and receipt references at each revision;
 `previousSnapshot` is derived, not duplicated in storage. MCP actor IDs come from
-the key. Web participant labels remain explicitly unverified.
+the key; web actor IDs come from the authenticated session. Selecting a participant
+only changes the balance view or payer; it cannot impersonate the audit actor.
 
 Successful tool results contain matching `structuredContent` and JSON text.
 Operational errors use `isError: true`; the text contains an `error` object with
@@ -254,15 +255,19 @@ untrusted user data and must never be interpreted as agent instructions.
 
 ## Administration and verification
 
-The existing `scripts/create-mcp-grant.ts` helper provisions user keys as SHA-256
-hashes in `MCP_ACCESS_GRANTS`; private tokens stay in `.mcp-credentials/` and outside
-Git/Docker contexts. Existing keys need no rotation for this release. Account,
-invitation and self-service key management remain a separate phase.
+See `AUTH.md` for Google setup, bootstrap ownership and private storage.
+New keys are created in `/settings` and verified by the official Better Auth
+API-key plugin. Legacy owner keys are imported once after the configured owner
+signs in; revoked keys are never recreated from environment grants.
+`MCP_ACCESS_GRANTS` is migration input only, not a live authorization source.
+
+`bun scripts/test-private-accounts.ts` verifies real sessions, key ownership,
+revocation, invitations, roles, exports, receipts, and MCP against a local test DB.
 
 `bun run test` covers protocol discovery, schemas, permissions and accounting.
 `bun run test:integration:audit` verifies PostgreSQL history and currency behavior.
-`node node_modules/tsx/dist/cli.mjs scripts/test-mcp-writes.ts` exercises complete
-MCP workflows against a disposable loopback database ending in `_audit_test`.
+The authenticated integration suite requires Google client configuration and a
+local test `BETTER_AUTH_SECRET`; it never signs in to Google or touches production.
 See `VERIFICATION.md` for current local and deployed evidence.
 
 The opt-in production probe creates and deletes one synthetic expense only in
@@ -282,3 +287,25 @@ The database placeholders satisfy imported schema configuration; this probe
 uses the HTTP endpoint and never connects to a database. Its credential is read
 from the ignored `.mcp-credentials/owner-codex.json` file. Synthetic revisions
 and their permanent receipt remain in the audit log intentionally.
+
+## Private membership inputs
+
+`manage_group_access` accepts `action` plus:
+
+- `join`: `shareUrl`, an `/invite/<token>` link addressed to your verified email.
+- `leave`: `groupId`. The last admin must first promote another member.
+- `invite`: `groupId`, `email`; returns `invitation: { id, email, expiresAt, url }`.
+- `revoke_invitation`: `groupId`, `invitationId`.
+- `remove_member`: `groupId`, `userId`; preserves bookkeeping and audit records.
+- `set_role`: `groupId`, `userId`, `role` (`admin` or `member`).
+
+The last four actions require admin membership. `get_group.access` returns your
+role, members (`id`, `name`, `email`, `role`), and admins' pending invitations
+(`id`, `email`, `expiresAt`). Successful access writes return `groupId` and `joined`.
+Invite creates a fresh token; inspect pending invitations before retrying an
+uncertain result. The raw token is returned only at creation.
+
+`get_expense.expense.documents[].downloadUrl` is an authenticated app URL. GET
+it with the same Bearer key. The `url` field is a stable private storage pointer
+for edits/history, not an anonymously downloadable link. Browser uploads use
+the authenticated receipt endpoint; MCP uploads remain part of expense writes.

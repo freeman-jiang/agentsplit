@@ -417,3 +417,30 @@ Commit `475044a7f78cbffeb9075b25841cd27f115d068f` deployed through
 `yvwrrl9brm5fis9ypihyctlh`. Live hover checks confirmed 12px left/right padding
 and icon inset at 320, 488 and 1280px without viewport overflow. The temporary
 test expense was soft-deleted and the original active expense list restored.
+
+## Private accounts candidate — 2026-10-01
+
+- Google-only Better Auth 1.7.6; verified identities, private group membership,
+  admin/member roles, email-bound 7-day invitations and self-service agent keys.
+- 678 Jest tests / 58 suites pass across both configured time zones.
+- 29 new private-account PostgreSQL checks pass: genuine signed sessions and
+  API-key plugin calls, cross-group rejection, invitation expiry/revocation,
+  last-admin protection, actor attribution, receipt/export gates, MCP discovery,
+  bootstrap capture boundary and revoked legacy keys not reappearing.
+- Existing 24 audit/currency and 11 full-MCP PostgreSQL scenarios pass after
+  updating fixtures to use authenticated accounts and email-bound invitations.
+- Browser suite: 53/55 passed in the broad run; the remaining recurrence selector
+  and lost-response recovery scenarios then passed in an 11/11 focused run.
+  New account/key and invitation screens are checked at 320, 488 and 1280 pixels.
+  All tested scenarios now pass; no browser tests were skipped to get this result.
+- Fixed authenticated expense deletion to submit expectedRevision. A lost create
+  response now reads its stable ID and opens the saved expense rather than
+  minting a second expense. Updated obsolete conversion tests to verify separate
+  currencies, face-value decimal input and same-currency repayment instead.
+- Production build, type checking, formatting, and diff checks pass. Oxlint has
+  only the two previously documented warnings (RHF/React Compiler and the group
+  layout effect dependencies). Hosted GitHub CI has not been claimed.
+- Scoped pre-cutover PostgreSQL backup saved on Oracle, mode 0600. This is a
+  rollback precaution on the same host, not off-host disaster recovery.
+- Google Auth Platform publishing status was observed as In production after
+  explicit approval. App deployment/live Google round-trip verification follows.

@@ -1,5 +1,5 @@
 import { effectiveGroupIds } from '@/lib/group-access'
-import { authorizeMcpRequest } from '@/lib/mcp/access'
+import { authenticateMcp } from '@/lib/mcp/authenticate'
 import { limitMcpRequest } from '@/lib/mcp/rate-limit'
 import { createAgentSplitMcpServer } from '@/lib/mcp/server'
 import { createMcpHandler, isLegacyRequest } from '@modelcontextprotocol/server'
@@ -8,7 +8,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 async function handleRequest(request: Request) {
-  const authorization = authorizeMcpRequest(request)
+  const authorization = await authenticateMcp(request)
   if ('response' in authorization) return authorization.response
   const retryAfter = limitMcpRequest(authorization.principal.userId)
   if (retryAfter) {

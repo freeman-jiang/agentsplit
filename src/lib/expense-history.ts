@@ -73,6 +73,8 @@ export type ExpenseSnapshot = z.infer<typeof expenseSnapshotSchema>
 export type ActivitySnapshot = z.infer<typeof activitySnapshotSchema>
 export type AuditActor = {
   userId: string
+  name?: string
+  source?: 'web' | 'agent'
   connectionId: string
   groupIds?: string[]
 }
@@ -86,10 +88,7 @@ export async function assertActorWriteAccess(
   const access = await tx.userGroupAccess.findUnique({
     where: { userId_groupId: { userId: actor.userId, groupId } },
   })
-  if (
-    access?.active === false ||
-    (actor.groupIds && !actor.groupIds.includes(groupId))
-  )
+  if (!access?.active)
     throw new TRPCError({
       code: 'FORBIDDEN',
       message: 'This connection cannot access the requested group',
@@ -180,10 +179,14 @@ export async function recordExpenseSnapshot(
       data: expense.title,
       snapshot,
       participantId: options.actor ? undefined : claimedActor?.id,
-      actorName: options.actor?.userId ?? claimedActor?.name,
+      actorName:
+        options.actor?.name ?? options.actor?.userId ?? claimedActor?.name,
       actorUserId: options.actor?.userId,
-      agentKeyId: options.actor?.connectionId,
-      source: options.source ?? (options.actor ? 'agent' : 'web'),
+      agentKeyId: options.actor?.connectionId || undefined,
+      source:
+        options.source ??
+        options.actor?.source ??
+        (options.actor ? 'agent' : 'web'),
     },
   })
 }

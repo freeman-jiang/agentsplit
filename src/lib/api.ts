@@ -28,6 +28,7 @@ import {
 import { TRPCError } from '@trpc/server'
 import { expenseCurrencySchema } from './currency'
 import type { FinalizedUploads } from './expense-uploads'
+import { assertReceiptOwnership } from './receipt-ownership'
 import { assertRevision } from './revision'
 
 // Re-exported for backwards compatibility with existing server-side importers.
@@ -71,7 +72,7 @@ export async function createGroup(
     })
     if (actor)
       await tx.userGroupAccess.create({
-        data: { userId: actor.userId, groupId: group.id },
+        data: { userId: actor.userId, groupId: group.id, role: 'admin' },
       })
     await tx.activity.create({
       data: {
@@ -80,9 +81,9 @@ export async function createGroup(
         activityType: 'CREATE_GROUP',
         data: group.name,
         actorUserId: actor?.userId,
-        actorName: actor?.userId,
-        agentKeyId: actor?.connectionId,
-        source: actor ? 'agent' : 'web',
+        actorName: actor?.name ?? actor?.userId,
+        agentKeyId: actor?.connectionId || undefined,
+        source: actor?.source ?? (actor ? 'agent' : 'web'),
         snapshot: groupSnapshotSchema.parse({
           schemaVersion: 1,
           kind: 'group',
@@ -147,6 +148,8 @@ export async function createExpense(
           })
       }
 
+      if (actor)
+        await assertReceiptOwnership(tx, groupId, expenseFormValues.documents)
       const isCreateRecurrence =
         expenseFormValues.recurrenceRule !== RecurrenceRule.NONE
       const recurringExpenseLinkPayload =
@@ -245,10 +248,10 @@ export async function deleteExpense(
           activityType: ActivityType.DELETE_EXPENSE,
           data: existingExpense.title,
           participantId: actor ? undefined : claimedActor?.id,
-          actorName: actor?.userId ?? claimedActor?.name,
+          actorName: actor?.name ?? actor?.userId ?? claimedActor?.name,
           actorUserId: actor?.userId,
-          agentKeyId: actor?.connectionId,
-          source: actor ? 'agent' : 'web',
+          agentKeyId: actor?.connectionId || undefined,
+          source: actor?.source ?? (actor ? 'agent' : 'web'),
         },
       })
       return { expenseId, revision: expense.revision, deleted: true as const }
@@ -370,6 +373,7 @@ export async function updateExpense(
             })
         }
 
+        if (actor) await assertReceiptOwnership(tx, groupId, values.documents)
         if (attachUploadIds.length) {
           finalized = await uploads!.finalizeExpenseUploads(
             actor,
@@ -377,6 +381,15 @@ export async function updateExpense(
             expenseId,
             attachUploadIds,
           )
+          for (const document of finalized.documents)
+            await tx.receiptObject.create({
+              data: {
+                id: document.id,
+                groupId,
+                url: document.url,
+                createdBy: actor?.userId,
+              },
+            })
           values = expenseFormSchema.parse({
             ...values,
             documents: [...values.documents, ...finalized.documents],
@@ -512,6 +525,16 @@ export async function updateGroup(
   return withGroupWrite(
     groupId,
     async (tx) => {
+      if (actor) {
+        const membership = await tx.userGroupAccess.findUnique({
+          where: { userId_groupId: { userId: actor.userId, groupId } },
+        })
+        if (membership?.role !== 'admin')
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Only group admins can edit group settings',
+          })
+      }
       const existingGroup = await tx.group.findUnique({
         where: { id: groupId },
         include: { participants: true },
@@ -588,10 +611,10 @@ export async function updateGroup(
           groupId,
           activityType: ActivityType.UPDATE_GROUP,
           participantId: actor ? undefined : claimedActor?.id,
-          actorName: actor?.userId ?? claimedActor?.name,
+          actorName: actor?.name ?? actor?.userId ?? claimedActor?.name,
           actorUserId: actor?.userId,
-          agentKeyId: actor?.connectionId,
-          source: actor ? 'agent' : 'web',
+          agentKeyId: actor?.connectionId || undefined,
+          source: actor?.source ?? (actor ? 'agent' : 'web'),
           snapshot: groupSnapshotSchema.parse({
             schemaVersion: 1,
             kind: 'group',

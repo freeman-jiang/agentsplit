@@ -5,6 +5,9 @@ import { env } from '@/lib/env'
 import { getRuntimeFeatureFlags } from '@/lib/featureFlags'
 import { DECIMAL_PATTERN, decimalStringSchema } from '@/lib/money'
 import { getOpenAIClient } from '@/lib/openai'
+import { prisma } from '@/lib/prisma'
+import { readReceipt } from '@/lib/receipt-storage'
+import { requireWebGroup } from '@/lib/session'
 import { isAllowedUploadUrl } from '@/lib/uploaded-image-url'
 import { formatCategoryForAIPrompt } from '@/lib/utils'
 import { z } from 'zod'
@@ -19,7 +22,10 @@ const receiptResponseSchema = z.strictObject({
   title: z.string(),
 })
 
-export async function extractExpenseInformationFromImage(imageUrl: string) {
+export async function extractExpenseInformationFromImage(
+  imageUrl: string,
+  groupId: string,
+) {
   'use server'
 
   // Enforce the feature flag server-side: the UI gate only hides the button, it
@@ -36,6 +42,17 @@ export async function extractExpenseInformationFromImage(imageUrl: string) {
     throw new Error('Invalid image URL.')
   }
 
+  await requireWebGroup(groupId)
+  if (
+    !(await prisma.receiptObject.findUnique({
+      where: { groupId_url: { groupId, url: imageUrl } },
+    }))
+  )
+    throw new Error('Receipt not found')
+  const object = await readReceipt(imageUrl)
+  const imageBytes = await object.Body?.transformToByteArray()
+  if (!imageBytes) throw new Error('Receipt unavailable')
+  imageUrl = `data:${object.ContentType};base64,${Buffer.from(imageBytes).toString('base64')}`
   const categories = await getCategories()
   const openai = getOpenAIClient()
 

@@ -24,6 +24,7 @@ import { Decimal } from '../src/lib/money'
 import { prisma } from '../src/lib/prisma'
 import { expenseFormSchema } from '../src/lib/schemas'
 import { appRouter } from '../src/trpc/routers/_app'
+import { seedTestAgent } from './auth-test-utils'
 
 // Never run mutation integration tests against the deployed application database.
 const database = new URL(process.env.POSTGRES_PRISMA_URL ?? '')
@@ -466,6 +467,8 @@ async function main() {
             },
           ],
         })
+        await seedTestAgent('audit-tester', token, [group.id])
+        process.env.BASE_URL = 'http://localhost:3001'
         const { POST } = await import('../src/app/api/mcp/route')
         const counts = async () => ({
           expenses: await prisma.expense.count(),
@@ -551,7 +554,12 @@ async function main() {
           await import('../src/app/groups/[groupId]/expenses/export/json/route')
         const { GET: csvExport } =
           await import('../src/app/groups/[groupId]/expenses/export/csv/route')
-        const request = new Request('http://localhost:3001/export')
+        const request = new Request('http://localhost:3001/export', {
+          headers: {
+            authorization:
+              'Bearer isolated-audit-test-mcp-key-at-least-thirty-two-characters',
+          },
+        })
         const context = { params: Promise.resolve({ groupId: group.id }) }
         const output = z
           .object({
@@ -668,7 +676,21 @@ async function main() {
         shares: '1',
       })),
     }
-    const caller = appRouter.createCaller({ readOnly: true })
+    await prisma.userGroupAccess.upsert({
+      where: {
+        userId_groupId: { userId: 'audit-tester', groupId: moneyGroup.id },
+      },
+      create: { userId: 'audit-tester', groupId: moneyGroup.id, role: 'admin' },
+      update: { active: true },
+    })
+    const caller = appRouter.createCaller({
+      readOnly: true,
+      principal: {
+        userId: 'audit-tester',
+        connectionId: 'audit-tests',
+        groupIds: [moneyGroup.id],
+      },
+    })
     let dollarExpense: Awaited<ReturnType<typeof createExpense>>
     await check(
       '6000 means 6000 in USD and JPY; money survives database and query round trips as strings',

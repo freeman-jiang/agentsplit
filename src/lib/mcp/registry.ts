@@ -30,7 +30,7 @@ export const MCP_TOOL_REGISTRY = [
     name: 'get_group',
     procedure: 'groups.getDetails',
     description:
-      'Read group details, its revision, participant IDs, share/export links, and participant IDs referenced by expenses. Participants are bookkeeping people, distinct from the authenticated actor.',
+      'Read group details, its revision, participant IDs, member roles, pending invitations (admins only), group/export links, and participant IDs referenced by expenses. Participants are bookkeeping people, distinct from the authenticated actor.',
   },
   {
     name: 'create_group',
@@ -46,15 +46,15 @@ export const MCP_TOOL_REGISTRY = [
     inputAliases: { changes: 'groupFormValues' },
     required: ['expectedRevision'],
     description:
-      'Edit group settings or participants using a partial changes object and the current expectedRevision from get_group. Omitted fields stay unchanged. Existing participant IDs preserve identities; entries without IDs create participants. Historical participants cannot be erased.',
+      'Admins only: edit group settings or participants using a partial changes object and the current expectedRevision from get_group. Omitted fields stay unchanged. Existing participant IDs preserve identities; entries without IDs create participants. Historical participants cannot be erased.',
   },
   {
     name: 'manage_group_access',
     procedure: 'groups.access',
     destructive: true,
-    idempotent: true,
+    idempotent: false,
     description:
-      'Join a group using action=join and its shareUrl on this app, or leave using action=leave and groupId. Access changes apply to all your keys. Leaving does not delete the group or ledger.',
+      'Manage membership: join with an email-bound invitation shareUrl; leave with groupId. Admin actions: invite with groupId and email (returns a single-use URL valid for 7 days; share it with the intended person), revoke_invitation with invitationId, remove_member with userId, set_role with userId and role=admin|member. Read members and pending invitation IDs with get_group. The last admin cannot leave or be demoted. A group URL grants no access. Changes apply immediately to all user keys; ledger history is preserved. Invitations are not idempotent: do not blindly retry an uncertain invite; inspect get_group first.',
   },
   {
     name: 'list_expenses',
@@ -66,7 +66,7 @@ export const MCP_TOOL_REGISTRY = [
     name: 'get_expense',
     procedure: 'groups.expenses.get',
     description:
-      'Read an expense, current revision, payer, splits and attached receipt URLs. Requires groupId and expenseId. Money and share values are exact decimal strings; receipts are permanent references.',
+      'Read an expense, current revision, payer, splits and attached receipt pointers and downloadUrl values. Fetch downloadUrl with your Bearer key; storage pointers are private and are kept unchanged in edits. Requires groupId and expenseId. Money and share values are exact decimal strings; receipts are permanent references.',
   },
   {
     name: 'create_expense',

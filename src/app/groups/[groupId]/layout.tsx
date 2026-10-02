@@ -1,4 +1,5 @@
 import { cached } from '@/app/cached-functions'
+import { requireWebGroup } from '@/lib/session'
 import { Metadata } from 'next'
 import { PropsWithChildren } from 'react'
 import { GroupLayoutClient } from './layout.client'
@@ -26,5 +27,6 @@ export default async function GroupLayout({
   params,
 }: PropsWithChildren<Props>) {
   const { groupId } = await params
+  await requireWebGroup(groupId)
   return <GroupLayoutClient groupId={groupId}>{children}</GroupLayoutClient>
 }

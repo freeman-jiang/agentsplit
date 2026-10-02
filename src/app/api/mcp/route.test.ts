@@ -13,6 +13,10 @@ import type { AnyTRPCRouter } from '@trpc/server'
 import * as z from 'zod'
 import { POST } from './route'
 
+jest.mock('../../../lib/mcp/authenticate', () => ({
+  authenticateMcp: async (request: Request) =>
+    require('../../../lib/mcp/access').authorizeMcpRequest(request),
+}))
 var mockExpenseReads = jest.fn()
 var mockRecurringReads = jest.fn()
 type ExpenseQuery = {
@@ -88,7 +92,25 @@ const savedExpenses = [
 
 jest.mock('../../../lib/prisma', () => ({
   prisma: {
-    userGroupAccess: { findMany: async () => [] },
+    userGroupAccess: {
+      findMany: async ({ where }: { where: { userId: string } }) => {
+        const config = accessConfigurationSchema.parse(
+          JSON.parse(process.env.MCP_ACCESS_GRANTS!),
+        )
+        return (
+          config.users.find((u: { id: string }) => u.id === where.userId)
+            ?.groupIds ?? []
+        ).map((groupId: string) => ({
+          userId: where.userId,
+          groupId,
+          active: true,
+          role: 'admin',
+        }))
+      },
+      findUnique: async () => ({ active: true, role: 'admin' }),
+    },
+    user: { findMany: async () => [] },
+    groupInvitation: { findMany: async () => [] },
     group: {
       findUnique: ({ where }: { where: { id: string } }) =>
         [groupA, groupB].find((group) => group.id === where.id) ?? null,

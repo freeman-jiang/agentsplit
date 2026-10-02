@@ -42,7 +42,12 @@ export const accessConfigurationSchema = z
   })
 
 export type AgentKey = z.infer<typeof agentKeySchema>
-export type McpPrincipal = { id: string; userId: string; groupIds: string[] }
+export type McpPrincipal = {
+  id: string
+  userId: string
+  name?: string
+  groupIds: string[]
+}
 
 export function hashAccessKey(token: string) {
   return createHash('sha256').update(token).digest('hex')

@@ -26,6 +26,18 @@ test('round-trips a recurrence rule through the form', async ({ page }) => {
   })
 
   await openExpense(page, 'Netflix')
+  await expect(
+    page.getByRole('button', { name: 'Save changes', exact: true }),
+  ).toBeVisible()
+  if (
+    (await page
+      .locator('details')
+      .filter({
+        has: page.locator('summary').filter({ hasText: 'More options' }),
+      })
+      .getAttribute('open')) === null
+  )
+    await page.locator('summary').filter({ hasText: 'More options' }).click()
   const field = fieldByLabel(page, 'Expense Recurrence').getByRole('combobox')
   await expect(field).toContainText('Monthly')
 
@@ -36,6 +48,18 @@ test('round-trips a recurrence rule through the form', async ({ page }) => {
   await page.waitForURL(EXPENSES_URL, { timeout: 30_000 })
 
   await openExpense(page, 'Netflix')
+  await expect(
+    page.getByRole('button', { name: 'Save changes', exact: true }),
+  ).toBeVisible()
+  if (
+    (await page
+      .locator('details')
+      .filter({
+        has: page.locator('summary').filter({ hasText: 'More options' }),
+      })
+      .getAttribute('open')) === null
+  )
+    await page.locator('summary').filter({ hasText: 'More options' }).click()
   await expect(
     fieldByLabel(page, 'Expense Recurrence').getByRole('combobox'),
   ).toContainText('None')

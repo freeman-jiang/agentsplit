@@ -4,9 +4,10 @@ Use `compose.coolify.yaml` for a new deployment. It contains the application,
 PostgreSQL, and Garage, each with persistent data where needed. The existing
 `compose.yaml` remains the upstream local-development setup.
 
-The storage flow is unchanged from Spliit: the app signs an upload, the browser
-sends a JPEG/PNG image directly to storage, and the expense saves its image URL.
-Garage is S3-compatible. No additional application storage code is needed.
+Google sign-in, private groups, and user-owned API keys are described in [AUTH.md](AUTH.md).
+Web receipts upload through an authenticated app endpoint; MCP receipt writes
+prepare signed S3 uploads. Both use private Garage storage and authenticated
+receipt downloads. Storage credentials never reach the browser or agent.
 
 ## Configuration
 
@@ -30,17 +31,12 @@ Garage is S3-compatible. No additional application storage code is needed.
    automatic Domains field empty: its explicit Traefik labels handle routing.
    The labels use the production app/storage domains literally so Coolify label
    escaping can remain enabled; update those labels if deploying at other domains.
-5. Build/deploy the stack. In the Garage service terminal, enable receipt reads:
-
-   ```sh
-   /garage bucket website --allow agentsplit-receipts
-   ```
-
-   Garage automatically initializes the single-node layout, bucket, and access
-   key at startup. Website access is a separate, one-time configuration step.
-
-6. Create a group and expense, attach a JPEG/PNG image, save it, and reopen it.
-   Check that uploads succeed and the saved receipt URL still opens.
+5. Configure Google and `BETTER_AUTH_SECRET` as described in `AUTH.md`, then deploy.
+   Garage automatically initializes the single-node layout, bucket, and key.
+   Do not enable or route anonymous website access to the receipt bucket.
+6. Sign in with the configured bootstrap Google email. Verify existing groups,
+   create a test expense, attach an image, and verify it after saving. A signed-out
+   request to the receipt URL must fail. Test the same group with an agent key.
 
 This configuration assumes Coolify's standard Traefik proxy, with entrypoint
 `https`, certificate resolver `letsencrypt`, and external Docker network
@@ -48,18 +44,10 @@ This configuration assumes Coolify's standard Traefik proxy, with entrypoint
 
 ## Why the storage proxy labels exist
 
-Garage exposes authenticated S3 operations on port 3900 and anonymous image
-reads through its website endpoint on port 3902. Spliit expects the durable
-image URL to look like `https://storage-host/bucket/key`.
-
-The labels preserve that URL: PUT/POST requests go unchanged to the S3 API;
-GET/HEAD requests for receipt objects go to the website endpoint with the bucket
-prefix removed and the bucket selected by Host. CORS permits the app's origin.
-This is deployment configuration, not a custom application upload pipeline.
-
-Receipt URLs grant read access to anyone who has the URL. Uploads still require
-presigned requests, and directory listing is not enabled. Private,
-account-authenticated receipts would require a different application read flow.
+Garage's S3 API is exposed on port 3900 behind HTTPS. Traefik preserves the Host
+and path used by signed MCP uploads. CORS permits only the app origin. The public
+website endpoint on port 3902 is not routed. `/api/receipts` checks current group
+membership before retrieving an object, including old audit attachments.
 
 ## Persistence and verification
 

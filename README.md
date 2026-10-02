@@ -4,14 +4,15 @@ Self-hosted shared expenses for people and their agents.
 
 This is the AgentSplit fork of Spliit. Analytics, automatic exchange-rate lookups,
 external flag images, and built-in OpenAI features are disabled. Receipt image
-attachments use the existing S3 upload flow, backed by self-hosted Garage in the
-[Coolify deployment](DEPLOYMENT.md). See [the privacy profile](PRIVACY.md) for
-details and audit limitations. The upstream instructions below remain for
-reference; analytics and AI environment flags cannot re-enable those features.
+attachments use private self-hosted Garage storage in the
+[Coolify deployment](DEPLOYMENT.md). Google sign-in, email-bound invitations,
+private groups, and self-service agent keys are documented in [AUTH.md](AUTH.md).
+See [the privacy profile](PRIVACY.md) for data handling and audit limitations.
 
-The read-only agent interface is documented in [MCP.md](MCP.md). Its tool catalog
-maps to the existing tRPC API. [Identity design](IDENTITY_DESIGN.md) records the
-follow-up plan for persistent users, invitations, and delegated agent keys.
+The complete read/write agent API is documented in [MCP.md](MCP.md). Its 17
+composable tools map to shared tRPC business logic, including multi-currency
+expenses, repayments, revisions, history, group membership, and receipts.
+Money uses exact decimal strings and balances stay separate by currency.
 
 ## Upstream Spliit documentation
 

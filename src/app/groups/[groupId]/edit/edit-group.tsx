@@ -3,6 +3,7 @@
 import { GroupForm } from '@/components/group-form'
 import { trpc } from '@/trpc/client'
 import { useCurrentGroup } from '../current-group-context'
+import { GroupMembers } from '../members'
 
 export const EditGroup = () => {
   const { groupId } = useCurrentGroup()
@@ -13,18 +14,23 @@ export const EditGroup = () => {
   if (isLoading) return <></>
 
   return (
-    <GroupForm
-      group={data?.group}
-      onSubmit={async (groupFormValues, participantId) => {
-        await mutateAsync({
-          groupId,
-          participantId,
-          groupFormValues,
-          expectedRevision: data?.group.revision,
-        })
-        await utils.groups.invalidate()
-      }}
-      protectedParticipantIds={data?.participantsWithExpenses}
-    />
+    <div className="space-y-8">
+      {data?.access.role === 'admin' && (
+        <GroupForm
+          group={data?.group}
+          onSubmit={async (groupFormValues, participantId) => {
+            await mutateAsync({
+              groupId,
+              participantId,
+              groupFormValues,
+              expectedRevision: data?.group.revision,
+            })
+            await utils.groups.invalidate()
+          }}
+          protectedParticipantIds={data?.participantsWithExpenses}
+        />
+      )}
+      <GroupMembers groupId={groupId} />
+    </div>
   )
 }

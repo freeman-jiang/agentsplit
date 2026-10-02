@@ -1,4 +1,5 @@
 import { ApplePwaSplash } from '@/app/apple-pwa-splash'
+import { AccountMenu } from '@/components/account-menu'
 import { Brand } from '@/components/brand'
 import { LocaleSwitcher } from '@/components/locale-switcher'
 import { ProgressBar } from '@/components/progress-bar'
@@ -78,7 +79,7 @@ function Content({ children }: { children: React.ReactNode }) {
           </Link>
           <nav
             aria-label="Workspace"
-            className="col-span-full row-start-2 flex gap-1 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:justify-end"
+            className="col-span-full row-start-2 flex flex-wrap gap-1 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:justify-end"
           >
             <Button variant="ghost" size="sm" asChild>
               <Link href="/groups">{t('Header.groups')}</Link>
@@ -86,6 +87,7 @@ function Content({ children }: { children: React.ReactNode }) {
             <Button variant="ghost" size="sm" asChild>
               <Link href="/agents">{t('Header.agentSetup')}</Link>
             </Button>
+            <AccountMenu />
           </nav>
           <div
             aria-label="Preferences"
@@ -105,6 +107,9 @@ function Content({ children }: { children: React.ReactNode }) {
             <Brand className="text-xl" />
           </Link>
           <p>{t('Footer.tagline')}</p>
+          <Link href="/privacy" className="underline underline-offset-4">
+            Privacy
+          </Link>
         </div>
         <p>
           {t.rich('Footer.upstream', {

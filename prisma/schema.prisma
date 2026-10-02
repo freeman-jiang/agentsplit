@@ -25,12 +25,15 @@ model Group {
   createdAt    DateTime      @default(now())
   revision     Int           @default(0)
   userAccess   UserGroupAccess[]
+  invitations GroupInvitation[]
+  receipts ReceiptObject[]
 }
 
 model UserGroupAccess {
   userId    String
   groupId   String
   active    Boolean  @default(true)
+  role      String   @default("member")
   createdAt DateTime @default(now())
   group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
@@ -163,4 +166,129 @@ enum ActivityType {
   CREATE_EXPENSE
   UPDATE_EXPENSE
   DELETE_EXPENSE
+}
+
+
+model User {
+  id String @id
+  name String
+  email String @unique
+  emailVerified Boolean @default(false)
+  image String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sessions Session[]
+  accounts Account[]
+}
+
+model Session {
+  id String @id
+  token String @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model Account {
+  id String @id
+  accountId String
+  providerId String
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken String?
+  refreshToken String?
+  idToken String?
+  accessTokenExpiresAt DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope String?
+  password String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id String @id
+  identifier String
+  value String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([identifier])
+}
+
+model Apikey {
+  id String @id
+  configId String @default("default")
+  name String?
+  start String?
+  prefix String?
+  key String @unique
+  referenceId String
+  refillInterval Int?
+  refillAmount Int?
+  lastRefillAt DateTime?
+  enabled Boolean @default(true)
+  rateLimitEnabled Boolean @default(true)
+  rateLimitTimeWindow Int?
+  rateLimitMax Int?
+  requestCount Int @default(0)
+  remaining Int?
+  lastRequest DateTime?
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  permissions String?
+  metadata String?
+  @@index([referenceId])
+  @@index([configId])
+}
+
+model AuthBootstrap {
+  id String @id
+  userId String
+  createdAt DateTime @default(now())
+}
+
+model GroupInvitation {
+  id String @id
+  groupId String
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  email String
+  tokenHash String @unique
+  createdBy String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  acceptedAt DateTime?
+  revokedAt DateTime?
+  @@index([groupId])
+}
+
+// Immutable object ownership survives removal from an expense and stays usable in history.
+model ReceiptObject {
+  id String @id
+  groupId String
+  group Group @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  url String
+  createdBy String?
+  createdAt DateTime @default(now())
+  @@unique([groupId, url])
+}
+
+model RateLimit {
+ id String @id
+ key String @unique
+ count Int
+ lastRequest BigInt
+}
+
+// Captures only the groups that existed at the private-account cutover.
+model LegacyGroupClaim {
+ groupId String @id
 }

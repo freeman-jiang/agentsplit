@@ -1,4 +1,6 @@
 import { getExpense } from '@/lib/api'
+import { effectiveBaseUrl } from '@/lib/env'
+import { receiptDownloadUrl } from '@/lib/receipt-url'
 import { baseProcedure } from '@/trpc/init'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
@@ -13,5 +15,17 @@ export const getGroupExpenseProcedure = baseProcedure
         message: 'Expense not found',
       })
     }
-    return { expense }
+    return {
+      expense: {
+        ...expense,
+        documents: expense.documents.map((document) => ({
+          ...document,
+          downloadUrl: receiptDownloadUrl(
+            groupId,
+            document.url,
+            effectiveBaseUrl,
+          ),
+        })),
+      },
+    }
   })

@@ -1,61 +1,50 @@
 # AgentSplit privacy profile
 
-The deployment uses one Next.js/React application, its tRPC endpoints, and a
-PostgreSQL database accessed through Prisma. Coolify can build the Dockerfile and
-route HTTPS to port 3000. The Coolify stack adds Garage on the same server for
-receipt image attachments. Vercel, Spliit's public instance, OpenAI, and AWS are
-not required. Group links grant access without accounts; keep them private.
+AgentSplit runs Next.js/React, shared tRPC/MCP procedures, PostgreSQL/Prisma and
+Garage on the operator's infrastructure. Google is used only for account
+sign-in (`openid`, `email`, `profile`). It does not receive expense data through
+this integration. Account/session/provider records are stored in PostgreSQL.
 
-## Disabled paths
+## Disabled external features
 
-- Analytics configuration always returns no providers, regardless of environment
-  settings. Plausible, Umami, and console tracking are not enabled by the app.
-- `NEXT_TELEMETRY_DISABLED=1` disables Next.js telemetry in the Docker build,
-  runtime, and package scripts. `CHECKPOINT_DISABLE=1` disables Prisma CLI
-  checkpoint reporting during generation, installation scripts, and migrations.
-  For direct CLI invocations outside these scripts, export both variables first.
-- Currency labels no longer load country flags from `flagcdn.com`.
-- Exchange-rate requests to Frankfurter are disabled. Cross-currency expenses
-  use a manually entered conversion rate; the API toggle is hidden.
-- Built-in receipt extraction and category inference remain disabled in server
-  feature flags. Leave OpenAI credentials unset.
-- The browser content security policy allows connections and images only from
-  this instance and the configured storage origin, plus local data/blob images.
-  External links can still be opened intentionally. The storage allowlist is
-  baked into the image and requires a rebuild when its hostname changes.
+Analytics, external flag images, automatic exchange-rate lookups, and built-in
+OpenAI receipt/category extraction remain disabled. Money stays in its own
+currency, with no conversion API. Next.js telemetry and Prisma checkpoint
+reporting are disabled in build/runtime scripts. Better Auth telemetry is
+explicitly disabled. No external email service is used: admins copy invitation
+links and send them themselves.
 
-OpenAI features previously sent receipt images or expense titles to a configured
-AI provider. S3 storage is restored using the original upstream upload flow,
-with a self-hosted Garage endpoint. It stores JPEG/PNG expense attachments,
-without sending them to an AI provider or an external storage company.
+The browser CSP restricts connections/images to the instance, configured
+storage origin, and local data/blob images. Google sign-in uses navigation to
+Google. Build-time package/image registry access remains necessary. This is a
+source/configuration statement, not a packet-capture audit of all dependencies.
 
-## Receipt access
+## Accounts and receipts
 
-Uploads use presigned S3 requests; write credentials stay on the application
-server. The Coolify proxy serves image reads from Garage's website endpoint.
-Anyone with an image URL can view that image, just as anyone with a group link
-can access that group. The website endpoint has no directory listing. Receipt
-URLs should be treated as private sharing links, not account-authenticated files.
-Garage's administration API and RPC ports are not published.
+Every group read/write requires active membership. A share URL alone grants no
+access. Google-verified email-bound invitations expire and can be revoked.
+Agent keys are hashed, owned by users, and inherit live membership and roles.
+Keys cannot establish browser sessions or create more keys. Web/API writes record
+the authenticated actor, independent of payer and balance-view selections.
 
-The attachment UI and upload implementation are unchanged from upstream. There
-is no custom application storage proxy, SDK wrapper, or new npm dependency.
+Garage is private. Browser receipts upload through the authenticated app;
+MCP requests signed staging uploads through expense writes and finalizes them
+after content validation. Permanent objects are not issued write URLs. Receipt
+reads check membership through `/api/receipts`; the old anonymous website route
+and unauthenticated upload-signing endpoint are disabled. The service worker
+caches static application assets only, never private pages/API responses/receipts.
 
-## Verification boundary
+## Retention and limits
 
-This is a source/configuration audit of the checked-out fork, not a packet capture
-of a running deployment or an audit of every transitive dependency. Container
-builds still contact image registries, Alpine mirrors, npm, and Prisma engine
-download servers to obtain software. The browser policy does not restrict server
-egress. A deployment firewall allowing only the database and storage would provide stronger
-runtime enforcement; it has not been configured here.
+Expense create/edit/delete operations produce append-only revision snapshots.
+Deletion hides an expense but keeps its history and receipt references. Membership
+changes preserve bookkeeping identities and history. Database triggers protect
+history against ordinary application updates/deletes, not a privileged database
+administrator or loss of the host. PostgreSQL and Garage require off-host backups
+for disaster recovery; this deployment does not provide those automatically.
 
-The native iOS client, Coolify itself, the host, and any agent or model provider
-connecting to a future MCP endpoint have separate privacy behavior and were not
-covered by this application audit. Data intentionally supplied to a remote agent
-is processed by that agent's provider.
-
-This profile does not improve the upstream activity feed into an immutable audit
-log, add account authentication, or make expense creation safe against duplicate
-retries. Those are separate items to address when building authenticated MCP
-write tools.
+Connected agent providers process the data you authorize them to retrieve. Keep
+API keys in private client configuration, never in prompts or group notes.
+The instance operator, Coolify, Google, and external agent providers have their
+own administrative access and privacy boundaries. See [AUTH.md](AUTH.md) and the
+public `/privacy` page for the account flow and current user-facing explanation.

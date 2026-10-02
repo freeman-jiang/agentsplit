@@ -1,6 +1,7 @@
 'use client'
 
 import { describeExpenseRevision } from '@/lib/expense-history-display'
+import { receiptDownloadUrl } from '@/lib/receipt-url'
 import { useLocale, useTranslations } from 'next-intl'
 import type { Activity } from './activity-item'
 
@@ -146,6 +147,8 @@ export function ActivityRevision({ activity }: { activity: Activity }) {
         </dl>
         {snapshot.expense.documents.map((document, index) => {
           const href = receiptLink(document.url)
+            ? receiptDownloadUrl(snapshot.group.id, document.url)
+            : undefined
           return href ? (
             <a
               key={document.id}

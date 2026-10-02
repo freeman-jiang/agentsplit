@@ -118,6 +118,11 @@ const expense = expenseFields.extend({
     z.object({
       id,
       url: z.string(),
+      downloadUrl: z
+        .string()
+        .describe(
+          'Authenticated receipt URL. GET with the same Bearer key; do not send the key to the storage URL.',
+        ),
       width: z.number().int(),
       height: z.number().int(),
       expenseId: id.nullable(),
@@ -160,7 +165,13 @@ const expenseWrite = z.object({
 export const MCP_OUTPUT_SCHEMAS = {
   'groups.create': z.object({ groupId: id, group: groupWithParticipants }),
   'groups.update': z.object({ groupId: id, group: groupWithParticipants }),
-  'groups.access': z.object({ groupId: id, joined: z.boolean() }),
+  'groups.access': z.object({
+    groupId: id,
+    joined: z.boolean(),
+    invitation: z
+      .object({ id, email: z.string(), expiresAt: dateTime, url: z.string() })
+      .optional(),
+  }),
   'groups.expenses.create': expenseWrite,
   'groups.expenses.update': expenseWrite,
   'groups.expenses.delete': z.object({
@@ -201,6 +212,15 @@ export const MCP_OUTPUT_SCHEMAS = {
     ...pagination,
   }),
   'groups.getDetails': z.object({
+    access: z.object({
+      role: z.string(),
+      members: z.array(
+        z.object({ id, name: z.string(), email: z.string(), role: z.string() }),
+      ),
+      invitations: z.array(
+        z.object({ id, email: z.string(), expiresAt: dateTime }),
+      ),
+    }),
     group: groupWithParticipants,
     participantsWithExpenses: z.array(id),
     links: z.object({ share: z.string(), csv: z.string(), json: z.string() }),

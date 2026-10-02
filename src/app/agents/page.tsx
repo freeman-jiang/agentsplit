@@ -1,6 +1,8 @@
 import { CopyButton } from '@/components/copy-button'
+import { Button } from '@/components/ui/button'
 import { effectiveBaseUrl } from '@/lib/env'
 import { getTranslations } from 'next-intl/server'
+import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,9 +67,14 @@ export default async function AgentSetupPage() {
         <h2 id="agent-key-title" className="text-lg font-medium">
           {t('keyTitle')}
         </h2>
-        <p className="text-sm">{t('keyDescription')}</p>
+        <p className="text-sm">
+          Create your own key in Account & keys. It gives your agent access to
+          the same groups and permissions as your signed-in account.
+        </p>
         <p className="border-s-2 border-primary bg-muted p-4 text-sm">
-          {t('keyAvailability')}
+          <Button asChild>
+            <Link href="/settings">Create an API key</Link>
+          </Button>
         </p>
         <p className="text-sm text-muted-foreground">{t('keyPrivacy')}</p>
       </section>

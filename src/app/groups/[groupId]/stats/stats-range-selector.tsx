@@ -38,7 +38,11 @@ export function StatsRangeSelector({
           value={period}
           onValueChange={(value) => onPeriodChange(value as StatsPeriod)}
         >
-          <SelectTrigger className="w-auto gap-2">
+          <SelectTrigger
+            aria-label={t('label')}
+            data-testid="stats-period"
+            className="w-auto gap-2"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
