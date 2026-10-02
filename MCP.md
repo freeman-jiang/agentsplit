@@ -25,10 +25,7 @@ and can be revoked there.
    as its URL.
 3. In **Headers**, set the name to `X-API-Key` and paste the copied API key
    directly into the value. No prefix or quotes.
-4. Leave **Bearer token env var** and **Headers from environment variables**
-   empty for this setup. When editing an older configuration, replace its
-   Authorization header row with X-API-Key.
-5. Save and enable/reconnect the server if needed.
+4. Save and enable/reconnect the server if needed.
 
 Keep the key in the client's private configuration. Do not put it in an agent
 prompt, group note, URL, shared configuration, or repository. The screenshot-like

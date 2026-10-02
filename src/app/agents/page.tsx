@@ -112,12 +112,6 @@ export default async function AgentSetupPage() {
               <code>X-API-Key</code> and paste your API key directly into its
               value.
             </li>
-            <li>
-              Leave <strong>Bearer token env var</strong> and{' '}
-              <strong>Headers from environment variables</strong> empty for this
-              setup. If replacing an old connection, replace its Authorization
-              header with X-API-Key.
-            </li>
             <li>Save, then enable or reconnect AgentSplit if needed.</li>
           </ol>
           <div className="border bg-card p-4 space-y-3 text-sm">
