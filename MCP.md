@@ -13,7 +13,7 @@ splitting, persistence and audit functions.
 
 ## Connect
 
-The public `/agents` page provides this instance's endpoint, client configuration
+The signed-in `/agents` page provides this instance's endpoint, client configuration
 examples and copyable setup instructions. Sign in with Google, open `/settings`
 (Account & keys), and create a separate key for each agent. Keys are shown once
 and can be revoked there.

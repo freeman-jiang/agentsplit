@@ -1,10 +1,12 @@
-import { Button } from '@/components/ui/button'
+import { LoginButton } from '@/components/login-button'
 import { TrackPage } from '@/lib/analytics/track-page'
-import { useTranslations } from 'next-intl'
-import Link from 'next/link'
+import { getWebSession } from '@/lib/session'
+import { getTranslations } from 'next-intl/server'
+import { redirect } from 'next/navigation'
 
-export default function HomePage() {
-  const t = useTranslations()
+export default async function HomePage() {
+  if (await getWebSession()) redirect('/groups')
+  const t = await getTranslations()
   return (
     <main>
       <TrackPage path="/" />
@@ -20,14 +22,7 @@ export default function HomePage() {
               strong: (chunks) => <strong>{chunks}</strong>,
             })}
           </p>
-          <div className="flex flex-wrap justify-center gap-3">
-            <Button asChild>
-              <Link href="/groups">{t('Homepage.button.groups')}</Link>
-            </Button>
-            <Button asChild variant="secondary">
-              <Link href="/agents">{t('Homepage.button.agents')}</Link>
-            </Button>
-          </div>
+          <LoginButton />
         </div>
       </section>
     </main>

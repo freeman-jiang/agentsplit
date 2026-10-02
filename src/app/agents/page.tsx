@@ -1,6 +1,7 @@
 import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { effectiveBaseUrl } from '@/lib/env'
+import { requireWebUser } from '@/lib/session'
 import { getTranslations } from 'next-intl/server'
 import Link from 'next/link'
 
@@ -37,6 +38,7 @@ function Configuration({
 }
 
 export default async function AgentSetupPage() {
+  await requireWebUser()
   const t = await getTranslations('AgentSetup')
   const endpoint = new URL('/api/mcp', effectiveBaseUrl).toString()
   const codex = `[mcp_servers.agentsplit]\nurl = ${JSON.stringify(endpoint)}\nbearer_token_env_var = "AGENTSPLIT_MCP_TOKEN"`

@@ -1,19 +1,18 @@
 import { addExpense, createGroup, uniqueSuffix } from './app'
 import { expect, test } from './fixtures'
 
-test('landing page offers groups or agent setup with usable connection instructions', async ({
+test('signed-in workspace offers usable agent connection instructions', async ({
   page,
   baseURL,
 }) => {
   await page.setViewportSize({ width: 320, height: 1000 })
   await page.goto('/')
-  const main = page.locator('main')
-  await expect(main.getByRole('link')).toHaveCount(2)
-  await expect(
-    main.getByRole('link', { name: 'Go to groups' }),
-  ).toHaveAttribute('href', '/groups')
+  await expect(page).toHaveURL(/\/groups$/)
   await expect(page.locator('a[href*="github.com"]')).toHaveCount(0)
-  await main.getByRole('link', { name: 'Set up an agent' }).click()
+  await page
+    .getByRole('navigation', { name: 'Workspace' })
+    .getByRole('link', { name: 'Agent setup' })
+    .click()
   await expect(
     page.getByRole('heading', { name: 'Set up your agent' }),
   ).toBeVisible()

@@ -466,3 +466,20 @@ test expense was soft-deleted and the original active expense list restored.
   two broad-run failures. Together with the broad run, all 55 scenarios pass.
 - The final follow-up commit changes verification tooling/documentation only;
   the deployed application code remains the tested commit above.
+
+
+## Simplified login and profile navigation — 2026-10-01
+
+The signed-out landing page now has one Log In action opening Google directly.
+Workspace navigation and profile controls render only for a verified session;
+the signed-in landing page redirects to groups. Agent setup requires login.
+A top-right initials avatar opens settings directly, with theme and language
+preferences moved there. Header identity is rendered from the server session
+without flashing signed-out navigation during hydration.
+
+Production build, TypeScript, formatting and diff checks pass. Lint retains the
+two existing warnings. Seven focused browser scenarios pass across the initial
+and focused reruns: login request/error handling, invitation callback preservation,
+protected agent setup, avatar navigation, persistent theme preferences, existing
+key/invitation flows and responsive layouts at 320, 488 and 1280 pixels. The local
+signed-out page was also visually inspected.

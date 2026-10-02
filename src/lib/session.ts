@@ -1,6 +1,7 @@
 import { TRPCError } from '@trpc/server'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { cache } from 'react'
 import { getAuth } from './auth'
 import { bootstrapOwner } from './auth-bootstrap'
 import type { AuditActor } from './expense-history'
@@ -65,3 +66,10 @@ export function requirePrincipal<T extends AuditActor>(
     throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Sign in required' })
   return principal
 }
+
+/** Request-scoped session for server-rendered public/account navigation. */
+export const getWebSession = cache(async () => {
+  const requestHeaders = await headers()
+  const session = await getAuth().api.getSession({ headers: requestHeaders })
+  return session?.user.emailVerified ? session : null
+})

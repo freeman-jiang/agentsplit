@@ -1,5 +1,6 @@
 'use client'
 
+import { AppearanceSettings } from '@/components/appearance-settings'
 import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -52,6 +53,7 @@ export function AccountSettings({
           Sign out
         </Button>
       </section>
+      <AppearanceSettings />
       <section className="space-y-4">
         <h2 className="text-xl font-medium">Agent API keys</h2>
         <p className="text-sm text-muted-foreground">

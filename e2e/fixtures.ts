@@ -19,6 +19,7 @@ import { seedAccount } from './auth'
  *    Accept-Language in src/lib/locale.ts) and the browser locale are pinned.
  */
 type Options = {
+  authenticated: boolean
   /**
    * Seed `newGroup-activeUser` so the "Who are you?" dialog stays shut.
    * Defaults to true. Set `test.use({ seedActiveUser: false })` in the spec
@@ -35,14 +36,18 @@ type Options = {
 }
 
 export const test = base.extend<Options>({
+  authenticated: [true, { option: true }],
   seedActiveUser: [true, { option: true }],
   exchangeRate: [null, { option: true }],
 
   // The second argument is Playwright's `use` callback, renamed because
   // eslint-plugin-react-hooks would otherwise read `use(...)` as React's hook.
-  page: async ({ page, baseURL, seedActiveUser, exchangeRate }, runTest) => {
+  page: async (
+    { page, baseURL, seedActiveUser, exchangeRate, authenticated },
+    runTest,
+  ) => {
     if (baseURL) {
-      await seedAccount(page.context(), baseURL)
+      if (authenticated) await seedAccount(page.context(), baseURL)
       await page
         .context()
         .addCookies([{ name: 'NEXT_LOCALE', value: 'en-US', url: baseURL }])

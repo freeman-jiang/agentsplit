@@ -33,7 +33,9 @@ Do not add a public bucket policy or re-enable the public website router.
 
 ## User flow
 
-- Sign in with Google. `/groups` lists database memberships on every device.
+- The signed-out landing page has a single **Log In** action that opens Google.
+  Signed-in visits to `/` redirect to `/groups`, which lists database memberships
+  on every device.
 - Create a group: you become its admin. Participants are bookkeeping names and
   need not already have accounts.
 - Open **Members** or group Settings. Admins enter a Google email and copy the
@@ -42,7 +44,8 @@ Do not add a public bucket policy or re-enable the public website router.
 - Members can read and manage expenses and record repayments. Admins also edit
   group settings, invite/revoke, remove members, and change roles. The last admin
   cannot leave or be removed/demoted without promoting a replacement.
-- **Account & keys** creates and revokes one key per agent. A key is shown once,
+- The top-right initials avatar opens **Account & keys**, with theme/language
+  preferences and controls to create and revoke one key per agent. A key is shown once,
   stored hashed, and inherits all current memberships/roles. A key cannot mint
   other keys or authenticate as a browser session.
 - Payer/beneficiary selections and the selected balance view are bookkeeping
