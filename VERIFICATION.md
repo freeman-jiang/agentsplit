@@ -513,3 +513,11 @@ create/edit/delete revision order, unchanged prior contents, the next sequence
 value and restored append-only protection. Both disposable databases were aligned
 with the corrected unreleased backfill, with pre/post content hashes matching;
 the 23 historical-query scenarios pass on that ordering as well.
+
+Live deployment `2jdpfvuhxqvgg9xnkdhdfldy` finished on application commit
+`5c55eee9e312122cf0c77a51dada2920bea7879a`. The read-only production probe used an
+already-deleted synthetic expense and passed direct revision, timestamp,
+historical ledger/balance, deletion-marker and chronological-history checks.
+All 41 pre-existing production audit records matched their pre-migration content
+hashes exactly (new ordering metadata excluded). Both append-only and no-truncate
+triggers remained enabled. No ledger changes were made by this live verifier.
