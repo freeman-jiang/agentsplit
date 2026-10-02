@@ -125,7 +125,7 @@ const expense = expenseFields.extend({
       downloadUrl: z
         .string()
         .describe(
-          'Authenticated receipt URL. GET with the same Bearer key; do not send the key to the storage URL.',
+          'Authenticated receipt URL. GET with X-API-Key set to the same API key; do not send the key to the storage URL.',
         ),
       width: z.number().int(),
       height: z.number().int(),

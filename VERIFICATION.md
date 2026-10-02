@@ -521,3 +521,21 @@ historical ledger/balance, deletion-marker and chronological-history checks.
 All 41 pre-existing production audit records matched their pre-migration content
 hashes exactly (new ordering metadata excluded). Both append-only and no-truncate
 triggers remained enabled. No ledger changes were made by this live verifier.
+
+## Paste API keys as-is; Codex app first — 2026-10-02
+
+MCP, authenticated exports and receipt downloads now accept the raw copied key
+in X-API-Key. Standard Authorization clients remain compatible. A shared parser
+rejects malformed, duplicate/comma-joined and conflicting credentials; explicit
+invalid key headers never fall back to an unrelated browser session.
+
+The Agents guide now leads with Codex desktop app instructions matching the
+Plugins/MCPs form: URL, X-API-Key header name and raw key value, with environment
+fields left empty. CLI/environment-file configurations are optional disclosures.
+No supplied screenshot or credential is embedded in source or documentation.
+Official Codex docs confirmed static and environment-backed custom headers.
+
+Checks: 700 Jest executions / 60 suites pass across both time zones, 31 real
+private-account integration scenarios pass, and four focused browser scenarios
+pass (guide, copy controls, key management, membership and layout). Build,
+TypeScript, formatting and diff checks pass; lint retains two existing warnings.

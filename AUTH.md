@@ -28,7 +28,7 @@ email-delivery service is required. Better Auth telemetry is explicitly disabled
 The Coolify compose file no longer exposes Garage's anonymous website endpoint.
 Only its authenticated S3 API is routed. Existing storage pointers remain valid
 internally; receipts are downloaded through `/api/receipts` with a web session or
-Bearer key. Existing current and historical receipt ownership is backfilled.
+API key in X-API-Key (or a standard Authorization header). Existing current and historical receipt ownership is backfilled.
 Do not add a public bucket policy or re-enable the public website router.
 
 ## User flow

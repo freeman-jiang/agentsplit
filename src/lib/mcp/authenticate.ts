@@ -1,3 +1,4 @@
+import { readApiKey } from '@/lib/api-key-header'
 import { getAuth } from '@/lib/auth'
 import { effectiveGroupIds } from '@/lib/group-access'
 import { prisma } from '@/lib/prisma'
@@ -28,9 +29,7 @@ export async function authenticateMcp(
       request.headers.get('origin') !== expected.origin)
   )
     return deny(403, 'Origin or host is not allowed')
-  const key = request.headers
-    .get('authorization')
-    ?.match(/^Bearer ([^\s]+)$/i)?.[1]
+  const key = readApiKey(request.headers)
   if (!key || key.length < 32 || key.length > 4096)
     return deny(401, 'Authentication required')
   try {

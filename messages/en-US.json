@@ -621,19 +621,19 @@
     "connectTitle": "2. Connect your client",
     "endpoint": "MCP endpoint · Streamable HTTP",
     "copyEndpoint": "Copy MCP endpoint",
-    "environment": "The examples read your key from AGENTSPLIT_MCP_TOKEN in the environment that launches your agent. If your desktop client does not inherit terminal variables, use its private Authorization header setting instead.",
+    "environment": "For configuration-file examples, set AGENTSPLIT_API_KEY to your API key exactly as copied. The Codex app steps above do not need environment variables.",
     "codexDescription": "Add this to your private ~/.codex/config.toml, then reconnect the MCP server or restart Codex.",
     "claudeDescription": "Save this MCP configuration privately and load it with claude --mcp-config /path/to/config.json.",
     "copyCodex": "Copy Codex configuration",
     "copyClaude": "Copy Claude Code configuration",
     "otherClients": "Other clients and private header settings",
-    "otherDescription": "Use the endpoint above with Streamable HTTP and a bearer Authorization header. Replace YOUR_API_KEY with your key only in the client’s private configuration.",
-    "noOauth": "This server uses API keys. OAuth sign-in is not available.",
+    "otherDescription": "Use the endpoint above with Streamable HTTP. Add an X-API-Key header and paste your key directly into its value in the client’s private configuration.",
+    "noOauth": "Agent connections use API keys; no separate OAuth login is needed.",
     "references": "Official client instructions:",
     "useTitle": "3. Give your agent a group",
     "useDescription": "Once connected, your agent can discover your groups. Accept new invitations in the app or give your agent the email-bound invitation link.",
     "copyInstructions": "Copy agent instructions",
-    "instructions": "Use AgentSplit at {endpoint} through MCP. Authenticate with the API key in my client configuration.\n\nStart with list_groups. A group URL alone does not grant access. If I provide an invitation link addressed to my Google email, use manage_group_access with action=join and shareUrl. Read get_group for members, roles and participant IDs, and get_reference_data for currencies, categories and split modes.\n\nUse exact decimal strings for money and keep currencies separate. Read the current revision before editing or deleting. Record payments with create_expense and isReimbursement=true. Fetch receipt downloadUrl values with the same Bearer key. Only make changes I request, and confirm the committed result.",
+    "instructions": "Use AgentSplit at {endpoint} through MCP. Authenticate with the API key in my client configuration.\n\nStart with list_groups. A group URL alone does not grant access. If I provide an invitation link addressed to my Google email, use manage_group_access with action=join and shareUrl. Read get_group for members, roles and participant IDs, and get_reference_data for currencies, categories and split modes.\n\nUse exact decimal strings for money and keep currencies separate. Read the current revision before editing or deleting. Record payments with create_expense and isReimbursement=true. Fetch receipt downloadUrl values with X-API-Key set to the same API key. Only make changes I request, and confirm the committed result.",
     "capabilities": "Agents can create and edit expenses, split equally or unevenly, record payments, attach receipts, review balances by currency, and read the audit history."
   }
 }

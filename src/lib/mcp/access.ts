@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
+import { readApiKey } from '@/lib/api-key-header'
 import * as z from 'zod'
 
 export const agentKeySchema = z
@@ -110,9 +111,7 @@ export function authorizeMcpRequest(
     }
   }
 
-  const token = request.headers
-    .get('authorization')
-    ?.match(/^Bearer ([^\s]+)$/i)?.[1]
+  const token = readApiKey(request.headers)
   if (!token || token.length < 32 || token.length > 4096) {
     return { response: reject(401, 'Authentication required') }
   }

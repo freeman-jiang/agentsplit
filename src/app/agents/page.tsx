@@ -41,14 +41,14 @@ export default async function AgentSetupPage() {
   await requireWebUser()
   const t = await getTranslations('AgentSetup')
   const endpoint = new URL('/api/mcp', effectiveBaseUrl).toString()
-  const codex = `[mcp_servers.agentsplit]\nurl = ${JSON.stringify(endpoint)}\nbearer_token_env_var = "AGENTSPLIT_MCP_TOKEN"`
+  const codex = `[mcp_servers.agentsplit]\nurl = ${JSON.stringify(endpoint)}\nenv_http_headers = { "X-API-Key" = "AGENTSPLIT_API_KEY" }`
   const claude = JSON.stringify(
     {
       mcpServers: {
         agentsplit: {
           type: 'http',
           url: endpoint,
-          headers: { Authorization: 'Bearer ${AGENTSPLIT_MCP_TOKEN}' },
+          headers: { 'X-API-Key': '${AGENTSPLIT_API_KEY}' },
         },
       },
     },
@@ -94,27 +94,83 @@ export default async function AgentSetupPage() {
           </div>
           <CopyButton text={endpoint} title={t('copyEndpoint')} />
         </div>
-        <p className="text-sm text-muted-foreground">{t('environment')}</p>
-        <Configuration
-          title="Codex"
-          description={t('codexDescription')}
-          code={codex}
-          copyLabel={t('copyCodex')}
-        />
-        <Configuration
-          title="Claude Code"
-          description={t('claudeDescription')}
-          code={claude}
-          copyLabel={t('copyClaude')}
-        />
+        <section className="space-y-4" aria-labelledby="codex-app-title">
+          <h3 id="codex-app-title" className="text-lg font-medium">
+            Codex app
+          </h3>
+          <ol className="list-decimal space-y-3 ps-5 text-sm leading-relaxed">
+            <li>
+              Open <strong>Plugins → MCPs</strong> in the Codex app. Add an HTTP
+              MCP server, or edit your existing AgentSplit connection.
+            </li>
+            <li>
+              Use <code>agentsplit</code> as the name and copy the MCP URL above
+              into <strong>URL</strong>.
+            </li>
+            <li>
+              Under <strong>Headers</strong>, set the header name to{' '}
+              <code>X-API-Key</code> and paste your API key directly into its
+              value.
+            </li>
+            <li>
+              Leave <strong>Bearer token env var</strong> and{' '}
+              <strong>Headers from environment variables</strong> empty for this
+              setup. If replacing an old connection, replace its Authorization
+              header with X-API-Key.
+            </li>
+            <li>Save, then enable or reconnect AgentSplit if needed.</li>
+          </ol>
+          <div className="border bg-card p-4 space-y-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span>
+                Header name: <code>X-API-Key</code>
+              </span>
+              <CopyButton text="X-API-Key" title="Copy header name" />
+            </div>
+            <p>
+              Header value: <strong>your API key, exactly as copied</strong>
+            </p>
+            <p className="text-muted-foreground">
+              No prefix, quotes, or extra formatting needed.
+            </p>
+          </div>
+        </section>
         <details className="border-y py-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            Codex CLI and configuration files
+          </summary>
+          <div className="space-y-5 pt-4">
+            <p className="text-sm text-muted-foreground">{t('environment')}</p>
+            <Configuration
+              title="Codex configuration"
+              description={t('codexDescription')}
+              code={codex}
+              copyLabel={t('copyCodex')}
+            />
+          </div>
+        </details>
+        <details className="border-b pb-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            Claude Code
+          </summary>
+          <div className="space-y-4 pt-4">
+            <p className="text-sm text-muted-foreground">{t('environment')}</p>
+            <Configuration
+              title="Claude Code configuration"
+              description={t('claudeDescription')}
+              code={claude}
+              copyLabel={t('copyClaude')}
+            />
+          </div>
+        </details>
+        <details className="border-b pb-3">
           <summary className="cursor-pointer text-sm font-medium">
             {t('otherClients')}
           </summary>
           <div className="space-y-3 pt-3 text-sm text-muted-foreground">
             <p>{t('otherDescription')}</p>
             <code className="block break-all text-foreground">
-              Authorization: Bearer YOUR_API_KEY
+              X-API-Key: YOUR_API_KEY
             </code>
             <p>{t('noOauth')}</p>
           </div>

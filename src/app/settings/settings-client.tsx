@@ -106,6 +106,10 @@ export function AccountSettings({
             <p className="font-medium">
               Copy your new key now. It is shown only once.
             </p>
+            <p className="text-sm text-muted-foreground">
+              Paste the key exactly as copied into your client’s API key or
+              X-API-Key header field. No prefix is needed.
+            </p>
             <div className="flex items-center gap-3">
               <code className="min-w-0 break-all flex-1 text-sm">{secret}</code>
               <CopyButton text={secret} title="Copy API key" />

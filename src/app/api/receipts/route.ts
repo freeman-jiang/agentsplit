@@ -1,3 +1,4 @@
+import { hasApiKeyHeader } from '@/lib/api-key-header'
 import { withGroupWrite } from '@/lib/expense-history'
 import { getRuntimeFeatureFlags } from '@/lib/featureFlags'
 import { authenticateMcp } from '@/lib/mcp/authenticate'
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
     groupId = params.get('groupId'),
     url = params.get('url')
   if (!groupId || !url) return fail(400, 'Receipt reference is required')
-  const principal = request.headers.has('authorization')
+  const principal = hasApiKeyHeader(request.headers)
     ? await authenticateMcp(request).then((result) =>
         'principal' in result ? result.principal : undefined,
       )

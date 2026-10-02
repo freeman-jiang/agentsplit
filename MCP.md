@@ -3,8 +3,8 @@
 AgentSplit exposes its ledger through the standard MCP Streamable HTTP endpoint
 `https://agentsplit.freemanjiang.com/api/mcp`. It supports discovery, typed JSON
 inputs/outputs, read/write annotations, and both legacy 2025 clients and modern
-2026-07-28 requests. Any MCP client that supports this transport and a bearer
-Authorization header can use it. OAuth-only clients need a separate OAuth
+2026-07-28 requests. Any MCP client that supports this transport and custom HTTP headers can use it.
+Send the API key as-is in `X-API-Key`. OAuth-only clients need a separate OAuth
 integration. Google OAuth authenticates web users; agents use user-owned API keys.
 
 The server runs inside the existing Next.js app. One reviewed registry maps tools
@@ -18,18 +18,38 @@ examples and copyable setup instructions. Sign in with Google, open `/settings`
 (Account & keys), and create a separate key for each agent. Keys are shown once
 and can be revoked there.
 
+### Codex desktop app
+
+1. Open **Plugins → MCPs**, then add an HTTP MCP server or edit AgentSplit.
+2. Use `agentsplit` as its name and `https://agentsplit.freemanjiang.com/api/mcp`
+   as its URL.
+3. In **Headers**, set the name to `X-API-Key` and paste the copied API key
+   directly into the value. No prefix or quotes.
+4. Leave **Bearer token env var** and **Headers from environment variables**
+   empty for this setup. When editing an older configuration, replace its
+   Authorization header row with X-API-Key.
+5. Save and enable/reconnect the server if needed.
+
+Keep the key in the client's private configuration. Do not put it in an agent
+prompt, group note, URL, shared configuration, or repository. The screenshot-like
+field names above match the desktop app; no terminal or environment variable is
+required for that flow.
+
+### Optional configuration-file setup
+
+Codex can load the raw key from an environment variable:
+
 ```toml
 [mcp_servers.agentsplit]
 url = "https://agentsplit.freemanjiang.com/api/mcp"
-bearer_token_env_var = "AGENTSPLIT_MCP_TOKEN"
+env_http_headers = { "X-API-Key" = "AGENTSPLIT_API_KEY" }
 ```
 
-Provide the secret through the client's environment or protected header settings.
-Never put it in a prompt, repository, expense note, URL, or shared config. The
-existing local connection uses a private static Authorization header so it works
-across desktop restarts. Reconnect after a deployment to refresh tool schemas.
+Set `AGENTSPLIT_API_KEY` to the copied key as-is in the environment that starts
+Codex. A private `http_headers = { "X-API-Key" = "YOUR_API_KEY" }` entry also works
+when a desktop app does not inherit terminal environment variables.
 
-For Claude Code, use this MCP configuration with the same environment variable:
+Claude Code uses the same raw header:
 
 ```json
 {
@@ -37,16 +57,21 @@ For Claude Code, use this MCP configuration with the same environment variable:
     "agentsplit": {
       "type": "http",
       "url": "https://agentsplit.freemanjiang.com/api/mcp",
-      "headers": { "Authorization": "Bearer ${AGENTSPLIT_MCP_TOKEN}" }
+      "headers": { "X-API-Key": "${AGENTSPLIT_API_KEY}" }
     }
   }
 }
 ```
 
-It can be supplied through `claude --mcp-config /path/to/config.json`, or through
-the client's normal MCP settings. Other agents need the same endpoint and
-`Authorization: Bearer <secret>` header. Their own tool-approval policy still
-applies. Official connection references: [Codex configuration](https://developers.openai.com/codex/config-reference)
+Load it with `claude --mcp-config /path/to/config.json` or the client's normal MCP
+settings. Receipt downloads and exports accept the same X-API-Key header.
+Standard `Authorization: Bearer <key>` clients remain compatible, and existing
+keys need no rotation. If both authentication headers are supplied, they must
+contain the same key; conflicting/malformed credentials are rejected. Their own
+tool-approval policies still apply.
+
+Official references: [Codex MCP](https://learn.chatgpt.com/docs/extend/mcp),
+[Codex header configuration](https://learn.chatgpt.com/docs/config-file/config-reference),
 and [Claude Code MCP](https://code.claude.com/docs/en/mcp).
 
 Keys identify connections and belong to a stable user ID. Each key inherits the
@@ -243,7 +268,7 @@ reported by the SDK as validation errors. A `CONFLICT` requires reading the curr
 revision. After an uncertain write, read the resource/history before retrying.
 Internal database, storage and credential diagnostics are never returned.
 
-The endpoint validates Host/Origin and bearer credentials on every request.
+The endpoint validates Host/Origin and API-key credentials on every request.
 Per-user request budgets are shared across keys (120-request burst, two requests
 per second refill). HTTP 429 includes Retry-After. The current single-process
 limiter resets on restart; distributed deployments need shared storage for it.
@@ -306,7 +331,7 @@ Invite creates a fresh token; inspect pending invitations before retrying an
 uncertain result. The raw token is returned only at creation.
 
 `get_expense.expense.documents[].downloadUrl` is an authenticated app URL. GET
-it with the same Bearer key. The `url` field is a stable private storage pointer
+it with `X-API-Key` set to the same raw key. The `url` field is a stable private storage pointer
 for edits/history, not an anonymously downloadable link. Browser uploads use
 the authenticated receipt endpoint; MCP uploads remain part of expense writes.
 

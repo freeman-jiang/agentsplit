@@ -259,6 +259,62 @@ await check('key verifies against membership', async () => {
   assert.deepEqual(result.principal.groupIds, [groupId])
 })
 await check(
+  'raw API key authenticates MCP, exports and receipt access without a prefix',
+  async () => {
+    const headers = { 'X-API-Key': key }
+    const result = await authenticateMcp(
+      new Request(`${base}/api/mcp`, { headers }),
+    )
+    assert('principal' in result)
+    assert.equal(result.principal.userId, bob.user.id)
+    const exported = await exportJson(
+      new Request(`${base}/export`, { headers }),
+      { params: Promise.resolve({ groupId }) },
+    )
+    assert.equal(exported.status, 200)
+    const image = await receipt(
+      new Request(
+        `${base}/api/receipts?${new URLSearchParams({ groupId, url: 'https://example.com/nonexistent.png' })}`,
+        { headers },
+      ),
+    )
+    assert.equal(image.status, 404)
+    const response = await mcp(
+      new Request(`${base}/api/mcp`, {
+        method: 'POST',
+        headers: {
+          ...headers,
+          'content-type': 'application/json',
+          accept: 'application/json,text/event-stream',
+          'mcp-protocol-version': '2025-03-26',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/list',
+          params: {},
+        }),
+      }),
+    )
+    assert.equal(response.status, 200)
+    const raw = await response.text()
+    const json = JSON.parse(
+      raw
+        .split('\n')
+        .find((line) => line.startsWith('data: '))
+        ?.slice(6) ?? raw,
+    ) as { result: { tools: unknown[] } }
+    assert.equal(json.result.tools.length, 17)
+    const conflicting = await authenticateMcp(
+      new Request(`${base}/api/mcp`, {
+        headers: { ...headers, authorization: `Bearer ${key}-other` },
+      }),
+    )
+    assert('response' in conflicting)
+    assert.equal(conflicting.response.status, 401)
+  },
+)
+await check(
   'key cannot mint another key or act as browser session',
   async () => {
     const r = await auth.handler(
@@ -453,6 +509,13 @@ await check('key revocation is effective', async () => {
     new Request(`${base}/api/mcp`, {
       headers: { authorization: `Bearer ${key}` },
     }),
+  )
+  assert('response' in result)
+  assert.equal(result.response.status, 401)
+})
+await check('revoked raw keys cannot authenticate', async () => {
+  const result = await authenticateMcp(
+    new Request(`${base}/api/mcp`, { headers: { 'X-API-Key': key } }),
   )
   assert('response' in result)
   assert.equal(result.response.status, 401)

@@ -1,3 +1,4 @@
+import { hasApiKeyHeader } from '@/lib/api-key-header'
 import { TRPCError } from '@trpc/server'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
@@ -38,7 +39,7 @@ export async function requireWebGroup(groupId: string, admin = false) {
   return principal
 }
 export async function authorizeGroupRequest(request: Request, groupId: string) {
-  const principal = request.headers.has('authorization')
+  const principal = hasApiKeyHeader(request.headers)
     ? await (
         await import('./mcp/authenticate')
       )

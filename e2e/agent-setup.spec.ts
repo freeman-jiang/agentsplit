@@ -22,13 +22,31 @@ test('signed-in workspace offers usable agent connection instructions', async ({
   await expect(
     page.getByText(`${baseURL}/api/mcp`, { exact: true }),
   ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Codex app', exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByText('your API key, exactly as copied', { exact: true }),
+  ).toBeVisible()
+  await expect(page.locator('pre').first()).not.toBeVisible()
+  await page
+    .locator('summary')
+    .filter({ hasText: 'Codex CLI and configuration files' })
+    .click()
   await expect(page.locator('pre').first()).toContainText(
-    'bearer_token_env_var = "AGENTSPLIT_MCP_TOKEN"',
+    'env_http_headers = { "X-API-Key" = "AGENTSPLIT_API_KEY" }',
   )
+  await page.locator('summary').filter({ hasText: 'Claude Code' }).click()
   await expect(page.locator('pre').nth(1)).toContainText(
-    'Bearer ${AGENTSPLIT_MCP_TOKEN}',
+    '"X-API-Key": "${AGENTSPLIT_API_KEY}"',
   )
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page
+    .getByRole('button', { name: 'Copy header name', exact: true })
+    .click()
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe('X-API-Key')
   await page
     .getByRole('button', { name: 'Copy MCP endpoint', exact: true })
     .click()

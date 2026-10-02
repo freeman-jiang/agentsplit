@@ -66,7 +66,7 @@ export const MCP_TOOL_REGISTRY = [
     name: 'get_expense',
     procedure: 'groups.expenses.get',
     description:
-      'Read an expense, current revision, payer, splits and attached receipt pointers and downloadUrl values. Fetch downloadUrl with your Bearer key; storage pointers are private and are kept unchanged in edits. Requires groupId and expenseId. Money and share values are exact decimal strings; receipts are permanent references. Optional revision, asOf timestamp, or atActivityId selects historical state (choose one). history includes the authoritative saved snapshot, recordedAt and deleted marker. A deletion revision retains the prior snapshot; expense.revision identifies the deletion event. Historical recurrence scheduling links are unavailable; use the saved recurrenceRule. Historical revisions are not current write versions.',
+      'Read an expense, current revision, payer, splits and attached receipt pointers and downloadUrl values. Fetch downloadUrl with X-API-Key set to your API key; storage pointers are private and are kept unchanged in edits. Requires groupId and expenseId. Money and share values are exact decimal strings; receipts are permanent references. Optional revision, asOf timestamp, or atActivityId selects historical state (choose one). history includes the authoritative saved snapshot, recordedAt and deleted marker. A deletion revision retains the prior snapshot; expense.revision identifies the deletion event. Historical recurrence scheduling links are unavailable; use the saved recurrenceRule. Historical revisions are not current write versions.',
   },
   {
     name: 'create_expense',
