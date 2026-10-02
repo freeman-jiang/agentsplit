@@ -139,6 +139,7 @@ model ExpensePaidFor {
 }
 
 model Activity {
+  sequence      Int          @unique @default(autoincrement())
   id            String       @id
   group         Group        @relation(fields: [groupId], references: [id], onDelete: Restrict)
   groupId       String
@@ -156,6 +157,7 @@ model Activity {
 
   @@unique([expenseId, expenseRevision])
   @@index([groupId, time(sort: Desc), id(sort: Desc)])
+  @@index([groupId, sequence(sort: Desc)])
 }
 
 enum ActivityType {

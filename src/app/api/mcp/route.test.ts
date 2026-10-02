@@ -132,6 +132,12 @@ jest.mock('../../../lib/prisma', () => ({
       findMany: () => [{ participantId: 'alice' }, { participantId: 'bob' }],
     },
     activity: {
+      findFirst: async () => ({
+        id: 'activity-a',
+        groupId: 'group-a',
+        sequence: 1,
+        time: new Date('2026-09-30T00:00:00Z'),
+      }),
       findMany: () => [
         {
           id: 'activity-a',

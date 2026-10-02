@@ -309,3 +309,66 @@ uncertain result. The raw token is returned only at creation.
 it with the same Bearer key. The `url` field is a stable private storage pointer
 for edits/history, not an anonymously downloadable link. Browser uploads use
 the authenticated receipt endpoint; MCP uploads remain part of expense writes.
+
+## Read how the ledger evolved
+
+The same 17 tools now include read-only historical queries. No new money engine
+or separate history service is used.
+
+- `get_expense`: choose `revision`, `asOf`, or `atActivityId` (at most one).
+  With none, read the current non-deleted expense as before. Historical responses
+  add `history: { activityId, recordedAt, revision, deleted, snapshot }`.
+  `snapshot` is the authoritative recorded revision, including historical names
+  and receipt pointers. Deletion revisions reuse the preceding saved snapshot;
+  `expense.revision` and `history.revision` identify the deletion event while
+  `history.snapshot.expense.revision` identifies its preserved contents.
+  Live recurrence scheduling links were not captured and are null in the
+  historical projection; the recorded `recurrenceRule` remains available.
+- `list_expenses`: `asOf` or `atActivityId` selects saved expense state before
+  currency/title/payer/participant/date filters and pagination. Deleted entries
+  are included before their deletion point and excluded at/after deletion.
+- `get_balances`: the same historical selection calculates separate currency
+  balances and suggested repayments using the existing exact splitter.
+- `list_activity`: `order=asc` walks events chronologically; `desc` remains the
+  default. `recordedFrom`/`recordedTo` are inclusive precise timestamps. Existing
+  `from`/`to` remain inclusive UTC calendar dates. `asOf` or `atActivityId` sets
+  an inclusive upper boundary. Responses return `asOf` and `atActivityId`.
+  Explicit historical queries omit the current `expense` convenience field.
+
+`asOf` means the audit event's recorded-change timestamp, **not the expense's
+business date**. A backdated expense entered Friday is absent from Wednesday's
+view. Supply an ISO timestamp with a timezone and at most millisecond precision;
+future `asOf` values are rejected. An activity ID selects an exact boundary when
+several changes share a timestamp. All these reads still require current access;
+selecting an old date never restores a revoked membership.
+
+For a consistent multi-page view, keep filters/order unchanged and reuse the
+returned `atActivityId` alongside each `nextCursor`. Use the boundary alone,
+not together with `asOf`. New events cannot shift the saved prefix. An internal
+monotonic integer orders events; snapshots and prior audit contents are retained.
+The expense list and balances add `history: { asOf, atActivityId, complete,
+unavailableExpenseIds }`. Missing older snapshots are disclosed explicitly.
+Historical balances fail with `PRECONDITION_FAILED` if coverage is incomplete.
+An empty returned activity boundary has no older events to page through.
+
+Historical expense names are those captured in that expense revision. Group and
+participant renames are separate events visible in `list_activity`. Historical
+reads do not reconstruct past memberships, API keys, browser preferences, or
+recurrence scheduler internals. Statistics/export tools still describe current
+ledger state unless their existing expense-date filters are applied.
+
+Example agent workflow:
+
+```json
+{"tool":"list_activity","arguments":{"groupId":"GROUP_ID","order":"asc","recordedFrom":"2026-10-01T00:00:00Z","limit":100}}
+{"tool":"get_expense","arguments":{"groupId":"GROUP_ID","expenseId":"EXPENSE_ID","revision":1}}
+{"tool":"list_expenses","arguments":{"groupId":"GROUP_ID","asOf":"2026-10-01T15:00:00Z","limit":100}}
+{"tool":"get_balances","arguments":{"groupId":"GROUP_ID","atActivityId":"BOUNDARY_FROM_PREVIOUS_RESPONSE"}}
+```
+
+Compare snapshots/previousSnapshot to explain edits; compare balances at two
+boundaries to explain changes in debt. Historical revisions are not safe current
+write versions: read current state before editing. Restoration is not performed
+by any historical read. `bun scripts/test-history-queries.ts` exercises the
+recorded-time semantics, pagination, missing legacy data, authorization and real
+MCP response contracts in the isolated local audit database.

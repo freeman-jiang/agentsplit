@@ -490,3 +490,19 @@ button and no workspace/profile controls; `/agents` redirects to login. In the
 existing signed-in browser, the top-right FJ avatar opened settings and the
 Preferences section showed theme/language controls. The deployed layout was
 visually inspected; the owner key remained present.
+
+## Agent historical reads — 2026-10-01
+
+The existing MCP expense reads and balances now accept recorded-time or exact
+activity boundaries; get_expense also accepts revision. Activity supports precise
+timestamps and chronological order. Historical calculations reuse the existing
+exact splitter. Missing legacy snapshots are reported and block historical balance
+claims. Current group membership remains authoritative for every historical read.
+
+Validation: 678 Jest cases pass; 23 new historical-query PostgreSQL scenarios,
+24 existing audit/currency scenarios and 11 full-MCP PostgreSQL scenarios pass.
+Four focused production-build web regressions pass (current create/balance,
+edit, delete and activity). Build, type, format and diff checks pass; lint retains
+the two existing warnings. No new dependencies. The activity-order migration
+was applied successfully to both disposable local databases. A production DB
+backup and hashes of pre-existing audit contents were saved before rollout.

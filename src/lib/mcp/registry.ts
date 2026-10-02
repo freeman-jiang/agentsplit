@@ -60,13 +60,13 @@ export const MCP_TOOL_REGISTRY = [
     name: 'list_expenses',
     procedure: 'groups.expenses.list',
     description:
-      'Review all expenses with pagination and optional inclusive from/to calendar dates, currencyCode, title filter, categoryId, paidById, participantId, isReimbursement, or recurrenceRule. Include reimbursements by default. Follow nextCursor with the same filters. Amounts are exact face-value decimal strings. This read does not process recurrence.',
+      'Review all expenses with pagination and optional inclusive from/to calendar dates, currencyCode, title filter, categoryId, paidById, participantId, isReimbursement, or recurrenceRule. Include reimbursements by default. Follow nextCursor with the same filters. Amounts are exact face-value decimal strings. Optional asOf (timestamp) or atActivityId reconstructs saved historical state before applying filters. Reuse history.atActivityId for stable pages; history.complete=false identifies missing legacy snapshots. This read does not process recurrence.',
   },
   {
     name: 'get_expense',
     procedure: 'groups.expenses.get',
     description:
-      'Read an expense, current revision, payer, splits and attached receipt pointers and downloadUrl values. Fetch downloadUrl with your Bearer key; storage pointers are private and are kept unchanged in edits. Requires groupId and expenseId. Money and share values are exact decimal strings; receipts are permanent references.',
+      'Read an expense, current revision, payer, splits and attached receipt pointers and downloadUrl values. Fetch downloadUrl with your Bearer key; storage pointers are private and are kept unchanged in edits. Requires groupId and expenseId. Money and share values are exact decimal strings; receipts are permanent references. Optional revision, asOf timestamp, or atActivityId selects historical state (choose one). history includes the authoritative saved snapshot, recordedAt and deleted marker. A deletion revision retains the prior snapshot; expense.revision identifies the deletion event. Historical recurrence scheduling links are unavailable; use the saved recurrenceRule. Historical revisions are not current write versions.',
   },
   {
     name: 'create_expense',
@@ -95,7 +95,7 @@ export const MCP_TOOL_REGISTRY = [
     name: 'get_balances',
     procedure: 'groups.balances.list',
     description:
-      'Read balances and suggested repayments in separate currency buckets, optionally filtering currencyCode. Money is exact decimal text. Currency buckets must not be added or converted. Record suggestions through create_expense with isReimbursement=true.',
+      'Read balances and suggested repayments in separate currency buckets, optionally filtering currencyCode. Money is exact decimal text. Currency buckets must not be added or converted. Record suggestions through create_expense with isReimbursement=true. Optional asOf timestamp or atActivityId calculates historical balances with the same splitter; missing legacy snapshots produce PRECONDITION_FAILED rather than an incomplete total.',
   },
   {
     name: 'get_participant_balances',
@@ -113,7 +113,7 @@ export const MCP_TOOL_REGISTRY = [
     name: 'list_activity',
     procedure: 'groups.activities.list',
     description:
-      'Paginate append-only audit history with optional expenseId, activityType, and inclusive UTC from/to event dates. Includes full snapshots, transient previousSnapshot, deletion markers and verified actorUserId/agentKeyId for MCP writes. Web participant labels are unverified. Uploaded bytes are not stored in snapshots.',
+      'Paginate append-only audit history with optional expenseId, activityType, inclusive UTC from/to dates, or precise recordedFrom/recordedTo timestamps. order=asc walks evolution; desc shows newest first. asOf selects a recorded-time cutoff; atActivityId selects an exact inclusive boundary. Reuse the returned atActivityId on every subsequent page with the same filters/order for a stable view. Includes snapshots, previousSnapshot, deletion markers and actor identity from authenticated web sessions or keys; legacy labels may be unverified. Uploaded bytes are pointers only. Explicit historical queries omit the current expense convenience field.',
   },
   {
     name: 'process_recurring_expenses',

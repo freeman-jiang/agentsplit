@@ -16,8 +16,8 @@ inside a transaction, then runs the write. Small-scale group writes serialize
 so an edit, deletion, rename, or recurring job cannot race the captured state.
 All ordinary and recurring creation uses `createExpenseRevision`; creation and
 editing use the same `recordExpenseSnapshot` serializer. Deletion and group
-updates also write their events inside their transactions. Future agent write
-tools must call these functions; the current MCP still exposes reads only.
+updates also write their events inside their transactions. All web and MCP write
+tools call these functions.
 
 Snapshots preserve the actual persisted amount, payer, beneficiary IDs/names,
 shares, split rule, dates, category, original amount/currency/exchange rate,
@@ -50,9 +50,9 @@ URL does not independently guarantee the object survives storage loss.
 
 ## Identity and administration
 
-Claimed web participant names are frozen as labels and explicitly unverified.
-Verified actor user/agent IDs can only come from trusted server context; the
-account-free web application has no verified actor identity yet. Automated
+Historical anonymous participant labels remain unverified. New web writes take
+actor identity from the verified account session; MCP writes take it from the
+user-owned key. Participant selections cannot override the authenticated actor. Automated
 recurring creations are marked `source: "system"`. Baselines are marked
 `source: "baseline"` so their timestamps cannot be mistaken for creation dates.
 
@@ -70,3 +70,17 @@ isolated disposable database, apply migrations, then provide its URL as
 `POSTGRES_PRISMA_URL` when invoking the script with Bun. The runner creates only
 synthetic records; cleanup is by discarding the test database/container, since
 the history guards correctly prohibit deleting individual test records.
+
+## Historical queries
+
+`get_expense` can select a saved revision or recorded-time boundary.
+`list_expenses` and `get_balances` can reconstruct state at that boundary.
+`list_activity` supports precise recorded-time filters and chronological order.
+Reuse returned activity boundaries for stable pagination while other users write.
+See `MCP.md` for input/output contracts and legacy-coverage limits.
+
+Activity now carries an internal monotonic integer for deterministic boundaries,
+including events sharing a timestamp. The additive migration assigns ordering
+metadata to existing events without changing their snapshots, actors or timestamps.
+Application history update/delete protections remain enabled after migration.
+No history read materializes recurrence or writes any state.

@@ -4,8 +4,12 @@ import {
   SplitMode,
 } from '@/generated/prisma/browser'
 import { expenseCurrencySchema } from '@/lib/currency'
-import { activitySnapshotSchema } from '@/lib/expense-history'
+import {
+  activitySnapshotSchema,
+  expenseSnapshotSchema,
+} from '@/lib/expense-history'
 import { uploadTargetSchema } from '@/lib/expense-uploads'
+import { historicalViewSchema } from '@/lib/history-query'
 import { decimalTextSchema } from '@/lib/money'
 import type { AppRouter } from '@/trpc/routers/_app'
 import type { inferRouterOutputs } from '@trpc/server'
@@ -226,11 +230,24 @@ export const MCP_OUTPUT_SCHEMAS = {
     links: z.object({ share: z.string(), csv: z.string(), json: z.string() }),
   }),
   'groups.expenses.list': z.object({
+    history: historicalViewSchema.optional(),
     expenses: z.array(expenseSummary),
     ...pagination,
   }),
-  'groups.expenses.get': z.object({ expense }),
+  'groups.expenses.get': z.object({
+    expense,
+    history: z
+      .object({
+        activityId: id,
+        recordedAt: dateTime,
+        revision: z.number().int(),
+        deleted: z.boolean(),
+        snapshot: expenseSnapshotSchema,
+      })
+      .optional(),
+  }),
   'groups.balances.list': z.object({
+    history: historicalViewSchema.optional(),
     currencies: z.array(
       z.object({
         currencyCode: z.string(),
@@ -256,6 +273,8 @@ export const MCP_OUTPUT_SCHEMAS = {
     ),
   }),
   'groups.activities.list': z.object({
+    atActivityId: id.nullable(),
+    asOf: dateTime,
     activities: z.array(
       z.object({
         id,

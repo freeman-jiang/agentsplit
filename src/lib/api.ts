@@ -781,11 +781,28 @@ export async function getActivities(
     from?: string
     to?: string
     activityType?: ActivityType
+    boundarySequence?: number
+    historical?: boolean
+    recordedFrom?: string
+    recordedTo?: string
+    order?: 'asc' | 'desc'
   },
 ) {
   const activities = await prisma.activity.findMany({
     where: {
       groupId,
+      sequence:
+        options?.boundarySequence === undefined
+          ? undefined
+          : { lte: options.boundarySequence },
+      AND: [
+        ...(options?.recordedFrom
+          ? [{ time: { gte: new Date(options.recordedFrom) } }]
+          : []),
+        ...(options?.recordedTo
+          ? [{ time: { lte: new Date(options.recordedTo) } }]
+          : []),
+      ],
       expenseId: options?.expenseId,
       activityType: options?.activityType,
       time:
@@ -803,13 +820,16 @@ export async function getActivities(
             }
           : undefined,
     },
-    orderBy: options?.expenseId
-      ? [
-          { expenseRevision: { sort: 'desc', nulls: 'last' } },
-          { time: 'desc' },
-          { id: 'desc' },
-        ]
-      : [{ time: 'desc' }, { id: 'desc' }],
+    orderBy:
+      options?.boundarySequence !== undefined
+        ? [{ sequence: options.order ?? 'desc' }]
+        : options?.expenseId
+          ? [
+              { expenseRevision: { sort: 'desc', nulls: 'last' } },
+              { time: 'desc' },
+              { id: 'desc' },
+            ]
+          : [{ time: 'desc' }, { id: 'desc' }],
     skip: options?.offset,
     take: options?.length,
   })
@@ -830,13 +850,15 @@ export async function getActivities(
       : [],
   )
   const [expenses, previous] = await Promise.all([
-    prisma.expense.findMany({
-      where: {
-        groupId,
-        deletedAt: null,
-        id: { in: expenseIds },
-      },
-    }),
+    options?.historical
+      ? Promise.resolve([])
+      : prisma.expense.findMany({
+          where: {
+            groupId,
+            deletedAt: null,
+            id: { in: expenseIds },
+          },
+        }),
     previousVersions.length
       ? prisma.activity.findMany({ where: { groupId, OR: previousVersions } })
       : Promise.resolve([]),
@@ -849,7 +871,7 @@ export async function getActivities(
   )
 
   return decimalStrings(
-    activities.map((activity) => ({
+    activities.map(({ sequence: _sequence, ...activity }) => ({
       ...activity,
       snapshot:
         activity.snapshot === null
