@@ -1,15 +1,17 @@
 {
   "Homepage": {
-    "title": "Share <strong>Expenses</strong> with <strong>Friends & Family</strong>",
-    "metaTitle": "Spliit · Share Expenses with Friends & Family",
-    "description": "Welcome to your new <strong>Spliit</strong> instance !",
+    "title": "Shared expenses. <strong>Simply settled.</strong>",
+    "metaTitle": "AgentSplit · Shared expenses, simply settled",
+    "description": "Keep track of everyday expenses with the people you share them with. In your browser, or with your agent.",
     "button": {
       "groups": "Go to groups",
-      "github": "GitHub"
+      "github": "GitHub",
+      "agents": "Set up an agent"
     }
   },
   "Header": {
-    "groups": "Groups"
+    "groups": "Groups",
+    "agentSetup": "Agents"
   },
   "Errors": {
     "title": "Something went wrong",
@@ -20,7 +22,9 @@
   },
   "Footer": {
     "madeIn": "Made in Montréal, Québec 🇨🇦",
-    "builtBy": "Built by <author>Sebastien Castiel</author> and <source>contributors</source>"
+    "builtBy": "Built by <author>Sebastien Castiel</author> and <source>contributors</source>",
+    "upstream": "Built on <source>Spliit</source>, by Sebastien Castiel and contributors.",
+    "tagline": "A little less keeping track."
   },
   "Expenses": {
     "title": "Expenses",
@@ -47,7 +51,9 @@
       "earlierThisYear": "Earlier this year",
       "lastYear": "Last year",
       "older": "Older"
-    }
+    },
+    "searchLabel": "Search expenses",
+    "clearSearch": "Clear search"
   },
   "ExpenseCard": {
     "paidBy": "Paid by <strong>{paidBy}</strong> for <paidFor></paidFor>",
@@ -127,10 +133,10 @@
       "description": "We’ll use it to display amounts."
     },
     "CurrencyCodeField": {
-      "label": "Main currency",
-      "createDescription": "All amounts and balances will be in this currency.",
-      "editDescription": "All amounts and balances will be in this currency. Changing this will NOT convert expenses already entered, except when the currency has different \"minor units\" than the current one (e.g. changing from US Dollar to Japanese Yen)",
-      "customOption": "Custom"
+      "label": "Default currency",
+      "customOption": "Custom",
+      "defaultCreateDescription": "The starting currency for new expenses. Each expense can use a different currency.",
+      "defaultEditDescription": "Changes the default for new expenses only. Existing amounts, currencies and balances stay unchanged."
     },
     "Participants": {
       "title": "Participants",
@@ -163,7 +169,7 @@
       "create": "Create income",
       "edit": "Edit income",
       "TitleField": {
-        "label": "Income title",
+        "label": "Description",
         "placeholder": "Monday evening restaurant",
         "description": "Enter a description for the income."
       },
@@ -191,7 +197,7 @@
       "create": "Create expense",
       "edit": "Edit expense",
       "TitleField": {
-        "label": "Expense title",
+        "label": "Description",
         "placeholder": "Monday evening restaurant",
         "description": "Enter a description for the expense."
       },
@@ -281,10 +287,20 @@
     "attachDocuments": "Attach documents",
     "create": "Create",
     "creating": "Creating…",
-    "save": "Save",
+    "save": "Save changes",
     "saving": "Saving…",
     "cancel": "Cancel",
-    "reimbursement": "Reimbursement"
+    "reimbursement": "Reimbursement",
+    "Layout": {
+      "details": "Expense details",
+      "notesReceipt": "Notes & receipts",
+      "options": "More options",
+      "optional": "Optional",
+      "summary": "Expense total",
+      "people": "{count, plural, one {# person} other {# people}}",
+      "history": "Edits stay in the group’s activity history.",
+      "splitBetween": "Split between"
+    }
   },
   "ExpenseDocumentsInput": {
     "TooBigToast": {
@@ -331,7 +347,8 @@
       "noImbursements": "It looks like your group doesn’t need any reimbursement 😁",
       "owes": "<strong>{from}</strong> owes <strong>{to}</strong>",
       "markAsPaid": "Mark as paid"
-    }
+    },
+    "empty": "No expenses yet. Your balances will appear here."
   },
   "Stats": {
     "title": "Stats",
@@ -419,6 +436,32 @@
   },
   "Activity": {
     "title": "Activity",
+    "History": {
+      "baseline": "History begins here for an existing expense",
+      "view": "View saved revision",
+      "group": "View saved group settings",
+      "deleted": "Deleted",
+      "retained": "Removed from current balances. This saved version remains in history.",
+      "legacy": "Older summary; a complete revision was not saved.",
+      "unverified": "The participant name is an unverified label.",
+      "system": "Created by the recurring schedule",
+      "user": "User",
+      "changes": "Changes from the preceding revision",
+      "receipt": "Open saved attachment",
+      "title": "Title",
+      "amount": "Amount",
+      "date": "Expense date",
+      "payer": "Paid by",
+      "splits": "Split between",
+      "splitMode": "Split rule",
+      "reimbursement": "Reimbursement",
+      "category": "Category",
+      "originalAmount": "Original amount",
+      "conversionRate": "Exchange rate",
+      "recurrence": "Recurrence",
+      "notes": "Notes",
+      "attachments": "Attachment references"
+    },
     "description": "Overview of all activity in this group.",
     "noActivity": "There is not yet any activity in your group.",
     "someone": "Someone",
@@ -560,11 +603,37 @@
     },
     "other": {
       "heading": "Other currencies"
-    }
+    },
+    "select": "Select currency"
   },
   "Pwa": {
     "updateTitle": "Update available",
-    "updateDescription": "A new version of Spliit is available.",
+    "updateDescription": "A new version of AgentSplit is available.",
     "reload": "Reload"
+  },
+  "AgentSetup": {
+    "title": "Set up your agent",
+    "intro": "Connect your agent to AgentSplit to review expenses, record payments and keep your shared ledger up to date.",
+    "keyTitle": "1. Get your API key",
+    "keyDescription": "Create a key in Account & keys. It acts as you and inherits your current group permissions.",
+    "keyAvailability": "Sign in with Google to create and revoke your own agent keys.",
+    "keyPrivacy": "Keep the key in your client’s private settings or environment. Do not paste it into an agent conversation or a group note.",
+    "connectTitle": "2. Connect your client",
+    "endpoint": "MCP endpoint · Streamable HTTP",
+    "copyEndpoint": "Copy MCP endpoint",
+    "environment": "For configuration-file examples, set AGENTSPLIT_API_KEY to your API key exactly as copied. The Codex app steps above do not need environment variables.",
+    "codexDescription": "Add this to your private ~/.codex/config.toml, then reconnect the MCP server or restart Codex.",
+    "claudeDescription": "Save this MCP configuration privately and load it with claude --mcp-config /path/to/config.json.",
+    "copyCodex": "Copy Codex configuration",
+    "copyClaude": "Copy Claude Code configuration",
+    "otherClients": "Other clients and private header settings",
+    "otherDescription": "Use the endpoint above with Streamable HTTP. Add an X-API-Key header and paste your key directly into its value in the client’s private configuration.",
+    "noOauth": "Agent connections use API keys; no separate OAuth login is needed.",
+    "references": "Official client instructions:",
+    "useTitle": "3. Give your agent a group",
+    "useDescription": "Once connected, your agent can discover your groups. Accept new invitations in the app or give your agent the email-bound invitation link.",
+    "copyInstructions": "Copy agent instructions",
+    "instructions": "Use AgentSplit at {endpoint} through MCP. Authenticate with the API key in my client configuration.\n\nStart with list_groups. A group URL alone does not grant access. If I provide an invitation link addressed to my Google email, use manage_group_access with action=join and shareUrl. Read get_group for members, roles and participant IDs, and get_reference_data for currencies, categories and split modes.\n\nUse exact decimal strings for money and keep currencies separate. Read the current revision before editing or deleting. Record payments with create_expense and isReimbursement=true. Fetch receipt downloadUrl values with X-API-Key set to the same API key. Only make changes I request, and confirm the committed result.",
+    "capabilities": "Agents can create and edit expenses, split equally or unevenly, record payments, attach receipts, review balances by currency, and read the audit history."
   }
 }

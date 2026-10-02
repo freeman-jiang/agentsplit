@@ -1,5 +1,5 @@
 {
-  "name": "spliit2",
+  "name": "agentsplit",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -7,17 +7,18 @@
     "npm": ">=11"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "NEXT_TELEMETRY_DISABLED=1 CHECKPOINT_DISABLE=1 next dev",
+    "build": "NEXT_TELEMETRY_DISABLED=1 CHECKPOINT_DISABLE=1 next build",
+    "start": "NEXT_TELEMETRY_DISABLED=1 CHECKPOINT_DISABLE=1 next start",
     "lint": "oxlint",
     "check-types": "tsc --noEmit",
     "check-formatting": "prettier -c src e2e perf playwright.config.ts",
     "prettier": "prettier -w src e2e perf playwright.config.ts",
-    "postinstall": "prisma migrate deploy && prisma generate",
+    "postinstall": "CHECKPOINT_DISABLE=1 prisma migrate deploy && CHECKPOINT_DISABLE=1 prisma generate",
     "build-image": "./scripts/build-image.sh",
     "start-container": "docker compose --env-file container.env up",
     "test": "jest",
+    "test:integration:audit": "bun scripts/test-expense-history.ts",
     "e2e": "./scripts/e2e.sh",
     "e2e:up": "./scripts/e2e.sh up",
     "e2e:down": "./scripts/e2e.sh down",
@@ -36,6 +37,7 @@
     "@formatjs/intl-localematcher": "^0.9.0",
     "@hookform/resolvers": "^5",
     "@json2csv/plainjs": "^7.0.8",
+    "@modelcontextprotocol/server": "2.0.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@radix-ui/react-checkbox": "^1.3.11",
@@ -89,7 +91,11 @@
     "ts-pattern": "^5.9.0",
     "use-debounce": "^10.1.1",
     "vaul": "^1.1.2",
-    "zod": "^4"
+    "zod": "^4",
+    "@aws-sdk/client-s3": "3.1110.0",
+    "@aws-sdk/s3-request-presigner": "3.1110.0",
+    "better-auth": "1.7.6",
+    "@better-auth/api-key": "1.7.6"
   },
   "devDependencies": {
     "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
@@ -112,7 +118,7 @@
     "jest-environment-jsdom": "^30.5.2",
     "oxlint": "^1.85.0",
     "postcss": "^8.5.28",
-    "prettier": "^3.9.9",
+    "prettier": "3.9.8",
     "tailwindcss": "^4.3.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"

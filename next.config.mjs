@@ -2,25 +2,14 @@ import createNextIntlPlugin from 'next-intl/plugin'
 
 const withNextIntl = createNextIntlPlugin()
 
-/**
- * Undefined entries are not supported. Push optional patterns to this array only if defined.
- * @type {import('next/dist/shared/lib/image-config').RemotePattern}
- */
-const remotePatterns = []
-
-// S3 Storage
-if (process.env.S3_UPLOAD_ENDPOINT) {
-  // custom endpoint for providers other than AWS
-  const url = new URL(process.env.S3_UPLOAD_ENDPOINT);
-  remotePatterns.push({
-    hostname: url.hostname,
-  })
-} else if (process.env.S3_UPLOAD_BUCKET && process.env.S3_UPLOAD_REGION) {
-  // default provider
-  remotePatterns.push({
-    hostname: `${process.env.S3_UPLOAD_BUCKET}.s3.${process.env.S3_UPLOAD_REGION}.amazonaws.com`,
-  })
-}
+// Allow only the configured storage origin. Other third-party assets and
+// browser connections stay blocked. This configuration is baked at build time.
+const storageUrl = (() => {
+  if (!process.env.S3_UPLOAD_ENDPOINT) return null
+  const url = new URL(process.env.S3_UPLOAD_ENDPOINT)
+  return ['http:', 'https:'].includes(url.protocol) ? url : null
+})()
+const storageSource = storageUrl ? ` ${storageUrl.origin}` : ''
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -29,7 +18,16 @@ const nextConfig = {
   // stage copies that instead of a full production `node_modules`.
   output: 'standalone',
   images: {
-    remotePatterns
+    remotePatterns: storageUrl
+      ? [
+          {
+            protocol: storageUrl.protocol === 'https:' ? 'https' : 'http',
+            hostname: storageUrl.hostname,
+            port: storageUrl.port,
+            pathname: '/**',
+          },
+        ]
+      : [],
   },
   reactCompiler: true,
   // Required to run in a codespace (see https://github.com/vercel/next.js/issues/58019)
@@ -65,8 +63,7 @@ const nextConfig = {
           },
           {
             key: 'Content-Security-Policy',
-            value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+            value: `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:${storageSource}; font-src 'self' data:; connect-src 'self'${storageSource}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
           },
         ],
       },

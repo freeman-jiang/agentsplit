@@ -2,6 +2,7 @@ import { Category, Group } from '@/generated/prisma/browser'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { Currency, getCurrency } from './currency'
+import { Decimal } from './money'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -51,7 +52,7 @@ export function dateOnlyToLocalDate(date: Date) {
 export function formatDateOnly(
   date: Date,
   locale: string,
-  options: { dateStyle?: DateTimeStyle; timeStyle?: DateTimeStyle } = {},
+  options: Intl.DateTimeFormatOptions = {},
 ) {
   return dateOnlyToLocalDate(date).toLocaleString(locale, {
     ...options,
@@ -62,31 +63,29 @@ export function formatCategoryForAIPrompt(category: Category) {
   return `"${category.grouping}/${category.name}" (ID: ${category.id})`
 }
 
-/**
- * @param fractions Financial values in this app are generally processed in cents (or equivalent).
- * They are are therefore integer representations of the amount (e.g. 100 for USD 1.00).
- * Set this to `true` if you need to pass a value with decimal fractions instead (e.g. 1.00 for USD 1.00).
- */
+/** Format exact face-value decimals. ECMA-402 accepts decimal strings. */
 export function formatCurrency(
   currency: Currency,
-  amount: number,
+  amount: string,
   locale: string,
-  fractions?: boolean,
 ) {
   const format = new Intl.NumberFormat(locale, {
     minimumFractionDigits: currency.decimal_digits,
     maximumFractionDigits: currency.decimal_digits,
     style: 'currency',
-    // '€' will be placed in correct position
-    currency: currency.code.length ? currency.code : 'EUR',
+    currency: currency.code || 'EUR',
   })
-  const formatted = format.format(
-    fractions ? amount : amountAsDecimal(amount, currency),
-  )
-  if (currency.code.length) {
-    return formatted
-  }
-  return formatted.replace('€', currency.symbol)
+  const text = formatDecimal(format, amount)
+  return currency.code ? text : text.replace('€', currency.symbol)
+}
+
+// TypeScript's older Intl signature omits the standard's string input overload.
+// https://tc39.es/ecma402/#sec-tointlmathematicalvalue
+export function formatDecimal(
+  format: Intl.NumberFormat,
+  amount: string,
+): string {
+  return (format.format as (value: string) => string)(amount)
 }
 
 export function getCurrencyFromGroup(
@@ -106,47 +105,9 @@ export function getCurrencyFromGroup(
   return getCurrency(group.currencyCode)
 }
 
-/**
- * Converts monetary amounts in minor units to the corresponding amount in major units in the given currency.
- * e.g.
- *  - 150 "minor units" of euros = 1.5
- *  - 1000 "minor units" of yen = 1000 (the yen does not have minor units in practice)
- *
- * @param amount The amount, as the number of minor units of currency (cents for most currencies)
- * @param round Whether to round the amount to the nearest minor unit (e.g.: 1.5612 € => 1.56 €)
- */
-export function amountAsDecimal(
-  amount: number,
-  currency: Currency,
-  round = false,
-) {
-  const decimal = amount / 10 ** currency.decimal_digits
-  if (round) {
-    return Number(decimal.toFixed(currency.decimal_digits))
-  }
-  return decimal
-}
-
-/**
- * Converts decimal monetary amounts in major units to the amount in minor units in the given currency.
- * e.g.
- *  - €1.5 = 150 "minor units" of euros (cents)
- *  - JPY 1000 = 1000 "minor units" of yen (the yen does not have minor units in practice)
- *
- * @param amount The amount in decimal major units (always an integer)
- */
-export function amountAsMinorUnits(amount: number, currency: Currency) {
-  return Math.round(amount * 10 ** currency.decimal_digits)
-}
-
-/**
- * Formats monetary amounts in minor units to the corresponding amount in major units in the given currency,
- * as a string, with correct rounding.
- *
- * @param amount The amount, as the number of minor units of currency (cents for most currencies)
- */
-export function formatAmountAsDecimal(amount: number, currency: Currency) {
-  return amountAsDecimal(amount, currency).toFixed(currency.decimal_digits)
+/** Fixed-point text for CSV/display; never changes the stored denomination. */
+export function formatAmountAsDecimal(amount: string, currency: Currency) {
+  return new Decimal(amount).toFixed(currency.decimal_digits)
 }
 
 export function formatFileSize(size: number, locale: string) {

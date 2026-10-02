@@ -12,7 +12,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Currency } from '@/lib/currency'
+import { Currency, expenseCurrencySchema } from '@/lib/currency'
+import { Decimal } from '@/lib/money'
 import { MonthlySpending } from '@/lib/totals'
 import { formatCurrency } from '@/lib/utils'
 import { trpc } from '@/trpc/client'
@@ -78,7 +79,9 @@ function MonthlyBars({
   const locale = useLocale()
   const t = useTranslations('Stats.OverTime')
   const [selected, setSelected] = useState<string | null>(null)
-  const max = Math.max(...months.map((month) => month.total))
+  const max = Math.max(
+    ...months.map((month) => new Decimal(month.total).toNumber()),
+  )
   const monthFormat = new Intl.DateTimeFormat(locale, {
     month: 'short',
     year: 'numeric',
@@ -93,6 +96,7 @@ function MonthlyBars({
       month: selected ?? '',
       from,
       to,
+      currencyCode: expenseCurrencySchema.parse(currency.code),
     },
     { enabled: selected !== null },
   )
@@ -118,7 +122,7 @@ function MonthlyBars({
               </div>
             </div>
             <StatBar
-              value={month.total}
+              value={new Decimal(month.total).toNumber()}
               max={max}
               color="hsl(var(--chart-1))"
             />

@@ -1,4 +1,8 @@
-FROM node:26-alpine AS base
+ARG NODE_IMAGE=node:26.10.0-bookworm@sha256:2aaae6d91f99fee84cfc92da9b52c22a185752d247746052bbc3f961e44478c6
+FROM ${NODE_IMAGE} AS base
+
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV CHECKPOINT_DISABLE=1
 
 WORKDIR /usr/app
 COPY ./package.json \
@@ -15,8 +19,7 @@ COPY ./prisma ./prisma
 # The registry occasionally resets a connection mid-install, which fails the
 # whole image build for a reason that has nothing to do with the code. Retry a
 # few times before giving up.
-RUN apk add --no-cache openssl && \
-    for i in 1 2 3 4 5; do \
+RUN for i in 1 2 3 4 5; do \
       npm ci --ignore-scripts --fetch-retries=5 --fetch-timeout=600000 && exit 0; \
       echo "npm ci failed (attempt $i of 5), retrying in 10s..."; \
       sleep 10; \
@@ -28,10 +31,11 @@ COPY ./messages ./messages
 
 # Prisma 7 generates the client into ./src/generated/prisma instead of
 # node_modules, so this has to run after the source tree is in place.
-RUN npx prisma generate
+RUN node node_modules/prisma/build/index.js generate
 
-ENV NEXT_TELEMETRY_DISABLED=1
-
+# This public endpoint is needed to bake the image/CSP allowlist into Next.js.
+# Bucket credentials are supplied only at runtime.
+ARG S3_UPLOAD_ENDPOINT
 COPY scripts/build.env .env
 RUN npm run build
 
@@ -40,48 +44,23 @@ RUN npm run build
 # credentials) inside the image. Real configuration comes from the container
 # environment and would win, but a variable the operator *forgot* to set would
 # silently resolve to a build placeholder instead of failing. Drop it.
-RUN rm -f .next/standalone/.env
+RUN rm -f .next/standalone/.env && \
+    npm prune --offline --omit=dev --ignore-scripts --no-audit --no-fund
 
-# The standalone output traces its own dependencies, so the runtime stage no
-# longer installs a production node_modules. What it does still need is the
-# Prisma CLI, to run `migrate deploy` at container start — and the CLI is not
-# part of the app's module graph, so nothing traces it.
-#
-# It gets its own isolated install rather than being copied out of the base
-# stage: that stage installs with --ignore-scripts (the repo's postinstall runs
-# migrate deploy, which cannot run at build time), so @prisma/engines never
-# downloads the schema engine that `migrate deploy` needs. Installing the same
-# version here, with scripts, produces a complete self-contained CLI.
-FROM node:26-alpine AS prisma-cli
-
-WORKDIR /opt/prisma-cli
-ENV CHECKPOINT_DISABLE=1
-RUN apk add --no-cache openssl
-COPY --from=base /usr/app/node_modules/prisma/package.json ./_prisma.json
-RUN PRISMA_VERSION="$(node -p "require('./_prisma.json').version")" && \
-    rm -f ./_prisma.json && \
-    npm init -y > /dev/null && \
-    for i in 1 2 3 4 5; do \
-      npm install --no-audit --no-fund --fetch-retries=5 \
-        --fetch-timeout=600000 "prisma@${PRISMA_VERSION}" && exit 0; \
-      echo "prisma install failed (attempt $i of 5), retrying in 10s..."; \
-      sleep 10; \
-    done; \
-    exit 1
-
-FROM node:26-alpine AS runner
+# Keep the migration CLI and its generated engine from the same reviewed lockfile.
+# The pinned Debian image includes OpenSSL, so no live OS-package install is needed.
+FROM ${NODE_IMAGE} AS runner
 
 EXPOSE 3000/tcp
 WORKDIR /usr/app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV CHECKPOINT_DISABLE=1
 # The standalone server binds to localhost by default, which is unreachable
 # from outside the container.
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
-
-RUN apk add --no-cache openssl
 
 # The traced server, plus the two things tracing cannot know about: the static
 # assets it serves and the public/ directory.
@@ -93,7 +72,7 @@ COPY ./public ./public
 # schema.prisma; `prisma migrate deploy` reads it at container start.
 COPY --from=base /usr/app/prisma ./prisma
 COPY --from=base /usr/app/prisma.config.ts ./
-COPY --from=prisma-cli /opt/prisma-cli/node_modules ./node_modules
+COPY --from=base /usr/app/node_modules ./node_modules
 COPY ./scripts ./scripts
 
-ENTRYPOINT ["/bin/sh", "/usr/app/scripts/container-entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "/usr/app/scripts/container-entrypoint.sh"]

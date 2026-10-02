@@ -1,0 +1,73 @@
+import { decimalStrings } from '@/lib/money'
+import { prisma } from '@/lib/prisma'
+import { create as contentDisposition } from 'content-disposition'
+import { NextResponse } from 'next/server'
+
+export async function exportJSON(groupId: string) {
+  const group = await prisma.group.findUnique({
+    where: { id: groupId },
+    select: {
+      id: true,
+      name: true,
+      information: true,
+      currency: true,
+      currencyCode: true,
+      expenses: {
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          createdAt: true,
+          expenseDate: true,
+          title: true,
+          category: { select: { grouping: true, name: true } },
+          amount: true,
+          currencyCode: true,
+          originalAmount: true,
+          originalCurrency: true,
+          conversionRate: true,
+          paidById: true,
+          paidFor: { select: { participantId: true, shares: true } },
+          isReimbursement: true,
+          splitMode: true,
+          recurrenceRule: true,
+          notes: true,
+          revision: true,
+          documents: {
+            select: { id: true, url: true, width: true, height: true },
+          },
+        },
+        orderBy: [{ expenseDate: 'asc' }, { createdAt: 'asc' }],
+      },
+      participants: { select: { id: true, name: true } },
+      activities: {
+        select: {
+          id: true,
+          time: true,
+          activityType: true,
+          participantId: true,
+          expenseId: true,
+          data: true,
+          expenseRevision: true,
+          snapshot: true,
+          source: true,
+          actorName: true,
+          actorUserId: true,
+          agentKeyId: true,
+        },
+        orderBy: { time: 'asc' },
+      },
+    },
+  })
+  if (!group)
+    return NextResponse.json({ error: 'Invalid group ID' }, { status: 404 })
+
+  const date = new Date().toISOString().split('T')[0]
+  const filename = `AgentSplit Export - ${date}`
+  return NextResponse.json(decimalStrings(group), {
+    headers: {
+      'Cache-Control': 'private, no-store',
+      'content-type': 'application/json',
+      'content-disposition': contentDisposition(`${filename}.json`),
+    },
+  })
+}

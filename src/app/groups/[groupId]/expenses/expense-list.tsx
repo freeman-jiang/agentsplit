@@ -4,12 +4,12 @@ import { ExpenseCard } from '@/app/groups/[groupId]/expenses/expense-card'
 import { Button } from '@/components/ui/button'
 import { SearchBar } from '@/components/ui/search-bar'
 import { Skeleton } from '@/components/ui/skeleton'
+import { getCurrency } from '@/lib/currency'
 import {
   EXPENSE_GROUPS,
   getGroupedExpensesByDate,
   getWeekStartsOn,
 } from '@/lib/date-groups'
-import { getCurrencyFromGroup } from '@/lib/utils'
 import { trpc } from '@/trpc/client'
 import dayjs from 'dayjs'
 import { useLocale, useTranslations } from 'next-intl'
@@ -22,32 +22,9 @@ import { useCurrentGroup } from '../current-group-context'
 const PAGE_SIZE = 20
 
 export function ExpenseList() {
-  const { groupId, group } = useCurrentGroup()
+  const { groupId } = useCurrentGroup()
   const [searchText, setSearchText] = useState('')
   const [debouncedSearchText] = useDebounce(searchText, 300)
-
-  const participants = group?.participants
-
-  useEffect(() => {
-    if (!participants) return
-
-    const activeUser = localStorage.getItem('newGroup-activeUser')
-    const newUser = localStorage.getItem(`${groupId}-newUser`)
-    if (activeUser || newUser) {
-      localStorage.removeItem('newGroup-activeUser')
-      localStorage.removeItem(`${groupId}-newUser`)
-      if (activeUser === 'None') {
-        localStorage.setItem(`${groupId}-activeUser`, 'None')
-      } else {
-        const userId = participants.find(
-          (p) => p.name === (activeUser || newUser),
-        )?.id
-        if (userId) {
-          localStorage.setItem(`${groupId}-activeUser`, userId)
-        }
-      }
-    }
-  }, [groupId, participants])
 
   return (
     <>
@@ -116,7 +93,7 @@ const ExpenseListForSearch = ({
 
   if (expenses.length === 0)
     return (
-      <p className="px-6 text-sm py-6">
+      <p className="text-sm py-6">
         {t('noExpenses')}{' '}
         <Button variant="link" asChild className="-m-4">
           <Link href={`/groups/${groupId}/expenses/create`}>
@@ -135,8 +112,9 @@ const ExpenseListForSearch = ({
         return (
           <div key={expenseGroup}>
             <div
+              data-testid="expense-date-heading"
               className={
-                'text-muted-foreground text-xs pl-4 sm:pl-6 py-1 font-semibold sticky top-16 bg-white dark:bg-[#1b1917]'
+                'pb-2 pt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground'
               }
             >
               {t(`Groups.${expenseGroup}`)}
@@ -145,7 +123,7 @@ const ExpenseListForSearch = ({
               <ExpenseCard
                 key={expense.id}
                 expense={expense}
-                currency={getCurrencyFromGroup(group)}
+                currency={getCurrency(expense.currencyCode)}
                 groupId={groupId}
                 participantCount={group.participants.length}
               />
@@ -161,11 +139,11 @@ const ExpenseListForSearch = ({
 const ExpensesLoading = forwardRef<HTMLDivElement>((_, ref) => {
   return (
     <div ref={ref}>
-      <Skeleton className="mx-4 sm:mx-6 mt-1 mb-2 h-3 w-32 rounded-full" />
+      <Skeleton className="mt-1 mb-2 h-3 w-32 rounded-full" />
       {[0, 1, 2].map((i) => (
         <div
           key={i}
-          className="flex justify-between items-start px-2 sm:px-6 py-4 text-sm gap-2"
+          className="flex justify-between items-start px-0 py-4 text-sm gap-2"
         >
           <div className="flex-0 pl-2 pr-1">
             <Skeleton className="h-4 w-4 rounded-full" />

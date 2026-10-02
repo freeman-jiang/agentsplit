@@ -2,103 +2,72 @@ import { addExpense, createGroup, expenseCard, uniqueSuffix } from './app'
 import { expect, test } from './fixtures'
 import { money } from './ui'
 
-// The rest of the suite seeds `newGroup-activeUser` so this dialog stays shut.
-// Here it is the subject, so the seeding is switched off.
-test.use({ seedActiveUser: false })
+test.use({ viewport: { width: 488, height: 950 } })
 
-/**
- * Puts the browser in the state a first-time visitor is in: the group exists,
- * but this device has never picked an active user. Creating a group through
- * the UI writes `newGroup-activeUser` itself, so it has to be cleared.
- */
-async function forgetActiveUser(page: import('@playwright/test').Page) {
-  await page.evaluate(() => {
-    window.localStorage.removeItem('newGroup-activeUser')
-    for (const key of Object.keys(window.localStorage)) {
-      if (key.endsWith('-activeUser')) window.localStorage.removeItem(key)
-    }
-  })
-}
-
-test('asks who you are and personalises the expense list', async ({ page }) => {
+test('fixed identity ignores localStorage impersonation and uses simple personal figures', async ({
+  page,
+}) => {
   const groupId = await createGroup(page, {
-    name: `E2E ActiveUser ${uniqueSuffix()}`,
+    name: `Fixed identity ${uniqueSuffix()}`,
     participants: ['Alice', 'Bob', 'Carol'],
   })
-
   await addExpense(page, groupId, {
     title: 'Dinner',
-    amount: '90',
-    paidBy: 'Alice',
-  })
-
-  await forgetActiveUser(page)
-  await page.goto(`/groups/${groupId}/expenses`)
-
-  const dialog = page.getByRole('dialog')
-  await expect(dialog).toBeVisible()
-  await expect(dialog).toContainText('Who are you?')
-
-  await dialog.getByLabel('Bob', { exact: true }).click()
-  await dialog.getByRole('button', { name: 'Save changes' }).click()
-  await expect(dialog).toBeHidden()
-
-  // The reload is required, not incidental: useActiveUser (src/lib/hooks.ts)
-  // reads localStorage once in a useEffect keyed on groupId, so it is not
-  // reactive and already-mounted cards keep the previous value until they
-  // remount. Asserting before a reload would be asserting a bug fix nobody
-  // has made.
-  await page.reload()
-
-  // The dialog does not come back...
-  await expect(page.getByRole('dialog')).toBeHidden()
-  // ...and Bob now sees his own third of Alice's 90 on the card.
-  await expect(expenseCard(page, 'Dinner')).toContainText('Your balance:')
-  await expect(expenseCard(page, 'Dinner')).toContainText(money(-30))
-})
-
-test('pre-fills "Paid by" with the active user', async ({ page }) => {
-  const groupId = await createGroup(page, {
-    name: `E2E ActiveUserPaidBy ${uniqueSuffix()}`,
-    participants: ['Alice', 'Bob', 'Carol'],
-  })
-
-  await forgetActiveUser(page)
-  await page.goto(`/groups/${groupId}/expenses`)
-
-  const dialog = page.getByRole('dialog')
-  await dialog.getByLabel('Carol', { exact: true }).click()
-  await dialog.getByRole('button', { name: 'Save changes' }).click()
-  await expect(dialog).toBeHidden()
-
-  await page.goto(`/groups/${groupId}/expenses/create`)
-  await expect(page.getByTestId('paid-by')).toContainText('Carol')
-})
-
-test('lets you decline to pick anyone', async ({ page }) => {
-  const groupId = await createGroup(page, {
-    name: `E2E ActiveUserNobody ${uniqueSuffix()}`,
-    participants: ['Alice', 'Bob'],
-  })
-
-  await addExpense(page, groupId, {
-    title: 'Taxi',
     amount: '20',
     paidBy: 'Alice',
   })
-
-  await forgetActiveUser(page)
-  await page.goto(`/groups/${groupId}/expenses`)
-
-  const dialog = page.getByRole('dialog')
-  // "I don't want to select anyone" -- curly apostrophe in the source string.
-  await dialog.getByText(/don.t want to select anyone/).click()
-  await dialog.getByRole('button', { name: 'Save changes' }).click()
-  await expect(dialog).toBeHidden()
-
-  // With nobody selected there is no personalised balance on the card...
-  await expect(expenseCard(page, 'Taxi')).not.toContainText('Your balance:')
-  // ...and the dialog does not come back.
+  await page.evaluate((id) => {
+    localStorage.setItem(`${id}-activeUser`, 'Bob')
+    localStorage.setItem('newGroup-activeUser', 'Bob')
+    localStorage.setItem(`${id}-newUser`, 'Bob')
+  }, groupId)
   await page.reload()
-  await expect(page.getByRole('dialog')).toBeHidden()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const row = expenseCard(page, 'Dinner')
+  await expect(row.getByTestId('expense-paid')).toContainText('you paid')
+  await expect(row.getByTestId('expense-paid')).toContainText(money(20))
+  await expect(row.getByTestId('expense-personal')).toContainText('you lent')
+  await expect(row.getByTestId('expense-personal')).toContainText(money(13.33))
+  await expect(row).toContainText('Added by Alice')
+  for (const width of [320, 488, 768, 1280]) {
+    await page.setViewportSize({ width, height: 950 })
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true)
+    await expect(row.getByTestId('expense-personal')).toBeVisible()
+    await page.screenshot({
+      path: `/private/tmp/agentsplit-expense-identity-${width}.png`,
+      fullPage: true,
+    })
+  }
+})
+
+test('defaults payer to the fixed member but allows recording another payer', async ({
+  page,
+}) => {
+  const groupId = await createGroup(page, {
+    name: `Payer identity ${uniqueSuffix()}`,
+    participants: ['Alice', 'Bob'],
+  })
+  await page.goto(`/groups/${groupId}/expenses/create`)
+  await expect(page.getByTestId('paid-by')).toContainText('Alice')
+  await addExpense(page, groupId, {
+    title: 'Bob bought lunch',
+    amount: '40',
+    paidBy: 'Bob',
+  })
+  const row = expenseCard(page, 'Bob bought lunch')
+  await expect(row).toContainText('Bob paid')
+  await expect(row).toContainText('Added by Alice')
+  await expect(row.getByTestId('expense-personal')).toContainText(
+    'you borrowed',
+  )
+  await expect(row.getByTestId('expense-personal')).toContainText(money(20))
+  await page.goto(`/groups/${groupId}/edit`)
+  await expect(page.getByText('Active user', { exact: true })).toHaveCount(0)
+  await expect(
+    page.getByText('Participant: Alice', { exact: true }),
+  ).toBeVisible()
 })

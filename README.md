@@ -1,4 +1,22 @@
-[<img alt="Spliit" height="60" src="https://github.com/spliit-app/spliit/blob/main/public/logo-with-text.png?raw=true" />](https://spliit.app)
+# AgentSplit
+
+Self-hosted shared expenses for people and their agents.
+
+This is the AgentSplit fork of Spliit. Analytics, automatic exchange-rate lookups,
+external flag images, and built-in OpenAI features are disabled. Receipt image
+attachments use private self-hosted Garage storage in the
+[Coolify deployment](DEPLOYMENT.md). Google sign-in, email-bound invitations,
+private groups, and self-service agent keys are documented in [AUTH.md](AUTH.md).
+See [the privacy profile](PRIVACY.md) for data handling and audit limitations.
+
+The complete read/write agent API is documented in [MCP.md](MCP.md). Its 17
+composable tools map to shared tRPC business logic, including multi-currency
+expenses, repayments, revisions, history, group membership, and receipts.
+Money uses exact decimal strings and balances stay separate by currency.
+
+## Upstream Spliit documentation
+
+The reference documentation below describes the upstream project; AgentSplit deployment and MCP details are linked above. Upstream attribution and license are retained.
 
 Spliit is a free and open source alternative to Splitwise. You can either use the official instance at [Spliit.app](https://spliit.app), or deploy your own instance:
 

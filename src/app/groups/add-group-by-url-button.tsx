@@ -132,7 +132,7 @@ export function AddGroupByUrlButton({ reload }: Props) {
             <Input
               type="url"
               required
-              placeholder="https://spliit.app/..."
+              placeholder="https://agentsplit.freemanjiang.com/groups/..."
               className="flex-1 min-w-[200px] text-base"
               value={url}
               disabled={pending}

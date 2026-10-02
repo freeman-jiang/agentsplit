@@ -27,7 +27,7 @@ export function CreateExpenseForm({
   // leftover minor unit of an uneven split (see `getExpenseShares`), so the
   // form needs it to preview the split the expense will actually be saved
   // with. Per mount, so a fresh visit to the page gets a fresh id.
-  const [expenseId, setExpenseId] = useState(() => randomId())
+  const [expenseId] = useState(() => randomId())
 
   const utils = trpc.useUtils()
   const router = useRouter()
@@ -48,10 +48,15 @@ export function CreateExpenseForm({
             expenseId,
           })
         } catch (error) {
-          // The server may have created the expense and only the response
-          // been lost; retrying with the same id would then collide with it
-          // rather than create anything.
-          setExpenseId(randomId())
+          // Resolve an uncertain create before allowing a retry. Keep the ID stable.
+          const recorded = await utils.groups.expenses.get
+            .fetch({ groupId, expenseId })
+            .catch(() => null)
+          if (recorded?.expense) {
+            await utils.groups.invalidate()
+            router.push(`/groups/${groupId}/expenses/${expenseId}/edit`)
+            return
+          }
           throw error
         }
         utils.groups.expenses.invalidate()

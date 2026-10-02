@@ -1,4 +1,5 @@
 import { expect, Locator, Page } from '@playwright/test'
+import { setTestAccountName } from './auth'
 import {
   clickUntil,
   escapeRegExp,
@@ -33,9 +34,6 @@ const SPLIT_MODE_LABELS: Record<SplitMode, RegExp> = {
   BY_AMOUNT: /By amount/,
 }
 
-/** GroupForm ships with three participant rows pre-filled (John / Jane / Jack). */
-const PREFILLED_PARTICIPANTS = 3
-
 /**
  * The expenses list URL.
  *
@@ -54,35 +52,15 @@ export async function createGroup(
   page: Page,
   opts: { name: string; participants: string[] },
 ): Promise<string> {
+  await setTestAccountName(page.context(), opts.participants[0])
   await page.goto('/groups/create')
-
-  // fillStable doubles as the hydration gate: once RHF keeps a value, React is
-  // live and later clicks are safe.
+  await expect(page.getByTestId('creator-identity')).toContainText(
+    opts.participants[0],
+  )
   await fillStable(page.locator('input[name="name"]'), opts.name)
-
-  for (let i = PREFILLED_PARTICIPANTS; i < opts.participants.length; i++) {
+  for (const [i, name] of opts.participants.slice(1).entries()) {
     await page.getByRole('button', { name: 'Add participant' }).click()
-    await expect(
-      page.locator(`input[name="participants.${i}.name"]`),
-    ).toBeVisible()
-  }
-
-  // Drop surplus rows from the end, so the remaining indices never shift.
-  for (let i = PREFILLED_PARTICIPANTS - 1; i >= opts.participants.length; i--) {
-    const row = page
-      .locator('li')
-      .filter({ has: page.locator(`input[name="participants.${i}.name"]`) })
-    await row.getByRole('button').click()
-    await expect(
-      page.locator(`input[name="participants.${i}.name"]`),
-    ).toHaveCount(0)
-  }
-
-  for (let i = 0; i < opts.participants.length; i++) {
-    await fillStable(
-      page.locator(`input[name="participants.${i}.name"]`),
-      opts.participants[i],
-    )
+    await fillStable(page.locator(`input[name="participants.${i}.name"]`), name)
   }
 
   await page.getByRole('button', { name: 'Create', exact: true }).click()
@@ -133,6 +111,10 @@ export async function addExpense(
     await fillStable(page.locator('input[type="date"]'), expense.date)
   }
 
+  if (expense.category || expense.recurrence) {
+    await page.locator('summary').filter({ hasText: 'More options' }).click()
+  }
+
   if (expense.category) {
     // A cmdk Command in a Popover, not a Radix Select, but the trigger is still
     // role=combobox and the items are still role=option.
@@ -155,7 +137,9 @@ export async function addExpense(
     const wanted = expense.paidFor
     const rows = await page.locator('[data-id]').all()
     for (const row of rows) {
-      const label = (await row.innerText()).split('\n')[0].trim()
+      const label = (await row.locator('[data-participant-name]').innerText())
+        .split('\n')[0]
+        .trim()
       const name = label.replace(/\s*\(.*\)$/, '')
       await setChecked(row.getByRole('checkbox'), wanted.indexOf(name) !== -1)
     }
@@ -163,11 +147,6 @@ export async function addExpense(
 
   const splitMode = expense.splitMode ?? 'EVENLY'
   if (splitMode !== 'EVENLY') {
-    // Radix Collapsible unmounts its content, so the Split mode select does
-    // not exist in the DOM until this is opened.
-    await page
-      .getByRole('button', { name: /Advanced splitting options/ })
-      .click()
     await selectRadixOption(
       page,
       page.getByTestId('split-mode'),
@@ -224,38 +203,6 @@ export function paidForRow(page: Page, participant: string): Locator {
       name: new RegExp(`^${escapeRegExp(participant)}\\b`),
     }),
   })
-}
-
-/**
- * Makes `name` the active user for this group.
- *
- * Goes through the app's own migration path rather than writing the id
- * directly: ExpenseList resolves `newGroup-activeUser` from a participant name
- * to an id on mount. Writing `<groupId>-activeUser` by hand would not survive,
- * because the shared fixture re-seeds `newGroup-activeUser` on every
- * navigation and that migration always wins.
- */
-export async function setActiveUser(
-  page: Page,
-  groupId: string,
-  name: string,
-): Promise<void> {
-  await page.addInitScript((participantName) => {
-    window.localStorage.setItem('newGroup-activeUser', participantName)
-  }, name)
-
-  await page.goto(`/groups/${groupId}/expenses`)
-
-  await expect
-    .poll(
-      () =>
-        page.evaluate(
-          (id) => window.localStorage.getItem(`${id}-activeUser`) ?? '',
-          groupId,
-        ),
-      { timeout: 20_000 },
-    )
-    .not.toMatch(/^(|None)$/)
 }
 
 /** An expense row in the list. */

@@ -1,6 +1,7 @@
 import { Participant } from '@/generated/prisma/browser'
 import { Balances } from '@/lib/balances'
 import { Currency } from '@/lib/currency'
+import { Decimal } from '@/lib/money'
 import { cn, formatCurrency } from '@/lib/utils'
 import { useLocale } from 'next-intl'
 
@@ -13,14 +14,16 @@ type Props = {
 export function BalancesList({ balances, participants, currency }: Props) {
   const locale = useLocale()
   const maxBalance = Math.max(
-    ...Object.values(balances).map((b) => Math.abs(b.total)),
+    ...Object.values(balances).map((b) =>
+      new Decimal(b.total).abs().toNumber(),
+    ),
   )
 
   return (
     <div className="text-sm">
       {participants.map((participant) => {
-        const balance = balances[participant.id]?.total ?? 0
-        const isLeft = balance >= 0
+        const balance = balances[participant.id]?.total ?? '0'
+        const isLeft = new Decimal(balance).gte(0)
         return (
           <div
             key={participant.id}
@@ -35,7 +38,7 @@ export function BalancesList({ balances, participants, currency }: Props) {
               <div className="absolute inset-0 p-2 z-20">
                 {formatCurrency(currency, balance, locale)}
               </div>
-              {balance !== 0 && (
+              {!new Decimal(balance).isZero() && (
                 <div
                   className={cn(
                     'absolute top-1 h-7 z-10',
@@ -44,7 +47,10 @@ export function BalancesList({ balances, participants, currency }: Props) {
                       : 'bg-red-200 dark:bg-red-800 right-0 rounded-l-lg border  border-red-300 dark:border-red-700',
                   )}
                   style={{
-                    width: (Math.abs(balance) / maxBalance) * 100 + '%',
+                    width:
+                      (new Decimal(balance).abs().toNumber() / maxBalance) *
+                        100 +
+                      '%',
                   }}
                 ></div>
               )}

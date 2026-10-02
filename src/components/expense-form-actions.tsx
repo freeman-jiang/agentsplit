@@ -4,6 +4,7 @@ import { getCategories } from '@/lib/api'
 import { env } from '@/lib/env'
 import { getRuntimeFeatureFlags } from '@/lib/featureFlags'
 import { getOpenAIClient } from '@/lib/openai'
+import { requireWebUser } from '@/lib/session'
 import { formatCategoryForAIPrompt } from '@/lib/utils'
 import { z } from 'zod'
 
@@ -28,6 +29,7 @@ export async function extractCategoryFromTitle(description: string) {
     throw new Error('Category extraction is not enabled.')
   }
 
+  await requireWebUser()
   const categories = await getCategories()
   const openai = getOpenAIClient()
 

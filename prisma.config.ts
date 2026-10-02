@@ -6,7 +6,7 @@ import { defineConfig } from 'prisma/config'
 // (Docker / Next.js) the variables are already present in the environment, and
 // a missing `.env` file or `dotenv` package is harmless.
 try {
-  require('dotenv').config()
+  require('dotenv').config({ quiet: true })
 } catch {}
 
 export default defineConfig({

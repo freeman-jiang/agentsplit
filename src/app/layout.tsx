@@ -1,19 +1,19 @@
 import { ApplePwaSplash } from '@/app/apple-pwa-splash'
-import { LocaleSwitcher } from '@/components/locale-switcher'
+import { AccountMenu } from '@/components/account-menu'
+import { Brand } from '@/components/brand'
 import { ProgressBar } from '@/components/progress-bar'
 import { ServiceWorkerRegistration } from '@/components/service-worker-registration'
 import { ThemeProvider } from '@/components/theme-provider'
-import { ThemeToggle } from '@/components/theme-toggle'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/toaster'
 import { Analytics } from '@/lib/analytics/analytics'
 import { getAnalyticsConfig } from '@/lib/analytics/config'
 import { effectiveBaseUrl } from '@/lib/env'
+import { getWebSession } from '@/lib/session'
 import { TRPCProvider } from '@/trpc/client'
 import type { Metadata, Viewport } from 'next'
 import { NextIntlClientProvider, useTranslations } from 'next-intl'
 import { getLocale, getMessages, getTranslations } from 'next-intl/server'
-import Image from 'next/image'
 import Link from 'next/link'
 import { Suspense } from 'react'
 import './globals.css'
@@ -24,32 +24,30 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(effectiveBaseUrl),
     title: {
       default: t('metaTitle'),
-      template: '%s · Spliit',
+      template: '%s · AgentSplit',
     },
     description:
-      'Spliit is a minimalist web application to share expenses with friends and family. No ads, no account, no problem.',
+      'Shared expenses for people and their agents. Keep track of costs, split fairly, and settle up.',
     openGraph: {
       title: t('metaTitle'),
       description:
-        'Spliit is a minimalist web application to share expenses with friends and family. No ads, no account, no problem.',
+        'Shared expenses for people and their agents. Keep track of costs, split fairly, and settle up.',
       images: `/banner.png`,
       type: 'website',
       url: '/',
     },
     twitter: {
       card: 'summary_large_image',
-      creator: '@scastiel',
-      site: '@scastiel',
       images: `/banner.png`,
       title: t('metaTitle'),
       description:
-        'Spliit is a minimalist web application to share expenses with friends and family. No ads, no account, no problem.',
+        'Shared expenses for people and their agents. Keep track of costs, split fairly, and settle up.',
     },
     appleWebApp: {
       capable: true,
-      title: 'Spliit',
+      title: 'AgentSplit',
     },
-    applicationName: 'Spliit',
+    applicationName: 'AgentSplit',
     icons: [
       {
         url: '/android-chrome-192x192.png',
@@ -66,87 +64,65 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#047857',
+  themeColor: '#526044',
 }
 
-function Content({ children }: { children: React.ReactNode }) {
+function Content({
+  children,
+  user,
+}: {
+  children: React.ReactNode
+  user: { name: string } | null
+}) {
   const t = useTranslations()
   return (
     <TRPCProvider>
-      <header className="fixed top-0 left-0 right-0 h-16 flex justify-between bg-white dark:bg-gray-950 bg-opacity-50 dark:bg-opacity-50 p-2 border-b backdrop-blur-sm z-50">
-        <Link
-          className="flex items-center gap-2 hover:scale-105 transition-transform"
-          href="/"
-        >
-          <h1>
-            <Image
-              src="/logo-with-text.png"
-              className="m-1 h-auto w-auto"
-              width={(35 * 522) / 180}
-              height={35}
-              alt="Spliit"
-            />
-          </h1>
-        </Link>
-        <div role="navigation" aria-label="Menu" className="flex">
-          <ul className="flex items-center text-sm">
-            <li>
-              <Button
-                variant="ghost"
-                size="sm"
-                asChild
-                className="-my-3 text-primary"
+      <header className="sticky top-0 z-50 border-b bg-background/95 px-3 py-3 backdrop-blur-sm sm:px-8">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+          <Link
+            className="flex items-center gap-2"
+            href={user ? '/groups' : '/'}
+          >
+            <Brand />
+          </Link>
+          {user && (
+            <>
+              <nav
+                aria-label="Workspace"
+                className="col-span-full row-start-2 flex flex-wrap gap-1 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:justify-end"
               >
-                <Link href="/groups">{t('Header.groups')}</Link>
-              </Button>
-            </li>
-            <li>
-              <LocaleSwitcher />
-            </li>
-            <li>
-              <ThemeToggle />
-            </li>
-          </ul>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/groups">{t('Header.groups')}</Link>
+                </Button>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/agents">{t('Header.agentSetup')}</Link>
+                </Button>
+              </nav>
+              <div className="col-start-2 row-start-1 flex justify-end sm:col-start-3">
+                <AccountMenu name={user.name} />
+              </div>
+            </>
+          )}
         </div>
       </header>
 
-      <div className="pt-16 flex-1 flex flex-col">{children}</div>
+      <div className="flex-1 flex flex-col">{children}</div>
 
-      <footer className="sm:p-8 md:p-16 sm:mt-16 sm:text-sm md:text-base md:mt-32 bg-slate-50 dark:bg-card border-t p-6 mt-8 flex flex-col sm:flex-row sm:justify-between gap-4 text-xs [&_a]:underline">
-        <div className="flex flex-col space-y-2">
-          <div className="sm:text-lg font-semibold text-base flex space-x-2 items-center">
-            <Link className="flex items-center gap-2" href="/">
-              <Image
-                src="/logo-with-text.png"
-                className="m-1 h-auto w-auto"
-                width={(35 * 522) / 180}
-                height={35}
-                alt="Spliit"
-              />
-            </Link>
-          </div>
-          <div className="flex flex-col space-y a--no-underline-text-white">
-            <span>{t('Footer.madeIn')}</span>
-            <span>
-              {t.rich('Footer.builtBy', {
-                author: (txt) => (
-                  <a href="https://scastiel.dev" target="_blank" rel="noopener">
-                    {txt}
-                  </a>
-                ),
-                source: (txt) => (
-                  <a
-                    href="https://github.com/spliit-app/spliit/graphs/contributors"
-                    target="_blank"
-                    rel="noopener"
-                  >
-                    {txt}
-                  </a>
-                ),
-              })}
-            </span>
-          </div>
+      <footer className="mt-12 flex flex-col gap-4 border-t px-4 py-6 text-xs text-muted-foreground sm:flex-row sm:items-end sm:justify-between sm:px-8">
+        <div className="space-y-2">
+          <Link href={user ? '/groups' : '/'} className="text-foreground">
+            <Brand className="text-xl" />
+          </Link>
+          <p>{t('Footer.tagline')}</p>
+          <Link href="/privacy" className="underline underline-offset-4">
+            Privacy
+          </Link>
         </div>
+        <p>
+          {t.rich('Footer.upstream', {
+            source: (text) => <span>{text}</span>,
+          })}
+        </p>
       </footer>
       <Toaster />
     </TRPCProvider>
@@ -158,6 +134,7 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  const session = await getWebSession()
   const locale = await getLocale()
   const messages = await getMessages()
   const analyticsConfig = await getAnalyticsConfig()
@@ -167,8 +144,8 @@ export default async function RootLayout({
       dir={['ar', 'he'].includes(locale) ? 'rtl' : 'ltr'}
       suppressHydrationWarning
     >
-      <ApplePwaSplash icon="/logo-with-text.png" color="#047857" />
-      <body className="min-h-[100dvh] flex flex-col items-stretch bg-slate-50 bg-opacity-30 dark:bg-background">
+      <ApplePwaSplash icon="/logo-with-text.png" color="#526044" />
+      <body className="min-h-[100dvh] flex flex-col items-stretch bg-background">
         <NextIntlClientProvider messages={messages}>
           {/* Rendered inside the provider because it reads translations via
               `useTranslations`, which needs NextIntlClientProvider in its
@@ -184,7 +161,9 @@ export default async function RootLayout({
               <Suspense>
                 <ProgressBar />
               </Suspense>
-              <Content>{children}</Content>
+              <Content user={session ? { name: session.user.name } : null}>
+                {children}
+              </Content>
             </ThemeProvider>
           </Analytics>
         </NextIntlClientProvider>

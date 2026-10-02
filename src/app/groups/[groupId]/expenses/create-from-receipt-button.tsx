@@ -27,6 +27,7 @@ import { ToastAction } from '@/components/ui/toast'
 import { useToast } from '@/components/ui/use-toast'
 import { useAnalytics } from '@/lib/analytics/context'
 import { useMediaQuery } from '@/lib/hooks'
+import { ReceiptFileInput, useReceiptUpload } from '@/lib/use-receipt-upload'
 import {
   formatCurrency,
   formatDate,
@@ -36,7 +37,7 @@ import {
 import { trpc } from '@/trpc/client'
 import { ChevronRight, FileQuestion, Loader2, Receipt } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
-import { getImageData, usePresignedUpload } from 'next-s3-upload'
+import { getImageData } from 'next-s3-upload'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { PropsWithChildren, ReactNode, useState } from 'react'
@@ -87,7 +88,7 @@ function ReceiptDialogContent() {
   const locale = useLocale()
   const t = useTranslations('CreateFromReceipt')
   const [pending, setPending] = useState(false)
-  const { uploadToS3, FileInput, openFileDialog } = usePresignedUpload()
+  const { uploadToS3, inputRef, openFileDialog } = useReceiptUpload()
   const { toast } = useToast()
   const router = useRouter()
   const [receiptInfo, setReceiptInfo] = useState<
@@ -119,7 +120,7 @@ function ReceiptDialogContent() {
         let { url } = await uploadToS3(file)
         console.log('Extracting information from receipt…')
         const { amount, categoryId, date, title } =
-          await extractExpenseInformationFromImage(url)
+          await extractExpenseInformationFromImage(url, groupId)
         const { width, height } = await getImageData(file)
         setReceiptInfo({ amount, categoryId, date, title, url, width, height })
       } catch (err) {
@@ -153,7 +154,11 @@ function ReceiptDialogContent() {
     <div className="prose prose-sm dark:prose-invert">
       <p>{t('Dialog.body')}</p>
       <div>
-        <FileInput onChange={handleFileChange} accept="image/jpeg,image/png" />
+        <ReceiptFileInput
+          inputRef={inputRef}
+          onChange={handleFileChange}
+          accept="image/jpeg,image/png"
+        />
         <div className="grid gap-x-4 gap-y-2 grid-cols-3">
           <Button
             variant="secondary"
@@ -214,9 +219,8 @@ function ReceiptDialogContent() {
                   <>
                     {formatCurrency(
                       getCurrencyFromGroup(group),
-                      receiptInfo.amount,
+                      String(receiptInfo.amount),
                       locale,
-                      true,
                     )}
                   </>
                 ) : (
