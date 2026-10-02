@@ -3,7 +3,7 @@ BEGIN;
 -- under an exclusive migration lock, then use a sequence for future events.
 ALTER TABLE "Activity" ADD COLUMN "sequence" INTEGER;
 ALTER TABLE "Activity" DISABLE TRIGGER "Activity_append_only";
-WITH ordered AS (SELECT id, row_number() OVER (ORDER BY time, id)::INTEGER AS position FROM "Activity")
+WITH ordered AS (SELECT id, row_number() OVER (ORDER BY time, "groupId", "expenseId" NULLS FIRST, "expenseRevision" NULLS FIRST, id)::INTEGER AS position FROM "Activity")
 UPDATE "Activity" a SET "sequence" = ordered.position FROM ordered WHERE a.id = ordered.id;
 ALTER TABLE "Activity" ENABLE TRIGGER "Activity_append_only";
 CREATE SEQUENCE "Activity_sequence_seq" AS INTEGER OWNED BY "Activity"."sequence";

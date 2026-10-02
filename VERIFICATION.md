@@ -506,3 +506,10 @@ edit, delete and activity). Build, type, format and diff checks pass; lint retai
 the two existing warnings. No new dependencies. The activity-order migration
 was applied successfully to both disposable local databases. A production DB
 backup and hashes of pre-existing audit contents were saved before rollout.
+
+A migration-specific regression additionally applies the exact SQL to an isolated
+schema containing equal-timestamp revisions in reverse ID order. It verifies
+create/edit/delete revision order, unchanged prior contents, the next sequence
+value and restored append-only protection. Both disposable databases were aligned
+with the corrected unreleased backfill, with pre/post content hashes matching;
+the 23 historical-query scenarios pass on that ordering as well.
