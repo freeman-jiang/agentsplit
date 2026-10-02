@@ -539,3 +539,13 @@ Checks: 700 Jest executions / 60 suites pass across both time zones, 31 real
 private-account integration scenarios pass, and four focused browser scenarios
 pass (guide, copy controls, key management, membership and layout). Build,
 TypeScript, formatting and diff checks pass; lint retains two existing warnings.
+
+Live rollout completed after the owner renewed Tailscale SSH access. Deployment
+`6fjntply9xida3kpshn5kiws` runs application commit
+`86a9a4c8ab2ce70b84292a4a2f4d4a297ed61fc3`. The live raw-key verifier passed MCP
+17-tool discovery, identical identity/membership versus the existing client,
+private CSV/JSON exports and receipt reads, anonymous receipt denial, and
+conflicting-key rejection. The live Agents page was visually inspected: Codex
+app instructions come first, and the normal guide has no bearer/env-field text.
+CLI/configuration examples remain collapsed and optional. No ledger writes were
+performed by this live verification.
