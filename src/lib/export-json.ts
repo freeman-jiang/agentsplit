@@ -9,6 +9,7 @@ export async function exportJSON(groupId: string) {
     select: {
       id: true,
       name: true,
+      slug: true,
       information: true,
       currency: true,
       currencyCode: true,
@@ -19,6 +20,7 @@ export async function exportJSON(groupId: string) {
           createdAt: true,
           expenseDate: true,
           title: true,
+          vendor: true,
           category: { select: { grouping: true, name: true } },
           amount: true,
           currencyCode: true,

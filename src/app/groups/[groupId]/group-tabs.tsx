@@ -1,6 +1,7 @@
 'use client'
 
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { groupPath } from '@/lib/group-slug'
 import {
   Activity,
   BarChart3,
@@ -12,6 +13,7 @@ import {
 import { useTranslations } from 'next-intl'
 import { usePathname, useRouter } from 'next/navigation'
 import { ComponentType } from 'react'
+import { useCurrentGroup } from './current-group-context'
 
 type Props = {
   groupId: string
@@ -20,8 +22,11 @@ type Props = {
 export function GroupTabs({ groupId }: Props) {
   const t = useTranslations()
   const pathname = usePathname()
+  const { group } = useCurrentGroup()
+  const basePath = groupPath(group ?? { id: groupId })
+  const segments = pathname.split('/').filter(Boolean)
   const value =
-    pathname.replace(/\/groups\/[^\/]+\/([^/]+).*/, '$1') || 'expenses'
+    (segments[0] === 'groups' ? segments[2] : segments[1]) || 'expenses'
   const router = useRouter()
 
   const tabs: { value: string; label: string; Icon: ComponentType<any> }[] = [
@@ -38,7 +43,7 @@ export function GroupTabs({ groupId }: Props) {
       value={value}
       className="flex-1 min-w-0"
       onValueChange={(value) => {
-        router.push(`/groups/${groupId}/${value}`)
+        router.push(`${basePath}/${value}`)
       }}
     >
       <TabsList className="flex h-auto flex-wrap justify-start gap-x-2 gap-y-1 border-b bg-transparent p-0 sm:gap-x-4">

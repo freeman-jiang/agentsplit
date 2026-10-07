@@ -25,7 +25,9 @@ type ExpenseQuery = {
     currencyCode?: string
     recurrenceRule?: unknown
     expenseDate?: { gte?: Date; lte?: Date }
-    title?: { contains: string }
+    AND?: {
+      OR: { title?: { contains: string }; vendor?: { contains: string } }[]
+    }[]
   }
   skip?: number
   take?: number
@@ -35,6 +37,7 @@ const secondToken = 'bob-integration-key-with-more-than-thirty-two-characters'
 const groupA = {
   id: 'group-a',
   name: 'Group A',
+  slug: null,
   currency: '$',
   currencyCode: 'USD',
   information: null,
@@ -51,6 +54,7 @@ const savedExpenses = [
     id: 'expense-a',
     groupId: 'group-a',
     title: 'Dinner',
+    vendor: null,
     amount: '60',
     currencyCode: 'USD',
     createdAt: new Date('2026-09-30T00:00:00Z'),
@@ -202,10 +206,20 @@ beforeEach(() => {
                 expense.groupId === where.groupId &&
                 (!where.currencyCode ||
                   expense.currencyCode === where.currencyCode) &&
-                (!where.title ||
-                  expense.title
-                    .toLowerCase()
-                    .includes(where.title.contains.toLowerCase())) &&
+                (!where.AND ||
+                  where.AND.every((clause) =>
+                    clause.OR.some((condition) =>
+                      condition.title
+                        ? expense.title
+                            .toLowerCase()
+                            .includes(condition.title.contains.toLowerCase())
+                        : condition.vendor
+                          ? (expense.vendor ?? '')
+                              .toLowerCase()
+                              .includes(condition.vendor.contains.toLowerCase())
+                          : false,
+                    ),
+                  )) &&
                 (!where.expenseDate ||
                   (expense.expenseDate &&
                     (!where.expenseDate.gte ||
@@ -621,10 +635,20 @@ describe('authenticated MCP protocol', () => {
           .filter(
             (row) =>
               row.groupId === where.groupId &&
-              (!where.title ||
-                row.title
-                  .toLowerCase()
-                  .includes(where.title.contains.toLowerCase())) &&
+              (!where.AND ||
+                where.AND.every((clause) =>
+                  clause.OR.some((condition) =>
+                    condition.title
+                      ? row.title
+                          .toLowerCase()
+                          .includes(condition.title.contains.toLowerCase())
+                      : condition.vendor
+                        ? (row.vendor ?? '')
+                            .toLowerCase()
+                            .includes(condition.vendor.contains.toLowerCase())
+                        : false,
+                  ),
+                )) &&
               (!where.expenseDate?.gte ||
                 row.expenseDate >= where.expenseDate.gte) &&
               (!where.expenseDate?.lte ||

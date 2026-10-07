@@ -7,6 +7,7 @@ import type { Activity } from './activity-item'
 
 const labels = {
   title: 'Title',
+  vendor: 'Vendor',
   amount: 'Amount',
   date: 'Expense date',
   payer: 'Paid by',
@@ -58,6 +59,7 @@ export function ActivityRevision({ activity }: { activity: Activity }) {
           {snapshot.group.currencyCode ?? snapshot.group.currency}
         </p>
         <p className="whitespace-pre-wrap">{snapshot.group.information}</p>
+        {snapshot.group.slug && <p>/{snapshot.group.slug}</p>}
         <p>
           {snapshot.group.participants.map((person) => person.name).join(', ')}
         </p>

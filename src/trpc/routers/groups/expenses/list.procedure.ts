@@ -21,6 +21,13 @@ export const listGroupExpensesProcedure = baseProcedure
         cursor: z.number().int().min(0).optional(),
         limit: z.number().int().min(1).max(100).optional(),
         filter: z.string().max(200).optional(),
+        vendor: z
+          .string()
+          .trim()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe('Exact merchant name, case-insensitive.'),
         currencyCode: expenseCurrencySchema.optional(),
         categoryId: z.number().int().nonnegative().optional(),
         paidById: z.string().min(1).max(64).optional(),
@@ -54,6 +61,7 @@ export const listGroupExpensesProcedure = baseProcedure
         cursor = 0,
         limit = 10,
         filter,
+        vendor,
         from,
         to,
         currencyCode,
@@ -71,6 +79,7 @@ export const listGroupExpensesProcedure = baseProcedure
         history = ledger.history
         expenses = filterHistoricalExpenses(ledger.snapshots, {
           filter,
+          vendor,
           from,
           to,
           currencyCode,
@@ -87,6 +96,7 @@ export const listGroupExpensesProcedure = baseProcedure
           offset: cursor,
           length: limit + 1,
           filter,
+          vendor,
           from,
           to,
           currencyCode,

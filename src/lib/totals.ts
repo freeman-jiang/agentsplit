@@ -2,6 +2,7 @@ import type { RecurrenceRule } from '@/generated/prisma/client'
 import { getGroupExpenses } from '@/lib/api'
 import { getExpenseShares, getParticipantShare, ShareInput } from '@/lib/shares'
 import { getCurrency } from './currency'
+import { expenseTitle } from './expense-title'
 import { add, Decimal } from './money'
 
 /**
@@ -315,7 +316,7 @@ export function getSpendingSummary(
       !largestExpense ||
       new Decimal(expense.amount).gt(largestExpense.amount)
     ) {
-      largestExpense = { title: expense.title, amount: expense.amount }
+      largestExpense = { title: expenseTitle(expense), amount: expense.amount }
     }
   }
 

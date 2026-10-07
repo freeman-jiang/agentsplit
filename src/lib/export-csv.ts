@@ -52,6 +52,7 @@ export async function exportCSV(groupId: string) {
           id: true,
           expenseDate: true,
           title: true,
+          vendor: true,
           category: { select: { name: true } },
           amount: true,
           currencyCode: true,
@@ -101,6 +102,7 @@ export async function exportCSV(groupId: string) {
   const fields = [
     { label: 'Date', value: 'date' },
     { label: 'Description', value: 'title' },
+    { label: 'Vendor', value: 'vendor' },
     { label: 'Category', value: 'categoryName' },
     { label: 'Currency', value: 'currency' },
     { label: 'Cost', value: 'amount' },
@@ -122,6 +124,7 @@ export async function exportCSV(groupId: string) {
     return {
       date: formatDate(expense.expenseDate),
       title: escapeCsvFormula(expense.title),
+      vendor: escapeCsvFormula(expense.vendor ?? ''),
       categoryName: escapeCsvFormula(expense.category?.name || ''),
       currency: expense.currencyCode,
       amount: formatAmountAsDecimal(expense.amount, currency),

@@ -15,6 +15,7 @@ datasource db {
 
 model Group {
   id           String        @id
+  slug         String?       @unique
   name         String
   information  String?       @db.Text
   currency     String        @default("$")
@@ -68,6 +69,7 @@ model Expense {
   group            Group             @relation(fields: [groupId], references: [id], onDelete: Restrict)
   expenseDate      DateTime          @default(dbgenerated("CURRENT_DATE")) @db.Date
   title            String
+  vendor           String?
   category         Category?         @relation(fields: [categoryId], references: [id])
   categoryId       Int               @default(0)
   amount           Decimal           @db.Decimal(30, 12)

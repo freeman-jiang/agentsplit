@@ -1,6 +1,7 @@
 import { RecurrenceRule, SplitMode } from '@/generated/prisma/browser'
 import * as z from 'zod'
 import { expenseCurrencySchema, getCurrency } from './currency'
+import { groupSlugSchema } from './group-slug'
 import { Decimal, decimalStringSchema, decimalTextSchema } from './money'
 
 export const GROUP_INFORMATION_MAX = 10_000
@@ -9,6 +10,7 @@ export const EXPENSE_NOTES_MAX = 5_000
 export const groupFormSchema = z
   .object({
     name: z.string().min(2, 'min2').max(50, 'max50'),
+    slug: groupSlugSchema,
     information: z.string().max(GROUP_INFORMATION_MAX, 'max10000').optional(),
     currency: z.string().min(1, 'min1').max(5, 'max5'),
     currencyCode: z.union([z.string().length(3).nullish(), z.literal('')]), // ISO-4217 currency code
@@ -64,6 +66,15 @@ export const expenseFormSchema = z
         description: 'Calendar date in YYYY-MM-DD format',
       }),
     title: z.string().min(2, 'min2').max(200, 'max200'),
+    vendor: z
+      .string()
+      .trim()
+      .max(100)
+      .nullable()
+      .optional()
+      .describe(
+        'Optional merchant name, e.g. Costco. Keep the purchase description in title without repeating vendor. Set null or empty string to clear.',
+      ),
     category: z.number().int().nonnegative().default(0),
     amount: decimalStringSchema
       .refine((value) => !new Decimal(value).isZero(), 'amountNotZero')

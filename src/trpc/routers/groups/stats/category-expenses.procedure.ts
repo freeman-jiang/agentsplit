@@ -33,6 +33,7 @@ export const getStatsCategoryExpensesProcedure = baseProcedure
           (expense) => ({
             id: expense.id,
             title: expense.title,
+            vendor: expense.vendor,
             amount: expense.amount,
             expenseDate: expense.expenseDate,
             currencyCode: expense.currencyCode,

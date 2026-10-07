@@ -5,6 +5,7 @@ type Expense = Awaited<ReturnType<typeof getGroupExpenses>>[number]
 const expense = (overrides: Partial<Expense> = {}): Expense => ({
   id: 'receipt',
   title: 'Dinner',
+  vendor: null,
   amount: '20',
   currencyCode: 'USD',
   paidBy: { id: 'alice', name: 'Alice' },

@@ -61,6 +61,7 @@ export const getGroupExpenseProcedure = baseProcedure
         }
         expense = {
           ...saved,
+          vendor: saved.vendor ?? null,
           createdAt: new Date(saved.createdAt),
           expenseDate: new Date(saved.expenseDate),
           paidById: saved.paidBy.id,

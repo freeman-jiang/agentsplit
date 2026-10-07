@@ -6,6 +6,7 @@ import { Locale } from '@/i18n/request'
 import { getGroupExpenses } from '@/lib/api'
 import { Currency } from '@/lib/currency'
 import { expenseRowFigures } from '@/lib/expense-row'
+import { expenseTitle } from '@/lib/expense-title'
 import { useActiveUser } from '@/lib/hooks'
 import { cn, formatCurrency, formatDateOnly } from '@/lib/utils'
 import { useLocale } from 'next-intl'
@@ -56,7 +57,7 @@ export function ExpenseCard({ expense, currency, groupId }: Props) {
               expense.isReimbursement && 'italic',
             )}
           >
-            {expense.title}
+            {expenseTitle(expense)}
           </span>
           <span className="shrink-0 text-xs text-muted-foreground">
             <DocumentsCount count={expense._count.documents} />

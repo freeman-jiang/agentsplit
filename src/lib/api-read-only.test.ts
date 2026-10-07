@@ -73,7 +73,14 @@ it('applies inclusive UTC expense-date bounds together with title filtering befo
       where: {
         groupId: 'group-a',
         deletedAt: null,
-        title: { contains: 'dinner', mode: 'insensitive' },
+        AND: [
+          {
+            OR: [
+              { title: { contains: 'dinner', mode: 'insensitive' } },
+              { vendor: { contains: 'dinner', mode: 'insensitive' } },
+            ],
+          },
+        ],
         expenseDate: {
           gte: new Date('2024-02-01T00:00:00.000Z'),
           lte: new Date('2024-02-29T00:00:00.000Z'),

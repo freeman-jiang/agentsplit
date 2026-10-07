@@ -3,6 +3,7 @@
 import { GroupTabs } from '@/app/groups/[groupId]/group-tabs'
 import { ShareButton } from '@/app/groups/[groupId]/share-button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { groupPath } from '@/lib/group-slug'
 import Link from 'next/link'
 import { useCurrentGroup } from './current-group-context'
 
@@ -13,7 +14,7 @@ export const GroupHeader = () => {
     <div className="flex flex-col justify-between gap-4">
       <div className="flex items-center justify-between gap-4">
         <h1 className="min-w-0 text-base font-medium">
-          <Link href={`/groups/${groupId}`}>
+          <Link href={groupPath(group ?? { id: groupId })}>
             {isLoading ? (
               <Skeleton className="mt-1.5 mb-1.5 h-5 w-32" />
             ) : (
