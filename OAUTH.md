@@ -12,6 +12,16 @@ AgentSplit remains a self-hosted Better Auth application with Google login. It n
 
 ChatGPT's public client metadata currently uses `https://chatgpt.com/oauth/client.json`, signed `private_key_jwt` client authentication and `https://chatgpt.com/connector_platform_oauth_redirect`. Let discovery determine the actual client identity and callback mode; do not hardcode a transient builder callback ID.
 
+## Claude and other MCP clients
+
+Add `https://agentsplit.freemanjiang.com/api/mcp` as a remote MCP server and choose OAuth. For Claude, choose its published identity when offered; CIMD is preferred, and automatic registration (DCR) is also available. There is no need to create a Google OAuth client or manually provision a client ID for these paths. Clients that explicitly require preconfigured credentials can use an RFC 7591 registration to obtain a client ID and, for confidential clients, a secret; keep that secret in the client's private configuration.
+
+Claude selects CIMD when discovery advertises both `client_id_metadata_document_supported: true` and `none` in `token_endpoint_auth_methods_supported`. AgentSplit advertises both. Native clients can register localhost or IP-loopback callbacks with `application_type: native`; the provider accepts ephemeral callback ports. Web clients use HTTPS callbacks.
+
+You can start by connecting an agent: first Google sign-in creates the AgentSplit account, then consent authorizes the connection. Accept an email-bound group invitation before or after connecting; current memberships take effect without reconnecting. The agent can also accept the invitation through `manage_group_access` with the user's authorization.
+
+Compatibility targets the standard MCP authorization-code/PKCE and refresh flows. This does not promise obsolete implicit/password grants or every vendor-specific OAuth extension. Mock-agent tests cover public and confidential DCR clients, native loopback callbacks, predefined clients and signed assertions. A real Claude account consent/token exchange is still unverified.
+
 ## Contracts
 
 - Protected resource: `<BASE_URL>/api/mcp`.
@@ -22,7 +32,7 @@ ChatGPT's public client metadata currently uses `https://chatgpt.com/oauth/clien
 - JWKS: `/api/auth/jwks`; signing keys persist encrypted in PostgreSQL through the official JWT plugin.
 - Authorization code + S256 PKCE; refresh tokens rotate. Access tokens last five minutes; refresh tokens default to 30 days. The MCP provider permits an identical refresh retry for 30 seconds to recover a lost rotation response.
 - DPoP-bound tokens are also verified by the official helper, including proof binding and replay protection.
-- CIMD uses Better Auth's Node transport with public-address validation, DNS pinning and no redirects. Dynamic client registration and machine-to-machine/client-credentials grants are disabled. Managed/predefined clients and public or signed clients remain supported by the provider.
+- CIMD uses Better Auth's Node transport with public-address validation, DNS pinning and no redirects. Dynamic client registration is also enabled at `/api/auth/oauth2/register` for clients without CIMD, with the provider's default limit of five registration requests per minute per IP. Registration accepts standard RFC 7591 metadata and automatically binds clients to the MCP resource; no proprietary `resources` field is required. Public (`none`), confidential (`client_secret_basic` and `client_secret_post`), and signed (`private_key_jwt`) clients are supported. User consent and S256 PKCE remain required; registration alone grants no user access. Machine-to-machine/client-credentials grants remain disabled.
 - `agentsplit:read` is required for private ledger reads, exports and receipt reads. Mutations additionally require `agentsplit:write`. `openid`, `profile`, `email` and `offline_access` have their standard meanings and are explained on consent.
 - Scopes are a ceiling on existing live user memberships and roles, not an alternative permission system. They do not grant access to another user's groups. API keys retain their existing permissions and require no rotation.
 - Tool declarations advertise OAuth scopes in `securitySchemes` and the compatibility `_meta` mirror. A tool denied write scope returns `isError` with `_meta["mcp/www_authenticate"]`; endpoint-wide missing/invalid credentials return an HTTP challenge. Existing legacy and modern MCP transports remain supported.
@@ -48,3 +58,5 @@ The migration adds provider tables, persistent signing keys and connection recor
 `e2e/mcp-oauth.spec.ts` exercises the actual consent and connection-management UI, then exchanges the returned code as a mock agent and calls MCP with its tokens. Existing Payments, People, revision-log, custom-URL and API-key tests remain regression coverage. All automated accounts and mutations are isolated from production ledger data.
 
 Sources: [Better Auth MCP](https://better-auth.com/docs/plugins/mcp), [OAuth provider](https://better-auth.com/docs/plugins/oauth-provider), [CIMD](https://better-auth.com/docs/plugins/cimd), [OpenAI plugin authentication](https://developers.openai.com/plugins/build/auth).
+
+Client references: [Claude connector authentication](https://claude.com/docs/connectors/building/authentication), [Claude connection setup](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).

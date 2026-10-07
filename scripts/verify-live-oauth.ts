@@ -78,10 +78,12 @@ assert(as.code_challenge_methods_supported.includes('S256'))
 assert(as.client_id_metadata_document_supported)
 assert(as.authorization_response_iss_parameter_supported)
 assert(as.token_endpoint_auth_methods_supported.includes('private_key_jwt'))
-assert(!as.registration_endpoint)
+assert.equal(as.registration_endpoint, issuer + '/oauth2/register')
+for (const method of ['none', 'client_secret_basic', 'client_secret_post'])
+  assert(as.token_endpoint_auth_methods_supported.includes(method))
 assert(!as.grant_types_supported.includes('client_credentials'))
 console.log(
-  'PASS live protected-resource/authorization discovery, issuer, PKCE, CIMD and signed-client metadata',
+  'PASS live OAuth discovery, PKCE, CIMD, DCR and public/secret/signed client metadata',
 )
 const unauth = await fetch(resource, {
   method: 'POST',

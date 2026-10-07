@@ -785,3 +785,30 @@ approved: that final access decision is pending. The real ChatGPT token exchange
 linked tool use and desktop/mobile availability must not be described as verified
 until that connection is completed. The entire equivalent flow, including signed
 client authentication, was verified with isolated mock agents above.
+
+## OAuth client compatibility — October 7, 2026
+
+Enabled Better Auth's standard dynamic registration fallback alongside CIMD and
+predefined clients. No dependency changes or database migration. The existing
+provider registration rate limit (five requests per minute per IP), consent,
+S256 PKCE, resource binding and live membership checks remain enabled.
+
+The discovery assertion first failed with a missing `registration_endpoint`,
+then passed after enabling the provider controls. The complete local HTTP suite
+now passes 27 scenarios, including public clients, native localhost and IPv4
+loopback callbacks with ephemeral ports, both client-secret exchange methods,
+refresh rotation, rejection of wrong proofs/secrets, revocation, unsafe redirect
+and consent-bypass rejection, and registration rate limiting. Existing signed
+client, mock Google, scope, membership and DPoP coverage also passes.
+
+750 unit-test executions across 66 suites and two timezone projects passed.
+Production build, type checking, changed-file formatting and diff checks passed;
+lint retains the same two inherited warnings. Four browser scenarios passed,
+including fresh unauthenticated RFC 7591 registration through the public API,
+consent, real MCP calls, refresh, settings revocation and denied/read-only grants.
+The 390px consent screenshot was inspected; the destination and actions remain
+readable without horizontal overflow. The setup page now explains Claude and
+other OAuth clients, first-time accounts and invitation ordering.
+
+These are protocol/browser tests with isolated mock agents, not a claim that a
+real Claude account has completed consent or used AgentSplit tools.

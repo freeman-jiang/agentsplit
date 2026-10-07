@@ -14,6 +14,10 @@ export default async function ConsentPage({
   const user = await requireWebUser()
   const query = await searchParams
   const clientId = typeof query.client_id === 'string' ? query.client_id : ''
+  const redirectUri =
+    typeof query.redirect_uri === 'string'
+      ? z.url().safeParse(query.redirect_uri)
+      : undefined
   const scopes =
     typeof query.scope === 'string'
       ? query.scope.split(' ').filter(Boolean)
@@ -47,6 +51,7 @@ export default async function ConsentPage({
     : null
   if (
     !claimsValid ||
+    !redirectUri?.success ||
     !client ||
     client.disabled ||
     typeof query.sig !== 'string' ||
@@ -72,6 +77,14 @@ export default async function ConsentPage({
       <p className="text-sm text-muted-foreground">Signed in as {user.email}</p>
       <p className="break-all text-xs text-muted-foreground">
         Client identity: {clientId}
+      </p>
+      <p className="break-all text-sm">
+        Returns to: {new URL(redirectUri.data).host || redirectUri.data}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        The app supplies its name. Only approve if you started this connection
+        and recognize the destination. For a localhost destination, this is an
+        app running on your computer.
       </p>
       <ConsentForm scopes={scopes} requestedClaims={requestedClaims} />
     </main>

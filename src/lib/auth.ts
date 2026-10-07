@@ -51,8 +51,10 @@ function createAuth() {
         accessTokenExpiresIn: 300,
         refreshTokenExpiresIn: 60 * 60 * 24 * 30,
         storeTokens: { hash: hashOAuthToken },
-        allowDynamicClientRegistration: false,
-        allowUnauthenticatedClientRegistration: false,
+        // CIMD stays preferred; older MCP clients can register before sign-in.
+        // Registration does not grant account access or bypass consent/PKCE.
+        allowDynamicClientRegistration: true,
+        allowUnauthenticatedClientRegistration: true,
         extensions: [connectionClaims],
       }),
       cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
