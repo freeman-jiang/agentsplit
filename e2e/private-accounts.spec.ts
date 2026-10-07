@@ -68,8 +68,15 @@ test('admin manages invitation through settings without exposing group access', 
     .getByRole('button', { name: 'Create invitation', exact: true })
     .click()
   await expect(
-    page.getByRole('button', { name: 'Copy invitation' }),
+    page.getByRole('button', { name: 'Copy invitation', exact: true }),
   ).toBeVisible()
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page
+    .getByRole('button', { name: 'Copy invitation message', exact: true })
+    .click()
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toContain('sign in with Google using roommate@example.com')
   await expect(
     page
       .getByRole('listitem', { name: 'Bob', exact: true })
@@ -115,7 +122,7 @@ test('invitation binds the intended account on a second browser, with no identit
   page,
   browser,
   baseURL,
-}) => {
+}, testInfo) => {
   const groupId = await createGroup(page, {
     name: `Invite acceptance ${uniqueSuffix()}`,
     participants: ['Alice', 'Bob'],
@@ -141,13 +148,39 @@ test('invitation binds the intended account on a second browser, with no identit
     await expect(
       page.getByRole('button', { name: 'Accept invitation' }),
     ).toHaveCount(0)
+    await page
+      .getByRole('button', { name: 'Use a different Google account' })
+      .click()
+    await expect(page).toHaveURL(new RegExp('/sign-in\\?next='))
+    expect(new URL(page.url()).searchParams.get('next')).toBe(
+      new URL(link).pathname,
+    )
+    await expect(
+      page.getByRole('heading', { name: 'You’ve been invited to AgentSplit' }),
+    ).toBeVisible()
+    await page.setViewportSize({ width: 390, height: 900 })
+    await page.screenshot({
+      path: testInfo.outputPath('invitation-sign-in.png'),
+      fullPage: true,
+    })
     const roommate = await context.newPage()
     await roommate.goto(link)
     await expect(
-      roommate.getByText('This is your fixed participant identity.', {
+      roommate.getByText('Existing expenses and balances under this name', {
         exact: false,
       }),
     ).toContainText('Bob')
+    await expect(
+      roommate.getByRole('heading', { name: 'What happens next?' }),
+    ).toBeVisible()
+    await expect(
+      roommate.getByText('an agent is optional.', { exact: false }),
+    ).toBeVisible()
+    await roommate.setViewportSize({ width: 390, height: 900 })
+    await roommate.screenshot({
+      path: testInfo.outputPath('invitation-accept.png'),
+      fullPage: true,
+    })
     await roommate.getByRole('button', { name: 'Accept invitation' }).click()
     await roommate.waitForURL(`/groups/${groupId}/expenses`)
     await expect(roommate.getByRole('dialog')).toHaveCount(0)

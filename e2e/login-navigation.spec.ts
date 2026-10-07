@@ -54,18 +54,32 @@ test.describe('Signed-out entry', () => {
     await expect(page).toHaveURL(/\/sign-in$/)
     const next = '/invite/' + 'a'.repeat(43)
     await page.goto(`/sign-in?next=${encodeURIComponent(next)}`)
+    await expect(
+      page.getByRole('heading', { name: 'You’ve been invited to AgentSplit' }),
+    ).toBeVisible()
+    await expect(
+      page.getByText(
+        'If you’re new, we’ll create your account automatically.',
+        { exact: false },
+      ),
+    ).toBeVisible()
     let callback = ''
+    let prompt = ''
     await page.route('**/api/auth/sign-in/social', async (route) => {
       callback = route.request().postDataJSON().callbackURL
+      prompt = route.request().postDataJSON().additionalParams?.prompt
       await route.fulfill({
         status: 400,
         contentType: 'application/json',
         body: JSON.stringify({ message: 'Test sign-in error' }),
       })
     })
-    await page.getByRole('button', { name: 'Log In', exact: true }).click()
+    await page
+      .getByRole('button', { name: 'Continue with Google', exact: true })
+      .click()
     await expect(page.locator('main').getByRole('alert')).toBeVisible()
     expect(callback).toBe(next)
+    expect(prompt).toBe('select_account')
   })
 })
 

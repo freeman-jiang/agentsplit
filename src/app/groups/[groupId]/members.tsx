@@ -331,11 +331,26 @@ export function GroupMembers({ groupId }: { groupId: string }) {
                 </form>
               )}
               {admin && pending && invitation?.participantId === person.id && (
-                <div className="border p-3 flex gap-3 items-center">
-                  <code className="flex-1 min-w-0 break-all text-xs">
-                    {invitation.url}
-                  </code>
-                  <CopyButton text={invitation.url} title="Copy invitation" />
+                <div className="border p-3 space-y-3">
+                  <p className="text-sm">
+                    Send this to {person.name}. AgentSplit does not send an
+                    email automatically.
+                  </p>
+                  <div className="flex gap-3 items-center">
+                    <code className="flex-1 min-w-0 break-all text-xs">
+                      {invitation.url}
+                    </code>
+                    <CopyButton text={invitation.url} title="Copy invitation" />
+                  </div>
+                  <div className="flex gap-3 items-center justify-between">
+                    <span className="text-sm">
+                      Copy a message with the steps to join
+                    </span>
+                    <CopyButton
+                      title="Copy invitation message"
+                      text={`Join ${data.group.name} on AgentSplit:\n${invitation.url}\n\nOpen the link and sign in with Google using ${pending.email}. Your account will be created automatically if you’re new. Then click Accept invitation to join as ${person.name} and see our shared expenses and balances.\n\nYou can use the website, or open Agents after joining to connect ChatGPT or Claude. An agent is optional.\n\nThe invitation expires ${new Date(pending.expiresAt).toLocaleString()}.`}
+                    />
+                  </div>
                 </div>
               )}
             </li>
