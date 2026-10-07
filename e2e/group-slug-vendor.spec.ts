@@ -28,8 +28,20 @@ test('optional vendor survives edits and custom URLs preserve navigation and acc
   })
   await page.getByRole('button', { name: 'Save changes', exact: true }).click()
   await expect(
-    page.getByText('Costco — Hangers and sponges', { exact: true }),
+    page
+      .getByTestId('expense-card')
+      .filter({ hasText: 'Hangers and sponges' })
+      .getByTestId('expense-vendor'),
   ).toBeVisible()
+
+  const vendorBox = await page.getByTestId('expense-vendor').boundingBox()
+  const titleBox = await page.getByTestId('expense-title').boundingBox()
+  expect(
+    vendorBox && titleBox && vendorBox.y + vendorBox.height <= titleBox.y,
+  ).toBeTruthy()
+  await expect(page.getByTestId('expense-title')).toHaveText(
+    'Hangers and sponges',
+  )
 
   const slug = `house-${uniqueSuffix()}`
   await openTab(page, 'Settings')
@@ -39,7 +51,10 @@ test('optional vendor survives edits and custom URLs preserve navigation and acc
   await page.goto(`/${slug}`)
   await expect(page).toHaveURL(new RegExp(`/${slug}$`))
   await expect(
-    page.getByText('Costco — Hangers and sponges', { exact: true }),
+    page
+      .getByTestId('expense-card')
+      .filter({ hasText: 'Hangers and sponges' })
+      .getByTestId('expense-vendor'),
   ).toBeVisible()
   await expect(
     page.getByRole('tab', { name: 'Expenses', exact: true }),
@@ -78,7 +93,7 @@ test('optional vendor survives edits and custom URLs preserve navigation and acc
 
   await page
     .getByRole('link')
-    .filter({ hasText: 'Costco — Hangers and sponges' })
+    .filter({ hasText: 'Hangers and sponges' })
     .click()
   await expect(page.getByLabel('Vendor (optional)')).toHaveValue('Costco')
   await fillStable(page.getByLabel('Vendor (optional)'), '')

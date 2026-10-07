@@ -14,6 +14,20 @@ composable tools map to shared tRPC business logic, including multi-currency
 expenses, repayments, revisions, history, group membership, and receipts.
 Money uses exact decimal strings and balances stay separate by currency.
 
+## Group UI conventions
+
+Group pages share one layout: navigation above, tab content on the left, and a
+sticky net-balance rail on the right. Keep this rail in the shared group layout
+across every tab and expense editor; do not recreate it inside individual pages.
+On mobile, the same balance information becomes a compact expandable summary
+above the content. The rail always describes the full group, independent of a
+tab's filters, and currencies remain separate.
+
+Expense lists and stats detail lists show the optional vendor on its own line
+above the description. Keep vendor and title as separate data fields; don't
+concatenate them for these visual rows. Historical plain-text summaries retain
+their original representation.
+
 ## Upstream Spliit documentation
 
 The reference documentation below describes the upstream project; AgentSplit deployment and MCP details are linked above. Upstream attribution and license are retained.

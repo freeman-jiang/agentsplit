@@ -420,7 +420,7 @@ Expenses have a required `title` and an optional `vendor`. Put the merchant in
 { "vendor": "Costco", "title": "hangers, waste liners, Kohler & sponges" }
 ```
 
-The UI displays `Costco — hangers, waste liners, Kohler & sponges`. Omit vendor
+The expense list displays `Costco` above `hangers, waste liners, Kohler & sponges`. Omit vendor
 when unknown or inapplicable, including payments without a merchant. Do not
 repeat vendor in title. An omitted vendor on update is preserved; null or an
 empty string clears it. Whitespace is trimmed, and vendor is limited to 100
