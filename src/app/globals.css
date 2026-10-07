@@ -121,3 +121,11 @@
   mask: url('/brand-mark.svg') center / contain no-repeat;
   -webkit-mask: url('/brand-mark.svg') center / contain no-repeat;
 }
+
+.payment-editor label {
+  @apply block text-sm font-medium text-muted-foreground;
+}
+.payment-editor input,
+.payment-editor select {
+  @apply h-11;
+}

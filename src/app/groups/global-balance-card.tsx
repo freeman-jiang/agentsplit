@@ -90,7 +90,7 @@ export function GlobalBalanceCard({ groups }: { groups: RecentGroups }) {
       </CardHeader>
       <CardContent>
         {data.unboundGroupIds.length > 0 && (
-          <p className="mb-3 text-sm text-muted-foreground">
+          <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
             Link your participant identity in {data.unboundGroupIds.length}{' '}
             group(s) to see a complete total. Only linked groups are included
             below.
@@ -103,7 +103,7 @@ export function GlobalBalanceCard({ groups }: { groups: RecentGroups }) {
               : t('settledUp')}
           </p>
         ) : (
-          <ul className="flex flex-col gap-1">
+          <ul className="flex flex-wrap gap-x-12 gap-y-5">
             {currencyBalances.map(({ currency, amount }) => {
               if (new Decimal(amount).isZero()) return null
               const formatted = formatCurrency(
@@ -114,17 +114,17 @@ export function GlobalBalanceCard({ groups }: { groups: RecentGroups }) {
               return (
                 <li
                   key={currency.code || currency.symbol}
-                  className="flex justify-between items-baseline gap-2 text-sm"
+                  className="space-y-1"
                 >
-                  <span className="text-muted-foreground">
+                  <span className="block text-xs font-medium text-muted-foreground">
                     {new Decimal(amount).gt(0) ? t('owedToYou') : t('youOwe')}
                   </span>
                   <span
                     className={cn(
-                      'font-semibold tabular-nums',
+                      'block text-3xl font-semibold tabular-nums',
                       new Decimal(amount).gt(0)
-                        ? 'text-green-600'
-                        : 'text-red-600',
+                        ? 'text-green-700 dark:text-green-400'
+                        : 'text-red-700 dark:text-red-400',
                     )}
                   >
                     {formatted}

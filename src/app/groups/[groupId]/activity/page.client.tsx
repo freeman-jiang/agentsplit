@@ -13,12 +13,12 @@ export function ActivityPageClient() {
 
   return (
     <>
-      <Card className="mb-4">
-        <CardHeader>
+      <Card className="mb-4 border-0 bg-transparent">
+        <CardHeader className="px-0 pt-0">
           <CardTitle>{t('title')}</CardTitle>
           <CardDescription>{t('description')}</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col space-y-4">
+        <CardContent className="flex flex-col space-y-4 px-0">
           <ActivityList />
         </CardContent>
       </Card>
