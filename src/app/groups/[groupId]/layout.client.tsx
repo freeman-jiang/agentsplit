@@ -5,6 +5,7 @@ import { trpc } from '@/trpc/client'
 import { useTranslations } from 'next-intl'
 import { PropsWithChildren, useEffect } from 'react'
 import { CurrentGroupProvider } from './current-group-context'
+import { GroupBalanceSummary } from './group-balance-summary'
 import { GroupHeader } from './group-header'
 import { SaveGroupLocally } from './save-recent-group'
 
@@ -30,20 +31,19 @@ export function GroupLayoutClient({
       ? { isLoading: true as const, groupId, group: undefined }
       : { isLoading: false as const, groupId, group: data.group }
 
-  if (isLoading) {
-    return (
-      <CurrentGroupProvider {...props}>
-        <GroupHeader />
-        {children}
-      </CurrentGroupProvider>
-    )
-  }
-
   return (
     <CurrentGroupProvider {...props}>
       <GroupHeader />
-      {children}
-      <SaveGroupLocally />
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_16rem] lg:gap-8">
+        <GroupBalanceSummary />
+        <div
+          className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-1"
+          data-testid="group-tab-content"
+        >
+          {children}
+        </div>
+      </div>
+      {!isLoading && <SaveGroupLocally />}
     </CurrentGroupProvider>
   )
 }

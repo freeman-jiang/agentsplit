@@ -12,7 +12,7 @@ import type { AppRouterOutput } from '@/trpc/routers/_app'
 import { ChevronDown, RefreshCw } from 'lucide-react'
 import { useLocale } from 'next-intl'
 import Link from 'next/link'
-import { useCurrentGroup } from '../current-group-context'
+import { useCurrentGroup } from './current-group-context'
 
 type CurrencyBalances =
   AppRouterOutput['groups']['balances']['list']['currencies'][number]

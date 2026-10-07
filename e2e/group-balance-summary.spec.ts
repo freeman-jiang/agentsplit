@@ -1,4 +1,10 @@
-import { addExpense, createGroup, openExpense, uniqueSuffix } from './app'
+import {
+  addExpense,
+  createGroup,
+  openExpense,
+  openTab,
+  uniqueSuffix,
+} from './app'
 import { expect, test } from './fixtures'
 import { fillStable } from './ui'
 
@@ -83,4 +89,64 @@ test('expense sidebar shows net balances, refreshes after edits and keeps totals
     path: '/tmp/agentsplit-balance-sidebar-mobile.png',
     fullPage: true,
   })
+})
+
+test('balance rail stays beside every group tab and expense editor', async ({
+  page,
+}) => {
+  const groupId = await createGroup(page, {
+    name: `Shared rail ${uniqueSuffix()}`,
+    participants: ['Alice', 'Bob'],
+  })
+  await addExpense(page, groupId, {
+    title: 'Shared groceries',
+    amount: '30',
+    paidBy: 'Alice',
+  })
+  const panel = page.getByRole('complementary', { name: 'Group balances' })
+  for (const name of [
+    'Expenses',
+    'Balances',
+    'Information',
+    'Stats',
+    'Activity',
+    'Settings',
+  ] as const) {
+    await openTab(page, name)
+    await expect(panel).toHaveCount(1)
+    await expect(
+      panel.getByTestId('summary-personal-net').filter({ visible: true }),
+    ).toHaveText('$15.00')
+    const rail = await panel.boundingBox()
+    const content = await page.getByTestId('group-tab-content').boundingBox()
+    expect(rail && content && rail.x >= content.x + content.width).toBeTruthy()
+  }
+  await page.screenshot({
+    path: '/tmp/agentsplit-shared-rail-settings.png',
+    fullPage: true,
+  })
+  await page.goto(`/groups/${groupId}/expenses/create`)
+  await expect(page.getByLabel('Vendor (optional)')).toBeVisible()
+  await expect(panel).toBeVisible()
+  await page.setViewportSize({ width: 1024, height: 800 })
+  await expect(page.locator('body')).toHaveJSProperty('scrollWidth', 1024)
+  await page.screenshot({
+    path: '/tmp/agentsplit-shared-rail-editor.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 700 })
+  for (const name of [
+    'Balances',
+    'Information',
+    'Stats',
+    'Activity',
+    'Settings',
+  ] as const) {
+    await openTab(page, name)
+    await expect(panel).toBeVisible()
+    await expect(
+      panel.getByTestId('summary-personal-net').filter({ visible: true }),
+    ).toHaveText('$15.00')
+    await expect(page.locator('body')).toHaveJSProperty('scrollWidth', 390)
+  }
 })

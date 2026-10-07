@@ -9,7 +9,6 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Currency } from '@/lib/currency'
-import { expenseTitle } from '@/lib/expense-title'
 import { formatCurrency, formatDateOnly } from '@/lib/utils'
 import { ChevronRight } from 'lucide-react'
 import { useLocale } from 'next-intl'
@@ -80,7 +79,14 @@ export function ExpensesDialog({
                     className="flex items-center justify-between gap-2 px-6 py-3 text-sm hover:bg-accent"
                   >
                     <div className="min-w-0">
-                      <div className="truncate">{expenseTitle(expense)}</div>
+                      <div className="min-w-0">
+                        {expense.vendor && (
+                          <div className="mb-1 truncate text-xs text-muted-foreground">
+                            {expense.vendor}
+                          </div>
+                        )}
+                        <div className="truncate">{expense.title}</div>
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         {formatDateOnly(expense.expenseDate, locale, {
                           dateStyle: 'medium',

@@ -675,3 +675,20 @@ summary and suggested payments against the live MCP balances, confirmed the
 panel stays sticky at 24px while scrolling, and checked the migrated vendor/title
 and `eg. Costco` placeholder. The existing expense-review chat was informed of
 the live contracts and completed vendor migration.
+
+## Shared group balance rail and stacked expense names — 2026-10-06
+
+The group layout now owns one persistent balance summary beside all six tabs,
+including nested expense create/edit pages. The mobile summary retains its
+compact expandable behavior. The expense list and stats detail dialogs display
+vendor above description, using the existing structured fields without ledger
+writes. README documents this as the group UI convention; MCP wording matches.
+
+Production build, TypeScript, formatting and diff checks pass. Four focused
+browser scenarios pass, including all six tabs on desktop/mobile, right-hand
+placement, a 1024px expense editor, 390px overflow checks, update refresh,
+search independence, custom URLs and the vendor/title vertical order. Settings,
+editor and expense-list screenshots were visually inspected. Lint retains its
+two existing warnings. A fresh scoped backup was saved before rollout at
+`/home/ubuntu/agentsplit-backups/shared-rail-01a1143b/database.dump`
+(71,117 bytes; 32 expense records and 107 audit records). Live verification follows.
