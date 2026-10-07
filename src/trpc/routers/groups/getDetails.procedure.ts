@@ -1,11 +1,14 @@
 import { getGroup, getGroupExpensesParticipants } from '@/lib/api'
+import { effectiveBaseUrl } from '@/lib/env'
+import { groupMembers } from '@/lib/group-access'
+import { groupPath } from '@/lib/group-slug'
 import { baseProcedure } from '@/trpc/init'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 
 export const getGroupDetailsProcedure = baseProcedure
   .input(z.object({ groupId: z.string().min(1) }))
-  .query(async ({ input: { groupId } }) => {
+  .query(async ({ ctx, input: { groupId } }) => {
     const group = await getGroup(groupId)
     if (!group) {
       throw new TRPCError({
@@ -15,5 +18,14 @@ export const getGroupDetailsProcedure = baseProcedure
     }
 
     const participantsWithExpenses = await getGroupExpensesParticipants(groupId)
-    return { group, participantsWithExpenses }
+    return {
+      group,
+      access: await groupMembers(groupId, ctx.principal!.userId),
+      participantsWithExpenses,
+      links: {
+        share: `${effectiveBaseUrl}${groupPath(group)}`,
+        csv: `${effectiveBaseUrl}${groupPath(group)}/expenses/export/csv`,
+        json: `${effectiveBaseUrl}${groupPath(group)}/expenses/export/json`,
+      },
+    }
   })

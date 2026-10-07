@@ -103,7 +103,7 @@ test('keeps a by-amount split that skips a participant when reopened', async ({
   )
 
   // Saving without touching the split must not change it either.
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
   await page.waitForURL(EXPENSES_URL, { timeout: 30_000 })
 
   await openTab(page, 'Balances')
@@ -127,7 +127,6 @@ test('rejects percentages that do not add up to 100', async ({ page }) => {
   await fillStable(page.locator('input[name="title"]'), 'Invalid')
   await fillStable(page.locator('input[name="amount"]'), '100')
   await selectRadixOption(page, page.getByTestId('paid-by'), 'Alice')
-  await page.getByRole('button', { name: /Advanced splitting options/ }).click()
   await selectRadixOption(page, page.getByTestId('split-mode'), /By percentage/)
 
   const shares: Record<string, string> = { Alice: '50', Bob: '30', Carol: '10' }
@@ -156,7 +155,6 @@ test('names the difference when amounts do not add up', async ({ page }) => {
   await fillStable(page.locator('input[name="title"]'), 'Off by a cent')
   await fillStable(page.locator('input[name="amount"]'), '100')
   await selectRadixOption(page, page.getByTestId('paid-by'), 'Alice')
-  await page.getByRole('button', { name: /Advanced splitting options/ }).click()
   await selectRadixOption(page, page.getByTestId('split-mode'), /By amount/)
 
   // Receipt rounding: the last amount is one cent too high.
@@ -198,7 +196,6 @@ test('offers the remainder again when an amount is cleared', async ({
   await fillStable(page.locator('input[name="title"]'), 'Cleared')
   await fillStable(page.locator('input[name="amount"]'), '100')
   await selectRadixOption(page, page.getByTestId('paid-by'), 'Alice')
-  await page.getByRole('button', { name: /Advanced splitting options/ }).click()
   await selectRadixOption(page, page.getByTestId('split-mode'), /By amount/)
 
   await fillStable(paidForRow(page, 'Alice').getByRole('textbox'), '50')
@@ -208,7 +205,7 @@ test('offers the remainder again when an amount is cleared', async ({
   const carol = paidForRow(page, 'Carol').getByRole('textbox')
   await fillStable(carol, '25')
   await fillStable(carol, '')
-  await expect(carol).toHaveAttribute('placeholder', '20.00')
+  await expect(carol).toHaveAttribute('placeholder', '20')
 
   // The suggestion is what gets saved when the input is left empty.
   await submit.click()
@@ -224,8 +221,11 @@ async function previewedShare(
   page: Page,
   participant: string,
 ): Promise<string> {
-  const label = (await paidForRow(page, participant).innerText()).split('\n')[0]
-  return normalizeMoney(label.match(/\(([^)]+)\)\s*$/)?.[1] ?? '')
+  return normalizeMoney(
+    await paidForRow(page, participant)
+      .getByTestId('share-preview')
+      .innerText(),
+  )
 }
 
 test('saves an even split with the leftover cent where it was previewed', async ({
@@ -236,10 +236,8 @@ test('saves an even split with the leftover cent where it was previewed', async 
     participants: ['Alice', 'Bob'],
   })
 
-  // Regression for #646: the leftover cent of an even split rotates by a hash
-  // of the expense id, and the form used to preview without one, so the cent
-  // could move to the other participant on save. Several expenses so a lucky
-  // hash cannot hide a regression.
+  // Regression for #646: the payer receives the first leftover cent. The preview must
+  // match the stored split across different amounts.
   let bobOwes = 0
   for (const [title, amount, low, high] of [
     ['Dinner', '16.57', 8.28, 8.29],
@@ -285,7 +283,9 @@ test('saves an even split with the leftover cent where it was previewed', async 
   await expectBalance(page, 'Bob', -bobOwes)
 })
 
-test('can retry a create whose response was lost', async ({ page }) => {
+test('recovers a create whose response was lost without duplicating it', async ({
+  page,
+}) => {
   const groupId = await createGroup(page, {
     name: `E2E LostResponse ${uniqueSuffix()}`,
     participants: ['Alice', 'Bob'],
@@ -311,11 +311,10 @@ test('can retry a create whose response was lost', async ({ page }) => {
   })
   await submit.click()
   await expect.poll(() => lost).toBe(true)
-  await expect(submit).toBeEnabled()
-
-  await submit.click()
-  await page.waitForURL(EXPENSES_URL, { timeout: 30_000 })
+  await page.waitForURL(/\/expenses\/[^/]+\/edit$/)
+  await expect(page.locator('input[name="title"]')).toHaveValue('Lost')
+  await page.goto(`/groups/${groupId}/expenses`)
   await expect(
     page.getByTestId('expense-card').filter({ hasText: 'Lost' }),
-  ).toHaveCount(2)
+  ).toHaveCount(1)
 })

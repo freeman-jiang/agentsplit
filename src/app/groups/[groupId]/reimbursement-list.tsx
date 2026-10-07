@@ -46,7 +46,7 @@ export function ReimbursementList({
             </div>
             <Button variant="link" asChild className="-mx-4 -my-3">
               <Link
-                href={`/groups/${groupId}/expenses/create?reimbursement=yes&from=${reimbursement.from}&to=${reimbursement.to}&amount=${reimbursement.amount}`}
+                href={`/groups/${groupId}/payments/create?from=${reimbursement.from}&to=${reimbursement.to}&amount=${reimbursement.amount}&currencyCode=${currency.code}`}
               >
                 {t('markAsPaid')}
               </Link>

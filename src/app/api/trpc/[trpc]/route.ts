@@ -20,7 +20,18 @@ const handleRequest = (req: Request) =>
  * Off unless PERF_INSTRUMENTATION=1, which only compose.perf.yaml sets.
  */
 const handler = async (req: Request) => {
-  if (!PERF_INSTRUMENTATION_ENABLED) return handleRequest(req)
+  if (
+    req.method === 'POST' &&
+    req.headers.get('origin') !==
+      new URL(process.env.BASE_URL || req.url).origin
+  )
+    return Response.json({ error: 'Origin not allowed' }, { status: 403 })
+
+  if (!PERF_INSTRUMENTATION_ENABLED) {
+    const response = await handleRequest(req)
+    response.headers.set('Cache-Control', 'private, no-store')
+    return response
+  }
 
   const counters: PerfCounters = { queries: 0, dbMs: 0 }
   const response = await withPerfCounters(counters, () => handleRequest(req))

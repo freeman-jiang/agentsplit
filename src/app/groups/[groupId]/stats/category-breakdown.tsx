@@ -13,7 +13,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Currency } from '@/lib/currency'
+import { Currency, expenseCurrencySchema } from '@/lib/currency'
+import { add, Decimal } from '@/lib/money'
 import { CategorySpending } from '@/lib/totals'
 import { formatCurrency } from '@/lib/utils'
 import { trpc } from '@/trpc/client'
@@ -80,8 +81,13 @@ function CategoryBars({
   const t = useTranslations('Categories')
   const tByCategory = useTranslations('Stats.ByCategory')
   const [selected, setSelected] = useState<CategorySpending | null>(null)
-  const total = categories.reduce((sum, category) => sum + category.total, 0)
-  const max = Math.max(...categories.map((category) => category.total))
+  const total = categories.reduce(
+    (sum, category) => add(sum, category.total),
+    '0',
+  )
+  const max = Math.max(
+    ...categories.map((category) => new Decimal(category.total).toNumber()),
+  )
 
   const { data, isLoading } = trpc.groups.stats.categoryExpenses.useQuery(
     {
@@ -89,6 +95,7 @@ function CategoryBars({
       categoryId: selected?.categoryId ?? 0,
       from,
       to,
+      currencyCode: expenseCurrencySchema.parse(currency.code),
     },
     { enabled: selected !== null },
   )
@@ -97,8 +104,9 @@ function CategoryBars({
     <>
       <div className="flex flex-col gap-4">
         {categories.map((category, index) => {
-          const share =
-            total > 0 ? Math.round((category.total / total) * 100) : 0
+          const share = new Decimal(total).gt(0)
+            ? new Decimal(category.total).div(total).mul(100).round().toNumber()
+            : 0
           return (
             <button
               key={category.categoryId}
@@ -131,7 +139,7 @@ function CategoryBars({
                 </div>
               </div>
               <StatBar
-                value={category.total}
+                value={new Decimal(category.total).toNumber()}
                 max={max}
                 color={`hsl(var(--chart-${(index % 5) + 1}))`}
               />

@@ -2,15 +2,14 @@ import { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Spliit',
-    short_name: 'Spliit',
-    description:
-      'A minimalist web application to share expenses with friends and family. No ads, no account, no problem.',
+    name: 'AgentSplit',
+    short_name: 'AgentSplit',
+    description: 'Shared expenses for people and their agents.',
     start_url: '/groups',
     id: '/groups',
     display: 'standalone',
-    background_color: '#fff',
-    theme_color: '#047857',
+    background_color: '#f5f1e8',
+    theme_color: '#526044',
     icons: [
       {
         src: '/logo/48x48.png',

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+export POSTGRES_PRISMA_URL="postgresql://postgres:e2e@127.0.0.1:${E2E_DB_PORT:-15433}/spliit_e2e"
+export BETTER_AUTH_SECRET="local-e2e-only-012345678901234567890123456789"
 #
 # Runs the Playwright suite against an isolated app + postgres stack built from
 # this checkout. CI calls the same subcommands, so local and CI runs are identical.

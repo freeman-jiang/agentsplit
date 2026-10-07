@@ -1,4 +1,8 @@
 import { createExpense } from '@/lib/api'
+import {
+  prepareExpenseUploads,
+  uploadRequestsSchema,
+} from '@/lib/expense-uploads'
 import { expenseFormSchema } from '@/lib/schemas'
 import { baseProcedure } from '@/trpc/init'
 import { z } from 'zod'
@@ -9,9 +13,8 @@ export const createGroupExpenseProcedure = baseProcedure
       groupId: z.string().min(1),
       expenseFormValues: expenseFormSchema,
       participantId: z.string().optional(),
-      // Minted by the form with `randomId()` (a 21-character nanoid) so the
-      // split it previews is the one the saved expense gets. Optional so
-      // other callers keep getting a server-minted id.
+      uploads: uploadRequestsSchema.optional(),
+      // Optional caller-minted stable expense ID; otherwise minted server-side.
       expenseId: z
         .string()
         .regex(/^[A-Za-z0-9_-]{21}$/)
@@ -20,14 +23,27 @@ export const createGroupExpenseProcedure = baseProcedure
   )
   .mutation(
     async ({
-      input: { groupId, expenseFormValues, participantId, expenseId },
+      ctx,
+      input: { groupId, expenseFormValues, participantId, expenseId, uploads },
     }) => {
       const expense = await createExpense(
         expenseFormValues,
         groupId,
         participantId,
         expenseId,
+        ctx.principal,
       )
-      return { expenseId: expense.id }
+      return {
+        expenseId: expense.id,
+        revision: expense.revision,
+        amount: expense.amount,
+        currencyCode: expense.currencyCode,
+        ...(await prepareExpenseUploads(
+          ctx.principal,
+          groupId,
+          expense.id,
+          uploads,
+        )),
+      }
     },
   )

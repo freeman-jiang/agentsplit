@@ -3,7 +3,11 @@
 import { getCategories } from '@/lib/api'
 import { env } from '@/lib/env'
 import { getRuntimeFeatureFlags } from '@/lib/featureFlags'
+import { DECIMAL_PATTERN, decimalStringSchema } from '@/lib/money'
 import { getOpenAIClient } from '@/lib/openai'
+import { prisma } from '@/lib/prisma'
+import { readReceipt } from '@/lib/receipt-storage'
+import { requireWebGroup } from '@/lib/session'
 import { isAllowedUploadUrl } from '@/lib/uploaded-image-url'
 import { formatCategoryForAIPrompt } from '@/lib/utils'
 import { z } from 'zod'
@@ -11,14 +15,17 @@ import { z } from 'zod'
 // The model is contractually bound to this shape by `strict: true` below, but
 // the response is still parsed rather than trusted: a self-hosted or older
 // endpoint may ignore the schema.
-const receiptResponseSchema = z.object({
-  amount: z.number(),
+const receiptResponseSchema = z.strictObject({
+  amount: decimalStringSchema,
   categoryId: z.string(),
   date: z.string(),
   title: z.string(),
 })
 
-export async function extractExpenseInformationFromImage(imageUrl: string) {
+export async function extractExpenseInformationFromImage(
+  imageUrl: string,
+  groupId: string,
+) {
   'use server'
 
   // Enforce the feature flag server-side: the UI gate only hides the button, it
@@ -35,6 +42,17 @@ export async function extractExpenseInformationFromImage(imageUrl: string) {
     throw new Error('Invalid image URL.')
   }
 
+  await requireWebGroup(groupId)
+  if (
+    !(await prisma.receiptObject.findUnique({
+      where: { groupId_url: { groupId, url: imageUrl } },
+    }))
+  )
+    throw new Error('Receipt not found')
+  const object = await readReceipt(imageUrl)
+  const imageBytes = await object.Body?.transformToByteArray()
+  if (!imageBytes) throw new Error('Receipt unavailable')
+  imageUrl = `data:${object.ContentType};base64,${Buffer.from(imageBytes).toString('base64')}`
   const categories = await getCategories()
   const openai = getOpenAIClient()
 
@@ -48,7 +66,7 @@ export async function extractExpenseInformationFromImage(imageUrl: string) {
         schema: {
           type: 'object',
           properties: {
-            amount: { type: 'number' },
+            amount: { type: 'string', pattern: DECIMAL_PATTERN.source },
             categoryId: { type: 'string' },
             date: { type: 'string' },
             title: { type: 'string' },
@@ -66,7 +84,7 @@ export async function extractExpenseInformationFromImage(imageUrl: string) {
             type: 'text',
             text: `
               This image contains a receipt.
-              Read the total amount and store it as a non-formatted number without any other text or currency.
+              Read the total amount and store it as an exact decimal string, such as "12.34", without grouping separators or currency symbols.
               Then guess the category for this receipt among the following categories and store its ID: ${categories.map(
                 (category) => formatCategoryForAIPrompt(category),
               )}.
@@ -94,9 +112,8 @@ export async function extractExpenseInformationFromImage(imageUrl: string) {
     }
   })()
 
-  const amount = Number(parsed?.amount)
   return {
-    amount: Number.isFinite(amount) ? amount : null,
+    amount: parsed?.amount ?? null,
     categoryId: parsed?.categoryId ?? null,
     date: parsed?.date ?? null,
     title: parsed?.title ?? null,

@@ -1,5 +1,6 @@
 'use client'
 
+import { Decimal } from '@/lib/money'
 import { MonthlySpendingGrouping } from '@/lib/monthly-spending'
 import { cn } from '@/lib/utils'
 import {
@@ -23,8 +24,8 @@ export function MonthlySpendingLegend({
   isVertical?: boolean
   tCategories: (key: string) => string
 }) {
-  const visibleCategories = categories.filter(
-    (category) => category.expenseAmount > 0,
+  const visibleCategories = categories.filter((category) =>
+    new Decimal(category.expenseAmount).gt(0),
   )
 
   if (visibleCategories.length === 0) return null

@@ -1,17 +1,10 @@
 import { getGroup } from '@/lib/api'
+import { requireWebGroup } from '@/lib/session'
 import { cache } from 'react'
 
-function logAndCache<P extends any[], R>(fn: (...args: P) => R) {
-  const cached = cache((...args: P) => {
-    // console.log(`Not cached: ${fn.name}…`)
-    return fn(...args)
-  })
-  return (...args: P) => {
-    // console.log(`Calling cached ${fn.name}…`)
-    return cached(...args)
-  }
-}
-
 export const cached = {
-  getGroup: logAndCache(getGroup),
+  getGroup: cache(async (id: string) => {
+    await requireWebGroup(id)
+    return getGroup(id)
+  }),
 }

@@ -1,3 +1,5 @@
+import { add, Decimal } from './money'
+
 export const monthlySpendingGroupingOptions = [
   'categoryGroup',
   'category',
@@ -13,7 +15,7 @@ type ExpenseCategory = {
 }
 
 export type MonthlySpendingExpense = {
-  amount: number
+  amount: string
   category: ExpenseCategory | null
   expenseDate: Date
   isReimbursement: boolean
@@ -24,25 +26,25 @@ export type MonthlySpendingCategory = {
   categoryId: number | null
   grouping: string
   name: string
-  amount: number
-  expenseAmount: number
-  incomeAmount: number
+  amount: string
+  expenseAmount: string
+  incomeAmount: string
 }
 
 export type MonthlySpendingMonth = {
   key: string
   year: number
   month: number
-  amount: number
-  expenseAmount: number
-  incomeAmount: number
+  amount: string
+  expenseAmount: string
+  incomeAmount: string
   categories: MonthlySpendingCategory[]
 }
 
 export type MonthlyCategorySpending = {
   months: MonthlySpendingMonth[]
   categories: MonthlySpendingCategory[]
-  maxExpenseAmount: number
+  maxExpenseAmount: string
 }
 
 type MutableMonthlySpendingCategory = MonthlySpendingCategory
@@ -68,7 +70,7 @@ export function getMonthlyCategorySpending(
   )
 
   if (expensesForStats.length === 0) {
-    return { months: [], categories: [], maxExpenseAmount: 0 }
+    return { months: [], categories: [], maxExpenseAmount: '0' }
   }
 
   const expenseMonthKeys = expensesForStats.map((expense) =>
@@ -100,9 +102,9 @@ export function getMonthlyCategorySpending(
       key: monthKey,
       year,
       month,
-      amount: 0,
-      expenseAmount: 0,
-      incomeAmount: 0,
+      amount: '0',
+      expenseAmount: '0',
+      incomeAmount: '0',
       categories: new Map(),
     })
   }
@@ -123,10 +125,10 @@ export function getMonthlyCategorySpending(
     }),
   )
   const sortedCategories = sortCategories(Array.from(categoryTotals.values()))
-  const maxExpenseAmount = Math.max(
+  const maxExpenseAmount = Decimal.max(
     0,
     ...sortedMonths.map((month) => month.expenseAmount),
-  )
+  ).toFixed()
   return {
     months: sortedMonths,
     categories: sortedCategories,
@@ -148,7 +150,7 @@ export function applyMonthlySpendingView(
   const grouping = options.grouping ?? 'categoryGroup'
 
   if (stats.months.length === 0) {
-    return { months: [], categories: [], maxExpenseAmount: 0 }
+    return { months: [], categories: [], maxExpenseAmount: '0' }
   }
 
   const months: MonthlySpendingMonth[] = []
@@ -170,21 +172,21 @@ export function applyMonthlySpendingView(
   return {
     months,
     categories: sortCategories(Array.from(categoryTotals.values())),
-    maxExpenseAmount: Math.max(
+    maxExpenseAmount: Decimal.max(
       0,
       ...months.map((month) => month.expenseAmount),
-    ),
+    ).toFixed(),
   }
 }
 
 function addAmount(
   month: MutableMonthlySpendingMonth,
   category: MonthlySpendingCategory,
-  amount: number,
+  amount: string,
 ) {
-  month.amount += amount
-  month.expenseAmount += Math.max(amount, 0)
-  month.incomeAmount += Math.min(amount, 0)
+  month.amount = add(month.amount, amount)
+  month.expenseAmount = add(month.expenseAmount, Decimal.max(amount, 0))
+  month.incomeAmount = add(month.incomeAmount, Decimal.min(amount, 0))
 
   const monthCategory = getOrCreateCategory(month.categories, category)
   addAmountToCategory(monthCategory, amount)
@@ -193,7 +195,7 @@ function addAmount(
 function addAmountToCategoryTotals(
   categoryTotals: Map<string, MutableMonthlySpendingCategory>,
   category: MonthlySpendingCategory,
-  amount: number,
+  amount: string,
 ) {
   const categoryTotal = getOrCreateCategory(categoryTotals, category)
   addAmountToCategory(categoryTotal, amount)
@@ -211,11 +213,11 @@ function getOrCreateCategory(
 
 function addAmountToCategory(
   category: MutableMonthlySpendingCategory,
-  amount: number,
+  amount: string,
 ) {
-  category.amount += amount
-  category.expenseAmount += Math.max(amount, 0)
-  category.incomeAmount += Math.min(amount, 0)
+  category.amount = add(category.amount, amount)
+  category.expenseAmount = add(category.expenseAmount, Decimal.max(amount, 0))
+  category.incomeAmount = add(category.incomeAmount, Decimal.min(amount, 0))
 }
 
 function getCategoryForGrouping(
@@ -234,9 +236,9 @@ function getCategoryForGrouping(
       categoryId: null,
       grouping: safeCategory.grouping,
       name: safeCategory.grouping,
-      amount: 0,
-      expenseAmount: 0,
-      incomeAmount: 0,
+      amount: '0',
+      expenseAmount: '0',
+      incomeAmount: '0',
     }
   }
 
@@ -245,9 +247,9 @@ function getCategoryForGrouping(
     categoryId: safeCategory.id,
     grouping: safeCategory.grouping,
     name: safeCategory.name,
-    amount: 0,
-    expenseAmount: 0,
-    incomeAmount: 0,
+    amount: '0',
+    expenseAmount: '0',
+    incomeAmount: '0',
   }
 }
 
@@ -273,9 +275,9 @@ function addCategoryToTotals(
 ) {
   const existing = totals.get(category.key)
   if (existing) {
-    existing.amount += category.amount
-    existing.expenseAmount += category.expenseAmount
-    existing.incomeAmount += category.incomeAmount
+    existing.amount = add(existing.amount, category.amount)
+    existing.expenseAmount = add(existing.expenseAmount, category.expenseAmount)
+    existing.incomeAmount = add(existing.incomeAmount, category.incomeAmount)
     return
   }
   totals.set(category.key, { ...category })
@@ -283,7 +285,9 @@ function addCategoryToTotals(
 
 function sortCategories(categories: MonthlySpendingCategory[]) {
   return categories.sort((categoryA, categoryB) => {
-    const amountDifference = categoryB.expenseAmount - categoryA.expenseAmount
+    const amountDifference = new Decimal(categoryB.expenseAmount).comparedTo(
+      categoryA.expenseAmount,
+    )
     if (amountDifference !== 0) return amountDifference
     return categoryA.key.localeCompare(categoryB.key)
   })

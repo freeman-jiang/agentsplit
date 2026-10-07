@@ -1,4 +1,5 @@
 import { getBalances } from './balances'
+import { add, Decimal } from './money'
 import {
   calculateShare,
   filterExpensesByDateRange,
@@ -26,8 +27,9 @@ const SPLIT_MODES: SplitMode[] = [
 function makeExpense(partial: Partial<Expense>): Expense {
   return {
     id: 'expense',
+    currencyCode: 'USD',
     title: 'Expense',
-    amount: 0,
+    amount: '0',
     category: null,
     isReimbursement: false,
     splitMode: 'EVENLY',
@@ -46,12 +48,16 @@ function splitExpense(
 ): Expense {
   return makeExpense({
     id,
-    amount,
+    amount: new Decimal(amount).div(100).toFixed(),
     splitMode,
     paidBy: { id: paidFor[0][0], name: paidFor[0][0] },
     paidFor: paidFor.map(([participantId, shares]) => ({
       participant: { id: participantId, name: participantId },
-      shares,
+      shares: new Decimal(shares)
+        .div(
+          splitMode === 'BY_PERCENTAGE' || splitMode === 'BY_AMOUNT' ? 100 : 1,
+        )
+        .toFixed(),
     })),
   } as Partial<Expense>)
 }
@@ -83,25 +89,29 @@ describe('calculateShare', () => {
       calculateShare(id, expense),
     )
 
-    expect(shares.reduce((sum, share) => sum + share, 0)).toBe(9500)
-    expect([...shares].sort((a, b) => a - b)).toEqual([3166, 3167, 3167])
+    expect(shares.reduce((sum, share) => add(sum, share), '0')).toBe('95')
+    expect([...shares].sort((a, b) => new Decimal(a).comparedTo(b))).toEqual([
+      '31.66',
+      '31.67',
+      '31.67',
+    ])
   })
 
   it('ignores reimbursements, which balances deliberately count', () => {
     const settlement = makeExpense({
-      amount: 500,
+      amount: '5',
       isReimbursement: true,
-      paidFor: [{ participant: { id: 'bob', name: 'Bob' }, shares: 1 }],
+      paidFor: [{ participant: { id: 'bob', name: 'Bob' }, shares: '1' }],
     } as Partial<Expense>)
 
-    expect(calculateShare('bob', settlement)).toBe(0)
-    expect(getBalances([settlement]).bob.paidFor).toBe(500)
+    expect(calculateShare('bob', settlement)).toBe('0')
+    expect(getBalances([settlement]).bob.paidFor).toBe('5')
   })
 
   it('returns zero for a participant the expense was not paid for', () => {
     expect(
       calculateShare('carol', splitExpense('e1', 100, [['alice', 1]])),
-    ).toBe(0)
+    ).toBe('0')
   })
 
   it.each(SPLIT_MODES)(
@@ -157,7 +167,7 @@ describe('calculateShare', () => {
       const balances = getBalances([expense])
 
       for (const id of participants) {
-        expect(calculateShare(id, expense)).toBe(balances[id]?.paidFor ?? 0)
+        expect(calculateShare(id, expense)).toBe(balances[id]?.paidFor ?? '0')
       }
     }
   })
@@ -184,8 +194,8 @@ describe('getTotalActiveUserShare', () => {
     ]
 
     const total = participants.reduce(
-      (sum, id) => sum + getTotalActiveUserShare(id, expenses),
-      0,
+      (sum, id) => add(sum, getTotalActiveUserShare(id, expenses)),
+      '0',
     )
 
     expect(total).toBe(getTotalGroupSpending(expenses))
@@ -196,40 +206,44 @@ describe('getTotalActiveUserShare', () => {
       getTotalActiveUserShare('dave', [
         splitExpense('e1', 100, [['alice', 1]]),
       ]),
-    ).toBe(0)
+    ).toBe('0')
   })
 })
 
 describe('getSpendingByCategory', () => {
   it('aggregates by category, ignores reimbursements and sorts by total', () => {
     const result = getSpendingByCategory([
-      makeExpense({ amount: 1000, category: groceries }),
-      makeExpense({ amount: 500, category: groceries }),
-      makeExpense({ amount: 3000, category: transport }),
-      makeExpense({ amount: 9999, category: transport, isReimbursement: true }),
+      makeExpense({ amount: '10', category: groceries }),
+      makeExpense({ amount: '5', category: groceries }),
+      makeExpense({ amount: '30', category: transport }),
+      makeExpense({
+        amount: '99.99',
+        category: transport,
+        isReimbursement: true,
+      }),
     ])
 
     expect(result).toEqual([
-      { categoryId: 2, grouping: 'Transportation', name: 'Car', total: 3000 },
+      { categoryId: 2, grouping: 'Transportation', name: 'Car', total: '30' },
       {
         categoryId: 1,
         grouping: 'Food and Drink',
         name: 'Groceries',
-        total: 1500,
+        total: '15',
       },
     ])
   })
 
   it('treats a missing category as Uncategorized/General', () => {
     const result = getSpendingByCategory([
-      makeExpense({ amount: 200, category: null }),
+      makeExpense({ amount: '2', category: null }),
     ])
     expect(result).toEqual([
       {
         categoryId: 0,
         grouping: 'Uncategorized',
         name: 'General',
-        total: 200,
+        total: '2',
       },
     ])
   })
@@ -239,25 +253,25 @@ describe('getExpensesByCategory', () => {
   it('returns only the matching category, excludes reimbursements and sorts newest first', () => {
     const older = makeExpense({
       id: 'a',
-      amount: 1000,
+      amount: '10',
       category: groceries,
       expenseDate: new Date('2024-01-10T00:00:00Z'),
     })
     const newer = makeExpense({
       id: 'b',
-      amount: 500,
+      amount: '5',
       category: groceries,
       expenseDate: new Date('2024-02-20T00:00:00Z'),
     })
     const otherCategory = makeExpense({
       id: 'c',
-      amount: 3000,
+      amount: '30',
       category: transport,
       expenseDate: new Date('2024-03-01T00:00:00Z'),
     })
     const reimbursement = makeExpense({
       id: 'd',
-      amount: 9999,
+      amount: '99.99',
       category: groceries,
       isReimbursement: true,
       expenseDate: new Date('2024-04-01T00:00:00Z'),
@@ -272,10 +286,10 @@ describe('getExpensesByCategory', () => {
   })
 
   it('matches expenses without a category against the Uncategorized id (0)', () => {
-    const uncategorized = makeExpense({ id: 'a', amount: 200, category: null })
+    const uncategorized = makeExpense({ id: 'a', amount: '2', category: null })
     const categorized = makeExpense({
       id: 'b',
-      amount: 300,
+      amount: '3',
       category: groceries,
     })
 
@@ -322,11 +336,11 @@ describe('getSpendingByParticipant', () => {
     ]
     const expenses = [
       makeExpense({
-        amount: 1000,
+        amount: '10',
         paidBy: { id: 'alice', name: 'Alice' },
         paidFor: [
-          { participant: { id: 'alice', name: 'Alice' }, shares: 1 },
-          { participant: { id: 'bob', name: 'Bob' }, shares: 1 },
+          { participant: { id: 'alice', name: 'Alice' }, shares: '1' },
+          { participant: { id: 'bob', name: 'Bob' }, shares: '1' },
         ],
       }),
     ]
@@ -337,11 +351,17 @@ describe('getSpendingByParticipant', () => {
       {
         participantId: 'alice',
         name: 'Alice',
-        paid: 1000,
+        paid: '10',
         paidCount: 1,
-        share: 500,
+        share: '5',
       },
-      { participantId: 'bob', name: 'Bob', paid: 0, paidCount: 0, share: 500 },
+      {
+        participantId: 'bob',
+        name: 'Bob',
+        paid: '0',
+        paidCount: 0,
+        share: '5',
+      },
     ])
   })
 })
@@ -349,40 +369,75 @@ describe('getSpendingByParticipant', () => {
 describe('getRecurringSpending', () => {
   it('summarizes active recurring expenses per period', () => {
     const result = getRecurringSpending([
-      { amount: 1000, recurrenceRule: 'MONTHLY', isReimbursement: false },
-      { amount: 500, recurrenceRule: 'MONTHLY', isReimbursement: false },
-      { amount: 700, recurrenceRule: 'WEEKLY', isReimbursement: false },
-      { amount: 100, recurrenceRule: 'DAILY', isReimbursement: false },
-      { amount: 999, recurrenceRule: 'NONE', isReimbursement: false },
-      { amount: 999, recurrenceRule: 'MONTHLY', isReimbursement: true },
+      {
+        amount: '10',
+        currencyCode: 'USD',
+        recurrenceRule: 'MONTHLY',
+        isReimbursement: false,
+      },
+      {
+        amount: '5',
+        currencyCode: 'USD',
+        recurrenceRule: 'MONTHLY',
+        isReimbursement: false,
+      },
+      {
+        amount: '7',
+        currencyCode: 'USD',
+        recurrenceRule: 'WEEKLY',
+        isReimbursement: false,
+      },
+      {
+        amount: '1',
+        currencyCode: 'USD',
+        recurrenceRule: 'DAILY',
+        isReimbursement: false,
+      },
+      {
+        amount: '9.99',
+        currencyCode: 'USD',
+        recurrenceRule: 'NONE',
+        isReimbursement: false,
+      },
+      {
+        amount: '9.99',
+        currencyCode: 'USD',
+        recurrenceRule: 'MONTHLY',
+        isReimbursement: true,
+      },
     ])
 
     expect(result.count).toBe(4)
     expect(result.byPeriod).toEqual([
-      { period: 'DAILY', count: 1, total: 100 },
-      { period: 'WEEKLY', count: 1, total: 700 },
-      { period: 'MONTHLY', count: 2, total: 1500 },
+      { period: 'DAILY', count: 1, total: '1' },
+      { period: 'WEEKLY', count: 1, total: '7' },
+      { period: 'MONTHLY', count: 2, total: '15' },
     ])
     const expectedMonthly = Math.round(
       100 * (365.25 / 12) + 700 * (365.25 / 12 / 7) + 1500,
     )
-    expect(result.estimatedMonthly).toBe(expectedMonthly)
+    expect(result.estimatedMonthly).toBe(String(expectedMonthly / 100))
     // Yearly is computed independently from the monthly figure (not × 12) so it
     // does not compound the monthly rounding.
     const expectedYearly = Math.round(
       100 * 365.25 + 700 * (365.25 / 7) + 1500 * 12,
     )
-    expect(result.estimatedYearly).toBe(expectedYearly)
+    expect(result.estimatedYearly).toBe(String(expectedYearly / 100))
   })
 
   it('returns an empty summary when there are no recurring expenses', () => {
     const result = getRecurringSpending([
-      { amount: 1000, recurrenceRule: 'NONE', isReimbursement: false },
+      {
+        amount: '10',
+        currencyCode: 'USD',
+        recurrenceRule: 'NONE',
+        isReimbursement: false,
+      },
     ])
     expect(result.count).toBe(0)
     expect(result.byPeriod).toEqual([])
-    expect(result.estimatedMonthly).toBe(0)
-    expect(result.estimatedYearly).toBe(0)
+    expect(result.estimatedMonthly).toBe('0')
+    expect(result.estimatedYearly).toBe('0')
   })
 })
 
@@ -416,28 +471,28 @@ describe('getSpendingOverTime', () => {
   it('buckets by month and fills the gaps between first and last', () => {
     const result = getSpendingOverTime([
       makeExpense({
-        amount: 1000,
+        amount: '10',
         expenseDate: new Date('2026-01-15T00:00:00Z'),
       }),
       makeExpense({
-        amount: 500,
+        amount: '5',
         expenseDate: new Date('2026-01-20T00:00:00Z'),
       }),
       makeExpense({
-        amount: 9999,
+        amount: '99.99',
         expenseDate: new Date('2026-01-05T00:00:00Z'),
         isReimbursement: true,
       }),
       makeExpense({
-        amount: 300,
+        amount: '3',
         expenseDate: new Date('2026-03-01T00:00:00Z'),
       }),
     ])
 
     expect(result).toEqual([
-      { month: '2026-01', total: 1500 },
-      { month: '2026-02', total: 0 },
-      { month: '2026-03', total: 300 },
+      { month: '2026-01', total: '15' },
+      { month: '2026-02', total: '0' },
+      { month: '2026-03', total: '3' },
     ])
   })
 
@@ -450,17 +505,17 @@ describe('getSpendingSummary', () => {
   it('computes count, average, largest expense and active span', () => {
     const result = getSpendingSummary([
       makeExpense({
-        amount: 1000,
+        amount: '10',
         title: 'Hotel',
         expenseDate: new Date('2026-01-15T00:00:00Z'),
       }),
       makeExpense({
-        amount: 500,
+        amount: '5',
         title: 'Lunch',
         expenseDate: new Date('2026-01-10T00:00:00Z'),
       }),
       makeExpense({
-        amount: 99999,
+        amount: '999.99',
         title: 'Refund',
         expenseDate: new Date('2026-01-20T00:00:00Z'),
         isReimbursement: true,
@@ -469,9 +524,9 @@ describe('getSpendingSummary', () => {
 
     expect(result).toEqual({
       expenseCount: 2,
-      totalSpending: 1500,
-      averageExpense: 750,
-      largestExpense: { title: 'Hotel', amount: 1000 },
+      totalSpending: '15',
+      averageExpense: '7.5',
+      largestExpense: { title: 'Hotel', amount: '10' },
       firstDate: '2026-01-10',
       lastDate: '2026-01-15',
     })
@@ -480,8 +535,8 @@ describe('getSpendingSummary', () => {
   it('returns a zeroed summary with no expenses', () => {
     expect(getSpendingSummary([])).toEqual({
       expenseCount: 0,
-      totalSpending: 0,
-      averageExpense: 0,
+      totalSpending: '0',
+      averageExpense: '0',
       largestExpense: null,
       firstDate: null,
       lastDate: null,
@@ -516,7 +571,7 @@ describe('getSpendingByParticipant shares', () => {
 
     const result = getSpendingByParticipant(participants, expenses)
 
-    expect(result.reduce((sum, { share }) => sum + share, 0)).toBe(
+    expect(result.reduce((sum, { share }) => add(sum, share), '0')).toBe(
       getTotalGroupSpending(expenses),
     )
   })

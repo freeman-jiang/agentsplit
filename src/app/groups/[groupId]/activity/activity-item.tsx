@@ -8,6 +8,7 @@ import { ChevronRight } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { ActivityRevision } from './activity-revision'
 
 export type Activity =
   AppRouterOutput['groups']['activities']['list']['activities'][number]
@@ -23,6 +24,15 @@ function useSummary(activity: Activity, participantName?: string) {
   const t = useTranslations('Activity')
   const participant = participantName ?? t('someone')
   const expense = activity.data ?? ''
+  if (activity.source === 'baseline')
+    return (
+      <>
+        {t.has('History.baseline')
+          ? t('History.baseline')
+          : 'History begins here for an existing expense'}
+        : <em>{expense}</em>
+      </>
+    )
 
   const tr = (key: string) =>
     t.rich(key, {
@@ -32,6 +42,12 @@ function useSummary(activity: Activity, participantName?: string) {
       strong: (chunks) => <strong>{chunks}</strong>,
     })
 
+  if (activity.activityType === ActivityType.CREATE_GROUP)
+    return <>{participant} created the group</>
+  if (activity.activityType === ActivityType.JOIN_GROUP)
+    return <>{participant} joined the group</>
+  if (activity.activityType === ActivityType.LEAVE_GROUP)
+    return <>{participant} left the group</>
   if (activity.activityType == ActivityType.UPDATE_GROUP) {
     return <>{tr('settingsModified')}</>
   } else if (activity.activityType == ActivityType.CREATE_EXPENSE) {
@@ -53,7 +69,7 @@ export function ActivityItem({
   const locale = useLocale()
 
   const expenseExists = activity.expense !== undefined
-  const summary = useSummary(activity, participant?.name)
+  const summary = useSummary(activity, activity.actorName ?? participant?.name)
 
   return (
     <div
@@ -79,6 +95,7 @@ export function ActivityItem({
       </div>
       <div className="flex-1">
         <div className="m-1">{summary}</div>
+        <ActivityRevision activity={activity} />
       </div>
       {expenseExists && (
         <Button

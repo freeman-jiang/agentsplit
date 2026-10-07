@@ -73,7 +73,13 @@ export const viewGroup: Step[] = [
     /** Rows: balances plus suggested reimbursements. */
     run: async () => {
       const result = await single.groups.balances.list.query({ groupId: id })
-      return Object.keys(result.balances).length + result.reimbursements.length
+      return result.currencies.reduce(
+        (count, entry) =>
+          count +
+          Object.keys(entry.balances).length +
+          entry.reimbursements.length,
+        0,
+      )
     },
   },
 ]

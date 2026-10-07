@@ -25,7 +25,7 @@ export function ShareQrCodeDialog({ url, groupName }: Props) {
   const [logoDataUrl, setLogoDataUrl] = useState<string>('')
 
   useEffect(() => {
-    // Load the Spliit logo and convert it to a data URL
+    // Load the AgentSplit logo and convert it to a data URL
     const loadLogo = async () => {
       try {
         const response = await fetch('/logo/192x192.png')

@@ -1,23 +1,28 @@
 import { getGroupExpenses } from '@/lib/api'
 import { getBalances, getSuggestedReimbursements } from './balances'
+import { add, Decimal } from './money'
 
 type Expenses = NonNullable<Awaited<ReturnType<typeof getGroupExpenses>>>
 type Expense = Expenses[number]
 
 function expense(
   paidBy: string,
-  amount: number,
+  amount: number | string,
   paidFor: string[],
   isReimbursement = false,
 ): Expense {
   return {
-    amount,
+    amount:
+      typeof amount === 'string'
+        ? amount
+        : new Decimal(amount).div(100).toFixed(),
+    currencyCode: 'USD',
     isReimbursement,
     splitMode: 'EVENLY',
     paidBy: { id: paidBy, name: paidBy },
     paidFor: paidFor.map((id) => ({
       participant: { id, name: id },
-      shares: 100,
+      shares: '100',
     })),
   } as Expense
 }
@@ -26,8 +31,8 @@ describe('getBalances', () => {
   it('splits an expense evenly between the participants', () => {
     const balances = getBalances([expense('alice', 3000, ['alice', 'bob'])])
 
-    expect(balances.alice).toEqual({ paid: 3000, paidFor: 1500, total: 1500 })
-    expect(balances.bob).toEqual({ paid: 0, paidFor: 1500, total: -1500 })
+    expect(balances.alice).toEqual({ paid: '30', paidFor: '15', total: '15' })
+    expect(balances.bob).toEqual({ paid: '0', paidFor: '15', total: '-15' })
   })
 
   it('counts a reimbursement like any other expense', () => {
@@ -36,8 +41,8 @@ describe('getBalances', () => {
       expense('bob', 1500, ['alice'], true),
     ])
 
-    expect(balances.alice.total).toBe(0)
-    expect(balances.bob.total).toBe(0)
+    expect(balances.alice.total).toBe('0')
+    expect(balances.bob.total).toBe('0')
   })
 })
 
@@ -65,7 +70,7 @@ describe('settling up', () => {
     ]
 
     for (const balance of Object.values(getBalances(settled))) {
-      expect(balance.total).toBe(0)
+      expect(balance.total).toBe('0')
     }
   })
 
@@ -100,34 +105,50 @@ const SPLIT_MODES: SplitMode[] = [
 function splitExpense(
   id: string,
   paidBy: string,
-  amount: number,
-  paidFor: { id: string; shares: number }[],
+  amount: number | string,
+  paidFor: { id: string; shares: number | string }[],
   splitMode: SplitMode = 'EVENLY',
 ): Expense {
   return {
     id,
-    amount,
+    amount:
+      typeof amount === 'string'
+        ? amount
+        : new Decimal(amount).div(100).toFixed(),
+    currencyCode: 'USD',
     isReimbursement: false,
     splitMode,
     paidBy: { id: paidBy, name: paidBy },
     paidFor: paidFor.map(({ id, shares }) => ({
       participant: { id, name: id },
-      shares,
+      shares: new Decimal(shares)
+        .div(
+          splitMode === 'BY_PERCENTAGE' || splitMode === 'BY_AMOUNT' ? 100 : 1,
+        )
+        .toFixed(),
     })),
   } as Expense
 }
 
-function evenly(id: string, paidBy: string, amount: number, paidFor: string[]) {
+function evenly(
+  id: string,
+  paidBy: string,
+  amount: number | string,
+  paidFor: string[],
+) {
   return splitExpense(
     id,
     paidBy,
     amount,
-    paidFor.map((id) => ({ id, shares: 1 })),
+    paidFor.map((id) => ({ id, shares: '1' })),
   )
 }
 
 function sumOfTotals(balances: ReturnType<typeof getBalances>) {
-  return Object.values(balances).reduce((sum, { total }) => sum + total, 0)
+  return Object.values(balances).reduce(
+    (sum, { total }) => add(sum, total),
+    '0',
+  )
 }
 
 /** Splits `total` into `count` positive integers that add up to exactly `total`. */
@@ -190,7 +211,7 @@ function randomExpense(
         id,
         paidBy,
         amount,
-        paidFor.map((id) => ({ id, shares: 1 })),
+        paidFor.map((id) => ({ id, shares: '1' })),
         splitMode,
       )
   }
@@ -204,20 +225,24 @@ describe('balances sum to zero', () => {
       evenly('e1', 'alice', 100, ['alice', 'bob', 'carol']),
     ])
 
-    expect(sumOfTotals(balances)).toBe(0)
+    expect(sumOfTotals(balances)).toBe('0')
     expect(
-      balances.alice.paidFor + balances.bob.paidFor + balances.carol.paidFor,
-    ).toBe(100)
+      Decimal.sum(
+        balances.alice.paidFor,
+        balances.bob.paidFor,
+        balances.carol.paidFor,
+      ).toFixed(),
+    ).toBe('1')
   })
 
   it('holds for an expense split seven ways', () => {
     const participants = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
     const balances = getBalances([evenly('e1', 'a', 1000, participants)])
 
-    expect(sumOfTotals(balances)).toBe(0)
+    expect(sumOfTotals(balances)).toBe('0')
     expect(
-      participants.reduce((sum, id) => sum + balances[id].paidFor, 0),
-    ).toBe(1000)
+      participants.reduce((sum, id) => add(sum, balances[id].paidFor), '0'),
+    ).toBe('10')
   })
 
   it('holds across randomised amounts, participants and split modes', () => {
@@ -232,7 +257,7 @@ describe('balances sum to zero', () => {
         randomExpense(`run-${run}-expense-${index}`, participants, random),
       )
 
-      expect(sumOfTotals(getBalances(expenses))).toBe(0)
+      expect(sumOfTotals(getBalances(expenses))).toBe('0')
     }
   })
 
@@ -243,7 +268,7 @@ describe('balances sum to zero', () => {
 
     const offeredToAlice = reimbursements
       .filter(({ to }) => to === 'alice')
-      .reduce((sum, { amount }) => sum + amount, 0)
+      .reduce((sum, { amount }) => add(sum, amount), '0')
 
     expect(offeredToAlice).toBe(balances.alice.total)
   })
@@ -269,27 +294,23 @@ describe('balances sum to zero', () => {
       ]
 
       for (const balance of Object.values(getBalances(settled))) {
-        expect(balance.total).toBe(0)
+        expect(balance.total).toBe('0')
       }
     }
   })
 })
 
 describe('remainder distribution', () => {
-  it('does not always hand the extra minor unit to the same participant', () => {
+  it('always gives the payer the extra unit', () => {
     const participants = ['alice', 'bob', 'carol']
-    const receivers = new Set<string>()
-
     for (let index = 0; index < 50; index++) {
       const balances = getBalances([
         evenly(`expense-${index}`, 'alice', 100, participants),
       ])
-      for (const id of participants) {
-        if (balances[id].paidFor === 34) receivers.add(id)
-      }
+      expect(balances.alice.paidFor).toBe('0.34')
+      expect(balances.bob.paidFor).toBe('0.33')
+      expect(balances.carol.paidFor).toBe('0.33')
     }
-
-    expect(receivers).toEqual(new Set(participants))
   })
 
   it('gives the same expense the same split every time', () => {
@@ -303,9 +324,9 @@ describe('remainder distribution', () => {
 
   it('does not depend on the order the participants come back from the database', () => {
     const paidFor = [
-      { id: 'alice', shares: 1 },
-      { id: 'bob', shares: 1 },
-      { id: 'carol', shares: 1 },
+      { id: 'alice', shares: '1' },
+      { id: 'bob', shares: '1' },
+      { id: 'carol', shares: '1' },
     ]
     const inOrder = getBalances([splitExpense('e1', 'alice', 100, paidFor)])
     const reversed = getBalances([
@@ -320,7 +341,7 @@ describe('remainder distribution', () => {
       expense('alice', 100, ['alice', 'bob', 'carol']),
     ])
 
-    expect(sumOfTotals(balances)).toBe(0)
+    expect(sumOfTotals(balances)).toBe('0')
   })
 })
 
@@ -332,18 +353,18 @@ describe('split modes', () => {
         'alice',
         1000,
         [
-          { id: 'alice', shares: 333 },
-          { id: 'bob', shares: 333 },
-          { id: 'carol', shares: 334 },
+          { id: 'alice', shares: '333' },
+          { id: 'bob', shares: '333' },
+          { id: 'carol', shares: '334' },
         ],
         'BY_AMOUNT',
       ),
     ])
 
-    expect(balances.alice.paidFor).toBe(333)
-    expect(balances.bob.paidFor).toBe(333)
-    expect(balances.carol.paidFor).toBe(334)
-    expect(sumOfTotals(balances)).toBe(0)
+    expect(balances.alice.paidFor).toBe('3.33')
+    expect(balances.bob.paidFor).toBe('3.33')
+    expect(balances.carol.paidFor).toBe('3.34')
+    expect(sumOfTotals(balances)).toBe('0')
   })
 
   it('rounds BY_PERCENTAGE shares without losing a minor unit', () => {
@@ -353,18 +374,22 @@ describe('split modes', () => {
         'alice',
         100,
         [
-          { id: 'alice', shares: 3333 },
-          { id: 'bob', shares: 3333 },
-          { id: 'carol', shares: 3334 },
+          { id: 'alice', shares: '3333' },
+          { id: 'bob', shares: '3333' },
+          { id: 'carol', shares: '3334' },
         ],
         'BY_PERCENTAGE',
       ),
     ])
 
-    expect(sumOfTotals(balances)).toBe(0)
+    expect(sumOfTotals(balances)).toBe('0')
     expect(
-      balances.alice.paidFor + balances.bob.paidFor + balances.carol.paidFor,
-    ).toBe(100)
+      Decimal.sum(
+        balances.alice.paidFor,
+        balances.bob.paidFor,
+        balances.carol.paidFor,
+      ).toFixed(),
+    ).toBe('1')
   })
 
   it('splits BY_SHARES proportionally and to the last minor unit', () => {
@@ -374,16 +399,16 @@ describe('split modes', () => {
         'alice',
         100,
         [
-          { id: 'alice', shares: 1 },
-          { id: 'bob', shares: 2 },
+          { id: 'alice', shares: '1' },
+          { id: 'bob', shares: '2' },
         ],
         'BY_SHARES',
       ),
     ])
 
-    expect(balances.alice.paidFor).toBe(33)
-    expect(balances.bob.paidFor).toBe(67)
-    expect(sumOfTotals(balances)).toBe(0)
+    expect(balances.alice.paidFor).toBe('0.34')
+    expect(balances.bob.paidFor).toBe('0.66')
+    expect(sumOfTotals(balances)).toBe('0')
   })
 
   it('splits an income (negative amount) without losing a minor unit', () => {
@@ -391,9 +416,13 @@ describe('split modes', () => {
       evenly('e1', 'alice', -100, ['alice', 'bob', 'carol']),
     ])
 
-    expect(sumOfTotals(balances)).toBe(0)
+    expect(sumOfTotals(balances)).toBe('0')
     expect(
-      balances.alice.paidFor + balances.bob.paidFor + balances.carol.paidFor,
-    ).toBe(-100)
+      Decimal.sum(
+        balances.alice.paidFor,
+        balances.bob.paidFor,
+        balances.carol.paidFor,
+      ).toFixed(),
+    ).toBe('-1')
   })
 })

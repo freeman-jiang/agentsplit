@@ -93,7 +93,7 @@ test('restricts the stats to the selected period', async ({ page }) => {
   const totals = cardByTitle(page, 'Totals')
   await expect(totals).toContainText(money(70))
 
-  await selectRadixOption(page, page.getByRole('combobox').first(), 'This year')
+  await selectRadixOption(page, page.getByTestId('stats-period'), 'This year')
 
   // The 2020 expense drops out; only the one recorded today is left.
   await expect(totals).toContainText(money(20))
@@ -186,7 +186,7 @@ test('scopes the stats to a custom date range', async ({ page }) => {
 
   await selectRadixOption(
     page,
-    page.getByRole('combobox').first(),
+    page.getByTestId('stats-period'),
     'Custom range',
   )
   // Each date field is an <input> inside a <label> that also carries an

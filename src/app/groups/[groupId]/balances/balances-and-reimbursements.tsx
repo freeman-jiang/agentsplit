@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TrackPage } from '@/lib/analytics/track-page'
-import { getCurrencyFromGroup } from '@/lib/utils'
+import { getCurrency } from '@/lib/currency'
 import { trpc } from '@/trpc/client'
 import { useTranslations } from 'next-intl'
 import { Fragment, useEffect } from 'react'
@@ -46,12 +46,19 @@ export default function BalancesAndReimbursements() {
         <CardContent>
           {isLoading ? (
             <BalancesLoading participantCount={group?.participants.length} />
+          ) : balancesData.currencies.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('empty')}</p>
           ) : (
-            <BalancesList
-              balances={balancesData.balances}
-              participants={group?.participants}
-              currency={getCurrencyFromGroup(group)}
-            />
+            balancesData.currencies.map((entry) => (
+              <section key={entry.currencyCode} className="mb-4">
+                <h4 className="font-semibold">{entry.currencyCode}</h4>
+                <BalancesList
+                  balances={entry.balances}
+                  participants={group?.participants}
+                  currency={getCurrency(entry.currencyCode)}
+                />
+              </section>
+            ))
           )}
         </CardContent>
       </Card>
@@ -65,13 +72,22 @@ export default function BalancesAndReimbursements() {
             <ReimbursementsLoading
               participantCount={group?.participants.length}
             />
+          ) : balancesData.currencies.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {t('Reimbursements.noImbursements')}
+            </p>
           ) : (
-            <ReimbursementList
-              reimbursements={balancesData.reimbursements}
-              participants={group?.participants}
-              currency={getCurrencyFromGroup(group)}
-              groupId={groupId}
-            />
+            balancesData.currencies.map((entry) => (
+              <section key={entry.currencyCode} className="mb-4">
+                <h4 className="font-semibold">{entry.currencyCode}</h4>
+                <ReimbursementList
+                  reimbursements={entry.reimbursements}
+                  participants={group?.participants}
+                  currency={getCurrency(entry.currencyCode)}
+                  groupId={groupId}
+                />
+              </section>
+            ))
           )}
         </CardContent>
       </Card>

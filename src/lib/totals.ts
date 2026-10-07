@@ -1,6 +1,9 @@
 import type { RecurrenceRule } from '@/generated/prisma/client'
 import { getGroupExpenses } from '@/lib/api'
 import { getExpenseShares, getParticipantShare, ShareInput } from '@/lib/shares'
+import { getCurrency } from './currency'
+import { expenseTitle } from './expense-title'
+import { add, Decimal } from './money'
 
 /**
  * Filters expenses to those whose `expenseDate` falls within an inclusive
@@ -24,24 +27,24 @@ export function filterExpensesByDateRange<T extends { expenseDate: Date }>(
 
 export function getTotalGroupSpending(
   expenses: NonNullable<Awaited<ReturnType<typeof getGroupExpenses>>>,
-): number {
+): string {
   return expenses.reduce(
     (total, expense) =>
-      expense.isReimbursement ? total : total + expense.amount,
-    0,
+      expense.isReimbursement ? total : add(total, expense.amount),
+    '0',
   )
 }
 
 export function getTotalActiveUserPaidFor(
   activeUserId: string | null,
   expenses: NonNullable<Awaited<ReturnType<typeof getGroupExpenses>>>,
-): number {
+): string {
   return expenses.reduce(
     (total, expense) =>
       expense.paidBy.id === activeUserId && !expense.isReimbursement
-        ? total + expense.amount
+        ? add(total, expense.amount)
         : total,
-    0,
+    '0',
   )
 }
 
@@ -49,22 +52,27 @@ type Expense = NonNullable<Awaited<ReturnType<typeof getGroupExpenses>>>[number]
 
 type SplittableExpense = Pick<
   Expense,
-  'amount' | 'paidFor' | 'splitMode' | 'isReimbursement'
+  | 'amount'
+  | 'currencyCode'
+  | 'paidBy'
+  | 'paidFor'
+  | 'splitMode'
+  | 'isReimbursement'
 > & { id?: string | null }
 
 /**
- * Maps an expense into the shape {@link getExpenseShares} takes. The id decides
- * who is offered the leftover minor unit of an uneven split; passing it keeps
- * the stats and the expense form in step with the balances tab.
+ * Maps into the shared splitter, including the payer for remainder allocation.
  */
 function toShareInput(expense: SplittableExpense): ShareInput {
   return {
     id: expense.id,
+    paidById: expense.paidBy.id,
     amount: expense.amount,
+    currencyCode: expense.currencyCode,
     splitMode: expense.splitMode,
     paidFor: expense.paidFor.map(({ participant, shares }) => ({
       participantId: participant.id,
-      shares: Number(shares),
+      shares,
     })),
   }
 }
@@ -80,8 +88,8 @@ function toShareInput(expense: SplittableExpense): ShareInput {
 export function calculateShare(
   participantId: string | null,
   expense: SplittableExpense,
-): number {
-  if (expense.isReimbursement) return 0
+): string {
+  if (expense.isReimbursement) return '0'
 
   return getParticipantShare(participantId, toShareInput(expense))
 }
@@ -89,12 +97,12 @@ export function calculateShare(
 export function getTotalActiveUserShare(
   activeUserId: string | null,
   expenses: NonNullable<Awaited<ReturnType<typeof getGroupExpenses>>>,
-): number {
+): string {
   // Every share is a whole number of minor units, so the sum needs no rounding
   // — rounding it here is what used to make the totals disagree with balances.
   return expenses.reduce(
-    (sum, expense) => sum + calculateShare(activeUserId, expense),
-    0,
+    (sum, expense) => add(sum, calculateShare(activeUserId, expense)),
+    '0',
   )
 }
 
@@ -102,7 +110,7 @@ export type CategorySpending = {
   categoryId: number
   grouping: string
   name: string
-  total: number
+  total: string
 }
 
 /**
@@ -122,7 +130,7 @@ export function getSpendingByCategory(
     const categoryId = category?.id ?? 0
     const existing = byCategory.get(categoryId)
     if (existing) {
-      existing.total += expense.amount
+      existing.total = add(existing.total, expense.amount)
     } else {
       byCategory.set(categoryId, {
         categoryId,
@@ -134,8 +142,8 @@ export function getSpendingByCategory(
   }
 
   return [...byCategory.values()]
-    .filter((category) => category.total !== 0)
-    .sort((a, b) => b.total - a.total)
+    .filter((category) => !new Decimal(category.total).isZero())
+    .sort((a, b) => new Decimal(b.total).comparedTo(a.total))
 }
 
 /**
@@ -182,9 +190,9 @@ export function getExpensesByMonth<
 export type ParticipantSpending = {
   participantId: string
   name: string
-  paid: number
+  paid: string
   paidCount: number
-  share: number
+  share: string
 }
 
 /**
@@ -198,10 +206,10 @@ export function getSpendingByParticipant(
 ): ParticipantSpending[] {
   const totals = new Map<
     string,
-    { paid: number; paidCount: number; share: number }
+    { paid: string; paidCount: number; share: string }
   >()
   for (const participant of participants) {
-    totals.set(participant.id, { paid: 0, paidCount: 0, share: 0 })
+    totals.set(participant.id, { paid: '0', paidCount: 0, share: '0' })
   }
 
   for (const expense of expenses) {
@@ -209,7 +217,7 @@ export function getSpendingByParticipant(
 
     const payer = totals.get(expense.paidBy.id)
     if (payer) {
-      payer.paid += expense.amount
+      payer.paid = add(payer.paid, expense.amount)
       payer.paidCount += 1
     }
 
@@ -219,7 +227,7 @@ export function getSpendingByParticipant(
       toShareInput(expense),
     )) {
       const entry = totals.get(participantId)
-      if (entry) entry.share += share
+      if (entry) entry.share = add(entry.share, share)
     }
   }
 
@@ -234,12 +242,12 @@ export function getSpendingByParticipant(
         share: entry.share,
       }
     })
-    .sort((a, b) => b.paid - a.paid)
+    .sort((a, b) => new Decimal(b.paid).comparedTo(a.paid))
 }
 
 export type MonthlySpending = {
   month: string
-  total: number
+  total: string
 }
 
 /**
@@ -250,11 +258,11 @@ export type MonthlySpending = {
 export function getSpendingOverTime(
   expenses: NonNullable<Awaited<ReturnType<typeof getGroupExpenses>>>,
 ): MonthlySpending[] {
-  const totals = new Map<string, number>()
+  const totals = new Map<string, string>()
   for (const expense of expenses) {
     if (expense.isReimbursement) continue
     const month = expense.expenseDate.toISOString().slice(0, 7)
-    totals.set(month, (totals.get(month) ?? 0) + expense.amount)
+    totals.set(month, add(totals.get(month) ?? '0', expense.amount))
   }
 
   if (totals.size === 0) return []
@@ -268,7 +276,7 @@ export function getSpendingOverTime(
   let month = firstMonth
   while (year < lastYear || (year === lastYear && month <= lastMonth)) {
     const key = `${year}-${String(month).padStart(2, '0')}`
-    result.push({ month: key, total: totals.get(key) ?? 0 })
+    result.push({ month: key, total: totals.get(key) ?? '0' })
     month += 1
     if (month > 12) {
       month = 1
@@ -281,9 +289,9 @@ export function getSpendingOverTime(
 
 export type SpendingSummary = {
   expenseCount: number
-  totalSpending: number
-  averageExpense: number
-  largestExpense: { title: string; amount: number } | null
+  totalSpending: string
+  averageExpense: string
+  largestExpense: { title: string; amount: string } | null
   firstDate: string | null
   lastDate: string | null
 }
@@ -298,14 +306,17 @@ export function getSpendingSummary(
   const relevant = expenses.filter((expense) => !expense.isReimbursement)
   const expenseCount = relevant.length
   const totalSpending = relevant.reduce(
-    (total, expense) => total + expense.amount,
-    0,
+    (total, expense) => add(total, expense.amount),
+    '0',
   )
 
   let largestExpense: SpendingSummary['largestExpense'] = null
   for (const expense of relevant) {
-    if (!largestExpense || expense.amount > largestExpense.amount) {
-      largestExpense = { title: expense.title, amount: expense.amount }
+    if (
+      !largestExpense ||
+      new Decimal(expense.amount).gt(largestExpense.amount)
+    ) {
+      largestExpense = { title: expenseTitle(expense), amount: expense.amount }
     }
   }
 
@@ -316,7 +327,14 @@ export function getSpendingSummary(
   return {
     expenseCount,
     totalSpending,
-    averageExpense: expenseCount ? Math.round(totalSpending / expenseCount) : 0,
+    averageExpense: expenseCount
+      ? new Decimal(totalSpending)
+          .div(expenseCount)
+          .toDecimalPlaces(
+            getCurrency(expenses[0]?.currencyCode).decimal_digits,
+          )
+          .toFixed()
+      : '0',
     largestExpense,
     firstDate: dates[0] ?? null,
     lastDate: dates[dates.length - 1] ?? null,
@@ -331,14 +349,14 @@ export type RecurrencePeriod = Exclude<RecurrenceRule, 'NONE'>
 export type RecurringPeriodStats = {
   period: RecurrencePeriod
   count: number
-  total: number
+  total: string
 }
 
 export type RecurringSpending = {
   count: number
   byPeriod: RecurringPeriodStats[]
-  estimatedMonthly: number
-  estimatedYearly: number
+  estimatedMonthly: string
+  estimatedYearly: string
 }
 
 // How many times each recurrence period occurs within an average month and
@@ -347,11 +365,17 @@ export type RecurringSpending = {
 // exhaustive over RecurrencePeriod, so a new enum value forces an update here.
 const PERIOD_FACTORS: Record<
   RecurrencePeriod,
-  { perMonth: number; perYear: number }
+  { perMonth: string; perYear: string }
 > = {
-  DAILY: { perMonth: 365.25 / 12, perYear: 365.25 },
-  WEEKLY: { perMonth: 365.25 / 12 / 7, perYear: 365.25 / 7 },
-  MONTHLY: { perMonth: 1, perYear: 12 },
+  DAILY: {
+    perMonth: new Decimal('365.25').div(12).toFixed(),
+    perYear: '365.25',
+  },
+  WEEKLY: {
+    perMonth: new Decimal('365.25').div(84).toFixed(),
+    perYear: new Decimal('365.25').div(7).toFixed(),
+  },
+  MONTHLY: { perMonth: '1', perYear: '12' },
 }
 
 const RECURRENCE_PERIODS = Object.keys(PERIOD_FACTORS) as RecurrencePeriod[]
@@ -365,7 +389,8 @@ const RECURRENCE_PERIODS = Object.keys(PERIOD_FACTORS) as RecurrencePeriod[]
  */
 export function getRecurringSpending(
   expenses: {
-    amount: number
+    amount: string
+    currencyCode: string
     recurrenceRule: RecurrenceRule | null
     isReimbursement: boolean
   }[],
@@ -378,18 +403,19 @@ export function getRecurringSpending(
     return {
       period,
       count: matching.length,
-      total: matching.reduce((sum, expense) => sum + expense.amount, 0),
+      total: matching.reduce((sum, expense) => add(sum, expense.amount), '0'),
     }
   })
 
   const estimate = (factor: 'perMonth' | 'perYear') =>
-    Math.round(
-      byPeriod.reduce(
+    byPeriod
+      .reduce(
         (sum, { period, total }) =>
-          sum + total * PERIOD_FACTORS[period][factor],
-        0,
-      ),
-    )
+          sum.plus(new Decimal(total).mul(PERIOD_FACTORS[period][factor])),
+        new Decimal(0),
+      )
+      .toDecimalPlaces(getCurrency(expenses[0]?.currencyCode).decimal_digits)
+      .toFixed()
 
   return {
     count: byPeriod.reduce((sum, { count }) => sum + count, 0),

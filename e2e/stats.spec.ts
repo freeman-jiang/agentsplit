@@ -1,16 +1,10 @@
-import {
-  addExpense,
-  createGroup,
-  openTab,
-  setActiveUser,
-  uniqueSuffix,
-} from './app'
+import { addExpense, createGroup, openTab, uniqueSuffix } from './app'
 import { expect, test } from './fixtures'
 import { cardByTitle, money } from './ui'
 
 const PARTICIPANTS = ['Alice', 'Bob', 'Carol']
 
-test('shows group totals, and personal totals once you pick a user', async ({
+test('shows group totals, and personal totals for the signed-in member', async ({
   page,
 }) => {
   const groupId = await createGroup(page, {
@@ -34,12 +28,6 @@ test('shows group totals, and personal totals once you pick a user', async ({
 
   await expect(totals).toContainText('Total group spendings')
   await expect(totals).toContainText(money(120))
-
-  // Without an active user there is nobody to compute a personal total for.
-  await expect(totals).not.toContainText('Your total spendings')
-  await expect(totals).not.toContainText('Your total share')
-
-  await setActiveUser(page, groupId, 'Alice')
 
   await openTab(page, 'Stats')
   const personalised = cardByTitle(page, 'Totals')

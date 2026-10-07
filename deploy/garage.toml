@@ -1,0 +1,22 @@
+# Single-node storage on the AgentSplit host. Back up metadata and data together.
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+replication_factor = 1
+data_fsync = true
+metadata_auto_snapshot_interval = "6h"
+
+# The RPC secret is provided via GARAGE_RPC_SECRET, never checked into Git.
+rpc_bind_addr = "127.0.0.1:3901"
+rpc_public_addr = "127.0.0.1:3901"
+bootstrap_peers = []
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "0.0.0.0:3900"
+
+[s3_web]
+bind_addr = "0.0.0.0:3902"
+root_domain = ".garage.invalid"
+
+# No admin API, external tracing sink, or cluster discovery is configured.

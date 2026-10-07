@@ -8,6 +8,7 @@ import {
   FieldValues,
   FormProvider,
   useFormContext,
+  useFormState,
 } from "react-hook-form"
 
 import { cn } from "@/lib/utils"
@@ -73,7 +74,8 @@ const FormFieldScope = ({
 const useFormField = () => {
   const fieldContext = React.useContext(FormFieldContext)
   const itemContext = React.useContext(FormItemContext)
-  const { getFieldState, formState } = useFormContext()
+  const { getFieldState, control } = useFormContext()
+  const formState = useFormState({ control, name: fieldContext.name })
 
   const fieldState = getFieldState(fieldContext.name, formState)
 
@@ -111,7 +113,7 @@ const FormItem = React.forwardRef<
 
   return (
     <FormItemContext.Provider value={{ id }}>
-      <div ref={ref} className={cn("col-span-2 md:col-span-1 space-y-2", className)} {...props} />
+      <div ref={ref} className={cn("space-y-2", className)} {...props} />
     </FormItemContext.Provider>
   )
 })

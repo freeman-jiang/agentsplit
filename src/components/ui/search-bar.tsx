@@ -21,27 +21,26 @@ const SearchBar = React.forwardRef<HTMLInputElement, InputProps>(
     }
 
     return (
-      <div className="mx-4 sm:mx-6 flex relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <div className="relative flex min-w-0">
+        <Search aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
           type={type}
           className={cn(
-            'pl-10 text-sm focus:text-base bg-muted border-none text-muted-foreground',
+            'h-11 ps-10 pe-11 text-base sm:text-sm bg-card text-foreground',
             className,
           )}
           ref={ref}
           placeholder={t("searchPlaceholder")}
+          aria-label={t('searchLabel')}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           {...props}
         />
-        <XCircle
-          className={cn(
-            'absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 cursor-pointer',
-            !value && 'hidden',
-          )}
-          onClick={() => setValue('')}
-        />
+        {value && (
+          <button type="button" aria-label={t('clearSearch')} className="absolute end-0 top-0 flex h-11 w-11 items-center justify-center text-muted-foreground hover:text-foreground" onClick={() => setValue('')}>
+            <XCircle aria-hidden="true" className="h-4 w-4" />
+          </button>
+        )}
       </div>
     )
   },

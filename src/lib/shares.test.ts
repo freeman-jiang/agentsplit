@@ -1,4 +1,5 @@
 import { SplitMode } from '@/generated/prisma/browser'
+import { add, Decimal } from './money'
 import {
   distributeAmount,
   getExpenseShares,
@@ -21,22 +22,33 @@ function expense(
 ): ShareInput {
   return {
     id,
-    amount,
+    amount: new Decimal(amount).div(100).toFixed(),
+    currencyCode: 'USD',
+    paidById: 'alice',
     splitMode,
     paidFor: paidFor.map(([participantId, shares]) => ({
       participantId,
-      shares,
+      shares: new Decimal(shares)
+        .div(
+          splitMode === 'BY_AMOUNT' || splitMode === 'BY_PERCENTAGE' ? 100 : 1,
+        )
+        .toFixed(),
     })),
   }
 }
 
-function sum(shares: Map<string, number>) {
-  return Array.from(shares.values()).reduce((total, share) => total + share, 0)
+function sum(shares: Map<string, string>) {
+  return Array.from(shares.values()).reduce(
+    (total, share) => add(total, share),
+    '0',
+  )
 }
 
 /** The shares themselves, smallest first — who gets which is a separate test. */
-function sorted(shares: Map<string, number>) {
-  return Array.from(shares.values()).sort((a, b) => a - b)
+function sorted(shares: Map<string, string>) {
+  return Array.from(shares.values()).sort((a, b) =>
+    new Decimal(a).comparedTo(b),
+  )
 }
 
 describe('getExpenseShares', () => {
@@ -56,8 +68,12 @@ describe('getExpenseShares', () => {
         ),
       )
 
-      expect(sum(shares)).toBe(9500)
-      expect(Array.from(shares.values()).every(Number.isInteger)).toBe(true)
+      expect(sum(shares)).toBe('95')
+      expect(
+        Array.from(shares.values()).every((value) =>
+          new Decimal(value).mul(100).isInteger(),
+        ),
+      ).toBe(true)
     },
   )
 
@@ -70,7 +86,7 @@ describe('getExpenseShares', () => {
       ]),
     )
 
-    expect(sorted(shares)).toEqual([3166, 3167, 3167])
+    expect(sorted(shares)).toEqual(['31.66', '31.67', '31.67'])
   })
 
   it('ignores the stored shares in EVENLY mode', () => {
@@ -81,8 +97,8 @@ describe('getExpenseShares', () => {
       ]),
     )
 
-    expect(shares.get('alice')).toBe(50)
-    expect(shares.get('bob')).toBe(50)
+    expect(shares.get('alice')).toBe('0.5')
+    expect(shares.get('bob')).toBe('0.5')
   })
 
   it('splits BY_SHARES proportionally', () => {
@@ -98,8 +114,8 @@ describe('getExpenseShares', () => {
       ),
     )
 
-    expect(shares.get('alice')).toBe(33)
-    expect(shares.get('bob')).toBe(67)
+    expect(shares.get('alice')).toBe('0.34')
+    expect(shares.get('bob')).toBe('0.66')
   })
 
   it('leaves exact BY_AMOUNT shares untouched', () => {
@@ -116,9 +132,9 @@ describe('getExpenseShares', () => {
       ),
     )
 
-    expect(shares.get('alice')).toBe(333)
-    expect(shares.get('bob')).toBe(333)
-    expect(shares.get('carol')).toBe(334)
+    expect(shares.get('alice')).toBe('3.33')
+    expect(shares.get('bob')).toBe('3.33')
+    expect(shares.get('carol')).toBe('3.34')
   })
 
   it('normalises BY_PERCENTAGE shares that do not add up to 100%', () => {
@@ -137,9 +153,9 @@ describe('getExpenseShares', () => {
       ),
     )
 
-    expect(shares.get('alice')).toBe(75)
-    expect(shares.get('bob')).toBe(25)
-    expect(sum(shares)).toBe(100)
+    expect(shares.get('alice')).toBe('0.75')
+    expect(shares.get('bob')).toBe('0.25')
+    expect(sum(shares)).toBe('1')
   })
 
   it('normalises BY_AMOUNT shares that do not add up to the amount', () => {
@@ -155,7 +171,7 @@ describe('getExpenseShares', () => {
       ),
     )
 
-    expect(sum(shares)).toBe(100)
+    expect(sum(shares)).toBe('1')
   })
 
   it('splits an income (negative amount) without losing a minor unit', () => {
@@ -167,8 +183,8 @@ describe('getExpenseShares', () => {
       ]),
     )
 
-    expect(sum(shares)).toBe(-9500)
-    expect(sorted(shares)).toEqual([-3167, -3167, -3166])
+    expect(sum(shares)).toBe('-95')
+    expect(sorted(shares)).toEqual(['-31.67', '-31.67', '-31.66'])
   })
 
   it('gives everyone nothing when the shares add up to zero', () => {
@@ -184,8 +200,8 @@ describe('getExpenseShares', () => {
       ),
     )
 
-    expect(shares.get('alice')).toBe(0)
-    expect(shares.get('bob')).toBe(0)
+    expect(shares.get('alice')).toBe('0')
+    expect(shares.get('bob')).toBe('0')
   })
 
   it('handles an expense nobody was paid for', () => {
@@ -217,39 +233,34 @@ describe('getExpenseShares', () => {
     expect(split()).toEqual(split())
   })
 
-  it('does not always offer the leftover minor unit to the same participant', () => {
-    const participants = ['alice', 'bob', 'carol']
-    const receivers = new Set<string>()
-
+  it('offers the payer the extra unit for every expense ID', () => {
     for (let index = 0; index < 50; index++) {
       const shares = getExpenseShares(
-        expense(
-          `expense-${index}`,
-          100,
-          participants.map((id): [string, number] => [id, 1]),
-        ),
+        expense(`expense-${index}`, 100, [
+          ['alice', 1],
+          ['bob', 1],
+          ['carol', 1],
+        ]),
       )
-      for (const id of participants) {
-        if (shares.get(id) === 34) receivers.add(id)
-      }
+      expect(shares.get('alice')).toBe('0.34')
     }
-
-    expect(receivers).toEqual(new Set(participants))
   })
 
   it('starts at the first participant for an expense without an id', () => {
     const shares = getExpenseShares({
-      amount: 100,
+      amount: '1',
+      currencyCode: 'USD',
+      paidById: 'alice',
       splitMode: 'EVENLY',
       paidFor: [
-        { participantId: 'bob', shares: 1 },
-        { participantId: 'alice', shares: 1 },
-        { participantId: 'carol', shares: 1 },
+        { participantId: 'bob', shares: '1' },
+        { participantId: 'alice', shares: '1' },
+        { participantId: 'carol', shares: '1' },
       ],
     })
 
-    expect(shares.get('alice')).toBe(34)
-    expect(sum(shares)).toBe(100)
+    expect(shares.get('alice')).toBe('0.34')
+    expect(sum(shares)).toBe('1')
   })
 })
 
@@ -260,32 +271,40 @@ describe('getParticipantShare', () => {
   ])
 
   it('returns the participant’s share', () => {
-    expect(getParticipantShare('alice', evenly)).toBe(50)
+    expect(getParticipantShare('alice', evenly)).toBe('0.5')
   })
 
   it('returns zero for someone the expense was not paid for', () => {
-    expect(getParticipantShare('carol', evenly)).toBe(0)
+    expect(getParticipantShare('carol', evenly)).toBe('0')
   })
 
   it('returns zero when there is no active participant', () => {
-    expect(getParticipantShare(null, evenly)).toBe(0)
+    expect(getParticipantShare(null, evenly)).toBe('0')
   })
 })
 
 describe('distributeAmount', () => {
   it('adds up to the amount when it does not divide evenly', () => {
-    expect(distributeAmount(9500, 3)).toEqual([3167, 3167, 3166])
+    expect(distributeAmount('95', 3, 'USD')).toEqual([
+      '31.67',
+      '31.67',
+      '31.66',
+    ])
   })
 
   it('divides an even amount evenly', () => {
-    expect(distributeAmount(900, 3)).toEqual([300, 300, 300])
+    expect(distributeAmount('9', 3, 'USD')).toEqual(['3', '3', '3'])
   })
 
   it('adds up for a negative amount', () => {
-    expect(distributeAmount(-9500, 3)).toEqual([-3166, -3167, -3167])
+    expect(distributeAmount('-95', 3, 'USD')).toEqual([
+      '-31.67',
+      '-31.67',
+      '-31.66',
+    ])
   })
 
   it('has nothing to distribute over nobody', () => {
-    expect(distributeAmount(100, 0)).toEqual([])
+    expect(distributeAmount('1', 0, 'USD')).toEqual([])
   })
 })

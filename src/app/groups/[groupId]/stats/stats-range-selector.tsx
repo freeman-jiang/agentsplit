@@ -31,14 +31,18 @@ export function StatsRangeSelector({
   const t = useTranslations('Stats.range')
 
   return (
-    <div className="mb-4 flex flex-col items-end gap-2">
+    <div className="flex max-w-full flex-col items-start gap-3 sm:items-end">
       <div className="flex items-center gap-2">
         <span className="text-sm text-muted-foreground">{t('label')}</span>
         <Select
           value={period}
           onValueChange={(value) => onPeriodChange(value as StatsPeriod)}
         >
-          <SelectTrigger className="w-auto gap-2">
+          <SelectTrigger
+            aria-label={t('label')}
+            data-testid="stats-period"
+            className="w-auto gap-2"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -51,7 +55,7 @@ export function StatsRangeSelector({
         </Select>
       </div>
       {period === 'custom' && (
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex max-w-full flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>{t('from')}</span>
             <Input

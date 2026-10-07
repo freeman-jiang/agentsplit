@@ -31,16 +31,20 @@ test('records a negative amount as an income', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'Create income' }),
   ).toBeVisible()
-  await expect(page.getByText('Received by')).toBeVisible()
+  await expect(
+    page
+      .getByRole('region', { name: 'Expense details' })
+      .getByText('Received by'),
+  ).toBeVisible()
 
   await page.getByTestId('paid-by').click()
   await page.getByRole('option', { name: 'Alice' }).click()
   await page.getByRole('button', { name: 'Create', exact: true }).click()
   await page.waitForURL(/\/groups\/[^/]+\/expenses(\?|$)/, { timeout: 30_000 })
 
-  await expect(expenseCard(page, 'Deposit refund')).toContainText(money(-90))
+  await expect(expenseCard(page, 'Deposit refund')).toContainText(money(90))
   await expect(expenseCard(page, 'Deposit refund')).toContainText(
-    'Received by Alice',
+    'you received',
   )
 
   // Income inverts the balances: Alice took the money in, so she owes it.
@@ -64,8 +68,11 @@ test('assigns a category to an expense', async ({ page }) => {
   })
 
   await openExpense(page, 'Weekly shop')
+  await page.locator('summary').filter({ hasText: 'More options' }).click()
   await expect(
-    fieldByLabel(page, 'Category').getByRole('combobox'),
+    fieldByLabel(page, 'Category')
+      .getByRole('combobox')
+      .locator('option:checked'),
   ).toContainText('Groceries')
 })
 
