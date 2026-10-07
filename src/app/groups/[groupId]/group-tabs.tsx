@@ -4,6 +4,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { groupPath } from '@/lib/group-slug'
 import {
   Activity,
+  ArrowLeftRight,
   BarChart3,
   Info,
   Receipt,
@@ -31,6 +32,7 @@ export function GroupTabs({ groupId }: Props) {
 
   const tabs: { value: string; label: string; Icon: ComponentType<any> }[] = [
     { value: 'expenses', label: t('Expenses.title'), Icon: Receipt },
+    { value: 'payments', label: 'Payments', Icon: ArrowLeftRight },
     { value: 'balances', label: t('Balances.title'), Icon: Scale },
     { value: 'information', label: t('Information.title'), Icon: Info },
     { value: 'stats', label: t('Stats.title'), Icon: BarChart3 },

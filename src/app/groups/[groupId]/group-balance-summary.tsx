@@ -232,7 +232,7 @@ export function GroupBalanceSummary() {
         href={`${groupPath(group ?? { id: groupId })}/balances`}
         className="mt-4 inline-block text-xs underline underline-offset-4"
       >
-        Balance details & settle up
+        Balance details
       </Link>
     </aside>
   )

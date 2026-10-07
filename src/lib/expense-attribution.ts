@@ -1,6 +1,9 @@
 import { prisma } from './prisma'
 
 export type ExpenseAttribution = {
+  createdAt?: string | null
+  updatedAt?: string | null
+  lastEditedByYouAt?: string | null
   createdBy: { userId: string | null; name: string; source: string } | null
   updatedBy: { userId: string | null; name: string; source: string } | null
 }
@@ -10,6 +13,7 @@ export async function expenseAttributions(
   groupId: string,
   expenseIds: string[],
   throughSequence?: number,
+  viewerUserId?: string,
 ) {
   if (!expenseIds.length) return new Map<string, ExpenseAttribution>()
   const events = await prisma.activity.findMany({
@@ -23,6 +27,7 @@ export async function expenseAttributions(
     },
     select: {
       expenseId: true,
+      time: true,
       activityType: true,
       actorUserId: true,
       actorName: true,
@@ -32,7 +37,7 @@ export async function expenseAttributions(
   })
   const result = new Map<string, ExpenseAttribution>()
   for (const event of events) {
-    const row = result.get(event.expenseId!) ?? {
+    const row: ExpenseAttribution = result.get(event.expenseId!) ?? {
       createdBy: null,
       updatedBy: null,
     }
@@ -46,8 +51,15 @@ export async function expenseAttributions(
             source: event.source,
           }
         : null
-    if (event.activityType === 'CREATE_EXPENSE') row.createdBy ??= actor
-    else row.updatedBy = actor
+    if (event.activityType === 'CREATE_EXPENSE') {
+      row.createdBy ??= actor
+      row.createdAt ??= event.time.toISOString()
+    } else {
+      row.updatedBy = actor
+      row.updatedAt = event.time.toISOString()
+      if (viewerUserId && event.actorUserId === viewerUserId)
+        row.lastEditedByYouAt = event.time.toISOString()
+    }
     result.set(event.expenseId!, row)
   }
   return result

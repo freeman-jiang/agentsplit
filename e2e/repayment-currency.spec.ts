@@ -3,9 +3,6 @@ import {
   addExpense,
   createGroup,
   expectBalance,
-  expenseCard,
-  EXPENSES_URL,
-  openExpense,
   openTab,
   reimbursementRow,
   uniqueSuffix,
@@ -21,9 +18,9 @@ async function openRepaymentForm(page: Page) {
   await addExpense(page, id, { title: 'Hotel', amount: '100', paidBy: 'Alice' })
   await openTab(page, 'Balances')
   await reimbursementRow(page, 'Bob', 'Alice')
-    .getByRole('link', { name: 'Mark as paid' })
+    .getByRole('link', { name: 'Record payment' })
     .click()
-  await page.waitForURL(/\/expenses\/create\?.*reimbursement=yes/)
+  await page.waitForURL(/\/payments\/create\?/)
   return id
 }
 test('repayment defaults to the amount and currency of the debt', async ({
@@ -32,7 +29,7 @@ test('repayment defaults to the amount and currency of the debt', async ({
   await openRepaymentForm(page)
   await expect(page.locator('input[name="amount"]')).toHaveValue('50')
   await expect(
-    page.getByRole('combobox', { name: 'Currency of expense' }),
+    page.getByRole('combobox', { name: 'Currency', exact: true }),
   ).toHaveValue('USD')
   await expect(page.locator('input[name="originalAmount"]')).toHaveCount(0)
 })
@@ -40,17 +37,19 @@ test('settles a same-currency debt exactly and preserves the payment', async ({
   page,
 }) => {
   await openRepaymentForm(page)
-  await page.getByRole('button', { name: 'Create', exact: true }).click()
-  await page.waitForURL(EXPENSES_URL)
-  await expect(expenseCard(page, 'Reimbursement')).toContainText(money(50))
+  await page
+    .getByRole('button', { name: 'Record payment', exact: true })
+    .click()
+  await page.waitForURL(/\/payments$/)
+  await expect(page.getByTestId('payment-row')).toContainText(money(50))
   await openTab(page, 'Balances')
   await expectBalance(page, 'Alice', 0)
   await expectBalance(page, 'Bob', 0)
-  await openTab(page, 'Expenses')
-  await openExpense(page, 'Reimbursement')
+  await page.getByRole('tab', { name: 'Payments', exact: true }).click()
+  await page.getByTestId('payment-row').getByRole('link').click()
   await expect(page.locator('input[name="amount"]')).toHaveValue('50')
   await expect(
-    page.getByRole('combobox', { name: 'Currency of expense' }),
+    page.getByRole('combobox', { name: 'Currency', exact: true }),
   ).toHaveValue('USD')
 })
 test('changing payment currency keeps face value and never calls an exchange API', async ({
@@ -62,7 +61,7 @@ test('changing payment currency keeps face value and never calls an exchange API
   })
   await openRepaymentForm(page)
   await page
-    .getByRole('combobox', { name: 'Currency of expense' })
+    .getByRole('combobox', { name: 'Currency', exact: true })
     .selectOption('EUR')
   await expect(page.locator('input[name="amount"]')).toHaveValue('50')
   await expect(

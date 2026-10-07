@@ -722,6 +722,7 @@ export async function getGroupExpenses(
     isReimbursement?: boolean
     recurrenceRule?: RecurrenceRule
     readOnly?: boolean
+    viewerUserId?: string
   },
 ) {
   if (!options?.readOnly) await createRecurringExpenses()
@@ -796,6 +797,8 @@ export async function getGroupExpenses(
   const attribution = await expenseAttributions(
     groupId,
     result.map((e) => e.id),
+    undefined,
+    options?.viewerUserId,
   )
   return decimalStrings(result).map(
     (e): typeof e & { attribution?: ExpenseAttribution } => ({

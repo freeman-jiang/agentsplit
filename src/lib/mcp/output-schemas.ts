@@ -93,6 +93,9 @@ const expenseFields = z.object({
   revision: z.number().int().nonnegative(),
 })
 const attribution = z.object({
+  createdAt: dateTime.nullable().optional(),
+  updatedAt: dateTime.nullable().optional(),
+  lastEditedByYouAt: dateTime.nullable().optional(),
   createdBy: z
     .object({
       userId: id.nullable(),

@@ -13,7 +13,7 @@ const labels = {
   payer: 'Paid by',
   splits: 'Split between',
   splitMode: 'Split rule',
-  reimbursement: 'Reimbursement',
+  reimbursement: 'Payment',
   category: 'Category',
   originalAmount: 'Original amount',
   conversionRate: 'Exchange rate',
