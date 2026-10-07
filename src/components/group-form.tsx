@@ -48,6 +48,7 @@ export type Props = {
     groupFormValues: GroupFormValues,
     participantId?: string,
   ) => Promise<void>
+  showParticipants?: boolean
   protectedParticipantIds?: string[]
   fixedParticipantIds?: string[]
   /** Resolved on the server, since the runtime variable is not public. */
@@ -57,6 +58,7 @@ export type Props = {
 export function GroupForm({
   group,
   onSubmit,
+  showParticipants = true,
   protectedParticipantIds = [],
   fixedParticipantIds = [],
   defaultCurrencyCode = 'USD',
@@ -257,95 +259,97 @@ export function GroupForm({
             {form.formState.errors.root.message}
           </p>
         )}
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle>{t('Participants.title')}</CardTitle>
-            <CardDescription>{t('Participants.description')}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {!group && (
-              <p className="mb-4 text-sm" data-testid="creator-identity">
-                You ({session?.user.name ?? 'signed-in account'}) are added
-                automatically. Add other participants below, then invite them
-                from Settings.
-              </p>
-            )}
-            <ul className="flex flex-col gap-2">
-              {fields.map((item, index) => (
-                <li key={item.key}>
-                  <FormField
-                    control={form.control}
-                    name={`participants.${index}.name`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="sr-only">
-                          Participant #{index + 1}
-                        </FormLabel>
-                        <FormControl>
-                          <div className="flex gap-2">
-                            <Input
-                              className="text-base"
-                              {...field}
-                              readOnly={
-                                !!item.id &&
-                                fixedParticipantIds.includes(item.id)
-                              }
-                              placeholder={t('Participants.new')}
-                            />
-                            {item.id &&
-                            protectedParticipantIds.includes(item.id) ? (
-                              <HoverCard>
-                                <HoverCardTrigger>
-                                  <Button
-                                    variant="ghost"
-                                    className="text-destructive-"
-                                    type="button"
-                                    size="icon"
-                                    disabled
+        {showParticipants && (
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle>{t('Participants.title')}</CardTitle>
+              <CardDescription>{t('Participants.description')}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!group && (
+                <p className="mb-4 text-sm" data-testid="creator-identity">
+                  You ({session?.user.name ?? 'signed-in account'}) are added
+                  automatically. Add other participants below, then invite them
+                  from Settings.
+                </p>
+              )}
+              <ul className="flex flex-col gap-2">
+                {fields.map((item, index) => (
+                  <li key={item.key}>
+                    <FormField
+                      control={form.control}
+                      name={`participants.${index}.name`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="sr-only">
+                            Participant #{index + 1}
+                          </FormLabel>
+                          <FormControl>
+                            <div className="flex gap-2">
+                              <Input
+                                className="text-base"
+                                {...field}
+                                readOnly={
+                                  !!item.id &&
+                                  fixedParticipantIds.includes(item.id)
+                                }
+                                placeholder={t('Participants.new')}
+                              />
+                              {item.id &&
+                              protectedParticipantIds.includes(item.id) ? (
+                                <HoverCard>
+                                  <HoverCardTrigger>
+                                    <Button
+                                      variant="ghost"
+                                      className="text-destructive-"
+                                      type="button"
+                                      size="icon"
+                                      disabled
+                                    >
+                                      <Trash2 className="w-4 h-4 text-destructive opacity-50" />
+                                    </Button>
+                                  </HoverCardTrigger>
+                                  <HoverCardContent
+                                    align="end"
+                                    className="text-sm"
                                   >
-                                    <Trash2 className="w-4 h-4 text-destructive opacity-50" />
-                                  </Button>
-                                </HoverCardTrigger>
-                                <HoverCardContent
-                                  align="end"
-                                  className="text-sm"
+                                    {t('Participants.protectedParticipant')}
+                                  </HoverCardContent>
+                                </HoverCard>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  className="text-destructive"
+                                  onClick={() => remove(index)}
+                                  type="button"
+                                  size="icon"
                                 >
-                                  {t('Participants.protectedParticipant')}
-                                </HoverCardContent>
-                              </HoverCard>
-                            ) : (
-                              <Button
-                                variant="ghost"
-                                className="text-destructive"
-                                onClick={() => remove(index)}
-                                type="button"
-                                size="icon"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-          <CardFooter>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                append({ name: '' })
-              }}
-              type="button"
-            >
-              {t('Participants.add')}
-            </Button>
-          </CardFooter>
-        </Card>
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+            <CardFooter>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  append({ name: '' })
+                }}
+                type="button"
+              >
+                {t('Participants.add')}
+              </Button>
+            </CardFooter>
+          </Card>
+        )}
 
         <div className="flex mt-4 gap-2">
           <SubmitButton

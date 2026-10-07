@@ -40,13 +40,30 @@ test('admin manages invitation through settings without exposing group access', 
 }) => {
   const groupId = await createGroup(page, {
     name: `Private UI ${uniqueSuffix()}`,
-    participants: ['Alice', 'Bob'],
+    participants: ['Alice', 'Bob', 'Carol'],
   })
   await page.goto(`/groups/${groupId}/edit`)
+  await expect(
+    page.getByRole('heading', { name: 'People', exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Participants', exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    page
+      .getByRole('listitem', { name: 'Alice', exact: true })
+      .getByText('Joined · Admin'),
+  ).toBeVisible()
+  await expect(
+    page
+      .getByRole('listitem', { name: 'Carol', exact: true })
+      .getByText('Not joined', { exact: true }),
+  ).toBeVisible()
   await page
-    .getByLabel('Participant', { exact: true })
-    .selectOption({ label: 'Bob' })
-  await page.getByLabel('Invite by Google email').fill('roommate@example.com')
+    .getByRole('listitem', { name: 'Bob', exact: true })
+    .getByRole('button', { name: 'Invite', exact: true })
+    .click()
+  await page.getByLabel('Google email for Bob').fill('roommate@example.com')
   await page
     .getByRole('button', { name: 'Create invitation', exact: true })
     .click()
@@ -54,12 +71,31 @@ test('admin manages invitation through settings without exposing group access', 
     page.getByRole('button', { name: 'Copy invitation' }),
   ).toBeVisible()
   await expect(
-    page.getByText('roommate@example.com · Bob', { exact: true }),
+    page
+      .getByRole('listitem', { name: 'Bob', exact: true })
+      .getByText('roommate@example.com', { exact: true }),
   ).toBeVisible()
-  await page.getByRole('button', { name: 'Revoke', exact: true }).click()
   await expect(
-    page.getByRole('heading', { name: 'Pending invitations' }),
-  ).toHaveCount(0)
+    page
+      .getByRole('listitem', { name: 'Bob', exact: true })
+      .getByText('Invited', { exact: true }),
+  ).toBeVisible()
+  for (const width of [320, 488, 1280]) {
+    await page.setViewportSize({ width, height: 1000 })
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true)
+  }
+  await page
+    .getByRole('button', { name: 'Revoke invitation', exact: true })
+    .click()
+  await expect(
+    page
+      .getByRole('listitem', { name: 'Bob', exact: true })
+      .getByText('Not joined', { exact: true }),
+  ).toBeVisible()
   for (const width of [320, 488, 1280]) {
     await page.setViewportSize({ width, height: 1000 })
     expect(
@@ -90,9 +126,10 @@ test('invitation binds the intended account on a second browser, with no identit
     await setTestAccountName(context, 'Bob')
     await page.goto(`/groups/${groupId}/edit`)
     await page
-      .getByLabel('Participant', { exact: true })
-      .selectOption({ label: 'Bob' })
-    await page.getByLabel('Invite by Google email').fill(bob.email)
+      .getByRole('listitem', { name: 'Bob', exact: true })
+      .getByRole('button', { name: 'Invite', exact: true })
+      .click()
+    await page.getByLabel('Google email for Bob').fill(bob.email)
     await page
       .getByRole('button', { name: 'Create invitation', exact: true })
       .click()
@@ -118,10 +155,21 @@ test('invitation binds the intended account on a second browser, with no identit
     await expect(roommate.getByTestId('paid-by')).toContainText('Bob')
     await roommate.goto(`/groups/${groupId}/edit`)
     await expect(
-      roommate.getByText('Participant: Bob', { exact: true }),
+      roommate
+        .getByRole('listitem', { name: 'Bob', exact: true })
+        .getByText('Joined · Member', { exact: true }),
     ).toBeVisible()
     await expect(
       roommate.getByRole('button', { name: 'Link identity' }),
+    ).toHaveCount(0)
+    await expect(
+      roommate.getByRole('button', { name: 'Add person' }),
+    ).toHaveCount(0)
+    await expect(
+      roommate.getByRole('button', { name: 'Invite', exact: true }),
+    ).toHaveCount(0)
+    await expect(
+      roommate.getByRole('button', { name: 'Remove access' }),
     ).toHaveCount(0)
   } finally {
     await context.close()

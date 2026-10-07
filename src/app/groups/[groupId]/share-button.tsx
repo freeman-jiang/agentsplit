@@ -12,7 +12,7 @@ export function ShareButton({
     <Button variant="ghost" size="sm" asChild>
       <Link href={`${groupPath(group)}/edit#members`}>
         <Users className="w-4 h-4 mr-2" />
-        Members
+        People
       </Link>
     </Button>
   )
