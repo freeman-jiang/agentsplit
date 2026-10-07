@@ -97,14 +97,16 @@ test('expense list uses consistent insets and theme surfaces, and search clears 
       return {
         left: parseFloat(style.paddingLeft),
         right: parseFloat(style.paddingRight),
-        icon: icon.left - bounds.left,
+        icon: icon.width ? icon.left - bounds.left : null,
         rightContent:
           bounds.right - Math.max(...children.map((rect) => rect.right)),
       }
     })
     expect(insets.left).toBe(12)
     expect(insets.right).toBe(12)
-    expect(insets.icon).toBeGreaterThanOrEqual(12)
+    // Category icons are intentionally hidden in the current mobile row layout.
+    if (width < 640) expect(insets.icon).toBeNull()
+    else expect(insets.icon).toBeGreaterThanOrEqual(12)
     expect(insets.rightContent).toBeGreaterThanOrEqual(12)
     await expect(date).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
     expect(

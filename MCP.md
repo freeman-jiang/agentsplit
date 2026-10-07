@@ -4,8 +4,7 @@ AgentSplit exposes its ledger through the standard MCP Streamable HTTP endpoint
 `https://agentsplit.freemanjiang.com/api/mcp`. It supports discovery, typed JSON
 inputs/outputs, read/write annotations, and both legacy 2025 clients and modern
 2026-07-28 requests. Any MCP client that supports this transport and custom HTTP headers can use it.
-Send the API key as-is in `X-API-Key`. OAuth-only clients need a separate OAuth
-integration. Google OAuth authenticates web users; agents use user-owned API keys.
+Use OAuth for ChatGPT and other interactive clients, or send an existing API key as-is in `X-API-Key` for Codex and automation. Both use the same AgentSplit account, group memberships and roles. See [OAUTH.md](OAUTH.md) for the Google sign-in, consent and revocation flow.
 
 The server runs inside the existing Next.js app. One reviewed registry maps tools
 to shared tRPC procedures. The web app and MCP use the same expense validation,
@@ -433,3 +432,7 @@ support these filters. Vendor is retained in recurring expenses, new audit
 snapshots, and CSV/JSON exports. Older snapshots without this field remain valid;
 their vendor is unknown. CSV exports use a separate Vendor column and escape it
 against spreadsheet formula interpretation.
+
+## OAuth clients
+
+OAuth connections are supported alongside all existing API keys. See [OAUTH.md](OAUTH.md) for ChatGPT setup, discovery, PKCE, read/write scopes, refresh, revocation and private receipt/export behavior. OAuth uses the same 17 tools and current account permissions.

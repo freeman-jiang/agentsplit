@@ -1,5 +1,6 @@
 import { Prisma } from '@/generated/prisma/client'
 import type { AuditActor } from '@/lib/expense-history'
+import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from '@/lib/oauth-config'
 import { prisma } from '@/lib/prisma'
 import { initTRPC, TRPCError } from '@trpc/server'
 import { headers } from 'next/headers'
@@ -40,10 +41,20 @@ const t = initTRPC.context<TRPCContext>().create({
 // Base router and procedure helpers
 export const createTRPCRouter = t.router
 export const baseProcedure = t.procedure.use(
-  async ({ ctx, path, getRawInput, next }) => {
+  async ({ ctx, path, type, getRawInput, next }) => {
     const principal = ctx.principal
     if (!principal)
       throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Sign in required' })
+    if (
+      principal.scopes &&
+      (!principal.scopes.includes(OAUTH_READ_SCOPE) ||
+        (type === 'mutation' && !principal.scopes.includes(OAUTH_WRITE_SCOPE)))
+    )
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message:
+          'This connection has not been granted permission for this operation',
+      })
     if (
       path.startsWith('groups.') &&
       !['groups.create', 'groups.access'].includes(path)

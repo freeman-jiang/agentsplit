@@ -44,6 +44,9 @@ export const accessConfigurationSchema = z
 
 export type AgentKey = z.infer<typeof agentKeySchema>
 export type McpPrincipal = {
+  /** Undefined for existing API keys; OAuth grants carry an explicit ceiling. */
+  scopes?: string[]
+  oauthConnectionId?: string
   id: string
   userId: string
   name?: string

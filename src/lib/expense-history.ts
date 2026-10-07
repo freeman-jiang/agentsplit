@@ -1,5 +1,6 @@
 import { RecurrenceRule, SplitMode } from '@/generated/prisma/browser'
 import type { Prisma } from '@/generated/prisma/client'
+import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from '@/lib/oauth-config'
 import { prisma } from '@/lib/prisma'
 import { randomId } from '@/lib/random'
 import { TRPCError } from '@trpc/server'
@@ -75,11 +76,44 @@ export const activitySnapshotSchema = z.discriminatedUnion('kind', [
 export type ExpenseSnapshot = z.infer<typeof expenseSnapshotSchema>
 export type ActivitySnapshot = z.infer<typeof activitySnapshotSchema>
 export type AuditActor = {
+  oauthConnectionId?: string
+  scopes?: string[]
   userId: string
   name?: string
   source?: 'web' | 'agent'
   connectionId: string
   groupIds?: string[]
+}
+
+/** Recheck delegated permissions in the same transaction as a ledger write. */
+export async function assertOAuthWriteAccess(
+  tx: Prisma.TransactionClient,
+  actor?: AuditActor,
+) {
+  if (!actor?.oauthConnectionId) return
+  const connection = await tx.oauthConnection.findUnique({
+    where: { id: actor.oauthConnectionId },
+  })
+  const consent = connection
+    ? await tx.oauthConsent.findFirst({
+        where: {
+          userId: actor.userId,
+          clientId: connection.clientId,
+          scopes: { hasEvery: [OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE] },
+        },
+      })
+    : null
+  if (
+    !connection ||
+    connection.revokedAt ||
+    connection.userId !== actor.userId ||
+    !consent ||
+    !actor.scopes?.includes(OAUTH_WRITE_SCOPE)
+  )
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'This OAuth connection no longer has write permission',
+    })
 }
 
 export async function assertActorWriteAccess(
@@ -88,6 +122,7 @@ export async function assertActorWriteAccess(
   actor?: AuditActor,
 ) {
   if (!actor) return
+  await assertOAuthWriteAccess(tx, actor)
   const access = await tx.userGroupAccess.findUnique({
     where: { userId_groupId: { userId: actor.userId, groupId } },
   })

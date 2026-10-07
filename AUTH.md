@@ -74,3 +74,7 @@ Instance/database administrators can access the database and stored receipts.
 The audit log is protected against ordinary application deletion but is not a
 separate backup. Back up PostgreSQL and Garage off-host to survive host loss.
 Google sign-in and invitations do not change that backup requirement.
+
+## OAuth agent connections
+
+[OAUTH.md](OAUTH.md) describes the additional OAuth authorization-server role for ChatGPT and other MCP clients. It reuses the existing Google login and stable user identity, with explicit consent and revocable connections. API keys remain fully supported.
