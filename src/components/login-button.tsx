@@ -4,7 +4,13 @@ import { authClient } from '@/lib/auth-client'
 import { useState } from 'react'
 import { Button } from './ui/button'
 
-export function LoginButton() {
+export function LoginButton({
+  label = 'Log In',
+  selectAccount = false,
+}: {
+  label?: string
+  selectAccount?: boolean
+}) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   return (
@@ -21,6 +27,9 @@ export function LoginButton() {
             const result = await authClient.signIn.social({
               provider: 'google',
               callbackURL,
+              ...(selectAccount
+                ? { additionalParams: { prompt: 'select_account' } }
+                : {}),
             })
             if (result.error) {
               setError(
@@ -34,7 +43,7 @@ export function LoginButton() {
           }
         }}
       >
-        {pending ? 'Opening Google…' : 'Log In'}
+        {pending ? 'Opening Google…' : label}
       </Button>
       {error && (
         <p role="alert" className="text-sm text-destructive">

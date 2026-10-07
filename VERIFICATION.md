@@ -828,3 +828,21 @@ passed; setup coverage checks exact authentication choices, documentation links,
 configuration panels and clipboard values at 320px/1280px. A focused screenshot
 rerun passed after scrolling to the top before capture, and the mobile image was
 visually inspected. No auth behavior, dependency or database schema changed.
+
+## Invitation guidance — October 7, 2026
+
+Invite links now lead signed-out recipients to a contextual explanation of
+AgentSplit, the invited Google account, automatic signup and the acceptance
+step. Google account selection is requested for invitation login. Signed-in
+recipients see the group/name, the effect on existing expense identity and
+browser/optional-agent next steps. A different-account action signs out and
+preserves the invitation destination. Admins can copy a complete invitation
+message; the UI explicitly states that no email is sent automatically.
+
+Six isolated browser tests passed: signed-out navigation, invitation callback
+and account-selection parameters, settings navigation, API-key management,
+invitation/message clipboard and responsive People UI, plus a second-browser
+recipient acceptance with wrong-account rejection and account switching.
+390px sign-in and acceptance screenshots were inspected. Production build,
+types, formatting and diff checks passed; lint retains two inherited warnings.
+No schema or invitation authorization changes; existing pending links are kept.
