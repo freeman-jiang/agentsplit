@@ -6,11 +6,26 @@ import { useLocale } from 'next-intl'
 export function ExpenseMetadata({
   createdAt,
   attribution,
+  compact = false,
 }: {
   createdAt: Date
+  compact?: boolean
   attribution?: ExpenseAttribution
 }) {
   const locale = useLocale()
+  if (compact)
+    return (
+      <p
+        className="text-xs text-muted-foreground"
+        data-testid="expense-metadata"
+      >
+        {attribution?.updatedBy
+          ? `Last edited by ${attribution.updatedBy.name}`
+          : attribution?.createdBy
+            ? `Added by ${attribution.createdBy.name}`
+            : 'Original author unavailable'}
+      </p>
+    )
   const stamp = ({ value }: { value: string }) => (
     <time dateTime={value} title={new Date(value).toLocaleString(locale)}>
       {new Date(value).toLocaleString(locale, {

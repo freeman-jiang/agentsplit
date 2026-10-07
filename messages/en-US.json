@@ -298,7 +298,7 @@
       "optional": "Optional",
       "summary": "Expense total",
       "people": "{count, plural, one {# person} other {# people}}",
-      "history": "Edits stay in the group’s activity history.",
+      "history": "Edits stay in the group’s log.",
       "splitBetween": "Split between"
     }
   },
@@ -435,14 +435,14 @@
     }
   },
   "Activity": {
-    "title": "Activity",
+    "title": "Log",
     "History": {
       "baseline": "History begins here for an existing expense",
       "view": "View saved revision",
       "group": "View saved group settings",
       "deleted": "Deleted",
       "retained": "Removed from current balances. This saved version remains in history.",
-      "legacy": "Older summary; a complete revision was not saved.",
+      "legacy": "No saved revision details for this event.",
       "unverified": "The participant name is an unverified label.",
       "system": "Created by the recurring schedule",
       "user": "User",
@@ -462,7 +462,7 @@
       "notes": "Notes",
       "attachments": "Attachment references"
     },
-    "description": "Overview of all activity in this group.",
+    "description": "Changes recorded in this group.",
     "noActivity": "There is not yet any activity in your group.",
     "someone": "Someone",
     "settingsModified": "Group settings were modified by <strong>{participant}</strong>.",

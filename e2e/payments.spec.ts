@@ -36,7 +36,9 @@ test('records a partial payment by another person, edits it, and deletes it', as
   await page.getByLabel('Amount', { exact: true }).fill('20')
   await page.getByRole('button', { name: 'Save payment', exact: true }).click()
   await expect(page.getByTestId('payment-row')).toContainText('20.00')
-  await expect(page.getByTestId('payment-row')).toContainText('Your last edit')
+  await expect(page.getByTestId('payment-row')).toContainText(
+    'Last edited by Alice',
+  )
   await page.screenshot({
     path: testInfo.outputPath('payment-history.png'),
     fullPage: true,
@@ -127,10 +129,9 @@ test('expense attribution shows actual audit dates on list and editor', async ({
     .getByTestId('expense-card')
     .filter({ hasText: 'Shared towels' })
   await expect(card.getByTestId('expense-metadata')).toContainText('by Alice')
-  await expect(card.locator('time[datetime]').last()).toHaveAttribute(
-    'datetime',
-    /T/,
-  )
+  await expect(
+    card.getByTestId('expense-metadata').locator('time'),
+  ).toHaveCount(0)
   await card.click()
   await expect(page.getByTestId('expense-metadata')).toContainText('Added')
   await page.locator('input[name="title"]').fill('Shared towels updated')
@@ -138,6 +139,7 @@ test('expense attribution shows actual audit dates on list and editor', async ({
   await expect(page.getByTestId('expense-metadata')).toContainText(
     'Last edited',
   )
+  await page.getByTestId('expense-card').click()
   await expect(page.getByTestId('expense-metadata')).toContainText(
     'Your last edit',
   )

@@ -15,14 +15,14 @@ export type SplitMode = 'EVENLY' | 'BY_SHARES' | 'BY_PERCENTAGE' | 'BY_AMOUNT'
 export type Recurrence = 'None' | 'Daily' | 'Weekly' | 'Monthly'
 
 export type GroupTab =
-  'Expenses' | 'Balances' | 'Information' | 'Stats' | 'Activity' | 'Settings'
+  'Expenses' | 'Balances' | 'Information' | 'Stats' | 'Log' | 'Settings'
 
 const TAB_PATHS: Record<GroupTab, string> = {
   Expenses: 'expenses',
   Balances: 'balances',
   Information: 'information',
   Stats: 'stats',
-  Activity: 'activity',
+  Log: 'activity',
   Settings: 'edit',
 }
 

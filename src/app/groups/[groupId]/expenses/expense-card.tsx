@@ -75,6 +75,7 @@ export function ExpenseCard({ expense, currency, groupId }: Props) {
           </span>
         </div>
         <ExpenseMetadata
+          compact
           createdAt={expense.createdAt}
           attribution={attribution}
         />

@@ -98,6 +98,7 @@ export function Payments() {
                     })}
                   </p>
                   <ExpenseMetadata
+                    compact
                     createdAt={entry.createdAt}
                     attribution={entry.attribution}
                   />

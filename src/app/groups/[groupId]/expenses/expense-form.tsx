@@ -1,6 +1,7 @@
 import { CategorySelector } from '@/components/category-selector'
 import { CurrencySelector } from '@/components/currency-selector'
 import { ExpenseDocumentsInput } from '@/components/expense-documents-input'
+import { ExpenseLog } from '@/components/expense-log'
 import { ExpenseMetadata } from '@/components/expense-metadata'
 import { SubmitButton } from '@/components/submit-button'
 import { Button } from '@/components/ui/button'
@@ -479,6 +480,7 @@ export function ExpenseForm({
             />
           </div>
         )}
+        {expense && <ExpenseLog groupId={group.id} expenseId={expense.id} />}
         <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_13rem]">
           <div className="min-w-0">
             <section aria-label={t('Layout.details')} className="space-y-4">

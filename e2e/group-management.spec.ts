@@ -97,7 +97,7 @@ test('records group and expense changes in the activity log', async ({
     paidBy: 'Alice',
   })
 
-  await openTab(page, 'Activity')
+  await openTab(page, 'Log')
 
   const activity = page.getByText(/Expense .*Cinema.* created by/)
   await expect(activity).toBeVisible()
