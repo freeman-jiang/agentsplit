@@ -708,3 +708,5 @@ Deployed `f93ef6a` through Coolify `iivcedl58pagtpnpcoxb3chb`. Live Settings sho
 ## Payments and audit dates — 2026-10-07
 
 Deployed `8ffe3dc` via Coolify `t3zfhkyzrmranizl79eckgj4`: dedicated Payments history/form, exact multi-currency recording, and added/last-edited/viewer-last-edit timestamps. Seven focused browser tests and 750 unit tests passed. Live prefill and timestamp displays verified; all nine ledger/access fingerprints and the $530.65 household balance were preserved.
+
+October 7 follow-up: `54424b7` deployed via `zt9elrxpzmtxb7lzi4lhan0l`. Lists now show one attribution line; editors retain dates and an expandable, expense-filtered revision log. Activity is labeled Log with a scroll icon. Pagination/concurrent-edit tests and live UI checks passed; all nine ledger/access fingerprints were unchanged.
