@@ -712,3 +712,56 @@ Deployed `8ffe3dc` via Coolify `t3zfhkyzrmranizl79eckgj4`: dedicated Payments hi
 October 7 follow-up: `54424b7` deployed via `zt9elrxpzmtxb7lzi4lhan0l`. Lists now show one attribution line; editors retain dates and an expandable, expense-filtered revision log. Activity is labeled Log with a scroll icon. Pagination/concurrent-edit tests and live UI checks passed; all nine ledger/access fingerprints were unchanged.
 
 October 7 UI polish: `97a230c` deployed via `u5wgkw4ndaskffuf3aldyiwp`. Expense/payment logs are compact disclosures below forms; stats filters, balance hierarchy, payment fields and People controls are quieter and more consistent. All 25 focused browser tests, type checks and lint passed (two existing warnings). Live desktop/mobile UI and all nine unchanged ledger/access fingerprints verified; services healthy.
+
+## MCP OAuth alongside API keys — 2026-10-07
+
+Built against current application baseline `99468f3`, including custom group URLs,
+separate vendors, the shared balance rail, unified People, dedicated Payments,
+audit timestamps and compact revision logs. The approved package batch added only
+`@better-auth/mcp`, `@better-auth/cimd` and `@better-auth/oauth-provider` 1.7.6;
+no existing dependency versions changed and install scripts were disabled.
+
+The official Better Auth provider handles discovery, client metadata, PKCE,
+public/signed client authentication, tokens and refresh. AgentSplit adds explicit
+consent, current-account/group/scope checks and revocable connection records.
+Revocation covers MCP, UserInfo and private download/export authentication;
+OAuth and API keys remain independent. See OAUTH.md for contracts and limitations.
+Only new provider/signing/connection tables and their indexes/foreign keys are
+added; no existing ledger tables or rows are rewritten.
+
+Validation on disposable loopback databases and synthetic accounts:
+
+- All 750 Jest executions / 66 suites pass; types, production build, formatting
+  and diff checks pass. Lint retains two inherited warnings.
+- 21 real HTTP OAuth/MCP scenarios pass: discovery/challenges, signed login
+  context, denial, PKCE, issuer/audience/signature/expiry, actual MCP reads/writes,
+  exports, current memberships, scope reduction, rotating refresh, reconnect,
+  settings/provider revocation, API-key compatibility and legacy/modern protocol
+  requests. The signed mock client uses RS256 private_key_jwt, matching ChatGPT's
+  current public metadata. DPoP proof binding and replay rejection also pass.
+- A mock Google upstream inside the test process verifies the entire social
+  callback → AgentSplit consent → code exchange → authenticated agent chain.
+  Google token values do not appear in the agent's token response. No test auth
+  bypass is present in production application code.
+- The existing suites pass: 31 private-account, 11 full-MCP, 24 audit/currency,
+  11 fixed-identity, 23 historical-query and 4 slug/vendor scenario groups.
+- All 16 selected browser scenarios pass on the final build, including a fresh
+  cookie-free mock agent's code exchange, MCP create/read, refresh and Settings
+  revocation; read-only consent and denied escalation; Payments, People,
+  invitations, Log pagination, slugs/vendors, key management and navigation.
+  Consent screenshots were inspected on mobile and desktop. A focused visual
+  rerun captures the desktop screen in one viewport to avoid screenshot stitching.
+- A stale pre-existing spacing assertion expected a visible category icon on
+  mobile. It now checks the intentional hidden-mobile/visible-desktop behavior,
+  retaining the padding, surface and overflow checks. No expense styling changed.
+- The real public ChatGPT CIMD document resolves through the local provider's
+  secure transport with the expected client ID and stable callback. This is
+  metadata compatibility, not a claim that the owner's ChatGPT account is linked
+  or that desktop/mobile surfaces have been exercised.
+
+A fresh production backup is saved at
+`/home/ubuntu/agentsplit-backups/mcp-oauth-20261007/database.dump` (72,011 bytes).
+Preservation fingerprints cover 2 groups, 34 expense records, 6 participants,
+97 split rows, 113 audit rows, 11 expense documents, 11 receipt objects,
+2 memberships, 2 invitations and 2 existing API-key identities. Live rollout
+verification is recorded separately after deployment.

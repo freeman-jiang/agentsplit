@@ -1,6 +1,12 @@
 import { apiKey } from '@better-auth/api-key'
+import { cimd } from '@better-auth/cimd'
+import { fetchClientMetadataResource } from '@better-auth/cimd/node'
+import { mcp } from '@better-auth/mcp'
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
+import { jwt } from 'better-auth/plugins/jwt'
+import { mcpResource, OAUTH_SCOPES, oauthIssuer } from './oauth-config'
+import { connectionClaims, hashOAuthToken } from './oauth-connections'
 import { prisma } from './prisma'
 
 function createAuth() {
@@ -28,6 +34,28 @@ function createAuth() {
     },
     rateLimit: { enabled: true, storage: 'database', modelName: 'RateLimit' },
     plugins: [
+      jwt({ jwt: { issuer: oauthIssuer() } }),
+      mcp({
+        resource: mcpResource(),
+        resources: [
+          {
+            identifier: mcpResource(),
+            name: 'AgentSplit',
+            allowedScopes: OAUTH_SCOPES,
+          },
+        ],
+        loginPage: '/sign-in',
+        consentPage: '/settings/connections/consent',
+        scopes: OAUTH_SCOPES,
+        grantTypes: ['authorization_code', 'refresh_token'],
+        accessTokenExpiresIn: 300,
+        refreshTokenExpiresIn: 60 * 60 * 24 * 30,
+        storeTokens: { hash: hashOAuthToken },
+        allowDynamicClientRegistration: false,
+        allowUnauthenticatedClientRegistration: false,
+        extensions: [connectionClaims],
+      }),
+      cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
       apiKey({
         defaultPrefix: 'agentsplit_',
         enableSessionForAPIKeys: false,

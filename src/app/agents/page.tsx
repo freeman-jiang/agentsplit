@@ -65,6 +65,30 @@ export default async function AgentSetupPage() {
         <p className="max-w-xl text-muted-foreground">{t('intro')}</p>
       </header>
 
+      <section className="space-y-3" aria-labelledby="chatgpt-connect-title">
+        <h2 id="chatgpt-connect-title" className="text-lg font-medium">
+          ChatGPT
+        </h2>
+        <p className="text-sm">
+          In ChatGPT on the web, open Plugins, choose Add → Add custom MCP
+          server, and name it AgentSplit. Use the MCP URL below and select
+          OAuth.
+        </p>
+        <p className="text-sm">
+          Connect with your existing AgentSplit account, sign in with Google if
+          prompted, then review and approve access. You can choose read-only
+          access. No API key is needed for this connection.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Use the same ChatGPT account on your other supported surfaces. Manage
+          or revoke the connection in{' '}
+          <Link href="/settings/connections" className="underline">
+            Connected apps
+          </Link>
+          . Availability in each client depends on that client’s plugin support.
+        </p>
+      </section>
+
       <section className="space-y-3" aria-labelledby="agent-key-title">
         <h2 id="agent-key-title" className="text-lg font-medium">
           {t('keyTitle')}

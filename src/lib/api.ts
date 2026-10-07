@@ -7,6 +7,7 @@ import {
 import {
   activitySnapshotSchema,
   assertActorWriteAccess,
+  assertOAuthWriteAccess,
   baselineExpense,
   createExpenseRevision,
   groupSnapshotSchema,
@@ -50,6 +51,7 @@ export async function createGroup(
     groupFormValues,
   )
   return prisma.$transaction(async (tx) => {
+    await assertOAuthWriteAccess(tx, actor)
     const prior = await tx.group.findUnique({
       where: { id: groupId },
       include: { participants: true },

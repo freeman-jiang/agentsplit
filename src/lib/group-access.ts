@@ -1,7 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { withGroupWrite, type AuditActor } from './expense-history'
+import {
+  assertOAuthWriteAccess,
+  withGroupWrite,
+  type AuditActor,
+} from './expense-history'
 import { prisma } from './prisma'
 import { randomId } from './random'
 
@@ -162,6 +166,7 @@ export async function changeGroupAccess(
     throw new TRPCError({ code: 'BAD_REQUEST', message: 'groupId is required' })
   const targetId = groupId
   return withGroupWrite(targetId, async (tx) => {
+    await assertOAuthWriteAccess(tx, actor)
     const user = await tx.user.findUnique({ where: { id: actor.userId } })
     if (!user?.emailVerified)
       throw new TRPCError({
