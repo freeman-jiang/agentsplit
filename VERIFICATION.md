@@ -692,3 +692,11 @@ editor and expense-list screenshots were visually inspected. Lint retains its
 two existing warnings. A fresh scoped backup was saved before rollout at
 `/home/ubuntu/agentsplit-backups/shared-rail-01a1143b/database.dump`
 (71,117 bytes; 32 expense records and 107 audit records). Live verification follows.
+
+Live deployment `h0qbfvlaq8ztxhw914y6egny` finished on application commit
+`d21fa8591bb20fd53145a50f8bfb37bfa0510653`. All three services are healthy.
+Before/after comparison preserved all 2 groups, 32 expense records, 6 participants,
+92 split rows and 107 audit records exactly, with both audit protection triggers
+still enabled. The signed-in production browser visited every group tab and
+confirmed the current personal net remained visible in the shared rail. The
+stacked vendor/description expense rows were visually inspected on production.
