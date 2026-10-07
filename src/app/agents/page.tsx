@@ -62,115 +62,228 @@ export default async function AgentSetupPage() {
         <h1 className="font-display text-3xl tracking-tight sm:text-4xl">
           {t('title')}
         </h1>
-        <p className="max-w-xl text-muted-foreground">{t('intro')}</p>
+        <p className="text-muted-foreground">
+          Choose one way to connect. Both use your AgentSplit account and
+          current group permissions.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <a href="#oauth" className="border bg-card p-4 space-y-2">
+            <h2 className="font-medium">OAuth · Recommended</h2>
+            <p className="text-sm text-muted-foreground">
+              For ChatGPT, Claude, and clients with browser sign-in. Sign in
+              with Google and approve access.
+            </p>
+          </a>
+          <a href="#api-key" className="border bg-card p-4 space-y-2">
+            <h2 className="font-medium">API key</h2>
+            <p className="text-sm text-muted-foreground">
+              For scripts, automation, or manual client setup. Create a key and
+              paste it into your client’s settings.
+            </p>
+          </a>
+        </div>
       </header>
 
-      <section className="space-y-3" aria-labelledby="chatgpt-connect-title">
-        <h2 id="chatgpt-connect-title" className="text-lg font-medium">
-          ChatGPT
+      <div className="flex items-center gap-3 border bg-card p-4">
+        <div className="min-w-0 flex-1">
+          <p className="mb-1 text-xs text-muted-foreground">
+            MCP server URL · Use this for either method
+          </p>
+          <code className="break-all text-sm">{endpoint}</code>
+        </div>
+        <CopyButton text={endpoint} title={t('copyEndpoint')} />
+      </div>
+
+      <section
+        id="oauth"
+        className="scroll-mt-6 space-y-4"
+        aria-labelledby="oauth-title"
+      >
+        <h2 id="oauth-title" className="font-display text-2xl">
+          Connect with OAuth
         </h2>
-        <p className="text-sm">
-          In ChatGPT on the web, open Plugins, choose Add → Add custom MCP
-          server, and name it AgentSplit. Use the MCP URL below and select
-          OAuth.
-        </p>
-        <p className="text-sm">
-          Sign in with Google, then review and approve access. Your first
-          sign-in creates your AgentSplit account. You can choose read-only
-          access. No API key is needed for this connection.
-        </p>
         <p className="text-sm text-muted-foreground">
-          Use the same ChatGPT account on your other supported surfaces. Manage
-          or revoke the connection in{' '}
+          No API key needed. Your first Google sign-in creates your account
+          automatically.
+        </p>
+        <details className="border-y py-4">
+          <summary className="cursor-pointer font-medium">ChatGPT</summary>
+          <div className="space-y-4 pt-4 text-sm leading-relaxed">
+            <ol className="list-decimal space-y-3 ps-5">
+              <li>
+                On ChatGPT web, open{' '}
+                <a href="https://chatgpt.com/plugins" className="underline">
+                  Plugins
+                </a>
+                . Choose <strong>+ / Add → Add custom MCP server</strong>.
+              </li>
+              <li>
+                Fill in these fields:
+                <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 border bg-card p-3">
+                  <dt className="text-muted-foreground">Name</dt>
+                  <dd>AgentSplit</dd>
+                  <dt className="text-muted-foreground">Description</dt>
+                  <dd>Shared expenses, payments and balances.</dd>
+                  <dt className="text-muted-foreground">Server URL</dt>
+                  <dd>The MCP server URL above</dd>
+                  <dt className="text-muted-foreground">Authentication</dt>
+                  <dd>OAuth</dd>
+                </dl>
+              </li>
+              <li>
+                In <strong>Advanced OAuth settings</strong>, keep the detected{' '}
+                <strong>CIMD</strong> registration method. Set{' '}
+                <strong>Base scopes</strong> to <code>offline_access</code> to
+                stay connected. Leave client ID, client secret and headers
+                empty.
+              </li>
+              <li>
+                Review the warning, confirm that you want to continue, then
+                click <strong>Create as a plugin</strong>. When prompted, click{' '}
+                <strong>Connect</strong> and{' '}
+                <strong>Continue to AgentSplit</strong>.
+              </li>
+              <li>
+                Sign in with Google. Review the permissions and click{' '}
+                <strong>Allow access</strong>. Uncheck{' '}
+                <strong>Allow changes</strong> if you only want the agent to
+                read.
+              </li>
+              <li>
+                Open AgentSplit in your personal plugins and install it with{' '}
+                <strong>+</strong> if needed. Start a new <strong>Work</strong>{' '}
+                chat, type <strong>@</strong>, select{' '}
+                <strong>AgentSplit</strong>, and ask it to show your groups.
+              </li>
+            </ol>
+            <a
+              className="inline-block underline text-muted-foreground"
+              href="https://developers.openai.com/plugins/quickstart"
+            >
+              Official ChatGPT setup guide
+            </a>
+          </div>
+        </details>
+        <details className="border-b pb-4">
+          <summary className="cursor-pointer font-medium">Claude</summary>
+          <div className="space-y-4 pt-4 text-sm leading-relaxed">
+            <ol className="list-decimal space-y-3 ps-5">
+              <li>
+                Open{' '}
+                <strong>
+                  Customize → Connectors → + Add → Add custom connector
+                </strong>
+                .
+              </li>
+              <li>
+                Enter <strong>AgentSplit</strong> for <strong>Name</strong> and
+                paste the URL above into <strong>MCP server URL</strong>. Click{' '}
+                <strong>Continue</strong>.
+              </li>
+              <li>
+                Use these authentication settings, then click{' '}
+                <strong>Add</strong>:
+                <dl className="mt-2 space-y-2 border bg-card p-3">
+                  <div>
+                    <dt className="text-muted-foreground">Authentication</dt>
+                    <dd>Sign in now</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">OAuth client</dt>
+                    <dd>Use Claude’s published identity (Recommended)</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">
+                      Client ID, client secret and request headers
+                    </dt>
+                    <dd>Leave empty</dd>
+                  </div>
+                </dl>
+              </li>
+              <li>
+                Click <strong>Connect</strong> if prompted. Sign in with Google,
+                review the permissions, and click <strong>Allow access</strong>.
+                Uncheck <strong>Allow changes</strong> for read-only access.
+              </li>
+              <li>
+                In a chat, open <strong>+ → Connectors</strong> and enable{' '}
+                <strong>AgentSplit</strong>. Ask it to show your groups.
+              </li>
+            </ol>
+            <p className="text-muted-foreground">
+              If you see the older one-page dialog, enter the name and URL,
+              leave Advanced OAuth credentials empty, and click Add. For Team or
+              Enterprise, an owner first adds the connector in Organization
+              settings → Connectors.
+            </p>
+            <a
+              className="inline-block underline text-muted-foreground"
+              href="https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp"
+            >
+              Official Claude setup guide
+            </a>
+          </div>
+        </details>
+        <p className="text-sm text-muted-foreground">
+          Manage or revoke OAuth access in{' '}
           <Link href="/settings/connections" className="underline">
             Connected apps
           </Link>
-          . Availability in each client depends on that client’s plugin support.
+          .
         </p>
       </section>
 
-      <section className="space-y-3" aria-labelledby="oauth-connect-title">
-        <h2 id="oauth-connect-title" className="text-lg font-medium">
-          Claude and other OAuth clients
+      <section
+        id="api-key"
+        className="scroll-mt-6 space-y-4"
+        aria-labelledby="key-title"
+      >
+        <h2 id="key-title" className="font-display text-2xl">
+          Connect with an API key
         </h2>
-        <p className="text-sm">
-          Add a remote MCP server using the URL below and choose OAuth. In
-          Claude, use its published identity when offered. Clients can also
-          register automatically. Sign in with Google and approve access; you do
-          not need to create an API key or a Google OAuth client.
-        </p>
         <p className="text-sm text-muted-foreground">
-          Accept your group invitation using the Google account it was sent to.
-          You can do this before or after connecting your agent. Group access
-          updates automatically, without reconnecting.
+          Use this when your client needs a fixed credential. Create one key per
+          agent so you can revoke it separately.
         </p>
-      </section>
-
-      <section className="space-y-3" aria-labelledby="agent-key-title">
-        <h2 id="agent-key-title" className="text-lg font-medium">
-          {t('keyTitle')}
-        </h2>
+        <Button asChild>
+          <Link href="/settings">Create an API key</Link>
+        </Button>
         <p className="text-sm">
-          Create your own key in Account & keys. It gives your agent access to
-          the same groups and permissions as your signed-in account.
+          Add the MCP server URL above. Under <strong>Headers</strong>, enter:
         </p>
-        <p className="border-s-2 border-primary bg-muted p-4 text-sm">
-          <Button asChild>
-            <Link href="/settings">Create an API key</Link>
-          </Button>
-        </p>
-        <p className="text-sm text-muted-foreground">{t('keyPrivacy')}</p>
-      </section>
-
-      <section className="space-y-5" aria-labelledby="agent-connect-title">
-        <h2 id="agent-connect-title" className="text-lg font-medium">
-          {t('connectTitle')}
-        </h2>
-        <div className="flex items-center gap-3 border bg-card p-3">
-          <div className="min-w-0 flex-1">
-            <p className="mb-1 text-xs text-muted-foreground">
-              {t('endpoint')}
-            </p>
-            <code className="break-all text-sm">{endpoint}</code>
+        <div className="border bg-card p-4 space-y-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span>
+              Header name: <code>X-API-Key</code>
+            </span>
+            <CopyButton text="X-API-Key" title="Copy header name" />
           </div>
-          <CopyButton text={endpoint} title={t('copyEndpoint')} />
+          <p>
+            Header value: <strong>your API key, exactly as copied</strong>
+          </p>
         </div>
-        <section className="space-y-4" aria-labelledby="codex-app-title">
-          <h3 id="codex-app-title" className="text-lg font-medium">
-            Codex app
-          </h3>
-          <ol className="list-decimal space-y-3 ps-5 text-sm leading-relaxed">
+        <p className="text-sm text-muted-foreground">{t('keyPrivacy')}</p>
+        <details className="border-y py-4">
+          <summary className="cursor-pointer font-medium">Codex app</summary>
+          <ol className="list-decimal space-y-3 ps-5 pt-4 text-sm leading-relaxed">
             <li>
-              Open <strong>Plugins → MCPs</strong> in the Codex app. Add an HTTP
-              MCP server, or edit your existing AgentSplit connection.
+              Open <strong>Plugins → MCPs</strong> and add an HTTP MCP server.
             </li>
             <li>
-              Use <code>agentsplit</code> as the name and copy the MCP URL above
-              into <strong>URL</strong>.
+              Enter <strong>agentsplit</strong> as the name and paste the MCP
+              server URL into <strong>URL</strong>.
             </li>
             <li>
-              Under <strong>Headers</strong>, set the header name to{' '}
-              <code>X-API-Key</code> and paste your API key directly into its
-              value.
+              Under <strong>Headers</strong>, add <code>X-API-Key</code> with
+              your key as its value. No prefix, quotes, or environment variable
+              is needed.
             </li>
-            <li>Save, then enable or reconnect AgentSplit if needed.</li>
+            <li>
+              Click <strong>Save</strong>, then enable or reconnect AgentSplit.
+            </li>
           </ol>
-          <div className="border bg-card p-4 space-y-3 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <span>
-                Header name: <code>X-API-Key</code>
-              </span>
-              <CopyButton text="X-API-Key" title="Copy header name" />
-            </div>
-            <p>
-              Header value: <strong>your API key, exactly as copied</strong>
-            </p>
-            <p className="text-muted-foreground">
-              No prefix, quotes, or extra formatting needed.
-            </p>
-          </div>
-        </section>
-        <details className="border-y py-3">
+        </details>
+        <details className="border-b pb-4">
           <summary className="cursor-pointer text-sm font-medium">
             Codex CLI and configuration files
           </summary>
@@ -184,9 +297,9 @@ export default async function AgentSetupPage() {
             />
           </div>
         </details>
-        <details className="border-b pb-3">
+        <details className="border-b pb-4">
           <summary className="cursor-pointer text-sm font-medium">
-            Claude Code
+            Claude Code with an API key
           </summary>
           <div className="space-y-4 pt-4">
             <p className="text-sm text-muted-foreground">{t('environment')}</p>
@@ -198,48 +311,29 @@ export default async function AgentSetupPage() {
             />
           </div>
         </details>
-        <details className="border-b pb-3">
-          <summary className="cursor-pointer text-sm font-medium">
-            {t('otherClients')}
-          </summary>
-          <div className="space-y-3 pt-3 text-sm text-muted-foreground">
-            <p>{t('otherDescription')}</p>
-            <code className="block break-all text-foreground">
-              X-API-Key: YOUR_API_KEY
-            </code>
-            <p>{t('noOauth')}</p>
-          </div>
-        </details>
-        <p className="text-xs text-muted-foreground">
-          {t('references')}{' '}
-          <a
-            className="underline underline-offset-4"
-            href="https://learn.chatgpt.com/docs/extend/mcp"
-          >
-            Codex
-          </a>
-          {' · '}
-          <a
-            className="underline underline-offset-4"
-            href="https://code.claude.com/docs/en/mcp"
-          >
-            Claude Code
-          </a>
-        </p>
       </section>
 
-      <section className="space-y-3" aria-labelledby="agent-use-title">
-        <div className="flex items-center justify-between gap-4">
-          <h2 id="agent-use-title" className="text-lg font-medium">
-            {t('useTitle')}
-          </h2>
-          <CopyButton text={instructions} title={t('copyInstructions')} />
-        </div>
-        <p className="text-sm text-muted-foreground">{t('useDescription')}</p>
-        <div className="whitespace-pre-wrap border bg-card p-4 text-sm leading-relaxed">
-          {instructions}
-        </div>
-        <p className="text-sm text-muted-foreground">{t('capabilities')}</p>
+      <section className="space-y-4" aria-labelledby="start-title">
+        <h2 id="start-title" className="font-display text-2xl">
+          Start with your groups
+        </h2>
+        <p className="text-sm">
+          Ask: “Show my AgentSplit groups and balances.” If you’re new, ask your
+          agent to create a group or accept your invitation link. Invitations
+          must match your Google email; you can accept before or after
+          connecting.
+        </p>
+        <details className="border-y py-4">
+          <summary className="cursor-pointer text-sm font-medium">
+            Detailed agent instructions
+          </summary>
+          <div className="space-y-3 pt-4">
+            <CopyButton text={instructions} title={t('copyInstructions')} />
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">
+              {instructions}
+            </p>
+          </div>
+        </details>
       </section>
     </main>
   )
