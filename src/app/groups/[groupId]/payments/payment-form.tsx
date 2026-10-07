@@ -5,6 +5,7 @@ import { ExpenseLog } from '@/components/expense-log'
 import { ExpenseMetadata } from '@/components/expense-metadata'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { NativeSelect } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 import { Locale } from '@/i18n/request'
 import { defaultCurrencyList, getCurrency } from '@/lib/currency'
@@ -99,8 +100,6 @@ function PaymentForm({ group, payment }: { group: Group; payment?: Payment }) {
   const suggested = balances?.currencies
     .find((c) => c.currencyCode === currencyCode)
     ?.reimbursements.find((p) => p.from === from && p.to === to)
-  const name = (personId: string) =>
-    group.participants.find((p) => p.id === personId)?.name ?? ''
   const finish = async () => {
     await utils.groups.invalidate()
     router.push(`${groupPath(group)}/payments`)
@@ -116,12 +115,11 @@ function PaymentForm({ group, payment }: { group: Group; payment?: Payment }) {
           attribution={payment.attribution}
         />
       )}
-      {payment && <ExpenseLog groupId={group.id} expenseId={payment.id} />}
       <p className="text-sm text-muted-foreground">
         Record money already paid between two people.
       </p>
       <form
-        className="space-y-5"
+        className="payment-editor space-y-5"
         onSubmit={async (event) => {
           event.preventDefault()
           setError('')
@@ -198,9 +196,9 @@ function PaymentForm({ group, payment }: { group: Group; payment?: Payment }) {
         <fieldset disabled={saving} className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <label htmlFor="payment-from">From</label>
-            <select
+            <NativeSelect
               id="payment-from"
-              className="h-12 w-full border bg-background px-3"
+              className="h-11"
               required
               value={from}
               onChange={(e) => setFrom(e.target.value)}
@@ -213,13 +211,13 @@ function PaymentForm({ group, payment }: { group: Group; payment?: Payment }) {
                   {p.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div className="space-y-2">
             <label htmlFor="payment-to">To</label>
-            <select
+            <NativeSelect
               id="payment-to"
-              className="h-12 w-full border bg-background px-3"
+              className="h-11"
               required
               value={to}
               onChange={(e) => setTo(e.target.value)}
@@ -232,7 +230,7 @@ function PaymentForm({ group, payment }: { group: Group; payment?: Payment }) {
                   {p.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div className="space-y-2">
             <label htmlFor="payment-amount">Amount</label>
@@ -281,7 +279,8 @@ function PaymentForm({ group, payment }: { group: Group; payment?: Payment }) {
         {suggested && (
           <Button
             type="button"
-            variant="outline"
+            variant="link"
+            className="h-auto p-0 text-sm"
             disabled={saving}
             onClick={() => setAmount(suggested.amount)}
           >
@@ -298,11 +297,6 @@ function PaymentForm({ group, payment }: { group: Group; payment?: Payment }) {
           Updates balances in {currencyCode} only. Other currencies stay
           separate.
         </p>
-        {from && to && (
-          <p className="text-sm">
-            {name(from)} → {name(to)}
-          </p>
-        )}
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -351,6 +345,7 @@ function PaymentForm({ group, payment }: { group: Group; payment?: Payment }) {
           )}
         </div>
       </form>
+      {payment && <ExpenseLog groupId={group.id} expenseId={payment.id} />}
     </div>
   )
 }

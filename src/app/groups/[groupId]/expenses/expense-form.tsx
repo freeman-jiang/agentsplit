@@ -480,7 +480,6 @@ export function ExpenseForm({
             />
           </div>
         )}
-        {expense && <ExpenseLog groupId={group.id} expenseId={expense.id} />}
         <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_13rem]">
           <div className="min-w-0">
             <section aria-label={t('Layout.details')} className="space-y-4">
@@ -1170,6 +1169,7 @@ export function ExpenseForm({
           </aside>
         </div>
       </form>
+      {expense && <ExpenseLog groupId={group.id} expenseId={expense.id} />}
     </Form>
   )
 }

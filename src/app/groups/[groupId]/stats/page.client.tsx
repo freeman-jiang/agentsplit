@@ -59,31 +59,36 @@ export function TotalsPageClient() {
 
   return (
     <>
-      {data && data.availableCurrencyCodes.length > 0 && (
-        <label className="mb-4 flex items-center gap-2 text-sm">
-          Currency
-          <select
-            aria-label="Statistics currency"
-            value={data.currencyCode ?? ''}
-            onChange={(event) =>
-              setCurrencyCode(expenseCurrencySchema.parse(event.target.value))
-            }
-            className="rounded-none border bg-background p-2"
-          >
-            {data.availableCurrencyCodes.map((code) => (
-              <option key={code} value={code}>
-                {code}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      <StatsRangeSelector
-        period={period}
-        customRange={customRange}
-        onPeriodChange={setPeriod}
-        onCustomRangeChange={setCustomRange}
-      />
+      <div
+        className="flex flex-wrap items-start justify-between gap-4"
+        aria-label="Statistics filters"
+      >
+        {data && data.availableCurrencyCodes.length > 0 && (
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            Currency
+            <select
+              aria-label="Statistics currency"
+              value={data.currencyCode ?? ''}
+              onChange={(event) =>
+                setCurrencyCode(expenseCurrencySchema.parse(event.target.value))
+              }
+              className="rounded-none border bg-background p-2"
+            >
+              {data.availableCurrencyCodes.map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <StatsRangeSelector
+          period={period}
+          customRange={customRange}
+          onPeriodChange={setPeriod}
+          onCustomRangeChange={setCustomRange}
+        />
+      </div>
       <SummaryStats summary={data?.summary} currency={currency} />
       <Card className="mb-4">
         <CardHeader>

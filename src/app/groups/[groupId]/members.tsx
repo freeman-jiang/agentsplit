@@ -2,8 +2,15 @@
 
 import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { trpc } from '@/trpc/client'
+import { ChevronDown } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
@@ -66,52 +73,62 @@ export function GroupMembers({ groupId }: { groupId: string }) {
     member: (typeof data.access.members)[number]
   }) =>
     admin && (
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={() =>
-            mutation.mutate({
-              action: 'set_role',
-              groupId,
-              userId: member.id,
-              role: member.role === 'admin' ? 'member' : 'admin',
-            })
-          }
-        >
-          {member.role === 'admin' ? 'Make member' : 'Make admin'}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={() => {
-            if (
-              window.confirm(
-                `Remove ${member.name}'s access? Their expenses will remain.`,
-              )
-            )
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Manage access for ${member.name}`}
+            disabled={busy}
+            className="text-muted-foreground"
+          >
+            Manage access{' '}
+            <ChevronDown aria-hidden="true" className="ml-1 h-3.5 w-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            disabled={busy}
+            onSelect={() =>
               mutation.mutate({
-                action: 'remove_member',
+                action: 'set_role',
                 groupId,
                 userId: member.id,
+                role: member.role === 'admin' ? 'member' : 'admin',
               })
-          }}
-        >
-          Remove access
-        </Button>
-      </div>
+            }
+          >
+            {member.role === 'admin' ? 'Remove admin role' : 'Make admin'}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={busy}
+            onSelect={() => {
+              if (
+                window.confirm(
+                  `Remove ${member.name}'s access? Their expenses will remain.`,
+                )
+              )
+                mutation.mutate({
+                  action: 'remove_member',
+                  groupId,
+                  userId: member.id,
+                })
+            }}
+          >
+            Remove access
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     )
 
   return (
     <section
-      className="border bg-card p-5 sm:p-8 space-y-6"
+      className="scroll-mt-24 border bg-card p-5 sm:p-6 space-y-6"
       id="members"
       aria-labelledby="people-heading"
     >
       <div className="space-y-2">
-        <h2 id="people-heading" className="font-display text-3xl">
+        <h2 id="people-heading" className="font-display text-2xl">
           People
         </h2>
         <p className="text-sm text-muted-foreground">
@@ -204,30 +221,27 @@ export function GroupMembers({ groupId }: { groupId: string }) {
                             Edit name
                           </Button>
                         )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={busy || protectedPerson}
-                          title={
-                            protectedPerson
-                              ? 'People with expenses or account links cannot be deleted.'
-                              : undefined
-                          }
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                `Delete ${person.name} from this group?`,
+                        {!protectedPerson && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Delete ${person.name} from this group?`,
+                                )
                               )
-                            )
-                              savePeople({
-                                participants: people.filter(
-                                  (p) => p.id !== person.id,
-                                ),
-                              })
-                          }}
-                        >
-                          Delete person
-                        </Button>
+                                savePeople({
+                                  participants: people.filter(
+                                    (p) => p.id !== person.id,
+                                  ),
+                                })
+                            }}
+                          >
+                            Delete person
+                          </Button>
+                        )}
                       </div>
                     )}
               </div>

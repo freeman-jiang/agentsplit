@@ -4,6 +4,7 @@ import { ActivityRevision } from '@/app/groups/[groupId]/activity/activity-revis
 import { Button } from '@/components/ui/button'
 import { trpc } from '@/trpc/client'
 import type { AppRouterOutput } from '@/trpc/routers/_app'
+import { ChevronRight } from 'lucide-react'
 import { useLocale } from 'next-intl'
 import { useState } from 'react'
 
@@ -14,11 +15,15 @@ export function ExpenseLog({ groupId, expenseId }: Props) {
   const [open, setOpen] = useState(false)
   return (
     <details
-      className="my-6 border p-4"
+      className="group/expense-log mt-6 border-t border-border/60 pt-3"
       onToggle={(event) => setOpen(event.currentTarget.open)}
       data-testid="expense-log"
     >
-      <summary className="cursor-pointer text-sm font-medium">
+      <summary className="inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
+        <ChevronRight
+          aria-hidden="true"
+          className="h-3.5 w-3.5 transition-transform group-open/expense-log:rotate-90"
+        />
         Expense log
       </summary>
       {open && <LogSnapshot groupId={groupId} expenseId={expenseId} />}

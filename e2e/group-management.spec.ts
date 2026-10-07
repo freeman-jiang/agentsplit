@@ -31,7 +31,7 @@ test('renames a group and adds a participant afterwards', async ({ page }) => {
   const bobRow = page.getByRole('listitem', { name: 'Bob', exact: true })
   await expect(
     bobRow.getByRole('button', { name: 'Delete person' }),
-  ).toBeDisabled()
+  ).toHaveCount(0)
 
   await fillStable(page.getByLabel("New person's name"), 'Dave')
   await page.getByRole('button', { name: 'Add person', exact: true }).click()
