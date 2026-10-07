@@ -15,6 +15,7 @@ datasource db {
 
 model Group {
   id           String        @id
+  slug         String?       @unique
   name         String
   information  String?       @db.Text
   currency     String        @default("$")
@@ -23,6 +24,25 @@ model Group {
   expenses     Expense[]
   activities   Activity[]
   createdAt    DateTime      @default(now())
+  revision     Int           @default(0)
+  userAccess   UserGroupAccess[]
+  invitations GroupInvitation[]
+  receipts ReceiptObject[]
+}
+
+model UserGroupAccess {
+  userId    String
+  groupId   String
+  active    Boolean  @default(true)
+  role      String   @default("member")
+  participantId String?
+  participant Participant? @relation(fields: [participantId, groupId], references: [id, groupId], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([userId, groupId])
+  @@unique([groupId, participantId])
+  @@index([groupId])
 }
 
 model Participant {
@@ -32,6 +52,9 @@ model Participant {
   groupId         String
   expensesPaidBy  Expense[]
   expensesPaidFor ExpensePaidFor[]
+  memberships UserGroupAccess[]
+  invitations GroupInvitation[]
+  @@unique([id, groupId])
 }
 
 model Category {
@@ -43,16 +66,18 @@ model Category {
 
 model Expense {
   id               String            @id
-  group            Group             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group            Group             @relation(fields: [groupId], references: [id], onDelete: Restrict)
   expenseDate      DateTime          @default(dbgenerated("CURRENT_DATE")) @db.Date
   title            String
+  vendor           String?
   category         Category?         @relation(fields: [categoryId], references: [id])
   categoryId       Int               @default(0)
-  amount           Int
-  originalAmount   Int?
+  amount           Decimal           @db.Decimal(30, 12)
+  currencyCode     String
+  originalAmount   Decimal?          @db.Decimal(30, 12)
   originalCurrency String?
   conversionRate   Decimal?
-  paidBy           Participant       @relation(fields: [paidById], references: [id], onDelete: Cascade)
+  paidBy           Participant       @relation(fields: [paidById], references: [id], onDelete: Restrict)
   paidById         String
   paidFor          ExpensePaidFor[]
   groupId          String
@@ -61,10 +86,15 @@ model Expense {
   createdAt        DateTime          @default(now())
   documents        ExpenseDocument[]
   notes            String?
+  deletedAt        DateTime?
+  revision         Int               @default(0)
 
   recurrenceRule         RecurrenceRule?       @default(NONE)
   recurringExpenseLink   RecurringExpenseLink?
   recurringExpenseLinkId String?
+
+  @@index([groupId, deletedAt, expenseDate(sort: Desc)])
+  @@index([groupId, currencyCode, deletedAt])
 }
 
 model ExpenseDocument {
@@ -108,28 +138,355 @@ enum RecurrenceRule {
 
 model ExpensePaidFor {
   expense       Expense     @relation(fields: [expenseId], references: [id], onDelete: Cascade)
-  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Restrict)
   expenseId     String
   participantId String
-  shares        Int         @default(1)
+  shares        Decimal     @default(1) @db.Decimal(30, 12)
 
   @@id([expenseId, participantId])
 }
 
 model Activity {
+  sequence      Int          @unique @default(autoincrement())
   id            String       @id
-  group         Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group         Group        @relation(fields: [groupId], references: [id], onDelete: Restrict)
   groupId       String
-  time          DateTime     @default(now())
+  time          DateTime     @default(dbgenerated("clock_timestamp()"))
   activityType  ActivityType
   participantId String?
   expenseId     String?
   data          String?
+  expenseRevision Int?
+  snapshot        Json?
+  source          String       @default("web")
+  actorName       String?
+  actorUserId     String?
+  agentKeyId      String?
+
+  @@unique([expenseId, expenseRevision])
+  @@index([groupId, time(sort: Desc), id(sort: Desc)])
+  @@index([groupId, sequence(sort: Desc)])
 }
 
 enum ActivityType {
+  CREATE_GROUP
+  JOIN_GROUP
+  LEAVE_GROUP
   UPDATE_GROUP
   CREATE_EXPENSE
   UPDATE_EXPENSE
   DELETE_EXPENSE
+}
+
+
+model User {
+  oauthClient_userId OauthClient[] @relation("OauthClient_userId")
+  oauthRefreshToken_userId OauthRefreshToken[] @relation("OauthRefreshToken_userId")
+  oauthAccessToken_userId OauthAccessToken[] @relation("OauthAccessToken_userId")
+  oauthConsent_userId OauthConsent[] @relation("OauthConsent_userId")
+  id String @id
+  name String
+  email String @unique
+  emailVerified Boolean @default(false)
+  image String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sessions Session[]
+  accounts Account[]
+}
+
+model Session {
+  oauthRefreshToken_sessionId OauthRefreshToken[] @relation("OauthRefreshToken_sessionId")
+  oauthAccessToken_sessionId OauthAccessToken[] @relation("OauthAccessToken_sessionId")
+  id String @id
+  token String @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model Account {
+  id String @id
+  accountId String
+  providerId String
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken String?
+  refreshToken String?
+  idToken String?
+  accessTokenExpiresAt DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope String?
+  password String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id String @id
+  identifier String
+  value String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([identifier])
+}
+
+model Apikey {
+  id String @id
+  configId String @default("default")
+  name String?
+  start String?
+  prefix String?
+  key String @unique
+  referenceId String
+  refillInterval Int?
+  refillAmount Int?
+  lastRefillAt DateTime?
+  enabled Boolean @default(true)
+  rateLimitEnabled Boolean @default(true)
+  rateLimitTimeWindow Int?
+  rateLimitMax Int?
+  requestCount Int @default(0)
+  remaining Int?
+  lastRequest DateTime?
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  permissions String?
+  metadata String?
+  @@index([referenceId])
+  @@index([configId])
+}
+
+model AuthBootstrap {
+  id String @id
+  userId String
+  createdAt DateTime @default(now())
+}
+
+model GroupInvitation {
+  id String @id
+  groupId String
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  email String
+  participantId String?
+  participantName String?
+  participant Participant? @relation(fields: [participantId, groupId], references: [id, groupId], onDelete: Restrict)
+  tokenHash String @unique
+  createdBy String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  acceptedAt DateTime?
+  revokedAt DateTime?
+  @@index([groupId])
+}
+
+// Immutable object ownership survives removal from an expense and stays usable in history.
+model ReceiptObject {
+  id String @id
+  groupId String
+  group Group @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  url String
+  createdBy String?
+  createdAt DateTime @default(now())
+  @@unique([groupId, url])
+}
+
+model RateLimit {
+ id String @id
+ key String @unique
+ count Int
+ lastRequest BigInt
+}
+
+// Captures only the groups that existed at the private-account cutover.
+model LegacyGroupClaim {
+ groupId String @id
+}
+
+
+model OauthClient {
+  id String @id
+  clientId String @unique
+  clientSecret String?
+  clientDiscoveryId String?
+  disabled Boolean? @default(false)
+  skipConsent Boolean?
+  enableEndSession Boolean?
+  subjectType String?
+  scopes String[] @default([])
+  clientCredentialsScopes String[] @default([])
+  userId String?
+  user User? @relation("OauthClient_userId", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime?
+  updatedAt DateTime?
+  name String?
+  uri String?
+  icon String?
+  contacts String[] @default([])
+  tos String?
+  policy String?
+  softwareId String?
+  softwareVersion String?
+  softwareStatement String?
+  redirectUris String[] @default([])
+  postLogoutRedirectUris String[] @default([])
+  backchannelLogoutUri String?
+  backchannelLogoutSessionRequired Boolean?
+  tokenEndpointAuthMethod String?
+  applicationType String?
+  jwks String?
+  jwksUri String?
+  grantTypes String[] @default([])
+  responseTypes String[] @default([])
+  requirePKCE Boolean?
+  dpopBoundAccessTokens Boolean? @default(false)
+  referenceId String?
+  metadata String?
+  oauthClientResource_clientId OauthClientResource[] @relation("OauthClientResource_clientId")
+  oauthRefreshToken_clientId OauthRefreshToken[] @relation("OauthRefreshToken_clientId")
+  oauthAccessToken_clientId OauthAccessToken[] @relation("OauthAccessToken_clientId")
+  oauthConsent_clientId OauthConsent[] @relation("OauthConsent_clientId")
+  @@index([userId])
+}
+
+model OauthResource {
+  id String @id
+  identifier String @unique
+  name String
+  accessTokenTtl Int?
+  refreshTokenTtl Int?
+  signingAlgorithm String?
+  signingKeyId String?
+  allowedScopes String[] @default([])
+  customClaims String?
+  dpopBoundAccessTokensRequired Boolean? @default(false)
+  disabled Boolean? @default(false)
+  createdAt DateTime?
+  updatedAt DateTime?
+  policyVersion Int? @default(1)
+  metadata String?
+  oauthClientResource_resourceId OauthClientResource[] @relation("OauthClientResource_resourceId")
+}
+
+model OauthClientResource {
+  id String @id
+  clientId String
+  client OauthClient @relation("OauthClientResource_clientId", fields: [clientId], references: [clientId], onDelete: Cascade)
+  resourceId String
+  resource OauthResource @relation("OauthClientResource_resourceId", fields: [resourceId], references: [identifier], onDelete: Cascade)
+  metadata String?
+  createdAt DateTime?
+  @@index([clientId])
+  @@index([resourceId])
+  @@unique([clientId, resourceId])
+}
+
+model OauthRefreshToken {
+  id String @id
+  token String @unique
+  clientId String
+  client OauthClient @relation("OauthRefreshToken_clientId", fields: [clientId], references: [clientId], onDelete: Cascade)
+  sessionId String?
+  session Session? @relation("OauthRefreshToken_sessionId", fields: [sessionId], references: [id], onDelete: SetNull)
+  userId String
+  user User @relation("OauthRefreshToken_userId", fields: [userId], references: [id], onDelete: Cascade)
+  referenceId String?
+  authorizationCodeId String?
+  resources String[] @default([])
+  requestedUserInfoClaims String[] @default([])
+  expiresAt DateTime
+  createdAt DateTime
+  revoked DateTime?
+  rotatedAt DateTime?
+  rotationReplayResponse String?
+  rotationReplayExpiresAt DateTime?
+  authTime DateTime?
+  confirmation String?
+  scopes String[] @default([])
+  oauthAccessToken_refreshId OauthAccessToken[] @relation("OauthAccessToken_refreshId")
+  @@index([clientId])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([authorizationCodeId])
+}
+
+model OauthAccessToken {
+  id String @id
+  token String @unique
+  clientId String
+  client OauthClient @relation("OauthAccessToken_clientId", fields: [clientId], references: [clientId], onDelete: Cascade)
+  sessionId String?
+  session Session? @relation("OauthAccessToken_sessionId", fields: [sessionId], references: [id], onDelete: SetNull)
+  userId String?
+  user User? @relation("OauthAccessToken_userId", fields: [userId], references: [id], onDelete: Cascade)
+  referenceId String?
+  authorizationCodeId String?
+  resources String[] @default([])
+  requestedUserInfoClaims String[] @default([])
+  refreshId String?
+  refresh OauthRefreshToken? @relation("OauthAccessToken_refreshId", fields: [refreshId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime
+  revoked DateTime?
+  confirmation String?
+  scopes String[] @default([])
+  @@index([clientId])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([authorizationCodeId])
+  @@index([refreshId])
+}
+
+model OauthConsent {
+  id String @id
+  clientId String
+  client OauthClient @relation("OauthConsent_clientId", fields: [clientId], references: [clientId], onDelete: Cascade)
+  userId String?
+  user User? @relation("OauthConsent_userId", fields: [userId], references: [id], onDelete: Cascade)
+  referenceId String?
+  resources String[] @default([])
+  requestedUserInfoClaims String[] @default([])
+  scopes String[] @default([])
+  createdAt DateTime
+  updatedAt DateTime
+  @@index([clientId])
+  @@index([userId])
+}
+
+model OauthClientAssertion {
+  id String @id
+  expiresAt DateTime
+}
+
+model Jwks {
+  id String @id
+  publicKey String
+  privateKey String
+  createdAt DateTime
+  expiresAt DateTime?
+  alg String?
+  crv String?
+}
+
+// Revocation applies to JWTs immediately, independent of access-token expiry.
+// Each connection is bound to the provider's original authorization-code hash;
+// refresh rotation retains that identity, including races with revocation.
+model OauthConnection {
+  id String @id
+  authorizationCodeId String @unique
+  userId String
+  clientId String
+  scopes String[]
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+  @@index([userId, clientId])
 }

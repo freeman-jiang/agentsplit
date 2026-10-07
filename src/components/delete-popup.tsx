@@ -23,7 +23,11 @@ export function DeletePopup({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="destructive" className={className}>
+        <Button
+          type="button"
+          variant="ghost"
+          className={`text-destructive hover:text-destructive ${className ?? ''}`}
+        >
           <Trash2 className="w-4 h-4 mr-2" />
           {t('label')}
         </Button>

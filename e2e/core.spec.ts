@@ -37,11 +37,11 @@ test('creates a group, records expenses and computes balances', async ({
   const dinner = page.getByTestId('expense-card').filter({ hasText: 'Dinner' })
   await expect(dinner).toBeVisible()
   await expect(dinner).toContainText(money(90))
-  await expect(dinner).toContainText('Paid by Alice')
+  await expect(dinner).toContainText('you paid')
 
   const taxi = page.getByTestId('expense-card').filter({ hasText: 'Taxi' })
   await expect(taxi).toContainText(money(30))
-  await expect(taxi).toContainText('Paid by Bob')
+  await expect(taxi).toContainText('Bob paid')
 
   await openTab(page, 'Balances')
 

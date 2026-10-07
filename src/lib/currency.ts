@@ -1,4 +1,5 @@
 import { Locale } from '@/i18n/request'
+import { z } from 'zod'
 import currencyList from './currency-data.json'
 
 export type Currency = {
@@ -48,6 +49,7 @@ export const supportedCurrencyCodes = [
   'COP',
 ] as const
 export type supportedCurrencyCodeType = (typeof supportedCurrencyCodes)[number]
+export const expenseCurrencySchema = z.enum(supportedCurrencyCodes)
 
 export function defaultCurrencyList(
   locale: Locale = 'en-US',

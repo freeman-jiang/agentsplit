@@ -60,6 +60,23 @@ export async function selectRadixOption(
   trigger: Locator,
   option: string | RegExp,
 ): Promise<void> {
+  if (await trigger.evaluate((element) => element.tagName === 'SELECT')) {
+    const options = await trigger.locator('option').evaluateAll((elements) =>
+      elements.map((element) => ({
+        value: (element as HTMLOptionElement).value,
+        label: element.textContent ?? '',
+      })),
+    )
+    const selected = options.find((item) =>
+      typeof option === 'string'
+        ? item.label === option
+        : option.test(item.label),
+    )
+    if (!selected) throw new Error(`Missing select option: ${String(option)}`)
+    await trigger.selectOption(selected.value)
+    await expect(trigger).toHaveValue(selected.value)
+    return
+  }
   await expect(async () => {
     const choice = page.getByRole('option', { name: option }).first()
     const alreadyOpen = await choice.isVisible().catch(() => false)

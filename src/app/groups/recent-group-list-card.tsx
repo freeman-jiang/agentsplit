@@ -1,6 +1,5 @@
 import {
   archiveGroup,
-  deleteRecentGroup,
   RecentGroup,
   starGroup,
   unarchiveGroup,
@@ -14,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useToast } from '@/components/ui/use-toast'
 import { AppRouterOutput } from '@/trpc/routers/_app'
 import { StarFilledIcon } from '@radix-ui/react-icons'
 import { Calendar, MoreHorizontal, Star, Users } from 'lucide-react'
@@ -37,7 +35,6 @@ export function RecentGroupListCard({
 }) {
   const router = useRouter()
   const locale = useLocale()
-  const toast = useToast()
   const t = useTranslations('Groups')
 
   return (
@@ -92,21 +89,6 @@ export function RecentGroupListCard({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        deleteRecentGroup(group)
-                        refreshGroupsFromStorage()
-
-                        toast.toast({
-                          title: t('RecentRemovedToast.title'),
-                          description: t('RecentRemovedToast.description'),
-                        })
-                      }}
-                    >
-                      {t('removeRecent')}
-                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={(event) => {
                         event.stopPropagation()

@@ -7,9 +7,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Currency } from '@/lib/currency'
 
 type Props = {
-  totalGroupSpendings?: number
-  totalParticipantSpendings?: number
-  totalParticipantShare?: number
+  totalGroupSpendings?: string
+  totalParticipantSpendings?: string
+  totalParticipantShare?: string
   currency?: Currency
 }
 

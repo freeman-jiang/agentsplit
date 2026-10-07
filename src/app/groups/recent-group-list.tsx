@@ -1,6 +1,5 @@
 'use client'
 
-import { AddGroupByUrlButton } from '@/app/groups/add-group-by-url-button'
 import {
   getArchivedGroups,
   getRecentGroups,
@@ -106,8 +105,10 @@ function RecentGroupList_({
   refreshGroupsFromStorage: () => void
 }) {
   const t = useTranslations('Groups')
+  const [cursor, setCursor] = useState(0)
   const { data, isLoading, isError, refetch } = trpc.groups.list.useQuery({
-    groupIds: groups.map((group) => group.id).slice(0, MAX_GROUPS_PER_QUERY),
+    cursor,
+    limit: MAX_GROUPS_PER_QUERY,
   })
 
   if (isError) {
@@ -151,15 +152,32 @@ function RecentGroupList_({
   }
 
   const { starredGroupInfo, groupInfo, archivedGroupInfo } = sortGroups({
-    groups,
+    groups: data.groups,
     starredGroups,
     archivedGroups,
   })
 
   return (
     <GroupsPage reload={refreshGroupsFromStorage}>
-      <GlobalBalanceCard groups={groups} />
+      <GlobalBalanceCard groups={data.groups} />
 
+      <div className="flex gap-3">
+        {cursor > 0 && (
+          <Button
+            variant="outline"
+            onClick={() =>
+              setCursor(Math.max(0, cursor - MAX_GROUPS_PER_QUERY))
+            }
+          >
+            Previous groups
+          </Button>
+        )}
+        {data.hasMore && (
+          <Button variant="outline" onClick={() => setCursor(data.nextCursor)}>
+            More groups
+          </Button>
+        )}
+      </div>
       {starredGroupInfo.length > 0 && (
         <>
           <h2 className="mb-2">{t('starred')}</h2>
@@ -218,7 +236,7 @@ function GroupList({
   refreshGroupsFromStorage: () => void
 }) {
   return (
-    <ul className="grid gap-2 sm:grid-cols-2">
+    <ul className="grid gap-4 sm:grid-cols-2">
       {groups.map((group) => (
         <RecentGroupListCard
           key={group.id}
@@ -243,11 +261,10 @@ function GroupsPage({
   return (
     <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <h1 className="font-bold text-2xl flex-1">
+        <h1 className="font-display text-3xl font-normal tracking-tight flex-1">
           <Link href="/groups">{t('myGroups')}</Link>
         </h1>
         <div className="flex gap-2">
-          <AddGroupByUrlButton reload={reload} />
           <Button asChild>
             <Link href="/groups/create">
               {/* <Plus className="w-4 h-4 mr-2" /> */}

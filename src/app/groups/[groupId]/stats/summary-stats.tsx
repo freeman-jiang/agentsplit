@@ -40,7 +40,7 @@ export function SummaryStats({ summary, currency }: Props) {
       </CardHeader>
       <CardContent>
         {!summary || !currency ? (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-6">
             {[0, 1, 2, 3].map((index) => (
               <div key={index} className="flex flex-col gap-2">
                 <Skeleton className="h-3 w-24" />
@@ -79,7 +79,7 @@ function SummaryGrid({
   )
 
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-2 gap-x-6 gap-y-6">
       <Metric label={t('expenseCount')}>
         <span className="tabular-nums">{summary.expenseCount}</span>
       </Metric>
@@ -116,8 +116,8 @@ function Metric({
 }) {
   return (
     <div className="min-w-0">
-      <div className="text-sm text-muted-foreground">{label}</div>
-      <div className="text-lg">{children}</div>
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="mt-1 text-2xl font-medium tabular-nums">{children}</div>
     </div>
   )
 }

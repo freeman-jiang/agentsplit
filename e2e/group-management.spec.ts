@@ -28,13 +28,16 @@ test('renames a group and adds a participant afterwards', async ({ page }) => {
   await fillStable(page.locator('input[name="name"]'), renamed)
 
   // A participant already involved in an expense cannot be removed.
-  const aliceRow = page
-    .locator('li')
-    .filter({ has: page.locator('input[name="participants.0.name"]') })
-  await expect(aliceRow.getByRole('button')).toBeDisabled()
+  const bobRow = page.getByRole('listitem', { name: 'Bob', exact: true })
+  await expect(
+    bobRow.getByRole('button', { name: 'Delete person' }),
+  ).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Add participant' }).click()
-  await fillStable(page.locator('input[name="participants.3.name"]'), 'Dave')
+  await fillStable(page.getByLabel("New person's name"), 'Dave')
+  await page.getByRole('button', { name: 'Add person', exact: true }).click()
+  await expect(
+    page.getByRole('listitem', { name: 'Dave', exact: true }),
+  ).toBeVisible()
 
   // EditGroup saves in place rather than navigating.
   await page.getByRole('button', { name: 'Save', exact: true }).click()
@@ -94,12 +97,12 @@ test('records group and expense changes in the activity log', async ({
     paidBy: 'Alice',
   })
 
-  await openTab(page, 'Activity')
+  await openTab(page, 'Log')
 
   const activity = page.getByText(/Expense .*Cinema.* created by/)
   await expect(activity).toBeVisible()
-  // The active user is 'None', so the actor renders as the generic fallback.
-  await expect(activity).toContainText('Someone')
+  // The audit actor is the authenticated account, regardless of selected participant.
+  await expect(activity).toContainText('Alice')
 })
 
 test('exports the expenses as JSON', async ({ page }) => {

@@ -7,6 +7,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { groupSlugSchema } from '@/lib/group-slug'
 import { useMediaQuery } from '@/lib/hooks'
 import { trpc } from '@/trpc/client'
 import { Link as LinkIcon, Loader2, Plus, QrCode } from 'lucide-react'
@@ -34,11 +35,26 @@ export function AddGroupByUrlButton({ reload }: Props) {
     // against the current origin also lets a scanned QR carry a relative
     // /groups/<id> link, while an absolute link keeps its own origin and so
     // still fails the same-origin check below.
+    setPending(true)
     let groupId: string | undefined
     try {
       const parsed = new URL(urlToProcess, window.location.origin)
       if (parsed.origin === window.location.origin) {
         groupId = parsed.pathname.match(/^\/groups\/([^/]+)/)?.[1]
+        if (!groupId) {
+          const slug = groupSlugSchema.safeParse(parsed.pathname.split('/')[1])
+          if (slug.success && slug.data) {
+            let cursor = 0
+            while (true) {
+              const result = await utils.groups.list.fetch({ cursor })
+              groupId = result.groups.find(
+                (group) => group.slug === slug.data,
+              )?.id
+              if (groupId || !result.hasMore) break
+              cursor = result.nextCursor
+            }
+          }
+        }
       }
     } catch {
       // Unparseable input is treated as "not found" below.
@@ -132,7 +148,7 @@ export function AddGroupByUrlButton({ reload }: Props) {
             <Input
               type="url"
               required
-              placeholder="https://spliit.app/..."
+              placeholder="https://agentsplit.freemanjiang.com/groups/..."
               className="flex-1 min-w-[200px] text-base"
               value={url}
               disabled={pending}

@@ -4,6 +4,7 @@ function byAmountExpense(amount: string, shares: string[]) {
   return {
     expenseDate: new Date('2026-09-01'),
     title: 'Dinner',
+    currencyCode: 'USD',
     amount,
     paidBy: 'a',
     splitMode: 'BY_AMOUNT',
@@ -47,16 +48,15 @@ describe('expenseFormSchema, split by amount', () => {
     ).toEqual(['amountSum'])
   })
 
-  it('sums amounts typed with a decimal comma', () => {
+  it('rejects amounts typed with a decimal comma', () => {
     expect(
       issueMessages(byAmountExpense('100', ['50', '30', '20,00'])),
-    ).toEqual([])
+    ).toContain('Enter a decimal amount such as 12.34')
   })
 
   it('reports an emptied amount instead of throwing on it', () => {
     expect(issueMessages(byAmountExpense('100', ['60', '']))).toEqual([
-      'noZeroShares',
-      'amountSum',
+      'Enter a decimal amount such as 12.34',
     ])
   })
 })

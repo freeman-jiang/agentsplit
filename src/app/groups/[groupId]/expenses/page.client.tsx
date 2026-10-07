@@ -1,18 +1,12 @@
 'use client'
 
-import { ActiveUserModal } from '@/app/groups/[groupId]/expenses/active-user-modal'
 import { CreateFromReceiptButton } from '@/app/groups/[groupId]/expenses/create-from-receipt-button'
 import { ExpenseList } from '@/app/groups/[groupId]/expenses/expense-list'
 import ExportButton from '@/app/groups/[groupId]/export-button'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TrackPage } from '@/lib/analytics/track-page'
+import { trpc } from '@/trpc/client'
 import { Plus } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
@@ -25,36 +19,45 @@ export default function GroupExpensesPageClient({
 }) {
   const t = useTranslations('Expenses')
   const { groupId } = useCurrentGroup()
+  const { data } = trpc.groups.get.useQuery({ groupId })
 
   return (
     <>
+      {data && !data.membership.participantId && (
+        <p className="mb-4 border p-3 text-sm">
+          Your account is not linked to a participant yet. An admin can link it
+          once in{' '}
+          <Link className="underline" href={`/groups/${groupId}/edit#members`}>
+            group settings
+          </Link>
+          . Personal balances will appear after setup.
+        </p>
+      )}
       <TrackPage path={`/groups/${groupId}/expenses`} />
-      <Card className="mb-4 rounded-none -mx-4 border-x-0 sm:border-x sm:rounded-lg sm:mx-0">
-        <div className="flex flex-1">
-          <CardHeader className="flex-1 p-4 sm:p-6">
+      <Card className="mb-4 min-w-0 border-0 bg-transparent">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardHeader className="p-0">
             <CardTitle>{t('title')}</CardTitle>
-            <CardDescription>{t('description')}</CardDescription>
           </CardHeader>
-          <CardHeader className="p-4 sm:p-6 flex flex-row space-y-0 gap-2">
+          <CardHeader className="flex flex-row flex-wrap items-center space-y-0 gap-2 p-0">
             <ExportButton groupId={groupId} />
             {enableReceiptExtract && <CreateFromReceiptButton />}
-            <Button asChild size="icon">
+            <Button asChild>
               <Link
                 href={`/groups/${groupId}/expenses/create`}
                 title={t('create')}
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="me-2 w-4 h-4" />
+                {t('create')}
               </Link>
             </Button>
           </CardHeader>
         </div>
 
-        <CardContent className="p-0 pt-2 pb-4 sm:pb-6 flex flex-col gap-4 relative">
+        <CardContent className="relative flex flex-col gap-4 px-0 pt-6 pb-4 sm:pb-6">
           <ExpenseList />
         </CardContent>
       </Card>
-
-      <ActiveUserModal groupId={groupId} />
     </>
   )
 }

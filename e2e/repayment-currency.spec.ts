@@ -1,126 +1,71 @@
+import type { Page } from '@playwright/test'
 import {
   addExpense,
   createGroup,
   expectBalance,
-  expenseCard,
-  EXPENSES_URL,
-  openExpense,
   openTab,
   reimbursementRow,
   uniqueSuffix,
 } from './app'
 import { expect, test } from './fixtures'
-import { fieldByLabel, money, selectRadixOption } from './ui'
+import { money } from './ui'
 
-// Groups default to USD, so picking EUR forces a conversion. The rate is
-// mocked, so 1 EUR is always exactly 1.25 USD.
-test.use({ exchangeRate: 1.25 })
-
-const PARTICIPANTS = ['Alice', 'Bob']
-
-/** Creates a group where Bob owes Alice 50, and opens "Mark as paid". */
-async function openRepaymentForm(page: Page, name: string): Promise<string> {
-  const groupId = await createGroup(page, {
-    name: `${name} ${uniqueSuffix()}`,
-    participants: PARTICIPANTS,
+async function openRepaymentForm(page: Page) {
+  const id = await createGroup(page, {
+    name: `Repayment ${uniqueSuffix()}`,
+    participants: ['Alice', 'Bob'],
   })
-  await addExpense(page, groupId, {
-    title: 'Hotel',
-    amount: '100',
-    paidBy: 'Alice',
-  })
-
+  await addExpense(page, id, { title: 'Hotel', amount: '100', paidBy: 'Alice' })
   await openTab(page, 'Balances')
   await reimbursementRow(page, 'Bob', 'Alice')
-    .getByRole('link', { name: 'Mark as paid' })
+    .getByRole('link', { name: 'Record payment' })
     .click()
-  await page.waitForURL(/\/expenses\/create\?.*reimbursement=yes/, {
-    timeout: 30_000,
-  })
-  return groupId
+  await page.waitForURL(/\/payments\/create\?/)
+  return id
 }
-
-const originalAmount = (page: Page) =>
-  page.locator('input[name="originalAmount"]')
-
-type Page = import('@playwright/test').Page
-
-test('derives the transfer amount from the balance being settled', async ({
+test('repayment defaults to the amount and currency of the debt', async ({
   page,
 }) => {
-  await openRepaymentForm(page, 'E2E Repayment')
-
-  // The balance is the authoritative figure and stays in the group currency.
-  await expect(page.locator('input[name="amount"]')).toHaveValue(/^50/)
-
-  await selectRadixOption(
-    page,
-    fieldByLabel(page, 'Currency of expense').getByRole('combobox'),
-    /Euro \(EUR\)/,
-  )
-
-  // 50 USD at 1 EUR = 1.25 USD is 40 EUR, filled in without the user typing.
-  // This is the reverse of the regular-expense direction, where the foreign
-  // amount is what drives the group-currency one.
-  await expect(originalAmount(page)).toHaveValue('40.00')
-  await expect(page.getByText('Amount to transfer')).toBeVisible()
-  // Derived, so it must not be editable.
-  await expect(originalAmount(page)).toHaveAttribute('readonly', '')
+  await openRepaymentForm(page)
+  await expect(page.locator('input[name="amount"]')).toHaveValue('50')
+  await expect(
+    page.getByRole('combobox', { name: 'Currency', exact: true }),
+  ).toHaveValue('USD')
+  await expect(page.locator('input[name="originalAmount"]')).toHaveCount(0)
 })
-
-test('settles the balance exactly and keeps the transferred amount', async ({
+test('settles a same-currency debt exactly and preserves the payment', async ({
   page,
 }) => {
-  await openRepaymentForm(page, 'E2E Repayment Settle')
-
-  await selectRadixOption(
-    page,
-    fieldByLabel(page, 'Currency of expense').getByRole('combobox'),
-    /Euro \(EUR\)/,
-  )
-  await expect(originalAmount(page)).toHaveValue('40.00')
-
-  await page.getByRole('button', { name: 'Create', exact: true }).click()
-  await page.waitForURL(EXPENSES_URL, { timeout: 30_000 })
-
-  // The card carries both figures: what settles the balance and what moved.
-  const card = expenseCard(page, 'Reimbursement')
-  await expect(card).toContainText(money(50))
-  await expect(card).toContainText(money(40, 'EUR'))
-
-  // The point of keeping the group amount authoritative: the balance is zero,
-  // not "zero apart from a rounding remainder".
+  await openRepaymentForm(page)
+  await page
+    .getByRole('button', { name: 'Record payment', exact: true })
+    .click()
+  await page.waitForURL(/\/payments$/)
+  await expect(page.getByTestId('payment-row')).toContainText(money(50))
   await openTab(page, 'Balances')
   await expectBalance(page, 'Alice', 0)
   await expectBalance(page, 'Bob', 0)
-
-  // Reopening must not rewrite the stored amount at today's rate.
-  await openTab(page, 'Expenses')
-  await openExpense(page, 'Reimbursement')
-  await expect(originalAmount(page)).toHaveValue(/^40/)
+  await page.getByRole('tab', { name: 'Payments', exact: true }).click()
+  await page.getByTestId('payment-row').getByRole('link').click()
+  await expect(page.locator('input[name="amount"]')).toHaveValue('50')
+  await expect(
+    page.getByRole('combobox', { name: 'Currency', exact: true }),
+  ).toHaveValue('USD')
 })
-
-test('refreshing the exchange rate does not submit the form', async ({
+test('changing payment currency keeps face value and never calls an exchange API', async ({
   page,
 }) => {
-  const groupId = await openRepaymentForm(page, 'E2E Repayment Refresh')
-
-  await selectRadixOption(
-    page,
-    fieldByLabel(page, 'Currency of expense').getByRole('combobox'),
-    /Euro \(EUR\)/,
-  )
-  await expect(originalAmount(page)).toHaveValue('40.00')
-
-  await page.getByRole('button', { name: 'Refresh' }).click()
-
-  // Asserting that nothing happens, so it needs a settling period rather than
-  // an immediate check: a submit navigates a second or two later, and
-  // toHaveURL would match the create URL before that lands.
+  const requests: string[] = []
+  page.on('request', (r) => {
+    if (r.url().includes('frankfurter')) requests.push(r.url())
+  })
+  await openRepaymentForm(page)
+  await page
+    .getByRole('combobox', { name: 'Currency', exact: true })
+    .selectOption('EUR')
+  await expect(page.locator('input[name="amount"]')).toHaveValue('50')
   await expect(
-    page.waitForURL(EXPENSES_URL, { timeout: 5_000 }),
-  ).rejects.toThrow()
-
-  await expect(page).toHaveURL(new RegExp(`/groups/${groupId}/expenses/create`))
-  await expect(originalAmount(page)).toHaveValue('40.00')
+    page.getByRole('button', { name: 'Refresh', exact: true }),
+  ).toHaveCount(0)
+  expect(requests).toEqual([])
 })

@@ -1,4 +1,4 @@
-import { amountAsDecimal, formatCurrency } from './utils'
+import { formatCurrency, formatDecimal } from './utils'
 
 type ChartCurrency = Parameters<typeof formatCurrency>[0]
 
@@ -8,14 +8,14 @@ export function formatChartCurrency({
   locale,
   roundAmounts,
 }: {
-  amount: number
+  amount: string
   currency: ChartCurrency
   locale: string
   roundAmounts: boolean
 }) {
   if (!roundAmounts) return formatCurrency(currency, amount, locale)
 
-  const formattedAmount = amountAsDecimal(amount, currency)
+  const formattedAmount = amount
   const format = new Intl.NumberFormat(locale, {
     currency: currency.code.length ? currency.code : 'USD',
     maximumFractionDigits: 0,
@@ -23,10 +23,9 @@ export function formatChartCurrency({
     style: 'currency',
   })
 
-  if (currency.code.length) return format.format(formattedAmount)
+  if (currency.code.length) return formatDecimal(format, formattedAmount)
 
-  return format
-    .formatToParts(formattedAmount)
-    .map((part) => (part.type === 'currency' ? currency.symbol : part.value))
-    .join('')
+  return formatDecimal(format, formattedAmount)
+    .replace('US$', currency.symbol)
+    .replace('$', currency.symbol)
 }

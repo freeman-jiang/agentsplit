@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Currency } from '@/lib/currency'
+import { Decimal } from '@/lib/money'
 import {
   applyMonthlySpendingView,
   MonthlyCategorySpending,
@@ -57,8 +58,8 @@ export function MonthlySpending({
   )
   const visibleCategories = useMemo(
     () =>
-      visibleSpending?.categories.filter(
-        (category) => category.expenseAmount > 0,
+      visibleSpending?.categories.filter((category) =>
+        new Decimal(category.expenseAmount).gt(0),
       ) ?? [],
     [visibleSpending],
   )

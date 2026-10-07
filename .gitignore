@@ -51,3 +51,9 @@ postgres-data
 
 # performance suite output (perf/run.ts)
 /perf-report.json
+
+# Upstream reference checkouts
+/references/
+
+# Private MCP connection keys
+/.mcp-credentials/

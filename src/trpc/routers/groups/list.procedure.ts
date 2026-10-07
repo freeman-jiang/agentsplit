@@ -6,10 +6,26 @@ import { z } from 'zod'
 export const listGroupsProcedure = baseProcedure
   .input(
     z.object({
-      groupIds: z.array(z.string().min(1).max(64)).max(MAX_GROUPS_PER_QUERY),
+      groupIds: z
+        .array(z.string().min(1).max(64))
+        .max(MAX_GROUPS_PER_QUERY)
+        .optional(),
+      cursor: z.number().int().min(0).optional().default(0),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_GROUPS_PER_QUERY)
+        .optional()
+        .default(MAX_GROUPS_PER_QUERY),
     }),
   )
-  .query(async ({ input: { groupIds } }) => {
-    const groups = await getGroups(groupIds)
-    return { groups }
+  .query(async ({ ctx, input: { groupIds, cursor, limit } }) => {
+    const available = groupIds ?? ctx.principal?.groupIds ?? []
+    const groups = await getGroups(available.slice(cursor, cursor + limit))
+    return {
+      groups,
+      hasMore: available.length > cursor + limit,
+      nextCursor: cursor + limit,
+    }
   })

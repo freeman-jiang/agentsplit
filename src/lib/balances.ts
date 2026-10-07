@@ -1,126 +1,111 @@
 import { Participant } from '@/generated/prisma/browser'
 import { getGroupExpenses } from '@/lib/api'
 import { getExpenseShares } from '@/lib/shares'
+import { add, Decimal, subtract } from './money'
 
 export type Balances = Record<
   Participant['id'],
-  { paid: number; paidFor: number; total: number }
+  { paid: string; paidFor: string; total: string }
 >
-
 export type Reimbursement = {
   from: Participant['id']
   to: Participant['id']
-  amount: number
+  amount: string
+}
+const zero = () => ({ paid: '0', paidFor: '0', total: '0' })
+
+export function groupExpensesByCurrency<T extends { currencyCode: string }>(
+  expenses: readonly T[],
+) {
+  const grouped = new Map<string, T[]>()
+  for (const expense of expenses) {
+    const rows = grouped.get(expense.currencyCode) ?? []
+    rows.push(expense)
+    grouped.set(expense.currencyCode, rows)
+  }
+  return [...grouped]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([currencyCode, expenses]) => ({ currencyCode, expenses }))
 }
 
 export function getBalances(
-  expenses: NonNullable<Awaited<ReturnType<typeof getGroupExpenses>>>,
+  expenses: Awaited<ReturnType<typeof getGroupExpenses>>,
 ): Balances {
+  if (new Set(expenses.map((expense) => expense.currencyCode)).size > 1)
+    throw new Error('Balances must be calculated separately per currency')
   const balances: Balances = {}
-
   for (const expense of expenses) {
     const paidBy = expense.paidBy.id
-
-    if (!balances[paidBy]) balances[paidBy] = { paid: 0, paidFor: 0, total: 0 }
-    balances[paidBy].paid += expense.amount
-
-    const dividedAmounts = getExpenseShares({
+    balances[paidBy] ??= zero()
+    balances[paidBy].paid = add(balances[paidBy].paid, expense.amount)
+    const shares = getExpenseShares({
       id: expense.id,
+      paidById: expense.paidBy.id,
       amount: expense.amount,
+      currencyCode: expense.currencyCode,
       splitMode: expense.splitMode,
       paidFor: expense.paidFor.map(({ participant, shares }) => ({
         participantId: participant.id,
         shares,
       })),
     })
-
-    dividedAmounts.forEach((dividedAmount, participantId) => {
-      if (!balances[participantId])
-        balances[participantId] = { paid: 0, paidFor: 0, total: 0 }
-
-      balances[participantId].paidFor += dividedAmount
-    })
+    for (const [person, amount] of shares) {
+      balances[person] ??= zero()
+      balances[person].paidFor = add(balances[person].paidFor, amount)
+    }
   }
-
-  // Every share is apportioned as a whole minor unit, so the rounding below is
-  // a no-op and only kept as a guard. It is what used to break the books: the
-  // accumulated float totals were rounded per participant, which does not
-  // preserve a sum, and the residue ended up in the group's total balance.
-  for (const participantId in balances) {
-    // add +0 to avoid negative zeros
-    balances[participantId].paidFor =
-      Math.round(balances[participantId].paidFor) + 0
-    balances[participantId].paid = Math.round(balances[participantId].paid) + 0
-
-    balances[participantId].total =
-      balances[participantId].paid - balances[participantId].paidFor
-  }
+  for (const balance of Object.values(balances))
+    balance.total = subtract(balance.paid, balance.paidFor)
   return balances
 }
 
 export function getPublicBalances(reimbursements: Reimbursement[]): Balances {
   const balances: Balances = {}
-  reimbursements.forEach((reimbursement) => {
-    if (!balances[reimbursement.from])
-      balances[reimbursement.from] = { paid: 0, paidFor: 0, total: 0 }
-
-    if (!balances[reimbursement.to])
-      balances[reimbursement.to] = { paid: 0, paidFor: 0, total: 0 }
-
-    balances[reimbursement.from].paidFor += reimbursement.amount
-    balances[reimbursement.from].total -= reimbursement.amount
-
-    balances[reimbursement.to].paid += reimbursement.amount
-    balances[reimbursement.to].total += reimbursement.amount
-  })
+  for (const { from, to, amount } of reimbursements) {
+    balances[from] ??= zero()
+    balances[to] ??= zero()
+    balances[from].paidFor = add(balances[from].paidFor, amount)
+    balances[from].total = subtract(balances[from].total, amount)
+    balances[to].paid = add(balances[to].paid, amount)
+    balances[to].total = add(balances[to].total, amount)
+  }
   return balances
 }
 
-/**
- * A comparator that is stable across reimbursements.
- * This ensures that a participant executing a suggested reimbursement
- * does not result in completely new repayment suggestions.
- */
-function compareBalancesForReimbursements(b1: any, b2: any): number {
-  // positive balances come before negative balances
-  if (b1.total > 0 && 0 > b2.total) {
-    return -1
-  } else if (b2.total > 0 && 0 > b1.total) {
-    return 1
-  }
-  // if signs match, sort based on userid
-  return b1.participantId < b2.participantId ? -1 : 1
-}
-
+/** Keep repayment suggestions stable across settlements. */
 export function getSuggestedReimbursements(
   balances: Balances,
 ): Reimbursement[] {
-  const balancesArray = Object.entries(balances)
-    .map(([participantId, { total }]) => ({ participantId, total }))
-    .filter((b) => b.total !== 0)
-  balancesArray.sort(compareBalancesForReimbursements)
-  const reimbursements: Reimbursement[] = []
-  while (balancesArray.length > 1) {
-    const first = balancesArray[0]
-    const last = balancesArray[balancesArray.length - 1]
-    const amount = first.total + last.total
-    if (first.total > -last.total) {
-      reimbursements.push({
-        from: last.participantId,
-        to: first.participantId,
-        amount: -last.total,
-      })
-      first.total = amount
-      balancesArray.pop()
-    } else {
-      reimbursements.push({
-        from: last.participantId,
-        to: first.participantId,
-        amount: first.total,
-      })
-      last.total = amount
-      balancesArray.shift()
-    }
+  const rows = Object.entries(balances)
+    .map(([participantId, { total }]) => ({
+      participantId,
+      total: new Decimal(total),
+    }))
+    .filter((row) => !row.total.isZero())
+  rows.sort((a, b) =>
+    a.total.isPositive() !== b.total.isPositive()
+      ? a.total.isPositive()
+        ? -1
+        : 1
+      : a.participantId.localeCompare(b.participantId),
+  )
+  const result: Reimbursement[] = []
+  while (rows.length > 1) {
+    const first = rows[0],
+      last = rows[rows.length - 1]
+    const amount = Decimal.min(first.total, last.total.negated())
+    if (!amount.isPositive()) throw new Error('Balances do not net to zero')
+    result.push({
+      from: last.participantId,
+      to: first.participantId,
+      amount: amount.toFixed(),
+    })
+    first.total = first.total.minus(amount)
+    last.total = last.total.plus(amount)
+    if (first.total.isZero()) rows.shift()
+    if (last.total.isZero()) rows.pop()
   }
-  return reimbursements.filter(({ amount }) => Math.round(amount) + 0 !== 0)
+  if (rows.length && !rows[0].total.isZero())
+    throw new Error('Balances do not net to zero')
+  return result
 }
