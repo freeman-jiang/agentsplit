@@ -700,3 +700,7 @@ Before/after comparison preserved all 2 groups, 32 expense records, 6 participan
 still enabled. The signed-in production browser visited every group tab and
 confirmed the current personal net remained visible in the shared rail. The
 stacked vendor/description expense rows were visually inspected on production.
+
+## Unified People list — 2026-10-07
+
+Deployed `f93ef6a` through Coolify `iivcedl58pagtpnpcoxb3chb`. Live Settings shows one People list with per-person invitations; local tests covered joining, permission visibility, name edits, deletion protection and mobile layout. Production fingerprints for ledger, receipt, audit and access records matched before/after across nine tables. All services are healthy; Macademia's net remains $530.65 owed to Freeman.
