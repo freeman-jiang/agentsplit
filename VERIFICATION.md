@@ -622,8 +622,11 @@ Verification:
   Its header controls routing only; destination authorization remains mandatory.
 - No dependencies were added. Lint retains the two existing warnings.
 
-Production rollout is authorized. A private scoped database dump was saved on
+The production backup was explicitly authorized. A private scoped database dump was saved on
 Oracle at `/home/ubuntu/agentsplit-backups/slug-vendor-01a1143b/database.dump`
 (69,111 bytes), alongside a preservation snapshot covering 2 groups, 31 expense
 records, 6 participants, 89 split rows and 86 audit records. Deployment and the
-revision-checked `macademia` assignment are pending live verification below.
+revision-checked `macademia` assignment are pending. Automatic approval review
+separately rejected queuing deployment as requiring explicit deployment approval.
+The application commit `cb05bbb149203e15f4a678657cb28e9c6daadf72` is pushed;
+production continues running the previous release.
