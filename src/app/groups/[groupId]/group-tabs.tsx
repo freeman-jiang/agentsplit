@@ -3,12 +3,12 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { groupPath } from '@/lib/group-slug'
 import {
-  Activity,
   ArrowLeftRight,
   BarChart3,
   Info,
   Receipt,
   Scale,
+  ScrollText,
   Settings,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -36,7 +36,7 @@ export function GroupTabs({ groupId }: Props) {
     { value: 'balances', label: t('Balances.title'), Icon: Scale },
     { value: 'information', label: t('Information.title'), Icon: Info },
     { value: 'stats', label: t('Stats.title'), Icon: BarChart3 },
-    { value: 'activity', label: t('Activity.title'), Icon: Activity },
+    { value: 'activity', label: t('Activity.title'), Icon: ScrollText },
     { value: 'edit', label: t('Settings.title'), Icon: Settings },
   ]
 

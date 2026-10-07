@@ -1,6 +1,7 @@
 'use client'
 
 import { CurrencySelector } from '@/components/currency-selector'
+import { ExpenseLog } from '@/components/expense-log'
 import { ExpenseMetadata } from '@/components/expense-metadata'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -115,6 +116,7 @@ function PaymentForm({ group, payment }: { group: Group; payment?: Payment }) {
           attribution={payment.attribution}
         />
       )}
+      {payment && <ExpenseLog groupId={group.id} expenseId={payment.id} />}
       <p className="text-sm text-muted-foreground">
         Record money already paid between two people.
       </p>

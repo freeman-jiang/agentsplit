@@ -109,7 +109,7 @@ test('balance rail stays beside every group tab and expense editor', async ({
     'Balances',
     'Information',
     'Stats',
-    'Activity',
+    'Log',
     'Settings',
   ] as const) {
     await openTab(page, name)
@@ -139,7 +139,7 @@ test('balance rail stays beside every group tab and expense editor', async ({
     'Balances',
     'Information',
     'Stats',
-    'Activity',
+    'Log',
     'Settings',
   ] as const) {
     await openTab(page, name)

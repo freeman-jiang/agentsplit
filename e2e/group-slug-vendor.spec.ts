@@ -101,7 +101,7 @@ test('optional vendor survives edits and custom URLs preserve navigation and acc
   await expect(
     page.getByText('Hangers and sponges', { exact: true }),
   ).toBeVisible()
-  await page.getByRole('tab', { name: 'Activity', exact: true }).click()
+  await page.getByRole('tab', { name: 'Log', exact: true }).click()
   await expect(
     page.getByText(/Costco — Hangers and sponges/).first(),
   ).toBeVisible()

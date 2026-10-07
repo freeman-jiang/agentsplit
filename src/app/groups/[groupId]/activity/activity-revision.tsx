@@ -42,7 +42,7 @@ export function ActivityRevision({ activity }: { activity: Activity }) {
   if (!snapshot)
     return (
       <p className="mx-1 text-xs text-muted-foreground">
-        {label('legacy', 'Older summary; a complete revision was not saved.')}
+        {label('legacy', 'No saved revision details for this event.')}
       </p>
     )
   if (snapshot.kind === 'group')
