@@ -765,3 +765,23 @@ Preservation fingerprints cover 2 groups, 34 expense records, 6 participants,
 97 split rows, 113 audit rows, 11 expense documents, 11 receipt objects,
 2 memberships, 2 invitations and 2 existing API-key identities. Live rollout
 verification is recorded separately after deployment.
+
+Live OAuth deployment `sxqcea3utdik5jywvejfmwih` finished on application commit
+`bab4a0ad7d37223d4944e9f287c57de4e3c20a72`. App, PostgreSQL and Garage are healthy.
+The read-only live verifier passes both protected-resource URLs, the canonical
+issuer/authorization/token metadata, S256, CIMD, signed-client support, public-only
+JWKS, missing/forged credential rejection, all 17 tool auth declarations, and
+existing X-API-Key and legacy Authorization access. The real public ChatGPT client
+resolves and reaches sign-in. Every saved ledger/receipt/audit/access fingerprint
+and both existing API-key identities match the pre-deployment backup; both audit
+protection triggers remain enabled.
+
+The actual ChatGPT personal-account UI now discovers OAuth successfully and
+selects CIMD automatically with the stable ChatGPT client document and callback.
+`offline_access` is configured as a base scope. Continuing the setup reaches the
+live AgentSplit consent page for the existing account, requesting account/email,
+read/write ledger access and renewable access. No real-user OAuth grant has been
+approved: that final access decision is pending. The real ChatGPT token exchange,
+linked tool use and desktop/mobile availability must not be described as verified
+until that connection is completed. The entire equivalent flow, including signed
+client authentication, was verified with isolated mock agents above.

@@ -5,7 +5,7 @@ AgentSplit remains a self-hosted Better Auth application with Google login. It n
 ## Connect ChatGPT
 
 1. On ChatGPT web, open **Plugins → Add → Add custom MCP server**.
-2. Name it **AgentSplit**, use `https://agentsplit.freemanjiang.com/api/mcp`, and select **OAuth**. Discovery supplies the endpoints and client identity; do not paste an AgentSplit API key or a Google secret.
+2. Name it **AgentSplit**, use `https://agentsplit.freemanjiang.com/api/mcp`, and select **OAuth**. In Advanced OAuth settings, use the discovered **CIMD** registration method and set **Base scopes** to `offline_access` so the connection can refresh. Discovery supplies the endpoints and client identity; do not paste an AgentSplit API key or a Google secret.
 3. Connect, sign in to AgentSplit through Google if needed, and review the consent screen. Leave changes enabled for read/write tools, or uncheck changes for read-only access.
 4. Use the same ChatGPT account on other supported ChatGPT surfaces. A cloud-linked personal MCP connection is different from a desktop-only local MCP configuration. Actual availability on web, desktop and mobile must be verified in those clients; server OAuth support alone does not prove every client surface works.
 5. Revoke the connection in AgentSplit **Account settings → Connected apps**. API keys remain independent and continue to work for Codex, scripts and automation.
