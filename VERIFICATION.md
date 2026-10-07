@@ -812,3 +812,19 @@ other OAuth clients, first-time accounts and invitation ordering.
 
 These are protocol/browser tests with isolated mock agents, not a claim that a
 real Claude account has completed consent or used AgentSplit tools.
+
+## Agent setup instructions — October 7, 2026
+
+The Agents page now starts with an OAuth/API-key choice, a shared copyable
+endpoint, and expandable client-specific steps. ChatGPT and Claude instructions
+were checked against their official quickstart and custom-connector guides;
+Claude's older dialog and organization-owner setup are noted. Manual Codex and
+configuration-file instructions remain available under API-key setup. Copied
+agent instructions now recognize both authentication methods.
+
+Production build, types, formatting and diff checks passed. Lint has only the
+two previously recorded warnings. The two existing setup/layout browser tests
+passed; setup coverage checks exact authentication choices, documentation links,
+configuration panels and clipboard values at 320px/1280px. A focused screenshot
+rerun passed after scrolling to the top before capture, and the mobile image was
+visually inspected. No auth behavior, dependency or database schema changed.

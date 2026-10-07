@@ -4,7 +4,7 @@ import { expect, test } from './fixtures'
 test('signed-in workspace offers usable agent connection instructions', async ({
   page,
   baseURL,
-}) => {
+}, testInfo) => {
   await page.setViewportSize({ width: 320, height: 1000 })
   await page.goto('/')
   await expect(page).toHaveURL(/\/groups$/)
@@ -23,8 +23,51 @@ test('signed-in workspace offers usable agent connection instructions', async ({
     page.getByText(`${baseURL}/api/mcp`, { exact: true }),
   ).toBeVisible()
   await expect(
-    page.getByRole('heading', { name: 'Codex app', exact: true }),
+    page.getByRole('heading', { name: 'OAuth · Recommended', exact: true }),
   ).toBeVisible()
+  await page
+    .locator('summary')
+    .filter({ hasText: /^ChatGPT$/ })
+    .click()
+  await expect(page.getByText('Base scopes', { exact: true })).toBeVisible()
+  await expect(page.getByText('offline_access', { exact: true })).toBeVisible()
+  await page
+    .locator('summary')
+    .filter({ hasText: /^Claude$/ })
+    .click()
+  await expect(page.getByText('Sign in now', { exact: true })).toBeVisible()
+  await expect(
+    page.getByText('Use Claude’s published identity (Recommended)', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('link', { name: 'Official ChatGPT setup guide' }),
+  ).toHaveAttribute('href', 'https://developers.openai.com/plugins/quickstart')
+  await expect(
+    page.getByRole('link', { name: 'Official Claude setup guide' }),
+  ).toHaveAttribute(
+    'href',
+    'https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp',
+  )
+  for (const width of [320, 1280]) {
+    await page.setViewportSize({ width, height: 1000 })
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true)
+    await page.screenshot({
+      path: testInfo.outputPath(`agent-setup-${width}.png`),
+      fullPage: true,
+    })
+  }
+  await page.setViewportSize({ width: 320, height: 1000 })
+  await page
+    .locator('summary')
+    .filter({ hasText: /^Codex app$/ })
+    .click()
   await expect(
     page.getByText('your API key, exactly as copied', { exact: true }),
   ).toBeVisible()
@@ -36,7 +79,10 @@ test('signed-in workspace offers usable agent connection instructions', async ({
   await expect(page.locator('pre').first()).toContainText(
     'env_http_headers = { "X-API-Key" = "AGENTSPLIT_API_KEY" }',
   )
-  await page.locator('summary').filter({ hasText: 'Claude Code' }).click()
+  await page
+    .locator('summary')
+    .filter({ hasText: 'Claude Code with an API key' })
+    .click()
   await expect(page.locator('pre').nth(1)).toContainText(
     '"X-API-Key": "${AGENTSPLIT_API_KEY}"',
   )
@@ -58,6 +104,18 @@ test('signed-in workspace offers usable agent connection instructions', async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true)
+  await page
+    .locator('summary')
+    .filter({ hasText: 'Detailed agent instructions' })
+    .click()
+  await page
+    .getByRole('button', { name: 'Copy agent instructions', exact: true })
+    .click()
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toContain(
+      'Use the OAuth connection or API key already configured in my client.',
+    )
 })
 
 test('expense list uses consistent insets and theme surfaces, and search clears accessibly', async ({
