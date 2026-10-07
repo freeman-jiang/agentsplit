@@ -21,11 +21,18 @@ export const EditGroup = () => {
       {data?.access.role === 'admin' && (
         <GroupForm
           group={data?.group}
+          showParticipants={false}
           onSubmit={async (groupFormValues, participantId) => {
             const result = await mutateAsync({
               groupId,
               participantId,
-              groupFormValues,
+              groupFormValues: {
+                name: groupFormValues.name,
+                slug: groupFormValues.slug,
+                information: groupFormValues.information,
+                currency: groupFormValues.currency,
+                currencyCode: groupFormValues.currencyCode,
+              },
               expectedRevision: data?.group.revision,
             })
             await utils.groups.invalidate()
