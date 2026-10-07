@@ -91,6 +91,13 @@ const ExpenseListForSearch = ({
 
   if (isLoading) return <ExpensesLoading />
 
+  if (expenses.length === 0 && searchText.trim())
+    return (
+      <p className="py-6 text-sm text-muted-foreground">
+        No expenses match your search.
+      </p>
+    )
+
   if (expenses.length === 0)
     return (
       <p className="text-sm py-6">

@@ -50,6 +50,7 @@ export function EditExpenseForm({
           expectedRevision: expense.revision,
         })
         utils.groups.expenses.invalidate()
+        utils.groups.balances.invalidate()
         utils.groups.stats.invalidate()
         router.push(`/groups/${group.id}`)
       }}
@@ -61,6 +62,7 @@ export function EditExpenseForm({
           expectedRevision: expense.revision,
         })
         utils.groups.expenses.invalidate()
+        utils.groups.balances.invalidate()
         utils.groups.stats.invalidate()
         router.push(`/groups/${group.id}`)
       }}
