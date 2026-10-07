@@ -106,6 +106,7 @@ export const listGroupExpensesProcedure = baseProcedure
           isReimbursement,
           recurrenceRule,
           readOnly: ctx.readOnly,
+          viewerUserId: ctx.principal.userId,
         })
       return {
         expenses: expenses.slice(0, limit).map((expense) => ({

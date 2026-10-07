@@ -32,7 +32,10 @@ export const getGroupExpenseProcedure = baseProcedure
       }),
   )
   .query(
-    async ({ input: { groupId, expenseId, revision, asOf, atActivityId } }) => {
+    async ({
+      ctx,
+      input: { groupId, expenseId, revision, asOf, atActivityId },
+    }) => {
       let history:
         | {
             activityId: string
@@ -85,7 +88,12 @@ export const getGroupExpenseProcedure = baseProcedure
         })
       }
       const attribution = (
-        await expenseAttributions(groupId, [expenseId], throughSequence)
+        await expenseAttributions(
+          groupId,
+          [expenseId],
+          throughSequence,
+          ctx.principal.userId,
+        )
       ).get(expenseId) ?? { createdBy: null, updatedBy: null }
       return {
         history,

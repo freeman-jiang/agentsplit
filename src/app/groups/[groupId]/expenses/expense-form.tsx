@@ -1,6 +1,7 @@
 import { CategorySelector } from '@/components/category-selector'
 import { CurrencySelector } from '@/components/currency-selector'
 import { ExpenseDocumentsInput } from '@/components/expense-documents-input'
+import { ExpenseMetadata } from '@/components/expense-metadata'
 import { SubmitButton } from '@/components/submit-button'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -471,13 +472,12 @@ export function ExpenseForm({
           {t(`${sExpense}.${isCreate ? 'create' : 'edit'}`)}
         </h1>
         {expense && (
-          <p className="-mt-5 mb-8 text-xs text-muted-foreground">
-            {expense.attribution.createdBy
-              ? `Added by ${expense.attribution.createdBy.name}`
-              : 'Original author unavailable'}
-            {expense.attribution.updatedBy &&
-              ` · Last edited by ${expense.attribution.updatedBy.name}`}
-          </p>
+          <div className="-mt-5 mb-8">
+            <ExpenseMetadata
+              createdAt={expense.createdAt}
+              attribution={expense.attribution}
+            />
+          </div>
         )}
         <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_13rem]">
           <div className="min-w-0">

@@ -2,6 +2,7 @@
 
 import { CategoryIcon } from '@/app/groups/[groupId]/expenses/category-icon'
 import { DocumentsCount } from '@/app/groups/[groupId]/expenses/documents-count'
+import { ExpenseMetadata } from '@/components/expense-metadata'
 import { Locale } from '@/i18n/request'
 import { getGroupExpenses } from '@/lib/api'
 import { Currency } from '@/lib/currency'
@@ -26,7 +27,7 @@ export function ExpenseCard({ expense, currency, groupId }: Props) {
   const attribution = expense.attribution
   return (
     <Link
-      href={`/groups/${groupId}/expenses/${expense.id}/edit`}
+      href={`/groups/${groupId}/${expense.isReimbursement ? 'payments' : 'expenses'}/${expense.id}/edit`}
       data-testid="expense-card"
       data-expense-id={expense.id}
       className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 gap-y-3 border-b px-3 py-4 transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring sm:grid-cols-[2rem_2.5rem_minmax(0,1fr)_minmax(7rem,auto)_minmax(7rem,auto)] sm:items-center sm:gap-x-4"
@@ -73,20 +74,10 @@ export function ExpenseCard({ expense, currency, groupId }: Props) {
             <DocumentsCount count={expense._count.documents} />
           </span>
         </div>
-        <p
-          className="mt-1 truncate text-xs text-muted-foreground"
-          title={
-            attribution?.updatedBy
-              ? `Last edited by ${attribution.updatedBy.name}`
-              : undefined
-          }
-        >
-          {attribution?.createdBy
-            ? `Added by ${attribution.createdBy.name}`
-            : 'Original author unavailable'}
-          {attribution?.updatedBy &&
-            ` · Edited by ${attribution.updatedBy.name}`}
-        </p>
+        <ExpenseMetadata
+          createdAt={expense.createdAt}
+          attribution={attribution}
+        />
       </div>
       <div className="col-start-2 grid grid-cols-2 gap-3 sm:contents">
         {[figures.paid, figures.personal].map((figure, i) => (

@@ -257,7 +257,7 @@
       "customRate": "Using custom rate"
     },
     "isReimbursementField": {
-      "label": "This is a reimbursement"
+      "label": "This is a payment"
     },
     "categoryField": {
       "label": "Category"
@@ -290,7 +290,7 @@
     "save": "Save changes",
     "saving": "Saving…",
     "cancel": "Cancel",
-    "reimbursement": "Reimbursement",
+    "reimbursement": "Payment",
     "Layout": {
       "details": "Expense details",
       "notesReceipt": "Notes & receipts",
@@ -342,11 +342,11 @@
     "title": "Balances",
     "description": "This is the amount that each participant paid or was paid for.",
     "Reimbursements": {
-      "title": "Suggested reimbursements",
-      "description": "Here are suggestions for optimized reimbursements between participants.",
-      "noImbursements": "It looks like your group doesn’t need any reimbursement 😁",
+      "title": "Suggested payments",
+      "description": "Suggested payments to settle group balances.",
+      "noImbursements": "No payments needed.",
       "owes": "<strong>{from}</strong> owes <strong>{to}</strong>",
-      "markAsPaid": "Mark as paid"
+      "markAsPaid": "Record payment"
     },
     "empty": "No expenses yet. Your balances will appear here."
   },
@@ -454,7 +454,7 @@
       "payer": "Paid by",
       "splits": "Split between",
       "splitMode": "Split rule",
-      "reimbursement": "Reimbursement",
+      "reimbursement": "Payment",
       "category": "Category",
       "originalAmount": "Original amount",
       "conversionRate": "Exchange rate",
