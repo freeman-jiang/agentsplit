@@ -704,3 +704,7 @@ stacked vendor/description expense rows were visually inspected on production.
 ## Unified People list — 2026-10-07
 
 Deployed `f93ef6a` through Coolify `iivcedl58pagtpnpcoxb3chb`. Live Settings shows one People list with per-person invitations; local tests covered joining, permission visibility, name edits, deletion protection and mobile layout. Production fingerprints for ledger, receipt, audit and access records matched before/after across nine tables. All services are healthy; Macademia's net remains $530.65 owed to Freeman.
+
+## Payments and audit dates — 2026-10-07
+
+Deployed `8ffe3dc` via Coolify `t3zfhkyzrmranizl79eckgj4`: dedicated Payments history/form, exact multi-currency recording, and added/last-edited/viewer-last-edit timestamps. Seven focused browser tests and 750 unit tests passed. Live prefill and timestamp displays verified; all nine ledger/access fingerprints and the $530.65 household balance were preserved.
