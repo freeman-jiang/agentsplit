@@ -75,8 +75,8 @@ export default async function AgentSetupPage() {
           OAuth.
         </p>
         <p className="text-sm">
-          Connect with your existing AgentSplit account, sign in with Google if
-          prompted, then review and approve access. You can choose read-only
+          Sign in with Google, then review and approve access. Your first
+          sign-in creates your AgentSplit account. You can choose read-only
           access. No API key is needed for this connection.
         </p>
         <p className="text-sm text-muted-foreground">
@@ -86,6 +86,23 @@ export default async function AgentSetupPage() {
             Connected apps
           </Link>
           . Availability in each client depends on that client’s plugin support.
+        </p>
+      </section>
+
+      <section className="space-y-3" aria-labelledby="oauth-connect-title">
+        <h2 id="oauth-connect-title" className="text-lg font-medium">
+          Claude and other OAuth clients
+        </h2>
+        <p className="text-sm">
+          Add a remote MCP server using the URL below and choose OAuth. In
+          Claude, use its published identity when offered. Clients can also
+          register automatically. Sign in with Google and approve access; you do
+          not need to create an API key or a Google OAuth client.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Accept your group invitation using the Google account it was sent to.
+          You can do this before or after connecting your agent. Group access
+          updates automatically, without reconnecting.
         </p>
       </section>
 

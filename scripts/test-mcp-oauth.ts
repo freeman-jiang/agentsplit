@@ -133,12 +133,13 @@ async function authorize(
   requestedScopes = scopes,
   accept = true,
   usingClientId = clientId,
+  redirectUri = 'https://mock-agent.example/callback',
 ) {
   const verifier = randomBytes(32).toString('base64url'),
     state = randomBytes(12).toString('hex')
   const query = new URLSearchParams({
     client_id: usingClientId,
-    redirect_uri: 'https://mock-agent.example/callback',
+    redirect_uri: redirectUri,
     response_type: 'code',
     scope: requestedScopes,
     resource: mcpResource(),
@@ -171,7 +172,7 @@ async function authorize(
   const target = new URL(
     z.object({ url: z.string() }).parse(await consent.json()).url,
   )
-  assert.equal(target.origin, 'https://mock-agent.example')
+  assert.equal(target.origin, new URL(redirectUri).origin)
   assert.equal(target.searchParams.get('state'), state)
   if (!accept) {
     assert.equal(target.searchParams.get('error'), 'access_denied')
@@ -306,6 +307,7 @@ try {
           code_challenge_methods_supported: z.array(z.string()),
           client_id_metadata_document_supported: z.boolean(),
           registration_endpoint: z.string().optional(),
+          token_endpoint_auth_methods_supported: z.array(z.string()),
         })
         .parse(
           await (
@@ -317,12 +319,235 @@ try {
       assert.equal(meta.issuer, oauthIssuer())
       assert(meta.code_challenge_methods_supported.includes('S256'))
       assert.equal(meta.client_id_metadata_document_supported, true)
-      assert(!meta.registration_endpoint)
+      assert.equal(
+        meta.registration_endpoint,
+        `${base}/api/auth/oauth2/register`,
+      )
+      for (const method of [
+        'none',
+        'client_secret_basic',
+        'client_secret_post',
+        'private_key_jwt',
+      ])
+        assert(meta.token_endpoint_auth_methods_supported.includes(method))
       const unauth = await rpc('tools/list', {})
       assert.equal(unauth.r.status, 401)
       assert(
         unauth.r.headers.get('www-authenticate')?.includes('resource_metadata'),
       )
+    },
+  )
+  for (const setup of [
+    {
+      method: 'none',
+      redirect: 'https://mock-agent.example/callback',
+      native: false,
+    },
+    {
+      method: 'none',
+      redirect: 'http://localhost:43119/callback',
+      native: true,
+    },
+    {
+      method: 'none',
+      redirect: 'http://127.0.0.1:43120/callback',
+      native: true,
+    },
+    {
+      method: 'client_secret_post',
+      redirect: 'https://mock-agent.example/callback',
+      native: false,
+    },
+    {
+      method: 'client_secret_basic',
+      redirect: 'https://mock-agent.example/callback',
+      native: false,
+    },
+  ]) {
+    await check(
+      `DCR ${setup.method} ${new URL(setup.redirect).hostname}: consent, MCP, refresh and revocation`,
+      async () => {
+        const registration = await fetch(`${base}/api/auth/oauth2/register`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          // Deliberately use only standard RFC 7591 fields, without `resources`.
+          body: JSON.stringify({
+            client_name: `Independent agent ${suffix}`,
+            redirect_uris: [
+              setup.native
+                ? setup.redirect.replace(/:\d+\//, '/')
+                : setup.redirect,
+            ],
+            application_type: setup.native ? 'native' : 'web',
+            token_endpoint_auth_method: setup.method,
+            grant_types: ['authorization_code', 'refresh_token'],
+            response_types: ['code'],
+            scope: scopes,
+          }),
+        })
+        assert.equal(
+          registration.status,
+          201,
+          await registration.clone().text(),
+        )
+        const registered = z
+          .object({
+            client_id: z.string(),
+            client_secret: z.string().optional(),
+          })
+          .parse(await registration.json())
+        assert.equal(Boolean(registered.client_secret), setup.method !== 'none')
+        const stored = await prisma.oauthClient.findUniqueOrThrow({
+          where: { clientId: registered.client_id },
+        })
+        assert(!stored.skipConsent)
+        assert.notEqual(stored.requirePKCE, false)
+        assert(
+          await prisma.oauthClientResource.findFirst({
+            where: {
+              clientId: registered.client_id,
+              resourceId: mcpResource(),
+            },
+          }),
+        )
+        async function tokenRequest(
+          fields: Record<string, string>,
+          wrongSecret = false,
+        ) {
+          const secret = wrongSecret
+            ? 'invalid-secret'
+            : registered.client_secret!
+          return fetch(`${base}/api/auth/oauth2/token`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/x-www-form-urlencoded',
+              ...(setup.method === 'client_secret_basic'
+                ? {
+                    authorization: `Basic ${Buffer.from(`${registered.client_id}:${secret}`).toString('base64')}`,
+                  }
+                : {}),
+            },
+            body: new URLSearchParams({
+              client_id: registered.client_id,
+              ...(setup.method === 'client_secret_post'
+                ? { client_secret: secret }
+                : {}),
+              resource: mcpResource(),
+              ...fields,
+            }),
+          })
+        }
+        const denied = await authorize(
+          alice,
+          scopes,
+          false,
+          registered.client_id,
+          setup.redirect,
+        )
+        assert.equal(denied.code, '')
+        const grant = await authorize(
+          alice,
+          scopes,
+          true,
+          registered.client_id,
+          setup.redirect,
+        )
+        const fields = {
+          grant_type: 'authorization_code',
+          code: grant.code,
+          code_verifier: grant.verifier,
+          redirect_uri: setup.redirect,
+        }
+        const badProof = await tokenRequest({
+          ...fields,
+          code_verifier: randomBytes(32).toString('base64url'),
+        })
+        assert(badProof.status >= 400)
+        if (setup.method !== 'none')
+          assert((await tokenRequest(fields, true)).status >= 400)
+        // Use a fresh code after deliberately rejected exchanges.
+        const validGrant = await authorize(
+          alice,
+          scopes,
+          true,
+          registered.client_id,
+          setup.redirect,
+        )
+        const exchanged = await tokenRequest({
+          ...fields,
+          code: validGrant.code,
+          code_verifier: validGrant.verifier,
+        })
+        assert.equal(exchanged.status, 200, await exchanged.clone().text())
+        const tokens = tokenSchema.parse(await exchanged.json())
+        assert.equal(decodeJwt(tokens.access_token).sub, alice.user.id)
+        assert.equal(
+          (await rpc('tools/list', {}, tokens.access_token)).r.status,
+          200,
+        )
+        await call('list_groups', {}, tokens.access_token)
+        assert(tokens.refresh_token)
+        const refreshed = await tokenRequest({
+          grant_type: 'refresh_token',
+          refresh_token: tokens.refresh_token,
+        })
+        assert.equal(refreshed.status, 200, await refreshed.clone().text())
+        const rotated = tokenSchema.parse(await refreshed.json())
+        assert(
+          rotated.refresh_token &&
+            rotated.refresh_token !== tokens.refresh_token,
+        )
+        assert.equal(
+          (await rpc('tools/list', {}, rotated.access_token)).r.status,
+          200,
+        )
+        const revoked = await fetch(`${base}/api/connections/revoke`, {
+          method: 'POST',
+          headers: alice.headers,
+          body: JSON.stringify({ clientId: registered.client_id }),
+        })
+        assert.equal(revoked.status, 200)
+        assert.equal(
+          (await rpc('tools/list', {}, rotated.access_token)).r.status,
+          401,
+        )
+      },
+    )
+  }
+  await check(
+    'DCR rejects unsafe redirects, consent bypass and unsupported grants',
+    async () => {
+      // The preceding five registrations exhaust the provider's default quota.
+      const limited = await fetch(`${base}/api/auth/oauth2/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          redirect_uris: ['https://mock-agent.example/callback'],
+        }),
+      })
+      assert.equal(limited.status, 429)
+      await prisma.rateLimit.deleteMany() // reset the isolated test database's quota
+      const initialCount = await prisma.oauthClient.count()
+      for (const extra of [
+        { redirect_uris: ['https://mock-agent.example/callback#fragment'] },
+        { redirect_uris: ['http://public-agent.example/callback'] },
+        { skip_consent: true },
+        { grant_types: ['client_credentials'] },
+      ]) {
+        const result = await fetch(`${base}/api/auth/oauth2/register`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            client_name: 'Invalid client',
+            redirect_uris: ['https://mock-agent.example/callback'],
+            token_endpoint_auth_method: 'none',
+            ...extra,
+          }),
+        })
+        assert.equal(result.status, 400, await result.clone().text())
+      }
+      assert.equal(await prisma.oauthClient.count(), initialCount)
+      await prisma.rateLimit.deleteMany()
     },
   )
   await check(

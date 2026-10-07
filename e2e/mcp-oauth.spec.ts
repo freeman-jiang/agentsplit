@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { createHash, randomBytes } from 'node:crypto'
-import { Pool } from 'pg'
 import { z } from 'zod'
 import { createGroup, uniqueSuffix } from './app'
 import { expect, test } from './fixtures'
@@ -14,28 +13,23 @@ async function mockAgent(baseURL: string) {
       /test|e2e/.test(db.pathname),
   )
   assert(['127.0.0.1', 'localhost'].includes(new URL(baseURL).hostname))
-  const clientId = `browser-agent-${randomBytes(10).toString('hex')}`,
-    name = `Mock browser agent ${uniqueSuffix()}`
-  const pool = new Pool({ connectionString: db.href })
-  try {
-    await pool.query(
-      'INSERT INTO "OauthClient" (id,"clientId",name,"redirectUris","tokenEndpointAuthMethod","grantTypes","responseTypes","requirePKCE","skipConsent",scopes) VALUES ($1,$1,$2,$3,\'none\',$4,$5,true,false,$6)',
-      [
-        clientId,
-        name,
-        ['https://mock-agent.example/callback'],
-        ['authorization_code', 'refresh_token'],
-        ['code'],
-        ['openid', 'profile', 'email', 'offline_access', read, write],
-      ],
-    )
-    await pool.query(
-      'INSERT INTO "OauthClientResource" (id,"clientId","resourceId") VALUES ($1,$2,$3)',
-      [`${clientId}-resource`, clientId, `${baseURL}/api/mcp`],
-    )
-  } finally {
-    await pool.end()
-  }
+  const name = `Mock browser agent ${uniqueSuffix()}`
+  const registration = await fetch(`${baseURL}/api/auth/oauth2/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      client_name: name,
+      redirect_uris: ['https://mock-agent.example/callback'],
+      token_endpoint_auth_method: 'none',
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      scope: `openid profile email offline_access ${read} ${write}`,
+    }),
+  })
+  assert.equal(registration.status, 201, await registration.clone().text())
+  const { client_id: clientId } = z
+    .object({ client_id: z.string() })
+    .parse(await registration.json())
   function authorization() {
     const verifier = randomBytes(32).toString('base64url'),
       state = randomBytes(16).toString('hex')
@@ -89,6 +83,9 @@ test('fresh mock agent completes consent, uses MCP, rotates tokens and is revoke
   await expect(
     page.getByText('Client identity:', { exact: false }),
   ).toContainText(agent.clientId)
+  await expect(
+    page.getByText('Returns to: mock-agent.example', { exact: true }),
+  ).toBeVisible()
   await expect(
     page.getByText('Requested access', { exact: true }),
   ).toBeVisible()
