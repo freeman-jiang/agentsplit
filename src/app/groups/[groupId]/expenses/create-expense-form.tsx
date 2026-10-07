@@ -60,6 +60,7 @@ export function CreateExpenseForm({
           throw error
         }
         utils.groups.expenses.invalidate()
+        utils.groups.balances.invalidate()
         utils.groups.stats.invalidate()
         router.push(`/groups/${group.id}`)
       }}

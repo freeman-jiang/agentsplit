@@ -11,6 +11,7 @@ import { Plus } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
 import { useCurrentGroup } from '../current-group-context'
+import { GroupBalanceSummary } from './group-balance-summary'
 
 export default function GroupExpensesPageClient({
   enableReceiptExtract,
@@ -34,30 +35,33 @@ export default function GroupExpensesPageClient({
         </p>
       )}
       <TrackPage path={`/groups/${groupId}/expenses`} />
-      <Card className="mb-4 border-0 bg-transparent">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardHeader className="p-0">
-            <CardTitle>{t('title')}</CardTitle>
-          </CardHeader>
-          <CardHeader className="flex flex-row flex-wrap items-center space-y-0 gap-2 p-0">
-            <ExportButton groupId={groupId} />
-            {enableReceiptExtract && <CreateFromReceiptButton />}
-            <Button asChild>
-              <Link
-                href={`/groups/${groupId}/expenses/create`}
-                title={t('create')}
-              >
-                <Plus className="me-2 w-4 h-4" />
-                {t('create')}
-              </Link>
-            </Button>
-          </CardHeader>
-        </div>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_16rem] lg:gap-8">
+        <GroupBalanceSummary />
+        <Card className="mb-4 min-w-0 border-0 bg-transparent lg:col-start-1 lg:row-start-1">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardHeader className="p-0">
+              <CardTitle>{t('title')}</CardTitle>
+            </CardHeader>
+            <CardHeader className="flex flex-row flex-wrap items-center space-y-0 gap-2 p-0">
+              <ExportButton groupId={groupId} />
+              {enableReceiptExtract && <CreateFromReceiptButton />}
+              <Button asChild>
+                <Link
+                  href={`/groups/${groupId}/expenses/create`}
+                  title={t('create')}
+                >
+                  <Plus className="me-2 w-4 h-4" />
+                  {t('create')}
+                </Link>
+              </Button>
+            </CardHeader>
+          </div>
 
-        <CardContent className="relative flex flex-col gap-4 px-0 pt-6 pb-4 sm:pb-6">
-          <ExpenseList />
-        </CardContent>
-      </Card>
+          <CardContent className="relative flex flex-col gap-4 px-0 pt-6 pb-4 sm:pb-6">
+            <ExpenseList />
+          </CardContent>
+        </Card>
+      </div>
     </>
   )
 }

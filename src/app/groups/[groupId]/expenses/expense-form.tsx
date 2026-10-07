@@ -492,7 +492,7 @@ export function ExpenseForm({
                       <Input
                         {...field}
                         value={field.value ?? ''}
-                        placeholder="Costco"
+                        placeholder="eg. Costco"
                         className="text-base"
                         maxLength={100}
                       />

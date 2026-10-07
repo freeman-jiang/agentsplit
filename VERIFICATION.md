@@ -625,8 +625,42 @@ Verification:
 The production backup was explicitly authorized. A private scoped database dump was saved on
 Oracle at `/home/ubuntu/agentsplit-backups/slug-vendor-01a1143b/database.dump`
 (69,111 bytes), alongside a preservation snapshot covering 2 groups, 31 expense
-records, 6 participants, 89 split rows and 86 audit records. Deployment and the
-revision-checked `macademia` assignment are pending. Automatic approval review
-separately rejected queuing deployment as requiring explicit deployment approval.
-The application commit `cb05bbb149203e15f4a678657cb28e9c6daadf72` is pushed;
-production continues running the previous release.
+records, 6 participants, 89 split rows and 86 audit records. After explicit
+production authorization, Coolify deployment `rsoaiyvtgbyyitfekqpdpdjp` deployed
+application commit `cb05bbb149203e15f4a678657cb28e9c6daadf72`. App, database and
+Garage are healthy. Every prior ledger/audit record matched the backup after
+rollout, and both audit-protection triggers remain enabled. The admin API set
+Macademia to `macademia` at group revision 4. Live browser checks verified the
+short root URL, settings, expense navigation and the optional vendor input;
+all 17 MCP tools advertise the new fields. A synthetic expense in the existing
+deployment-test group passed create/read/search/clear/historical-read/delete
+checks, and its starting balances were restored.
+
+At the user's explicit request, all 17 current household expenses were manually
+migrated to separate vendor/title fields through revision-checked, audited API
+edits. Every expense retained its amounts, allocations, date, notes, receipt
+references and original author. Prior title revisions remain readable, and
+before/after balances are identical. A fresh private backup exists at
+`/home/ubuntu/agentsplit-backups/vendor-backfill-01a1143b/database.dump`.
+
+## Expense-page balance summary — 2026-10-06
+
+The expense page now shows a sticky right-hand group-balance panel on desktop,
+with the viewer's net balance, each participant's net and suggested payments.
+Mobile presents a compact sticky summary with expandable details. Currencies
+stay separate; expense search does not change the displayed group totals.
+Balances refresh on entry/focus, after create/edit/delete, or through the panel's
+refresh button. The existing balance endpoint and exact-decimal calculations are
+reused. Group pages have more horizontal room for the sidebar. Vendor input now
+uses the example placeholder `eg. Costco`.
+
+Production build, types and formatting pass. All 104 focused balance/expense-row/
+totals unit executions pass. Three focused browser scenarios pass, covering the
+new panel, net figures after another participant pays, refresh after edits,
+search independence, mobile expansion/no horizontal overflow, optional vendor,
+and custom URL behavior. Desktop/mobile screenshots were inspected. A final
+browser rerun verifies the no-matching-expenses search message and refreshed
+screenshots. No dependencies were added. Before this UI rollout, a private dump
+was saved at `/home/ubuntu/agentsplit-backups/balance-sidebar-01a1143b/database.dump`
+(71,118 bytes; 32 expense records and 107 audit records, including retained test
+history). Live rollout verification follows.
