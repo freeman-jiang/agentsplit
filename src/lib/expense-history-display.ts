@@ -14,6 +14,7 @@ export function describeExpenseRevision(
   const shares = getExpenseShares({ ...expense, paidById: expense.paidBy.id })
   return {
     title: expense.title,
+    vendor: expense.vendor ?? '',
     amount: money(expense.amount),
     date: expense.expenseDate.slice(0, 10),
     payer: expense.paidBy.name,

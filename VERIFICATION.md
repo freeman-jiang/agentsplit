@@ -590,3 +590,40 @@ exactly. Database-wide comparison retained all 18 expense records, 54 split rows
 audit event was appended. Both audit protection triggers remain enabled. The live
 expense list was visually inspected with authenticated you paid / you lent and
 Added by / Edited by labels. No real expense was edited or deleted by verification.
+
+## Custom group URLs and optional vendors — 2026-10-06
+
+Local implementation adds nullable unique group slugs and nullable expense
+vendors through the additive `20261007040000_group_slug_expense_vendor` migration.
+The shared backend, UI and existing MCP tools expose these fields. Optional
+vendors are separate from title, formatted as `Vendor — title`, and retained in
+search, recurrence, exports and new snapshots. Older titles and immutable
+snapshots are left intact. Short URLs reuse existing group pages and membership
+checks; original ID links continue to work. Admin slug updates require the current
+revision and serialize competing claims before the unique-index write.
+
+Verification:
+
+- Production build and TypeScript pass; 744 Jest executions in 64 suites pass.
+- `scripts/test-slug-vendor.ts` passes on a new disposable loopback database:
+  slug normalization/reservation, competing concurrent claims, current revisions,
+  canonical links, vendor create/edit/clear/omission, current/historical filters,
+  old snapshot compatibility, recurrence, CSV formula escaping, JSON export and
+  admin-only settings. Existing MCP and audit suites pass 11 and 24 PostgreSQL
+  scenarios respectively. These two suites must run serially on a shared test
+  database because the audit suite checks global before/after row counts.
+- Eight existing group/expense browser regressions passed; both new slug/vendor
+  browser scenarios pass on the final build. They verify short root/subpage URLs,
+  ID-link compatibility, create/edit/remove slug, optional vendor persistence and
+  removal, duplicate/reserved URL errors, history, JSON export, and signed-out/
+  nonmember access denial. Screenshots of the vendor form and expense list were
+  visually inspected. Tests used installed Chrome and synthetic local accounts.
+- A rewrite re-entry guard fixes the redirect loop found during browser testing.
+  Its header controls routing only; destination authorization remains mandatory.
+- No dependencies were added. Lint retains the two existing warnings.
+
+Production rollout is authorized. A private scoped database dump was saved on
+Oracle at `/home/ubuntu/agentsplit-backups/slug-vendor-01a1143b/database.dump`
+(69,111 bytes), alongside a preservation snapshot covering 2 groups, 31 expense
+records, 6 participants, 89 split rows and 86 audit records. Deployment and the
+revision-checked `macademia` assignment are pending live verification below.

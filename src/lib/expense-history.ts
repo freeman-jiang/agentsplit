@@ -5,12 +5,14 @@ import { randomId } from '@/lib/random'
 import { TRPCError } from '@trpc/server'
 import * as z from 'zod'
 import { expenseCurrencySchema } from './currency'
+import { expenseTitle } from './expense-title'
 import { decimalStrings, decimalTextSchema } from './money'
 
 const person = z.object({ id: z.string(), name: z.string() })
 const group = z.object({
   id: z.string(),
   name: z.string(),
+  slug: z.string().nullable().optional(),
   currency: z.string(),
   currencyCode: z.string().nullable(),
 })
@@ -23,6 +25,7 @@ export const expenseSnapshotSchema = z.object({
     groupId: z.string(),
     revision: z.number().int().nonnegative(),
     title: z.string(),
+    vendor: z.string().nullable().optional(),
     amount: decimalTextSchema,
     currencyCode: expenseCurrencySchema,
     expenseDate: z.iso.datetime(),
@@ -176,7 +179,7 @@ export async function recordExpenseSnapshot(
       expenseId,
       expenseRevision: expense.revision,
       activityType: type,
-      data: expense.title,
+      data: expenseTitle(expense),
       snapshot,
       participantId: options.actor ? undefined : claimedActor?.id,
       actorName:

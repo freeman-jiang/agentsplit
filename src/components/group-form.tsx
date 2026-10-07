@@ -69,6 +69,7 @@ export function GroupForm({
     defaultValues: group
       ? {
           name: group.name,
+          slug: group.slug ?? '',
           information: group.information ?? '',
           currency: group.currency ?? '',
           currencyCode: group.currencyCode ?? '',
@@ -76,6 +77,7 @@ export function GroupForm({
         }
       : {
           name: '',
+          slug: '',
           information: '',
           currency: getCurrency(defaultCurrencyCode).symbol,
           currencyCode: defaultCurrencyCode, // TODO: derive from the locale when not configured
@@ -101,7 +103,16 @@ export function GroupForm({
           } else {
             sendEvent({ event: 'group: create', props: {} }, `/groups`)
           }
-          await onSubmit(values)
+          try {
+            await onSubmit(values)
+          } catch (error) {
+            form.setError('root', {
+              message:
+                error instanceof Error
+                  ? error.message
+                  : 'Unable to save group.',
+            })
+          }
         })}
       >
         <Card className="mb-4">
@@ -130,6 +141,30 @@ export function GroupForm({
               )}
             />
 
+            <FormField
+              control={form.control}
+              name="slug"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Custom URL (optional)</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      value={field.value ?? ''}
+                      placeholder="macademia"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      maxLength={63}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Use /{field.value || 'your-group'} to open this group.
+                    Members still need to sign in.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="currencyCode"
@@ -217,6 +252,11 @@ export function GroupForm({
           </CardContent>
         </Card>
 
+        {form.formState.errors.root && (
+          <p role="alert" className="mb-4 text-destructive">
+            {form.formState.errors.root.message}
+          </p>
+        )}
         <Card className="mb-4">
           <CardHeader>
             <CardTitle>{t('Participants.title')}</CardTitle>

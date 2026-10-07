@@ -32,7 +32,9 @@ import {
   expenseAttributions,
   type ExpenseAttribution,
 } from './expense-attribution'
+import { expenseTitle } from './expense-title'
 import type { FinalizedUploads } from './expense-uploads'
+import { claimGroupSlug } from './group-slug-write'
 import { assertReceiptOwnership } from './receipt-ownership'
 import { assertRevision } from './revision'
 
@@ -87,10 +89,12 @@ export async function createGroup(
         message:
           'The creator is added automatically. Give each other participant a distinct name.',
       })
+    await claimGroupSlug(tx, groupFormValues.slug, groupId)
     const group = await tx.group.create({
       data: {
         id: groupId,
         name: groupFormValues.name,
+        slug: groupFormValues.slug || null,
         information: groupFormValues.information,
         currency: groupFormValues.currency,
         currencyCode: groupFormValues.currencyCode,
@@ -207,6 +211,7 @@ export async function createExpense(
           amount: expenseFormValues.amount,
           currencyCode,
           title: expenseFormValues.title,
+          vendor: expenseFormValues.vendor || null,
           paidById: expenseFormValues.paidBy,
           splitMode: expenseFormValues.splitMode,
           recurrenceRule: expenseFormValues.recurrenceRule,
@@ -284,7 +289,7 @@ export async function deleteExpense(
           expenseId,
           expenseRevision: expense.revision,
           activityType: ActivityType.DELETE_EXPENSE,
-          data: existingExpense.title,
+          data: expenseTitle(existingExpense),
           participantId: actor ? undefined : claimedActor?.id,
           actorName: actor?.name ?? actor?.userId ?? claimedActor?.name,
           actorUserId: actor?.userId,
@@ -371,6 +376,7 @@ export async function updateExpense(
         assertRevision(existingExpense.revision, expectedRevision, actor)
         let values = expenseFormSchema.parse({
           title: existingExpense.title,
+          vendor: existingExpense.vendor,
           currencyCode: existingExpense.currencyCode,
           amount: existingExpense.amount.toFixed(),
           expenseDate: existingExpense.expenseDate,
@@ -483,6 +489,7 @@ export async function updateExpense(
                 }
               : {}),
             title: values.title,
+            vendor: values.vendor || null,
             categoryId: values.category,
             paidById: values.paidBy,
             splitMode: values.splitMode,
@@ -595,6 +602,7 @@ export async function updateGroup(
       }
       const values = groupFormSchema.parse({
         name: existingGroup.name,
+        slug: existingGroup.slug,
         information: existingGroup.information ?? '',
         currency: existingGroup.currency,
         currencyCode: existingGroup.currencyCode,
@@ -625,11 +633,13 @@ export async function updateGroup(
           })
       }
       if (Object.keys(groupFormValues).length === 0) return existingGroup
+      await claimGroupSlug(tx, values.slug, groupId)
       const group = await tx.group.update({
         where: { id: groupId },
         data: {
           revision: { increment: 1 },
           name: values.name,
+          slug: values.slug || null,
           information: values.information,
           currency: values.currency,
           currencyCode: values.currencyCode,
@@ -702,6 +712,7 @@ export async function getGroupExpenses(
     offset?: number
     length?: number
     filter?: string
+    vendor?: string
     from?: string
     to?: string
     currencyCode?: string
@@ -736,12 +747,16 @@ export async function getGroupExpenses(
       splitMode: true,
       recurrenceRule: true,
       title: true,
+      vendor: true,
       _count: { select: { documents: true } },
     },
     where: {
       groupId,
       deletedAt: null,
       currencyCode: options?.currencyCode,
+      vendor: options?.vendor
+        ? { equals: options.vendor, mode: 'insensitive' }
+        : undefined,
       categoryId: options?.categoryId,
       paidById: options?.paidById,
       isReimbursement: options?.isReimbursement,
@@ -752,8 +767,15 @@ export async function getGroupExpenses(
             { paidFor: { some: { participantId: options.participantId } } },
           ]
         : undefined,
-      title: options?.filter
-        ? { contains: options.filter, mode: 'insensitive' }
+      AND: options?.filter
+        ? [
+            {
+              OR: [
+                { title: { contains: options.filter, mode: 'insensitive' } },
+                { vendor: { contains: options.filter, mode: 'insensitive' } },
+              ],
+            },
+          ]
         : undefined,
       expenseDate:
         options?.from || options?.to
@@ -809,6 +831,7 @@ export async function getActiveRecurringExpenses(
     select: {
       id: true,
       title: true,
+      vendor: true,
       amount: true,
       category: true,
       recurrenceRule: true,

@@ -38,7 +38,7 @@ export const MCP_TOOL_REGISTRY = [
     inputAliases: { group: 'groupFormValues' },
     destructive: false,
     description:
-      'Create a group. The authenticated creator is automatically added as a participant using their account name and becomes admin. Supply name, currency/default currencyCode, and OTHER participant names in group.participants (empty array allowed); do not include the creator. All keys inherit the fixed membership. An optional caller-minted 21-character groupId prevents accidental duplicate creation; check it before retrying an uncertain result.',
+      'Create a group. The authenticated creator is automatically added as a participant using their account name and becomes admin. Supply name, optional unique slug, currency/default currencyCode, and OTHER participant names in group.participants (empty array allowed); do not include the creator. All keys inherit the fixed membership. An optional caller-minted 21-character groupId prevents accidental duplicate creation; check it before retrying an uncertain result.',
   },
   {
     name: 'update_group',
@@ -46,7 +46,7 @@ export const MCP_TOOL_REGISTRY = [
     inputAliases: { changes: 'groupFormValues' },
     required: ['expectedRevision'],
     description:
-      'Admins only: edit group settings or participants using a partial changes object and the current expectedRevision from get_group. Omitted fields stay unchanged. Existing participant IDs preserve identities; entries without IDs create participants. Historical participants cannot be erased.',
+      'Admins only: edit group settings (including optional unique slug) or participants using a partial changes object and the current expectedRevision from get_group. Omitted fields stay unchanged. Existing participant IDs preserve identities; entries without IDs create participants. Historical participants cannot be erased.',
   },
   {
     name: 'manage_group_access',
@@ -60,7 +60,7 @@ export const MCP_TOOL_REGISTRY = [
     name: 'list_expenses',
     procedure: 'groups.expenses.list',
     description:
-      'Review all expenses with pagination and optional inclusive from/to calendar dates, currencyCode, title filter, categoryId, paidById, participantId, isReimbursement, or recurrenceRule. Include reimbursements by default. Follow nextCursor with the same filters. Current rows include attribution.createdBy and updatedBy from the immutable audit log, independently of paidBy. Null means the original actor is not known. Amounts are exact face-value decimal strings. Optional asOf (timestamp) or atActivityId reconstructs saved historical state before applying filters. Reuse history.atActivityId for stable pages; history.complete=false identifies missing legacy snapshots. This read does not process recurrence.',
+      'Review all expenses with pagination and optional inclusive from/to calendar dates, currencyCode, title/vendor text filter, exact case-insensitive vendor, categoryId, paidById, participantId, isReimbursement, or recurrenceRule. Include reimbursements by default. Follow nextCursor with the same filters. Current rows include attribution.createdBy and updatedBy from the immutable audit log, independently of paidBy. Null means the original actor is not known. Amounts are exact face-value decimal strings. Optional asOf (timestamp) or atActivityId reconstructs saved historical state before applying filters. Reuse history.atActivityId for stable pages; history.complete=false identifies missing legacy snapshots. This read does not process recurrence.',
   },
   {
     name: 'get_expense',
@@ -74,7 +74,7 @@ export const MCP_TOOL_REGISTRY = [
     inputAliases: { expense: 'expenseFormValues' },
     destructive: false,
     description:
-      'Create an expense with expense. Money is a decimal string at face value in currencyCode. Split modes: EVENLY, BY_SHARES (relative weights), BY_PERCENTAGE (sum 100), BY_AMOUNT (sum amount). Set isReimbursement=true to record payments using sender as paidBy and recipients as paidFor. Recurrence uses NONE/DAILY/WEEKLY/MONTHLY. Optional uploads file metadata returns signed PUT targets; you may ignore them. After uploading, attach uploadIds with update_expense. No receipt is saved merely by requesting a target. Supply a stable 21-character expenseId and read it before retrying an uncertain create.',
+      'Create an expense with expense. Optional vendor is the merchant; title describes the purchase without repeating vendor. Money is a decimal string at face value in currencyCode. Split modes: EVENLY, BY_SHARES (relative weights), BY_PERCENTAGE (sum 100), BY_AMOUNT (sum amount). Set isReimbursement=true to record payments using sender as paidBy and recipients as paidFor. Recurrence uses NONE/DAILY/WEEKLY/MONTHLY. Optional uploads file metadata returns signed PUT targets; you may ignore them. After uploading, attach uploadIds with update_expense. No receipt is saved merely by requesting a target. Supply a stable 21-character expenseId and read it before retrying an uncertain create.',
   },
   {
     name: 'update_expense',
@@ -82,7 +82,7 @@ export const MCP_TOOL_REGISTRY = [
     inputAliases: { changes: 'expenseFormValues' },
     required: ['expectedRevision'],
     description:
-      'Partially edit an expense using changes and its current expectedRevision from get_expense. Omitted fields stay unchanged. Use documents to retain/remove existing receipt references. Optional uploads returns direct PUT targets; attachUploadIds finalizes already-uploaded images into this expense. Empty changes can request targets without changing the expense. Edits are audited; a stale revision fails rather than overwriting another edit.',
+      'Partially edit an expense using changes and its current expectedRevision from get_expense. Omitted fields stay unchanged. Set vendor to null or empty string to clear it. Use documents to retain/remove existing receipt references. Optional uploads returns direct PUT targets; attachUploadIds finalizes already-uploaded images into this expense. Empty changes can request targets without changing the expense. Edits are audited; a stale revision fails rather than overwriting another edit.',
   },
   {
     name: 'delete_expense',

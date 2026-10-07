@@ -57,6 +57,7 @@ const category = z.object({
 const group = z.object({
   id,
   name: z.string(),
+  slug: z.string().nullable(),
   information: z.string().nullable(),
   revision: z.number().int().nonnegative().default(0),
   currency: z.string(),
@@ -70,6 +71,7 @@ const expenseFields = z.object({
   id,
   groupId: id,
   title: z.string(),
+  vendor: z.string().nullable(),
   amount: money,
   currencyCode: z.string(),
   createdAt: dateTime,
@@ -111,6 +113,7 @@ const expenseSummary = expenseFields
   .pick({
     id: true,
     title: true,
+    vendor: true,
     amount: true,
     currencyCode: true,
     createdAt: true,

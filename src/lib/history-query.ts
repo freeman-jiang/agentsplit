@@ -117,6 +117,7 @@ export function historicalExpenseSummary(
   return {
     id: expense.id,
     title: expense.title,
+    vendor: expense.vendor ?? null,
     amount: expense.amount,
     currencyCode: expense.currencyCode,
     createdAt: new Date(expense.createdAt),
@@ -184,6 +185,7 @@ export function filterHistoricalExpenses(
   entries: { snapshot: ExpenseSnapshot; event: Activity }[],
   filters: {
     filter?: string
+    vendor?: string
     currencyCode?: string
     categoryId?: number
     paidById?: string
@@ -198,9 +200,14 @@ export function filterHistoricalExpenses(
     .filter(
       ({ snapshot: { expense: e } }) =>
         (!filters.filter ||
-          e.title
-            .toLocaleLowerCase()
-            .includes(filters.filter.toLocaleLowerCase())) &&
+          [e.title, e.vendor ?? ''].some((value) =>
+            value
+              .toLocaleLowerCase()
+              .includes(filters.filter!.toLocaleLowerCase()),
+          )) &&
+        (!filters.vendor ||
+          e.vendor?.toLocaleLowerCase() ===
+            filters.vendor.toLocaleLowerCase()) &&
         (!filters.currencyCode || e.currencyCode === filters.currencyCode) &&
         (filters.categoryId === undefined ||
           e.categoryId === filters.categoryId) &&

@@ -32,6 +32,7 @@ export const getStatsMonthExpensesProcedure = baseProcedure
       expenses: getExpensesByMonth(expenses, month).map((expense) => ({
         id: expense.id,
         title: expense.title,
+        vendor: expense.vendor,
         amount: expense.amount,
         expenseDate: expense.expenseDate,
         currencyCode: expense.currencyCode,

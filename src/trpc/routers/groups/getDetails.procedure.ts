@@ -1,6 +1,7 @@
 import { getGroup, getGroupExpensesParticipants } from '@/lib/api'
 import { effectiveBaseUrl } from '@/lib/env'
 import { groupMembers } from '@/lib/group-access'
+import { groupPath } from '@/lib/group-slug'
 import { baseProcedure } from '@/trpc/init'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
@@ -22,9 +23,9 @@ export const getGroupDetailsProcedure = baseProcedure
       access: await groupMembers(groupId, ctx.principal!.userId),
       participantsWithExpenses,
       links: {
-        share: `${effectiveBaseUrl}/groups/${group.id}`,
-        csv: `${effectiveBaseUrl}/groups/${group.id}/expenses/export/csv`,
-        json: `${effectiveBaseUrl}/groups/${group.id}/expenses/export/json`,
+        share: `${effectiveBaseUrl}${groupPath(group)}`,
+        csv: `${effectiveBaseUrl}${groupPath(group)}/expenses/export/csv`,
+        json: `${effectiveBaseUrl}${groupPath(group)}/expenses/export/json`,
       },
     }
   })

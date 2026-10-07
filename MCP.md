@@ -244,7 +244,7 @@ the committed expense and a non-null `uploadError`. Request fresh targets with
 
 ## Reads, history and errors
 
-`list_expenses` supports `from`, `to`, title `filter`, `currencyCode`, `categoryId`,
+`list_expenses` supports `from`, `to`, title/vendor `filter`, exact `vendor`, `currencyCode`, `categoryId`,
 `paidById`, involved `participantId`, `isReimbursement` and `recurrenceRule`.
 Filters apply before offset pagination. Follow `nextCursor` while `hasMore` is
 true, preserving filters. Concurrent changes can shift offset pages.
@@ -400,3 +400,36 @@ MCP response contracts in the isolated local audit database.
 The additive migration leaves existing participant IDs, expenses, revisions and balances untouched. Existing memberships start unbound and require explicit admin linking in Settings (or `bind_member`). No browser storage or display-name heuristic is trusted. Unbound existing members retain authorized ledger access with authenticated audit attribution, but no personal balance is guessed. Old invitations without a participant must be revoked and reissued. Bindings survive leaving/removal and cannot be reassigned; the database enforces uniqueness and same-group foreign keys. Bound or previously invited participant identities cannot be renamed or removed through general group settings.
 
 `get_participant_balances.groups[]` may omit `participantId` to use the caller's bound identity; explicitly supplying a participant ID still allows legitimate ledger inspection of that person. This does not impersonate them or change the caller. The result also returns `unboundGroupIds`: excluded legacy groups that need identity setup. Never present a partial balance as a complete total.
+
+## Custom group URLs and optional vendors
+
+Groups may set an optional unique `slug` through `create_group` or admin-only
+`update_group`, using the current `expectedRevision` for updates. Slugs normalize
+to lowercase, contain 3–63 letters/numbers/hyphens, and cannot start or end with a
+hyphen or claim an application route such as `api`, `groups`, or `sign-in`.
+Set `slug` to null or an empty string to remove it. A slug such as `macademia`
+opens `/macademia`, with pages such as `/macademia/expenses` and
+`/macademia/balances`. Original `/groups/<id>` links continue to work. Changed
+slugs are not retained as aliases. A URL never grants membership; all API calls
+continue to use the immutable `groupId`. `get_group.links` returns current URLs.
+
+Expenses have a required `title` and an optional `vendor`. Put the merchant in
+`vendor` and the purchase description in `title`, for example:
+
+```json
+{ "vendor": "Costco", "title": "hangers, waste liners, Kohler & sponges" }
+```
+
+The UI displays `Costco — hangers, waste liners, Kohler & sponges`. Omit vendor
+when unknown or inapplicable, including payments without a merchant. Do not
+repeat vendor in title. An omitted vendor on update is preserved; null or an
+empty string clears it. Whitespace is trimmed, and vendor is limited to 100
+characters. Existing expense titles are not automatically rewritten.
+
+`list_expenses.filter` searches title or vendor. The optional `vendor` filter
+matches a merchant name exactly, ignoring case, and composes with dates,
+participants, currencies and pagination. Both current and historical reads
+support these filters. Vendor is retained in recurring expenses, new audit
+snapshots, and CSV/JSON exports. Older snapshots without this field remain valid;
+their vendor is unknown. CSV exports use a separate Vendor column and escape it
+against spreadsheet formula interpretation.

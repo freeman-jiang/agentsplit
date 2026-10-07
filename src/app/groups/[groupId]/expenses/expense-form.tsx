@@ -188,6 +188,7 @@ export function ExpenseForm({
     defaultValues: expense
       ? {
           title: expense.title,
+          vendor: expense.vendor ?? '',
           expenseDate: expense.expenseDate ?? getTodayForDateInput(),
           amount: expense.amount,
           currencyCode: initialCurrencyCode,
@@ -207,6 +208,7 @@ export function ExpenseForm({
       : isRepayment
         ? {
             title: t('reimbursement'),
+            vendor: '',
             expenseDate: getTodayForDateInput(),
             amount: searchParams.get('amount') ?? '',
             currencyCode: initialCurrencyCode,
@@ -229,6 +231,7 @@ export function ExpenseForm({
           }
         : {
             title: searchParams.get('title') ?? '',
+            vendor: searchParams.get('vendor') ?? '',
             expenseDate: searchParams.get('date')
               ? new Date(searchParams.get('date') as string)
               : getTodayForDateInput(),
@@ -479,6 +482,25 @@ export function ExpenseForm({
         <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_13rem]">
           <div className="min-w-0">
             <section aria-label={t('Layout.details')} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="vendor"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Vendor (optional)</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        value={field.value ?? ''}
+                        placeholder="Costco"
+                        className="text-base"
+                        maxLength={100}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="title"
