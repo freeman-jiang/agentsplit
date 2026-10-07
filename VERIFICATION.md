@@ -664,3 +664,14 @@ screenshots. No dependencies were added. Before this UI rollout, a private dump
 was saved at `/home/ubuntu/agentsplit-backups/balance-sidebar-01a1143b/database.dump`
 (71,118 bytes; 32 expense records and 107 audit records, including retained test
 history). Live rollout verification follows.
+
+Live sidebar deployment `rethc5b1jfpv4v00ao9wacbz` finished on application commit
+`7081b59ee3707c016e3e53d13bae7b1dc0a900dd`. App, database and Garage are healthy.
+The post-rollout comparison preserved all 2 groups, 32 expense records,
+6 participants, 92 split rows and 107 audit records exactly; both audit protection
+triggers remain enabled. The final local browser scenario passed on the final
+build. The signed-in production browser verified the right-hand net-balance
+summary and suggested payments against the live MCP balances, confirmed the
+panel stays sticky at 24px while scrolling, and checked the migrated vendor/title
+and `eg. Costco` placeholder. The existing expense-review chat was informed of
+the live contracts and completed vendor migration.
