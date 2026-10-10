@@ -357,6 +357,7 @@ export const MCP_OUTPUT_SCHEMAS = {
     ),
   }),
   'groups.balances.forUser': z.object({
+    totals: z.array(z.object({ currencyCode: z.string(), amount: money })),
     unboundGroupIds: z.array(id),
     balances: z.array(
       z.object({

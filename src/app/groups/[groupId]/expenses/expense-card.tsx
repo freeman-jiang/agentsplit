@@ -24,6 +24,7 @@ type Props = {
   href?: string
   contextLabel?: string
   groupName?: string
+  ungrouped?: boolean
 }
 
 export function ExpenseCard({
@@ -34,6 +35,7 @@ export function ExpenseCard({
   href,
   contextLabel,
   groupName,
+  ungrouped = false,
 }: Props) {
   const locale = useLocale() as Locale
   const membershipId = useActiveUser(
@@ -73,18 +75,27 @@ export function ExpenseCard({
       <div className="min-w-0">
         {groupName && (
           <Badge
+            variant="outline"
             data-testid="expense-group-badge"
-            className="mb-2 max-w-full gap-1.5"
+            className="mb-1 max-w-full gap-1 rounded border-border/60 bg-muted/20 px-1.5 py-0 text-[10px] font-normal leading-4 text-muted-foreground"
             title={groupName}
           >
-            <Users aria-hidden="true" className="h-3 w-3 shrink-0" />
+            <Users aria-hidden="true" className="h-2.5 w-2.5 shrink-0" />
             <span className="truncate">{groupName}</span>
           </Badge>
+        )}
+        {ungrouped && (
+          <div
+            data-testid="expense-no-group"
+            className="mb-1 text-[10px] italic leading-4 text-muted-foreground"
+          >
+            No group
+          </div>
         )}
         {contextLabel && (
           <div
             data-testid="expense-context"
-            className="mb-1 text-xs font-medium text-primary"
+            className="mb-1 text-xs text-muted-foreground"
           >
             {contextLabel}
           </div>

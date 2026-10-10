@@ -455,6 +455,12 @@ The additive migration leaves existing participant IDs, expenses, revisions and 
 
 `get_participant_balances.groups[]` may omit `participantId` to use the caller's bound identity; explicitly supplying a participant ID still allows legitimate ledger inspection of that person. This does not impersonate them or change the caller. The result also returns `unboundGroupIds`: excluded legacy groups that need identity setup. Never present a partial balance as a complete total.
 
+Omit `groups` entirely to include every currently accessible group and private
+expense context. The returned `totals` array contains exact net amounts per
+currency across that scope; it is independent of `list_all_expenses` filters and
+pagination. An explicit list must contain each context only once. No balance
+read creates recurring expenses, settles debts, or combines different currencies.
+
 ## Custom group URLs and optional vendors
 
 Groups may set an optional unique `slug` through `create_group` or admin-only

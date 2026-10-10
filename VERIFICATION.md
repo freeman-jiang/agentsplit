@@ -1,5 +1,19 @@
 # AgentSplit verification
 
+## Dashboard balance and quieter group labels — October 9, 2026
+
+The home page now shows an account-wide, per-currency net balance above the
+chronological feed. Group badges use a small muted outline; ungrouped entries
+use italic text. `get_participant_balances` accepts omitted `groups` to include
+all accessible contexts and returns server-calculated `totals`. Duplicate
+contexts and invalid participants are rejected; unbound identities remain
+explicitly partial. Balance reads never materialize recurring expenses.
+
+Verified locally: production Webpack build, type checking, all 750 Jest tests,
+12 database scenarios, and 9 actual HTTP MCP workflows. Browser checks covered
+light/dark layouts, mobile overflow, and unchanged totals while filtering the
+expense feed. No dependency or database schema changes were needed.
+
 ## Preserved expense revisions
 
 One complete snapshot per create/edit revision is stored in Activity. Deletion

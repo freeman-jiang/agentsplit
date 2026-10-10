@@ -72,7 +72,7 @@ export const baseProcedure = t.procedure.use(
           : path === 'groups.list'
             ? (input?.groupIds ?? principal.groupIds)
             : path === 'groups.balances.forUser'
-              ? input?.groups?.map((g) => g.groupId)
+              ? (input?.groups?.map((g) => g.groupId) ?? principal.groupIds)
               : input?.groupId
                 ? [input.groupId]
                 : undefined
