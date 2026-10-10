@@ -22,7 +22,7 @@ export function LoginButton({
           setError('')
           const next = new URLSearchParams(window.location.search).get('next')
           const callbackURL =
-            next?.startsWith('/') && !next.startsWith('//') ? next : '/groups'
+            next?.startsWith('/') && !next.startsWith('//') ? next : '/'
           try {
             const result = await authClient.signIn.social({
               provider: 'google',

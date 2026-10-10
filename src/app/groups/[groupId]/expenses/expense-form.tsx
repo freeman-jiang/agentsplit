@@ -144,6 +144,9 @@ export function ExpenseForm({
   onSubmit,
   onDelete,
   runtimeFeatureFlags,
+  cancelHref,
+  privateExpense = false,
+  draftParticipantId,
 }: {
   group: NonNullable<AppRouterOutput['groups']['get']['group']>
   categories: AppRouterOutput['categories']['list']['categories']
@@ -156,12 +159,16 @@ export function ExpenseForm({
   onSubmit: (value: ExpenseFormValues, participantId?: string) => Promise<void>
   onDelete?: (participantId?: string) => Promise<void>
   runtimeFeatureFlags: RuntimeFeatureFlags
+  cancelHref?: string
+  privateExpense?: boolean
+  draftParticipantId?: string
 }) {
   const t = useTranslations('ExpenseForm')
   const locale = useLocale() as Locale
   const isCreate = expense === undefined
   const searchParams = useSearchParams()
-  const activeUserId = useActiveUser(group.id)
+  const membershipId = useActiveUser(draftParticipantId ? undefined : group.id)
+  const activeUserId = draftParticipantId ?? membershipId
 
   /** Whether the form was opened from a suggested reimbursement ("Mark as paid"). */
   const isRepayment = isCreate && !!searchParams.get('reimbursement')
@@ -1033,6 +1040,7 @@ export function ExpenseForm({
                             {t(`${sExpense}.recurrenceRule.label`)}
                           </FormLabel>
                           <Select
+                            disabled={privateExpense}
                             onValueChange={(value) => {
                               form.setValue(
                                 'recurrenceRule',
@@ -1064,7 +1072,7 @@ export function ExpenseForm({
                       )}
                     />
                   </div>
-                  {!isIncome && (
+                  {!isIncome && !privateExpense && (
                     <FormField
                       control={form.control}
                       name="isReimbursement"
@@ -1126,7 +1134,9 @@ export function ExpenseForm({
               <div className="flex flex-wrap items-center gap-2">
                 {' '}
                 <Button variant="ghost" className="w-auto" asChild>
-                  <Link href={`/groups/${group.id}`}>{t('cancel')}</Link>
+                  <Link href={cancelHref ?? `/groups/${group.id}`}>
+                    {t('cancel')}
+                  </Link>
                 </Button>{' '}
                 <SubmitButton
                   className="w-auto"
@@ -1164,7 +1174,9 @@ export function ExpenseForm({
               {t('Layout.people', { count: watchedPaidFor.length })}
             </p>
             <p className="mt-5 text-xs text-muted-foreground">
-              {t('Layout.history')}
+              {privateExpense
+                ? 'Edits stay in this expense’s private log.'
+                : t('Layout.history')}
             </p>
           </aside>
         </div>

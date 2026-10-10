@@ -2,6 +2,7 @@ import { decimalStrings } from '@/lib/money'
 import { prisma } from '@/lib/prisma'
 import { create as contentDisposition } from 'content-disposition'
 import { NextResponse } from 'next/server'
+import { currentParticipants } from './display-names'
 
 export async function exportJSON(groupId: string) {
   const group = await prisma.group.findUnique({
@@ -64,6 +65,7 @@ export async function exportJSON(groupId: string) {
     return NextResponse.json({ error: 'Invalid group ID' }, { status: 404 })
 
   const date = new Date().toISOString().split('T')[0]
+  group.participants = await currentParticipants({ people: group.participants })
   const filename = `AgentSplit Export - ${date}`
   return NextResponse.json(decimalStrings(group), {
     headers: {

@@ -79,6 +79,9 @@ affects every key immediately. Each member is permanently linked to one particip
 
 | Tool                         | Purpose                                                                               |
 | ---------------------------- | ------------------------------------------------------------------------------------- |
+| `list_all_expenses`          | Newest-first feed across named groups and private expenses, with scoped filters        |
+| `get_expense_options`        | Your named groups, known verified contacts, and own account ID                         |
+| `update_profile`             | Set your one global display name; immutable historical names remain unchanged          |
 | `list_groups`                | Discover and paginate the user's groups                                               |
 | `get_group`                  | Group revision, participants, protected historical participants, sharing/export links |
 | `create_group`               | Create a group and grant its creator access                                           |
@@ -100,6 +103,58 @@ affects every key immediately. Each member is permanently linked to one particip
 The old `get_group_details`, `list_categories` and `list_category_expenses` tools
 are consolidated into `get_group`, `get_reference_data` and filtered
 `list_expenses`. No read tool materializes recurring expenses.
+
+### Ungrouped expenses
+
+Use `get_expense_options` to discover your own account and known account IDs. With
+`create_expense`, omit `groupId` and provide `people`: each has a unique local `id` and either
+`{kind: "account", userId}` or `{kind: "email", name, email}`. Use those local IDs
+in `expense.paidBy` and `expense.paidFor[].participant`. Include yourself and
+exactly the people who pay or share. The result includes a private `groupId`
+accounting context for the existing get/update/delete, history, receipt, and
+balance tools. It is not listed as a named group. Local labels such as `me` and
+`friend` can be reused for another expense. The result's `participants` maps each
+`localId` to its saved `participantId`; use saved IDs for subsequent operations.
+For an existing named group, supply `groupId` and its participant IDs as before,
+and omit `people`.
+
+`list_all_expenses` returns `group: null` and `contextExpenseId` for these entries.
+Use `involvingMe: true` to match the homepage default. Pagination uses an opaque
+structured `nextCursor`; pass it back unchanged with the same filters. Expenses
+are ordered by expense date, creation time, and ID descending.
+
+Record repayments with `create_expense`, `isReimbursement: true`, and the original
+expense's private `groupId`. They affect only that expense's balance. Other
+purchases receive their own ungrouped expense. The roster is immutable, automatic
+recurrence is unavailable outside named groups, and receipts are attached after
+the initial save. Invitation links grant access only to the specified verified
+email; no notification is sent by creating them.
+
+To add people to a named group, call `update_group` with its current revision and
+retain existing participant IDs. Omit an ID only for the new participant. Then
+use `manage_group_access` with `action: "invite"`, their returned participant ID,
+and exact email. For a private expense's original invitee, use
+`action: "renew_invitation"` with `groupId` and `participantId` to atomically
+replace an expired or lost invitation. Creation and renewal return links; agents
+need separate authorization and a communication tool to send those links.
+
+### One account name, historical snapshots
+
+Verified accounts have one canonical name in `User.name`. All current expense,
+group, balance, statistics, and export views resolve bound participant names
+from that account. Unjoined people retain their invitation placeholder name.
+`update_profile` changes only the authenticated user's global display name:
+
+```json
+{ "name": "Freeman Jiang" }
+```
+
+Explain that this updates the user's name everywhere in current views and future
+records. Historical audit actor names and snapshots remain exactly as recorded.
+No email, identity binding, membership, split, amount, or old snapshot is changed.
+Names are display text, never identifiers; multiple people may share a name.
+Always use the returned account/participant IDs. Invalid IDs, wrong membership,
+invalid splits, and stale write revisions fail rather than being guessed.
 
 ## Money and splits
 
@@ -435,4 +490,4 @@ against spreadsheet formula interpretation.
 
 ## OAuth clients
 
-OAuth connections are supported alongside all existing API keys. See [OAUTH.md](OAUTH.md) for ChatGPT setup, discovery, PKCE, read/write scopes, refresh, revocation and private receipt/export behavior. OAuth uses the same 17 tools and current account permissions.
+OAuth connections are supported alongside all existing API keys. See [OAUTH.md](OAUTH.md) for ChatGPT setup, discovery, PKCE, read/write scopes, refresh, revocation and private receipt/export behavior. OAuth uses the same 20 tools and current account permissions.

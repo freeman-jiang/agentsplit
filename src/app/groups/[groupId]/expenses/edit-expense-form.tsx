@@ -9,10 +9,14 @@ export function EditExpenseForm({
   groupId,
   expenseId,
   runtimeFeatureFlags,
+  returnHref,
+  privateExpense = false,
 }: {
   groupId: string
   expenseId: string
   runtimeFeatureFlags: RuntimeFeatureFlags
+  returnHref?: string
+  privateExpense?: boolean
 }) {
   const { data: groupData } = trpc.groups.get.useQuery({ groupId })
   const group = groupData?.group
@@ -41,6 +45,8 @@ export function EditExpenseForm({
       group={group}
       expense={expense}
       categories={categories}
+      cancelHref={returnHref}
+      privateExpense={privateExpense}
       onSubmit={async (expenseFormValues, participantId) => {
         await updateExpenseMutateAsync({
           expenseId,
@@ -52,7 +58,8 @@ export function EditExpenseForm({
         utils.groups.expenses.invalidate()
         utils.groups.balances.invalidate()
         utils.groups.stats.invalidate()
-        router.push(`/groups/${group.id}`)
+        await utils.expenses.invalidate()
+        router.push(returnHref ?? `/groups/${group.id}`)
       }}
       onDelete={async (participantId) => {
         await deleteExpenseMutateAsync({
@@ -64,7 +71,8 @@ export function EditExpenseForm({
         utils.groups.expenses.invalidate()
         utils.groups.balances.invalidate()
         utils.groups.stats.invalidate()
-        router.push(`/groups/${group.id}`)
+        await utils.expenses.invalidate()
+        router.push(returnHref ?? `/groups/${group.id}`)
       }}
       runtimeFeatureFlags={runtimeFeatureFlags}
     />

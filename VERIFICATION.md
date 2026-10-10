@@ -846,3 +846,43 @@ recipient acceptance with wrong-account rejection and account switching.
 390px sign-in and acceptance screenshots were inspected. Production build,
 types, formatting and diff checks passed; lint retains two inherited warnings.
 No schema or invitation authorization changes; existing pending links are kept.
+# Ungrouped expenses and unified feed — October 9, 2026 (local)
+
+The final MCP surface retains `create_expense` with optional `groupId`: omit it
+and pass `people` for an ungrouped expense. The 20 tools include
+`list_all_expenses`, `get_expense_options`, and `update_profile`; invitation
+renewal is available through `manage_group_access` with `renew_invitation`.
+The temporary separate ungrouped-creation tool was removed before deployment.
+
+`scripts/test-mcp-expense-workflows.ts` passed eight workflows against the actual
+running HTTP MCP endpoint, including email invitations, reusable local person
+labels, invalid/foreign IDs, invalid splits, revision conflicts, global name
+changes, immutable historical snapshots, repayments, and deletion. The complete
+OAuth runner passed 28 scenarios, including the new paths with write grants and
+their rejection with read-only grants. All 750 existing Jest tests still pass.
+
+Account names now resolve from `User.name` for bound, verified participants in
+current views. Names stored on unclaimed participants are placeholders; historical
+audit actor names and snapshots are unchanged. New snapshots capture current
+account names. Settings and `update_profile` both explain this distinction.
+
+- Signed-in `/` renders the newest-first expense feed with an “Involving me”
+  default, an all-accessible view, group/no-group labels, and composable filters.
+  `/groups` remains a separate directory of named groups.
+- Production Webpack build, TypeScript, formatting, and diff checks pass. All
+  750 existing Jest tests pass across both configured time zones. Oxlint reports
+  no errors and two existing warnings in group-form/layout code.
+- The new migration applied successfully from scratch in disposable PostgreSQL.
+  `scripts/test-ungrouped-expenses.ts` passes 11 scenarios covering participation
+  filtering, stable pagination, two-/three-person privacy, email invitations,
+  expired invitation renewal, revision conflicts, access escalation attempts,
+  private repayments, deletion protection, and unaffected household balances.
+- Browser checks used synthetic accounts and a locally served production build:
+  homepage default/all-accessible/no-group filters, the separate group directory,
+  creating a three-person private expense, generating and renewing an invitation,
+  recording a repayment, and the refreshed feed all worked. A 390px mobile check
+  found no horizontal overflow. The local preview/session harness is not shipped.
+- Private expense participants are fixed after creation; these expenses are
+  one-off. Receipts can be added after saving through the existing receipt flow.
+  This run did not retest storage uploads or run the complete legacy Playwright
+  suite. No production migration, deployment, real payments, or messages occurred.

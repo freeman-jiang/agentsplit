@@ -28,6 +28,7 @@ model Group {
   userAccess   UserGroupAccess[]
   invitations GroupInvitation[]
   receipts ReceiptObject[]
+  ungroupedContext UngroupedExpense?
 }
 
 model UserGroupAccess {
@@ -54,6 +55,7 @@ model Participant {
   expensesPaidFor ExpensePaidFor[]
   memberships UserGroupAccess[]
   invitations GroupInvitation[]
+  ungroupedPerson UngroupedPerson?
   @@unique([id, groupId])
 }
 
@@ -62,6 +64,27 @@ model Category {
   grouping String
   name     String
   Expense  Expense[]
+}
+
+// Private accounting context for one ungrouped expense and its repayments.
+// Reuses the audited ledger without making a named group visible in /groups.
+model UngroupedExpense {
+  groupId   String @id
+  expenseId String @unique
+  expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+  group     Group @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  people    UngroupedPerson[]
+}
+
+model UngroupedPerson {
+  participantId String @id
+  groupId       String
+  email         String
+  context       UngroupedExpense @relation(fields: [groupId], references: [groupId], onDelete: Restrict)
+  participant   Participant @relation(fields: [participantId, groupId], references: [id, groupId], onDelete: Restrict)
+
+  @@unique([groupId, email])
+  @@unique([participantId, groupId])
 }
 
 model Expense {
@@ -88,6 +111,7 @@ model Expense {
   notes            String?
   deletedAt        DateTime?
   revision         Int               @default(0)
+  ungroupedContext UngroupedExpense?
 
   recurrenceRule         RecurrenceRule?       @default(NONE)
   recurringExpenseLink   RecurringExpenseLink?
@@ -95,6 +119,7 @@ model Expense {
 
   @@index([groupId, deletedAt, expenseDate(sort: Desc)])
   @@index([groupId, currencyCode, deletedAt])
+  @@index([expenseDate(sort: Desc), createdAt(sort: Desc), id(sort: Desc)], map: "Expense_feed_order_idx")
 }
 
 model ExpenseDocument {

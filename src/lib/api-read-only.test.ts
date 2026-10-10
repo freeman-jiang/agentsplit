@@ -4,10 +4,16 @@ import { getActiveRecurringExpenses, getExpense, getGroupExpenses } from './api'
 
 var mockExpenses = jest.fn()
 var mockRecurringLinks = jest.fn()
-const storedExpense = { id: 'expense-a', groupId: 'group-a', deletedAt: null }
+const storedExpense = {
+  id: 'expense-a',
+  groupId: 'group-a',
+  deletedAt: null,
+  paidBy: { id: 'alice', name: 'Alice' },
+}
 
 jest.mock('./prisma', () => ({
   prisma: {
+    userGroupAccess: { findMany: async () => [] },
     expense: {
       findMany: (...args: unknown[]) => mockExpenses(...args),
       findUnique: ({ where }: { where: Record<string, string> }) =>

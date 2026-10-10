@@ -2,6 +2,7 @@ import { getGroup, getGroupExpensesParticipants } from '@/lib/api'
 import { effectiveBaseUrl } from '@/lib/env'
 import { groupMembers } from '@/lib/group-access'
 import { groupPath } from '@/lib/group-slug'
+import { prisma } from '@/lib/prisma'
 import { baseProcedure } from '@/trpc/init'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
@@ -18,7 +19,14 @@ export const getGroupDetailsProcedure = baseProcedure
     }
 
     const participantsWithExpenses = await getGroupExpensesParticipants(groupId)
+    const privateContext = await prisma.ungroupedExpense.findUnique({
+      where: { groupId },
+    })
     return {
+      context: {
+        kind: privateContext ? ('ungrouped' as const) : ('group' as const),
+        expenseId: privateContext?.expenseId ?? null,
+      },
       group,
       access: await groupMembers(groupId, ctx.principal!.userId),
       participantsWithExpenses,

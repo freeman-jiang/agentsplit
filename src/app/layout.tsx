@@ -79,10 +79,7 @@ function Content({
     <TRPCProvider>
       <header className="sticky top-0 z-50 border-b bg-background/95 px-3 py-3 backdrop-blur-sm sm:px-8">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
-          <Link
-            className="flex items-center gap-2"
-            href={user ? '/groups' : '/'}
-          >
+          <Link className="flex items-center gap-2" href="/">
             <Brand />
           </Link>
           {user && (
@@ -91,6 +88,9 @@ function Content({
                 aria-label="Workspace"
                 className="col-span-full row-start-2 flex flex-wrap gap-1 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:justify-end"
               >
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/">Expenses</Link>
+                </Button>
                 <Button variant="ghost" size="sm" asChild>
                   <Link href="/groups">{t('Header.groups')}</Link>
                 </Button>
@@ -110,7 +110,7 @@ function Content({
 
       <footer className="mt-12 flex flex-col gap-4 border-t px-4 py-6 text-xs text-muted-foreground sm:flex-row sm:items-end sm:justify-between sm:px-8">
         <div className="space-y-2">
-          <Link href={user ? '/groups' : '/'} className="text-foreground">
+          <Link href="/" className="text-foreground">
             <Brand className="text-xl" />
           </Link>
           <p>{t('Footer.tagline')}</p>

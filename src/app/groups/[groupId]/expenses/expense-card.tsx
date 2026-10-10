@@ -3,12 +3,14 @@
 import { CategoryIcon } from '@/app/groups/[groupId]/expenses/category-icon'
 import { DocumentsCount } from '@/app/groups/[groupId]/expenses/documents-count'
 import { ExpenseMetadata } from '@/components/expense-metadata'
+import { Badge } from '@/components/ui/badge'
 import { Locale } from '@/i18n/request'
 import { getGroupExpenses } from '@/lib/api'
 import { Currency } from '@/lib/currency'
 import { expenseRowFigures } from '@/lib/expense-row'
 import { useActiveUser } from '@/lib/hooks'
 import { cn, formatCurrency, formatDateOnly } from '@/lib/utils'
+import { Users } from 'lucide-react'
 import { useLocale } from 'next-intl'
 import Link from 'next/link'
 
@@ -18,16 +20,35 @@ type Props = {
   currency: Currency
   groupId: string
   participantCount: number
+  activeParticipantId?: string | null
+  href?: string
+  contextLabel?: string
+  groupName?: string
 }
 
-export function ExpenseCard({ expense, currency, groupId }: Props) {
+export function ExpenseCard({
+  expense,
+  currency,
+  groupId,
+  activeParticipantId,
+  href,
+  contextLabel,
+  groupName,
+}: Props) {
   const locale = useLocale() as Locale
-  const participantId = useActiveUser(groupId)
+  const membershipId = useActiveUser(
+    activeParticipantId === undefined ? groupId : undefined,
+  )
+  const participantId =
+    activeParticipantId === undefined ? membershipId : activeParticipantId
   const figures = expenseRowFigures(expense, participantId)
   const attribution = expense.attribution
   return (
     <Link
-      href={`/groups/${groupId}/${expense.isReimbursement ? 'payments' : 'expenses'}/${expense.id}/edit`}
+      href={
+        href ??
+        `/groups/${groupId}/${expense.isReimbursement ? 'payments' : 'expenses'}/${expense.id}/edit`
+      }
       data-testid="expense-card"
       data-expense-id={expense.id}
       className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 gap-y-3 border-b px-3 py-4 transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring sm:grid-cols-[2rem_2.5rem_minmax(0,1fr)_minmax(7rem,auto)_minmax(7rem,auto)] sm:items-center sm:gap-x-4"
@@ -50,6 +71,24 @@ export function ExpenseCard({ expense, currency, groupId }: Props) {
         <CategoryIcon category={expense.category} className="h-5 w-5" />
       </span>
       <div className="min-w-0">
+        {groupName && (
+          <Badge
+            data-testid="expense-group-badge"
+            className="mb-2 max-w-full gap-1.5"
+            title={groupName}
+          >
+            <Users aria-hidden="true" className="h-3 w-3 shrink-0" />
+            <span className="truncate">{groupName}</span>
+          </Badge>
+        )}
+        {contextLabel && (
+          <div
+            data-testid="expense-context"
+            className="mb-1 text-xs font-medium text-primary"
+          >
+            {contextLabel}
+          </div>
+        )}
         {expense.vendor && (
           <div
             className="mb-1 truncate text-xs font-medium text-muted-foreground"

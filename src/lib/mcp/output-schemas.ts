@@ -192,6 +192,43 @@ const expenseWrite = z.object({
 
 /** Every registered tool needs a reviewed wire contract matching its query. */
 export const MCP_OUTPUT_SCHEMAS = {
+  'expenses.options': z.object({
+    userId: id,
+    groups: z.array(
+      z.object({ id, name: z.string(), slug: z.string().nullable() }),
+    ),
+    people: z.array(person.extend({ email: z.string() })),
+  }),
+  'profile.update': z.object({
+    profile: z.object({
+      id,
+      name: z.string(),
+      email: z.string(),
+      emailVerified: z.boolean(),
+    }),
+  }),
+  'expenses.list': z.object({
+    expenses: z.array(
+      expenseFields.extend({
+        group: z
+          .object({ id, name: z.string(), slug: z.string().nullable() })
+          .nullable(),
+        contextExpenseId: id.nullable(),
+        contextExpenseTitle: z.string().nullable(),
+        participantId: id.nullable(),
+        attribution: attribution.optional(),
+        paidBy: person,
+        paidFor: z.array(
+          z.object({ participant: person, shares: decimalTextSchema }),
+        ),
+        category: category.nullable(),
+        _count: z.object({ documents: z.number().int() }),
+      }),
+    ),
+    nextCursor: z
+      .object({ date: dateTime, createdAt: dateTime, id })
+      .nullable(),
+  }),
   'groups.create': z.object({ groupId: id, group: groupWithParticipants }),
   'groups.update': z.object({ groupId: id, group: groupWithParticipants }),
   'groups.access': z.object({
@@ -208,7 +245,17 @@ export const MCP_OUTPUT_SCHEMAS = {
       })
       .optional(),
   }),
-  'groups.expenses.create': expenseWrite,
+  'groups.expenses.create': expenseWrite.extend({
+    groupId: id,
+    participants: z
+      .array(z.object({ localId: id, participantId: id, name: z.string() }))
+      .optional(),
+    invitations: z
+      .array(
+        z.object({ email: z.string(), url: z.string(), expiresAt: dateTime }),
+      )
+      .optional(),
+  }),
   'groups.expenses.update': expenseWrite,
   'groups.expenses.delete': z.object({
     expenseId: id,
@@ -248,6 +295,10 @@ export const MCP_OUTPUT_SCHEMAS = {
     ...pagination,
   }),
   'groups.getDetails': z.object({
+    context: z.object({
+      kind: z.enum(['group', 'ungrouped']),
+      expenseId: id.nullable(),
+    }),
     access: z.object({
       role: z.string(),
       participantId: id.nullable(),

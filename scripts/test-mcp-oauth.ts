@@ -644,7 +644,7 @@ try {
       assert(init.body.result.serverInfo)
       const tools = (await rpc('tools/list', {}, full.access_token)).body.result
         .tools!
-      assert.equal(tools.length, 17)
+      assert.equal(tools.length, 20)
       assert.deepEqual(
         tools.find((t: { name: string }) => t.name === 'create_expense')!
           .securitySchemes,
@@ -737,6 +737,68 @@ try {
         (await prisma.expense.findUniqueOrThrow({ where: { id: expenseId } }))
           .revision,
         1,
+      )
+    },
+  )
+  await check(
+    'OAuth agents can create ungrouped expenses and update their own profile; read-only grants cannot',
+    async () => {
+      const args = {
+        people: [
+          { kind: 'account', id: 'me', userId: alice.user.id },
+          {
+            kind: 'email',
+            id: 'guest',
+            name: 'Guest',
+            email: `guest-${suffix}@example.com`,
+          },
+        ],
+        expense: {
+          title: 'OAuth private dinner',
+          amount: '20',
+          currencyCode: 'USD',
+          expenseDate: '2026-10-09',
+          paidBy: 'me',
+          paidFor: [
+            { participant: 'me', shares: '1' },
+            { participant: 'guest', shares: '1' },
+          ],
+          isReimbursement: false,
+        },
+      }
+      for (const [name, argumentsValue] of [
+        ['create_expense', args],
+        ['update_profile', { name: alice.user.name }],
+      ] as const) {
+        const denied = await rpc(
+          'tools/call',
+          { name, arguments: argumentsValue },
+          readOnly.access_token,
+        )
+        assert.equal(denied.body.result.isError, true)
+      }
+      const privateExpense = await call(
+        'create_expense',
+        args,
+        full.access_token,
+      )
+      assert(privateExpense.groupId)
+      assert.equal(privateExpense.invitations?.length, 1)
+      const renamed = await call(
+        'update_profile',
+        { name: alice.user.name },
+        full.access_token,
+      )
+      assert.equal(renamed.profile.id, alice.user.id)
+      const visible = await call(
+        'list_all_expenses',
+        { scope: 'ungrouped' },
+        readOnly.access_token,
+      )
+      assert(
+        visible.expenses.some(
+          (expense) => expense.id === privateExpense.expenseId,
+        ),
       )
     },
   )

@@ -6,6 +6,7 @@ import { dateOnlyToLocalDate, formatAmountAsDecimal } from '@/lib/utils'
 import { Parser } from '@json2csv/plainjs'
 import { create as contentDisposition } from 'content-disposition'
 import { NextResponse } from 'next/server'
+import { currentParticipants } from './display-names'
 
 const splitModeLabel = {
   EVENLY: 'Evenly',
@@ -99,6 +100,7 @@ export async function exportCSV(groupId: string) {
 
   */
 
+  group.participants = await currentParticipants({ people: group.participants })
   const fields = [
     { label: 'Date', value: 'date' },
     { label: 'Description', value: 'title' },
@@ -113,7 +115,7 @@ export async function exportCSV(groupId: string) {
     { label: 'Split mode', value: 'splitMode' },
     ...group.participants.map((participant) => ({
       label: escapeCsvFormula(participant.name),
-      value: participant.name,
+      value: `participant_${participant.id}`,
     })),
   ]
 
@@ -152,7 +154,7 @@ export async function exportCSV(groupId: string) {
           )
 
           return [
-            participant.name,
+            `participant_${participant.id}`,
             formatAmountAsDecimal(participantBalance, currency),
           ]
         }),

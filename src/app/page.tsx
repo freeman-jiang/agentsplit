@@ -2,10 +2,18 @@ import { LoginButton } from '@/components/login-button'
 import { TrackPage } from '@/lib/analytics/track-page'
 import { getWebSession } from '@/lib/session'
 import { getTranslations } from 'next-intl/server'
-import { redirect } from 'next/navigation'
+import { Suspense } from 'react'
+import { ExpenseFeed } from './expenses/expense-feed'
 
 export default async function HomePage() {
-  if (await getWebSession()) redirect('/groups')
+  if (await getWebSession())
+    return (
+      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-8 sm:py-8">
+        <Suspense fallback={<p role="status">Loading expenses…</p>}>
+          <ExpenseFeed />
+        </Suspense>
+      </main>
+    )
   const t = await getTranslations()
   return (
     <main>

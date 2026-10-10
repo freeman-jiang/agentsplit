@@ -67,13 +67,15 @@ export const baseProcedure = t.procedure.use(
           }
         | undefined
       const requested =
-        path === 'groups.list'
-          ? (input?.groupIds ?? principal.groupIds)
-          : path === 'groups.balances.forUser'
-            ? input?.groups?.map((g) => g.groupId)
-            : input?.groupId
-              ? [input.groupId]
-              : undefined
+        path === 'groups.expenses.create' && input?.groupId === undefined
+          ? []
+          : path === 'groups.list'
+            ? (input?.groupIds ?? principal.groupIds)
+            : path === 'groups.balances.forUser'
+              ? input?.groups?.map((g) => g.groupId)
+              : input?.groupId
+                ? [input.groupId]
+                : undefined
       if (!requested)
         throw new TRPCError({
           code: 'BAD_REQUEST',

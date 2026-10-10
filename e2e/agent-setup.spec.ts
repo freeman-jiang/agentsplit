@@ -7,7 +7,7 @@ test('signed-in workspace offers usable agent connection instructions', async ({
 }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 1000 })
   await page.goto('/')
-  await expect(page).toHaveURL(/\/groups$/)
+  await expect(page).toHaveURL(/\/$/)
   await expect(page.locator('a[href*="github.com"]')).toHaveCount(0)
   await page
     .getByRole('navigation', { name: 'Workspace' })

@@ -8,6 +8,7 @@ import {
 } from './expense-history'
 import { prisma } from './prisma'
 import { randomId } from './random'
+import { renewPrivateInvitation } from './ungrouped-expenses'
 
 export async function effectiveGroupIds(
   userId: string,
@@ -28,6 +29,7 @@ export const groupAccessInput = z
       'join',
       'leave',
       'invite',
+      'renew_invitation',
       'revoke_invitation',
       'remove_member',
       'set_role',
@@ -58,17 +60,19 @@ export const groupAccessInput = z
         ? ['shareUrl']
         : [
             'groupId',
-            ...(input.action === 'invite'
-              ? ['email', 'participantId']
-              : input.action === 'bind_member'
-                ? ['userId', 'email', 'participantId']
-                : input.action === 'revoke_invitation'
-                  ? ['invitationId']
-                  : input.action === 'remove_member'
-                    ? ['userId']
-                    : input.action === 'set_role'
-                      ? ['userId', 'role']
-                      : []),
+            ...(input.action === 'renew_invitation'
+              ? ['participantId']
+              : input.action === 'invite'
+                ? ['email', 'participantId']
+                : input.action === 'bind_member'
+                  ? ['userId', 'email', 'participantId']
+                  : input.action === 'revoke_invitation'
+                    ? ['invitationId']
+                    : input.action === 'remove_member'
+                      ? ['userId']
+                      : input.action === 'set_role'
+                        ? ['userId', 'role']
+                        : []),
           ]
     for (const field of required)
       if (!input[field as keyof typeof input])
@@ -92,6 +96,9 @@ export async function groupMembers(groupId: string, userId: string) {
     where: { id: { in: memberships.map((m) => m.userId) } },
     select: { id: true, name: true, email: true },
   })
+  const privateContext = await prisma.ungroupedExpense.findUnique({
+    where: { groupId },
+  })
   const invitations =
     access.role === 'admin'
       ? await prisma.groupInvitation.findMany({
@@ -99,7 +106,7 @@ export async function groupMembers(groupId: string, userId: string) {
             groupId,
             acceptedAt: null,
             revokedAt: null,
-            expiresAt: { gt: new Date() },
+            ...(privateContext ? {} : { expiresAt: { gt: new Date() } }),
           },
           select: {
             id: true,
@@ -135,6 +142,15 @@ export async function changeGroupAccess(
   input: z.infer<typeof groupAccessInput>,
   baseUrl: string,
 ) {
+  if (input.action === 'renew_invitation') {
+    const invitation = await renewPrivateInvitation({
+      actor,
+      groupId: input.groupId!,
+      participantId: input.participantId!,
+      baseUrl,
+    })
+    return { groupId: input.groupId!, joined: true, invitation }
+  }
   let groupId = input.groupId
   let token: string | undefined
   if (input.action === 'join') {
@@ -176,6 +192,30 @@ export async function changeGroupAccess(
     const membership = await tx.userGroupAccess.findUnique({
       where: { userId_groupId: { userId: actor.userId, groupId: targetId } },
     })
+    const privateContext = await tx.ungroupedExpense.findUnique({
+      where: { groupId: targetId },
+      include: { people: true },
+    })
+    if (privateContext && ['invite', 'bind_member'].includes(input.action)) {
+      const person = privateContext.people.find(
+        (p) => p.participantId === input.participantId,
+      )
+      if (!person || person.email !== input.email?.trim().toLowerCase()) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Only the original people may access this private expense.',
+        })
+      }
+    }
+    if (
+      privateContext &&
+      ['remove_member', 'set_role'].includes(input.action)
+    ) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'Private expense membership cannot be reassigned.',
+      })
+    }
     if (input.action === 'join') {
       const invitation = await tx.groupInvitation.findUnique({
         where: { tokenHash: tokenHash(token!) },

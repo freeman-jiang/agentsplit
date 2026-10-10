@@ -5,6 +5,7 @@ export const RESERVED_GROUP_SLUGS = new Set([
   'sign-in',
   'api',
   'groups',
+  'expenses',
   'agents',
   'login',
   'logout',
