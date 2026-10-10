@@ -119,6 +119,7 @@ jest.mock('../../../lib/prisma', () => ({
     },
     user: { findMany: async () => [] },
     groupInvitation: { findMany: async () => [] },
+    ungroupedExpense: { findUnique: async () => null },
     participant: { findMany: async () => [] },
     group: {
       findUnique: ({ where }: { where: { id: string } }) =>
@@ -306,7 +307,7 @@ describe('authenticated MCP protocol', () => {
     const { status, body } = await rpc('tools/list')
     expect(status).toBe(200)
     const { tools } = ListToolsResultSchema.parse(body.result)
-    expect(tools).toHaveLength(17)
+    expect(tools).toHaveLength(20)
     expect(tools.map((tool) => tool.name)).not.toContain('list_month_expenses')
     expect(
       tools.find((tool) => tool.name === 'list_expenses')?.annotations
@@ -932,7 +933,7 @@ describe('authenticated MCP protocol', () => {
       if (name)
         expect(CallToolResultSchema.parse(reply.result).isError).not.toBe(true)
       else
-        expect(ListToolsResultSchema.parse(reply.result).tools).toHaveLength(17)
+        expect(ListToolsResultSchema.parse(reply.result).tools).toHaveLength(20)
       headers['Mcp-Method'] = 'wrong-method'
       const mismatch = await POST(
         new Request('https://app.test/api/mcp', {

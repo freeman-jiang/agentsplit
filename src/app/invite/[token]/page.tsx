@@ -21,7 +21,14 @@ export default async function InvitationPage({
   const user = await requireWebUser()
   const invitation = await prisma.groupInvitation.findUnique({
     where: { tokenHash: createHash('sha256').update(token).digest('hex') },
-    include: { group: { select: { name: true } } },
+    include: {
+      group: {
+        select: {
+          name: true,
+          ungroupedContext: { select: { expenseId: true } },
+        },
+      },
+    },
   })
   const valid =
     invitation &&
@@ -32,7 +39,11 @@ export default async function InvitationPage({
 
   return (
     <main className="mx-auto max-w-lg w-full px-4 py-16 space-y-6">
-      <h1 className="font-display text-4xl">Join a private group</h1>
+      <h1 className="font-display text-4xl">
+        {valid && invitation.group.ungroupedContext
+          ? 'View a private expense'
+          : 'Accept invitation'}
+      </h1>
       <p>
         This invitation is for one Google account. Check that you’re signed in
         with the email your friend invited.
@@ -41,7 +52,8 @@ export default async function InvitationPage({
       {valid ? (
         <>
           <p>
-            Join <strong>{invitation.group.name}</strong> as{' '}
+            {invitation.group.ungroupedContext ? 'View' : 'Join'}{' '}
+            <strong>{invitation.group.name}</strong> as{' '}
             <strong>{invitation.participantName}</strong>. Existing expenses and
             balances under this name will be linked to your account.
           </p>
@@ -49,8 +61,9 @@ export default async function InvitationPage({
           <div className="border-t pt-5 space-y-3 text-sm">
             <h2 className="font-medium">What happens next?</h2>
             <p>
-              You’ll go straight to the group. You can review expenses, add your
-              own, record payments and see who owes whom.
+              {invitation.group.ungroupedContext
+                ? 'You’ll go to this private expense. You can review the split, record repayments and see who owes whom.'
+                : 'You’ll go straight to the group. You can review expenses, add your own, record payments and see who owes whom.'}
             </p>
             <p>
               Want ChatGPT or Claude to help? After joining, open{' '}

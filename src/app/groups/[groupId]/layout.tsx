@@ -1,6 +1,8 @@
 import { cached } from '@/app/cached-functions'
+import { prisma } from '@/lib/prisma'
 import { requireWebGroup } from '@/lib/session'
 import { Metadata } from 'next'
+import { redirect } from 'next/navigation'
 import { PropsWithChildren } from 'react'
 import { GroupLayoutClient } from './layout.client'
 
@@ -28,5 +30,9 @@ export default async function GroupLayout({
 }: PropsWithChildren<Props>) {
   const { groupId } = await params
   await requireWebGroup(groupId)
+  const privateContext = await prisma.ungroupedExpense.findUnique({
+    where: { groupId },
+  })
+  if (privateContext) redirect(`/expenses/${privateContext.expenseId}`)
   return <GroupLayoutClient groupId={groupId}>{children}</GroupLayoutClient>
 }

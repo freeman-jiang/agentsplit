@@ -22,10 +22,11 @@ export const listGroupsProcedure = baseProcedure
   )
   .query(async ({ ctx, input: { groupIds, cursor, limit } }) => {
     const available = groupIds ?? ctx.principal?.groupIds ?? []
-    const groups = await getGroups(available.slice(cursor, cursor + limit))
+    const named = await getGroups(available)
+    const groups = named.slice(cursor, cursor + limit)
     return {
       groups,
-      hasMore: available.length > cursor + limit,
+      hasMore: named.length > cursor + limit,
       nextCursor: cursor + limit,
     }
   })

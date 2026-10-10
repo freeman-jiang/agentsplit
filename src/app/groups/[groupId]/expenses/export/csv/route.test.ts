@@ -10,6 +10,7 @@ var mockFindUnique = jest.fn()
 
 jest.mock('../../../../../../lib/prisma', () => ({
   prisma: {
+    userGroupAccess: { findMany: async () => [] },
     group: { findUnique: (...args: unknown[]) => mockFindUnique(...args) },
   },
 }))

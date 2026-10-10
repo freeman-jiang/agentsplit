@@ -18,7 +18,7 @@ export default async function SignInPage({
       <p className="text-muted-foreground">
         {isInvitation
           ? 'AgentSplit keeps shared expenses, payments and balances in one place. Sign in with the Google email your invitation was sent to.'
-          : 'Log in with your Google account to access your groups.'}
+          : 'Log in with your Google account to access your expenses and groups.'}
       </p>
       {isInvitation && (
         <ol className="list-decimal space-y-3 ps-5 text-sm">

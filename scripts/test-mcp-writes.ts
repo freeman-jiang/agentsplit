@@ -104,7 +104,7 @@ async function main() {
   }
   try {
     const catalog = ListToolsResultSchema.parse(await rpc('tools/list', {}))
-    assert.equal(catalog.tools.length, 17)
+    assert.equal(catalog.tools.length, 20)
     assert.equal(
       catalog.tools.find((t) => t.name === 'create_expense')?.annotations
         ?.readOnlyHint,

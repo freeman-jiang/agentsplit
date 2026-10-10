@@ -27,7 +27,17 @@ export const groupFormSchema = z
   .superRefine(({ participants }, ctx) => {
     participants.forEach((participant, i) => {
       participants.slice(0, i).forEach((otherParticipant) => {
-        if (otherParticipant.name === participant.name) {
+        if (participant.id && participant.id === otherParticipant.id) {
+          ctx.addIssue({
+            code: 'custom',
+            message: 'Duplicate participant ID',
+            path: ['participants', i, 'id'],
+          })
+        }
+        if (
+          otherParticipant.name === participant.name &&
+          (!otherParticipant.id || !participant.id)
+        ) {
           ctx.addIssue({
             code: 'custom',
             message: 'duplicateParticipantName',

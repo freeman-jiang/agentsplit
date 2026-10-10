@@ -1,3 +1,4 @@
+import { accountDisplayNames } from './display-names'
 import { prisma } from './prisma'
 
 export type ExpenseAttribution = {
@@ -10,7 +11,7 @@ export type ExpenseAttribution = {
 
 /** Batch audit attribution, never infer an author from the payer or a legacy baseline. */
 export async function expenseAttributions(
-  groupId: string,
+  groupId: string | string[],
   expenseIds: string[],
   throughSequence?: number,
   viewerUserId?: string,
@@ -18,7 +19,7 @@ export async function expenseAttributions(
   if (!expenseIds.length) return new Map<string, ExpenseAttribution>()
   const events = await prisma.activity.findMany({
     where: {
-      groupId,
+      groupId: typeof groupId === 'string' ? groupId : { in: groupId },
       sequence:
         throughSequence === undefined ? undefined : { lte: throughSequence },
       expenseId: { in: expenseIds },
@@ -36,6 +37,14 @@ export async function expenseAttributions(
     orderBy: { sequence: 'asc' },
   })
   const result = new Map<string, ExpenseAttribution>()
+  const currentNames =
+    throughSequence === undefined
+      ? await accountDisplayNames({
+          userIds: events.flatMap((event) =>
+            event.actorUserId ? [event.actorUserId] : [],
+          ),
+        })
+      : new Map<string, string>()
   for (const event of events) {
     const row: ExpenseAttribution = result.get(event.expenseId!) ?? {
       createdBy: null,
@@ -46,6 +55,9 @@ export async function expenseAttributions(
         ? {
             userId: event.actorUserId,
             name:
+              (event.actorUserId
+                ? currentNames.get(event.actorUserId)
+                : undefined) ??
               event.actorName ??
               (event.source === 'system' ? 'Automatic recurrence' : 'Member'),
             source: event.source,

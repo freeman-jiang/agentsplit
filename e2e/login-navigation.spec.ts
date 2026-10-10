@@ -45,7 +45,7 @@ test.describe('Signed-out entry', () => {
       'Test sign-in error',
     )
     expect(provider).toBe('google')
-    expect(callback).toBe('/groups')
+    expect(callback).toBe('/')
   })
   test('agent setup requires login and invitation destinations survive the login button', async ({
     page,
@@ -87,7 +87,7 @@ test('profile avatar opens settings and theme preferences work outside the heade
   page,
 }) => {
   await page.goto('/')
-  await expect(page).toHaveURL(/\/groups$/)
+  await expect(page).toHaveURL(/\/$/)
   const avatar = page.getByRole('link', {
     name: 'Profile and settings',
     exact: true,

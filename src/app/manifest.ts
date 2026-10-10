@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'AgentSplit',
     short_name: 'AgentSplit',
     description: 'Shared expenses for people and their agents.',
-    start_url: '/groups',
+    start_url: '/',
     id: '/groups',
     display: 'standalone',
     background_color: '#f5f1e8',

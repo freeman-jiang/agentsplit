@@ -9,10 +9,42 @@ attachments use private self-hosted Garage storage in the
 private groups, and self-service agent keys are documented in [AUTH.md](AUTH.md).
 See [the privacy profile](PRIVACY.md) for data handling and audit limitations.
 
-The complete read/write agent API is documented in [MCP.md](MCP.md). Its 17
+The complete read/write agent API is documented in [MCP.md](MCP.md). Its 20
 composable tools map to shared tRPC business logic, including multi-currency
 expenses, repayments, revisions, history, group membership, and receipts.
 Money uses exact decimal strings and balances stay separate by currency.
+
+## Expense feed and private expenses
+
+Verified members have one account display name across current views. They can
+change it in Settings or with MCP `update_profile`. Participant names remain
+placeholders only until linked to a verified account. Existing audit actor names
+and snapshots keep their historical values; future snapshots capture the current
+account name. Stable IDs, not display names, identify people.
+
+Signed-in users land on `/`, a chronological feed ordered by expense date,
+creation time, and ID, newest first. It defaults to expenses the user paid or
+shares; “All accessible expenses” also includes other expenses in their groups.
+Filters cover group/no group, person, payer, date range, currency, category,
+expense/payment, and description/vendor search. `/groups` remains the named-group
+directory. Login and PWA launch open the feed; the existing PWA identity is retained.
+
+An ungrouped expense can involve two or more people. Existing verified contacts
+come from shared memberships. Other people are invited by exact email using a
+private link; no email or chat message is sent automatically. Only the original
+participants can access its expense, receipts, history, and repayments.
+
+Each ungrouped expense reuses a private internal accounting context, hidden from
+the group directory. Its participant roster is immutable and its repayments
+settle only that expense. Create a separate expense for another purchase or a
+different set of people. Ungrouped expenses are one-off; recurring expenses remain
+in named groups. Receipts can be attached after the first save. Existing group
+expenses, memberships, balances, and audit records are preserved by an additive
+migration. The server enforces these boundaries for both UI and MCP callers.
+
+Run the disposable-database integration checks with
+`bun scripts/test-ungrouped-expenses.ts` after applying migrations to a loopback
+database whose name contains `test` or `e2e`.
 
 ## Group UI conventions
 

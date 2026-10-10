@@ -6,6 +6,7 @@ import { randomId } from '@/lib/random'
 import { TRPCError } from '@trpc/server'
 import * as z from 'zod'
 import { expenseCurrencySchema } from './currency'
+import { participantDisplayNames } from './display-names'
 import { expenseTitle } from './expense-title'
 import { decimalStrings, decimalTextSchema } from './money'
 
@@ -201,7 +202,27 @@ export async function recordExpenseSnapshot(
     where: { id: expenseId },
     include: snapshotInclude,
   })
-  const snapshot = makeExpenseSnapshot(expense)
+  const names = await participantDisplayNames({
+    participantIds: [
+      expense.paidBy.id,
+      ...expense.paidFor.map((p) => p.participant.id),
+    ],
+    db: tx,
+  })
+  const snapshot = makeExpenseSnapshot({
+    ...expense,
+    paidBy: {
+      ...expense.paidBy,
+      name: names.get(expense.paidBy.id) ?? expense.paidBy.name,
+    },
+    paidFor: expense.paidFor.map((p) => ({
+      ...p,
+      participant: {
+        ...p.participant,
+        name: names.get(p.participant.id) ?? p.participant.name,
+      },
+    })),
+  })
   const claimedActor = options.participantId
     ? await tx.participant.findFirst({
         where: { id: options.participantId, groupId: expense.groupId },

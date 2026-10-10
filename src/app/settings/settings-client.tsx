@@ -5,7 +5,9 @@ import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { authClient } from '@/lib/auth-client'
+import { trpc } from '@/trpc/client'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 type Key = {
@@ -27,6 +29,11 @@ export function AccountSettings({
     [secret, setSecret] = useState(''),
     [error, setError] = useState(''),
     [pending, setPending] = useState(false)
+  const [displayName, setDisplayName] = useState(name)
+  const [nameSaved, setNameSaved] = useState(false)
+  const profile = trpc.profile.update.useMutation()
+  const utils = trpc.useUtils()
+  const router = useRouter()
   async function load() {
     const result = await authClient.apiKey.list()
     if (result.error) setError(result.error.message ?? 'Unable to load keys')
@@ -42,6 +49,60 @@ export function AccountSettings({
         <p className="break-words text-muted-foreground">
           {email} · Verified by Google
         </p>
+        <form
+          className="max-w-lg space-y-3"
+          onSubmit={async (event) => {
+            event.preventDefault()
+            setNameSaved(false)
+            try {
+              await profile.mutateAsync({ name: displayName })
+              await Promise.all([
+                utils.groups.invalidate(),
+                utils.expenses.invalidate(),
+              ])
+              router.refresh()
+              setNameSaved(true)
+            } catch {
+              /* The mutation error is shown below. */
+            }
+          }}
+        >
+          <label
+            htmlFor="account-display-name"
+            className="block text-sm font-medium"
+          >
+            Display name · used everywhere
+          </label>
+          <Input
+            id="account-display-name"
+            value={displayName}
+            maxLength={50}
+            required
+            aria-describedby="account-name-help"
+            onChange={(event) => {
+              setDisplayName(event.target.value)
+              setNameSaved(false)
+            }}
+          />
+          <p id="account-name-help" className="text-sm text-muted-foreground">
+            This is your one account name across all groups and expenses.
+            Changing it updates current views and future entries. Past audit
+            records keep the name recorded at the time.
+          </p>
+          <Button disabled={profile.isPending || !displayName.trim()}>
+            {profile.isPending ? 'Saving…' : 'Save display name'}
+          </Button>
+          {profile.error && (
+            <p role="alert" className="text-sm text-destructive">
+              {profile.error.message}
+            </p>
+          )}
+          {nameSaved && (
+            <p role="status" className="text-sm">
+              Display name updated everywhere. Historical records are unchanged.
+            </p>
+          )}
+        </form>
         <Button
           variant="outline"
           onClick={async () => {

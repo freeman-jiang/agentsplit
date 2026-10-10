@@ -26,7 +26,13 @@ import { useCurrentGroup } from '../current-group-context'
 type Group = NonNullable<AppRouterOutput['groups']['get']['group']>
 type Payment = AppRouterOutput['groups']['expenses']['get']['expense']
 
-export function PaymentEditor({ paymentId }: { paymentId?: string }) {
+export function PaymentEditor({
+  paymentId,
+  returnHref,
+}: {
+  paymentId?: string
+  returnHref?: string
+}) {
   const { groupId, group } = useCurrentGroup()
   const query = trpc.groups.expenses.get.useQuery(
     { groupId, expenseId: paymentId ?? '' },
@@ -55,12 +61,21 @@ export function PaymentEditor({ paymentId }: { paymentId?: string }) {
     <PaymentForm
       key={paymentId ?? 'new'}
       group={group}
+      returnHref={returnHref}
       payment={paymentId ? query.data?.expense : undefined}
     />
   )
 }
 
-function PaymentForm({ group, payment }: { group: Group; payment?: Payment }) {
+function PaymentForm({
+  group,
+  payment,
+  returnHref,
+}: {
+  group: Group
+  payment?: Payment
+  returnHref?: string
+}) {
   const params = useSearchParams()
   const currentPerson = useActiveUser(group.id)
   const router = useRouter()
@@ -102,7 +117,8 @@ function PaymentForm({ group, payment }: { group: Group; payment?: Payment }) {
     ?.reimbursements.find((p) => p.from === from && p.to === to)
   const finish = async () => {
     await utils.groups.invalidate()
-    router.push(`${groupPath(group)}/payments`)
+    await utils.expenses.invalidate()
+    router.push(returnHref ?? `${groupPath(group)}/payments`)
   }
   return (
     <div className="space-y-6">
@@ -307,7 +323,9 @@ function PaymentForm({ group, payment }: { group: Group; payment?: Payment }) {
             {saving ? 'Saving…' : payment ? 'Save payment' : 'Record payment'}
           </Button>
           <Button variant="ghost" asChild>
-            <Link href={`${groupPath(group)}/payments`}>Cancel</Link>
+            <Link href={returnHref ?? `${groupPath(group)}/payments`}>
+              Cancel
+            </Link>
           </Button>
           {payment && (
             <Button

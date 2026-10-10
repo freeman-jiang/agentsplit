@@ -8,6 +8,7 @@ type Event = Pick<
 const mockFindMany = jest.fn<Promise<Event[]>, [object]>()
 jest.mock('./prisma', () => ({
   prisma: {
+    user: { findMany: async () => [] },
     activity: { findMany: (...args: [object]) => mockFindMany(...args) },
   },
 }))

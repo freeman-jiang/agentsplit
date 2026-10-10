@@ -29,6 +29,7 @@ import {
 } from '@/lib/schemas'
 import { TRPCError } from '@trpc/server'
 import { expenseCurrencySchema } from './currency'
+import { currentParticipants, participantDisplayNames } from './display-names'
 import {
   expenseAttributions,
   type ExpenseAttribution,
@@ -38,6 +39,7 @@ import type { FinalizedUploads } from './expense-uploads'
 import { claimGroupSlug } from './group-slug-write'
 import { assertReceiptOwnership } from './receipt-ownership'
 import { assertRevision } from './revision'
+import { assertUngroupedWrite } from './ungrouped-access'
 
 // Re-exported for backwards compatibility with existing server-side importers.
 export { randomId }
@@ -156,6 +158,13 @@ export async function createExpense(
         include: { participants: true },
       })
       if (!group) throw new Error(`Invalid group ID: ${groupId}`)
+      await assertUngroupedWrite({
+        tx,
+        groupId,
+        expenseId,
+        values: expenseFormValues,
+        creating: true,
+      })
       if (
         await tx.expense.findFirst({
           where: { id: expenseId, groupId },
@@ -268,6 +277,21 @@ export async function deleteExpense(
       })
       if (!existingExpense)
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Expense not found' })
+      const privateContext = await tx.ungroupedExpense.findUnique({
+        where: { groupId },
+      })
+      if (
+        privateContext?.expenseId === expenseId &&
+        (await tx.expense.count({
+          where: { groupId, isReimbursement: true, deletedAt: null },
+        }))
+      ) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message:
+            'Remove this expense’s recorded repayments before deleting the expense.',
+        })
+      }
       assertRevision(existingExpense.revision, expectedRevision, actor)
       await baselineExpense(tx, existingExpense)
       const deletedAt = new Date()
@@ -330,7 +354,8 @@ export async function getGroupExpensesParticipants(groupId: string) {
 export async function getGroups(groupIds: string[]) {
   return (
     await prisma.group.findMany({
-      where: { id: { in: groupIds } },
+      where: { id: { in: groupIds }, ungroupedContext: null },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include: { _count: { select: { participants: true } } },
     })
   ).map((group) => ({
@@ -398,6 +423,13 @@ export async function updateExpense(
         const currencyCode = expenseCurrencySchema.parse(
           values.currencyCode ?? existingExpense.currencyCode,
         )
+        await assertUngroupedWrite({
+          tx,
+          groupId,
+          expenseId,
+          values,
+          creating: false,
+        })
         if (
           values.originalAmount !== undefined ||
           values.conversionRate !== undefined ||
@@ -572,6 +604,13 @@ export async function updateGroup(
   return withGroupWrite(
     groupId,
     async (tx) => {
+      if (await tx.ungroupedExpense.findUnique({ where: { groupId } })) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message:
+            'A private expense is not a named group. Its people and visibility cannot be changed through group settings.',
+        })
+      }
       if (actor) {
         const membership = await tx.userGroupAccess.findUnique({
           where: { userId_groupId: { userId: actor.userId, groupId } },
@@ -588,6 +627,10 @@ export async function updateGroup(
       })
       if (!existingGroup)
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Group not found' })
+      existingGroup.participants = await currentParticipants({
+        people: existingGroup.participants,
+        db: tx,
+      })
       assertRevision(existingGroup.revision, expectedRevision, actor)
       for (const person of groupFormValues.participants ?? []) {
         if (
@@ -622,10 +665,14 @@ export async function updateGroup(
           OR: [{ memberships: { some: {} } }, { invitations: { some: {} } }],
         },
       })
+      const identityNames = new Map(
+        existingGroup.participants.map((p) => [p.id, p.name]),
+      )
       for (const person of identities) {
         if (
           !values.participants.some(
-            (p) => p.id === person.id && p.name === person.name,
+            (p) =>
+              p.id === person.id && p.name === identityNames.get(person.id),
           )
         )
           throw new TRPCError({
@@ -650,7 +697,11 @@ export async function updateGroup(
               (p) => !values.participants.some((p2) => p2.id === p.id),
             ),
             updateMany: values.participants
-              .filter((participant) => participant.id !== undefined)
+              .filter(
+                (participant) =>
+                  participant.id !== undefined &&
+                  !identities.some((p) => p.id === participant.id),
+              )
               .map((participant) => ({
                 where: { id: participant.id },
                 data: {
@@ -674,6 +725,10 @@ export async function updateGroup(
             (participant) => participant.id === participantId,
           )
         : undefined
+      group.participants = await currentParticipants({
+        people: group.participants,
+        db: tx,
+      })
       await tx.activity.create({
         data: {
           id: randomId(),
@@ -698,10 +753,16 @@ export async function updateGroup(
 }
 
 export async function getGroup(groupId: string) {
-  return prisma.group.findUnique({
+  const group = await prisma.group.findUnique({
     where: { id: groupId },
     include: { participants: true },
   })
+  return group
+    ? {
+        ...group,
+        participants: await currentParticipants({ people: group.participants }),
+      }
+    : null
 }
 
 export async function getCategories() {
@@ -802,9 +863,23 @@ export async function getGroupExpenses(
     undefined,
     options?.viewerUserId,
   )
+  const names = await participantDisplayNames({
+    participantIds: result.flatMap((e) => [
+      e.paidBy.id,
+      ...e.paidFor.map((p) => p.participant.id),
+    ]),
+  })
   return decimalStrings(result).map(
     (e): typeof e & { attribution?: ExpenseAttribution } => ({
       ...e,
+      paidBy: { ...e.paidBy, name: names.get(e.paidBy.id) ?? e.paidBy.name },
+      paidFor: e.paidFor.map((p) => ({
+        ...p,
+        participant: {
+          ...p.participant,
+          name: names.get(p.participant.id) ?? p.participant.name,
+        },
+      })),
       attribution: attribution.get(e.id) ?? {
         createdBy: null,
         updatedBy: null,
@@ -866,6 +941,8 @@ export async function getExpense(groupId: string, expenseId: string) {
       recurringExpenseLink: true,
     },
   })
+  if (result)
+    result.paidBy = (await currentParticipants({ people: [result.paidBy] }))[0]!
   return decimalStrings(result)
 }
 
