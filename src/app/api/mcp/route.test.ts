@@ -838,6 +838,7 @@ describe('authenticated MCP protocol', () => {
       ).body.result,
     ).structuredContent
     expect(balances).toEqual({
+      totals: [{ currencyCode: 'USD', amount: '-30' }],
       unboundGroupIds: [],
       balances: [
         expect.objectContaining({

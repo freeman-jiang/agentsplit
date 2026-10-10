@@ -510,5 +510,82 @@ await check({
     MCP_OUTPUT_SCHEMAS['expenses.options'].parse(options)
   },
 })
+await check({
+  name: 'dashboard totals include private contexts, separate currencies and preserve partial-state warnings',
+  run: async () => {
+    const summary = await alice.caller.groups.balances.forUser({})
+    assert.deepEqual(summary.totals, [{ currencyCode: 'USD', amount: '80' }])
+    assert(summary.balances.some((balance) => balance.groupId === privateId))
+    assert.deepEqual(
+      (await outsider.caller.groups.balances.forUser({})).totals,
+      [],
+    )
+    await alice.caller.groups.expenses.create({
+      groupId: group.groupId,
+      expenseFormValues: {
+        ...basic,
+        title: 'Euro expense',
+        amount: '10',
+        currencyCode: 'EUR',
+        paidBy: aliceParticipant.id,
+        paidFor: [
+          { participant: aliceParticipant.id, shares: '1' },
+          { participant: bobParticipant.id, shares: '1' },
+        ],
+      },
+    })
+    assert.deepEqual((await alice.caller.groups.balances.forUser({})).totals, [
+      { currencyCode: 'EUR', amount: '5' },
+      { currencyCode: 'USD', amount: '80' },
+    ])
+    assert.deepEqual(
+      (
+        await alice.caller.groups.balances.forUser({
+          groups: [{ groupId: group.groupId }],
+        })
+      ).totals,
+      [
+        { currencyCode: 'EUR', amount: '5' },
+        { currencyCode: 'USD', amount: '40' },
+      ],
+    )
+    await assert.rejects(
+      () =>
+        alice.caller.groups.balances.forUser({
+          groups: [{ groupId: group.groupId }, { groupId: group.groupId }],
+        }),
+      /only once/,
+    )
+    await assert.rejects(
+      () =>
+        alice.caller.groups.balances.forUser({
+          groups: [{ groupId: group.groupId, participantId: 'missing' }],
+        }),
+      /does not belong/,
+    )
+    const legacy = await outsider.caller.groups.create({
+      groupFormValues: {
+        name: 'Unbound legacy test',
+        currency: '$',
+        currencyCode: 'USD',
+        participants: [],
+      },
+    })
+    await prisma.userGroupAccess.create({
+      data: {
+        userId: alice.user.id,
+        groupId: legacy.groupId,
+        participantId: null,
+      },
+    })
+    const partial = await alice.caller.groups.balances.forUser({})
+    assert.deepEqual(partial.unboundGroupIds, [legacy.groupId])
+    assert.deepEqual(partial.totals, [
+      { currencyCode: 'EUR', amount: '5' },
+      { currencyCode: 'USD', amount: '80' },
+    ])
+    MCP_OUTPUT_SCHEMAS['groups.balances.forUser'].parse(partial)
+  },
+})
 console.log(`${checks} integration scenarios passed`)
 await prisma.$disconnect()

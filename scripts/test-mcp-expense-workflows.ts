@@ -276,6 +276,16 @@ try {
   passed(
     'create_expense works without groupId and safely reuses local person labels',
   )
+  const summary = await call({ name: 'get_participant_balances' })
+  assert.deepEqual(summary.totals, [{ currencyCode: 'USD', amount: '35' }])
+  assert(summary.balances.some((balance) => balance.groupId === dinner.groupId))
+  assert.deepEqual(
+    (await call({ name: 'get_participant_balances', actor: outsider })).totals,
+    [],
+  )
+  passed(
+    'account totals are available through MCP without supplying groups and include private expenses',
+  )
 
   const before = await prisma.expense.count()
   await rejects({

@@ -89,7 +89,7 @@ function Content({
                 className="col-span-full row-start-2 flex flex-wrap gap-1 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:justify-end"
               >
                 <Button variant="ghost" size="sm" asChild>
-                  <Link href="/">Expenses</Link>
+                  <Link href="/">Dashboard</Link>
                 </Button>
                 <Button variant="ghost" size="sm" asChild>
                   <Link href="/groups">{t('Header.groups')}</Link>

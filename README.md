@@ -22,12 +22,19 @@ placeholders only until linked to a verified account. Existing audit actor names
 and snapshots keep their historical values; future snapshots capture the current
 account name. Stable IDs, not display names, identify people.
 
-Signed-in users land on `/`, a chronological feed ordered by expense date,
+Signed-in users land on `/`, a dashboard with account-wide balances and a chronological feed ordered by expense date,
 creation time, and ID, newest first. It defaults to expenses the user paid or
 shares; “All accessible expenses” also includes other expenses in their groups.
 Filters cover group/no group, person, payer, date range, currency, category,
 expense/payment, and description/vendor search. `/groups` remains the named-group
 directory. Login and PWA launch open the feed; the existing PWA identity is retained.
+
+The dashboard balance covers every accessible named group and private expense
+context, independently of feed filters and pagination. Currencies stay separate;
+unbound participant identities are reported as a partial total. The same totals
+are returned by MCP `get_participant_balances` when `groups` is omitted. Reading
+the balance never materializes recurring expenses. Group badges are small and
+muted; ungrouped rows use plain italic “No group” text.
 
 An ungrouped expense can involve two or more people. Existing verified contacts
 come from shared memberships. Other people are invited by exact email using a

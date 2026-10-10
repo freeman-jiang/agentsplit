@@ -121,7 +121,7 @@ export const MCP_TOOL_REGISTRY = [
     name: 'get_participant_balances',
     procedure: 'groups.balances.forUser',
     description:
-      'Read net balances across selected named groups and private accounting contexts. Include unique groupId values from list_all_expenses as well as list_groups for complete coverage. Omit participantId to use your fixed membership; supply it to inspect a particular participant. unboundGroupIds lists legacy groups needing admin identity setup, so a partial result must not be reported as a complete total. Discover IDs with get_group. Each result includes its currency; never sum unlike currencies.',
+      'Read exact per-currency net balances. Omit groups to include every accessible named group and private expense context, without a page-size cap; provide a unique groups list to restrict the scope. Omit participantId to use your fixed membership; supply it to inspect a particular participant. totals contains server-calculated net amounts per currency across the selected scope. These totals do not settle or merge debts. unboundGroupIds means the result is incomplete and must be described as partial. Do not combine different currencies. Dashboard totals are independent of expense-list filters. Discover participant IDs with get_group.',
   },
   {
     name: 'get_spending_stats',

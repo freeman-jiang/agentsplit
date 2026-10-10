@@ -156,7 +156,7 @@ export function assertGroupAccess(
       : procedure === 'groups.list'
         ? (input.groupIds ?? principal.groupIds)
         : procedure === 'groups.balances.forUser'
-          ? input.groups?.map((group) => group.groupId)
+          ? (input.groups?.map((group) => group.groupId) ?? principal.groupIds)
           : input.groupId
             ? [input.groupId]
             : undefined
