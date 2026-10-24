@@ -57,7 +57,7 @@ and data together. This Compose file creates a fresh PostgreSQL 17 database; it
 does not migrate an existing `postgres-data` directory from another deployment.
 
 Garage is pinned to v2.4.1 and PostgreSQL to 17.11-alpine, both with immutable
-image digests. Node is pinned to 26.10.0-bookworm with an immutable digest; that
+image digests. Node is pinned to 26.12.1-bookworm with an immutable digest; that
 image includes OpenSSL, avoiding a separate live OS-package installation. The
 build installs only the npm lockfile with scripts disabled, generates the Prisma
 client explicitly, and reuses those production dependencies for migrations.
