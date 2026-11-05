@@ -23,7 +23,7 @@ const annotations = (tool: McpTool) => ({
 })
 
 /**
- * What tools/list advertises, built once per isolate on the first tools/list.
+ * What tools/list advertises, built once per process on the first tools/list.
  * OpenAI reads securitySchemes at the top level; `_meta` mirrors it for other clients.
  */
 let advertised: Tool[] | undefined

@@ -5,7 +5,8 @@ import { Forbidden } from '../../shared/api'
 import type { Db } from '../db'
 import type { Principal } from '../ledger'
 import { verifyApiKey } from './api-key'
-import { challenge, jsonError, noStore } from './challenge'
+import { jsonError, noStore } from '../security'
+import { challenge } from './challenge'
 import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
 
 /** The ledger principal, plus the OAuth connection and its scope ceiling. API keys have neither. */

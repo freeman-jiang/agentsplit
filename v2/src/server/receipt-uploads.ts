@@ -11,6 +11,7 @@ import type { Db } from './db'
 import { randomId, randomToken, sha256Hex } from './ids'
 import type { Principal, StoredDocument } from './ledger'
 import { imageInfo, NEW_URL_PREFIX, type ImageInfo } from './receipts'
+import { jsonError } from './security'
 
 /** A target is valid this long for its PUT, as the current app's presigned URLs (P-RECEIPT-33). */
 const TARGET_SECONDS = 300
@@ -88,8 +89,6 @@ export async function prepareUploads(
   }
 }
 
-const json = (status: number, error: string) => Response.json({ error }, { status, headers: { 'Cache-Control': 'no-store' } })
-
 /**
  * PUT /api/receipt-uploads/<token>. The secret in the URL is the only
  * credential, as with a presigned URL. The request claims the target first,
@@ -97,22 +96,22 @@ const json = (status: number, error: string) => Response.json({ error }, { statu
  * and the stored size must be the declared size. If the write fails, the target is free again until it expires.
  */
 export async function putUpload(data: { db: Db; bucket: Bucket; request: Request; token: string; enabled: boolean }): Promise<Response> {
-  if (!data.enabled) return json(403, 'Receipts are disabled')
-  if (!/^[A-Za-z0-9_-]{43}$/.test(data.token)) return json(403, 'This upload URL is not valid, was used, or has expired')
+  if (!data.enabled) return jsonError({ status: 403, message: 'Receipts are disabled' })
+  if (!/^[A-Za-z0-9_-]{43}$/.test(data.token)) return jsonError({ status: 403, message: 'This upload URL is not valid, was used, or has expired' })
   const claimed = await data.db
     .update(receiptUploads)
     .set({ state: 'writing' })
     .where(and(eq(receiptUploads.tokenHash, sha256Hex(data.token)), eq(receiptUploads.state, 'pending'), sql`${receiptUploads.expiresAt} > now()`))
     .returning({ id: receiptUploads.id, key: receiptUploads.key, contentType: receiptUploads.contentType, bytes: receiptUploads.bytes })
   const target = claimed[0]
-  if (!target) return json(403, 'This upload URL is not valid, was used, or has expired')
+  if (!target) return jsonError({ status: 403, message: 'This upload URL is not valid, was used, or has expired' })
   const release = () => data.db.update(receiptUploads).set({ state: 'pending' }).where(eq(receiptUploads.id, target.id))
   // The current app signed these two headers into the URL, so storage refused other values.
   const type = data.request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase()
   const length = data.request.headers.get('content-length')
   if (type !== target.contentType || length !== String(target.bytes) || !data.request.body) {
     await release()
-    return json(400, `Send exactly the headers of the upload target: Content-Type ${target.contentType} and Content-Length ${target.bytes}`)
+    return jsonError({ status: 400, message: `Send exactly the headers of the upload target: Content-Type ${target.contentType} and Content-Length ${target.bytes}` })
   }
   let stored: { size: number; etag: string } | null = null
   try {
@@ -123,7 +122,7 @@ export async function putUpload(data: { db: Db; bucket: Bucket; request: Request
   if (stored?.size !== target.bytes) {
     if (stored) await data.bucket.delete(target.key).catch(() => {})
     await release()
-    return json(400, 'Upload is incomplete')
+    return jsonError({ status: 400, message: 'Upload is incomplete' })
   }
   await data.db.update(receiptUploads).set({ state: 'stored', uploadedAt: sql`now()` }).where(eq(receiptUploads.id, target.id))
   return new Response(null, { status: 200, headers: { 'Cache-Control': 'no-store', ETag: stored.etag } })

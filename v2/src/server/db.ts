@@ -11,7 +11,7 @@ export type Db = NodePgDatabase<typeof schema>
 // Expense dates are calendar dates: keep DATE as text, never a local Date.
 pg.types.setTypeParser(1082, (value: string) => value)
 
-export const makeDb = (client: pg.Client | pg.PoolClient): Db => drizzle({ client, schema, casing: 'snake_case' })
+export const makeDb = (client: pg.Client | pg.PoolClient | pg.Pool): Db => drizzle({ client, schema, casing: 'snake_case' })
 
 export class DatabaseError extends Schema.TaggedError<DatabaseError>()('DatabaseError', { message: Schema.String }) {}
 

@@ -7,6 +7,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import pg from 'pg'
 import { createApp } from './app'
 import { assetHandler, loadAssets } from './assets'
+import { makeDb } from './db'
 import { startHourly } from './hourly'
 import { maintenanceResponse } from './maintenance'
 import { s3Bucket } from './s3'
@@ -62,7 +63,7 @@ const assets = loadAssets(clientDir)
 // The dev server has no client build: Vite serves the client and sends only API paths here.
 const staticFiles = assets ? assetHandler(assets) : async () => new Response('No client build', { status: 404 })
 
-const app = createApp({ config, connect: () => pool.connect(), bucket, assets: staticFiles })
+const app = createApp({ config, connect: () => pool.connect(), pool: makeDb(pool), bucket, assets: staticFiles })
 
 /**
  * The request as the app must see it: at the public origin. The proxy ends

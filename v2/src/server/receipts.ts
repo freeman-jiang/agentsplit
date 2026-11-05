@@ -4,10 +4,12 @@
 // Rules from the current app: src/lib/receipt-storage.ts, src/app/api/receipts/route.ts.
 import { sql } from 'drizzle-orm'
 import { receipts } from '../../db/schema/app'
+import { Forbidden, NotFound } from '../shared/api'
 import type { Bucket } from './bucket'
 import type { Db } from './db'
 import { randomId } from './ids'
 import { requireMember, type Principal } from './ledger'
+import { jsonError, sameOrigin } from './security'
 
 export const MAX_RECEIPT_BYTES = 5 * 1024 * 1024
 /** The multipart envelope may add this much to the image. */
@@ -71,7 +73,15 @@ export function receiptKey(url: string): string | null {
 /** The download address the UI and the API give for a receipt (P-RECEIPT-07). */
 export const receiptDownloadPath = (data: { groupId: string; url: string }) => `/api/receipts?${new URLSearchParams({ groupId: data.groupId, url: data.url })}`
 
-const json = (status: number, error: string) => Response.json({ error }, { status, headers: { 'Cache-Control': 'no-store' } })
+/** The caller's membership of the group, or null when access is denied. Any other failure is thrown. */
+async function memberOrNull(db: Db, data: { principal: Principal; group: string }) {
+  try {
+    return await requireMember(db, data)
+  } catch (error) {
+    if (error instanceof Forbidden || error instanceof NotFound) return null
+    throw error
+  }
+}
 
 /** Checks a member's access to a receipt: it must be registered to the group, or attached to one of its expenses. */
 async function receiptInGroup(db: Db, data: { groupId: string; url: string }) {
@@ -106,18 +116,14 @@ export async function receiptReader(db: Db, data: { request: Request; baseUrl: s
 export async function downloadReceipt(data: { db: Db; bucket: Bucket; principal: Principal | null; url: URL }): Promise<Response> {
   const groupId = data.url.searchParams.get('groupId')
   const url = data.url.searchParams.get('url')
-  if (!groupId || !url) return json(400, 'Receipt reference is required')
-  if (!data.principal) return json(401, 'Authentication required')
-  let member: { groupId: string }
-  try {
-    member = await requireMember(data.db, { principal: data.principal, group: groupId })
-  } catch {
-    return json(403, 'Group access denied')
-  }
+  if (!groupId || !url) return jsonError({ status: 400, message: 'Receipt reference is required' })
+  if (!data.principal) return jsonError({ status: 401, message: 'Authentication required' })
+  const member = await memberOrNull(data.db, { principal: data.principal, group: groupId })
+  if (!member) return jsonError({ status: 403, message: 'Group access denied' })
   const key = receiptKey(url)
-  if (!key || !(await receiptInGroup(data.db, { groupId: member.groupId, url }))) return json(404, 'Receipt not found')
+  if (!key || !(await receiptInGroup(data.db, { groupId: member.groupId, url }))) return jsonError({ status: 404, message: 'Receipt not found' })
   const object = await data.bucket.get(key).catch(() => null)
-  if (!object) return json(404, 'Receipt not found')
+  if (!object) return jsonError({ status: 404, message: 'Receipt not found' })
   return new Response(object.stream(), {
     headers: {
       'Content-Type': object.contentType === 'image/png' ? 'image/png' : 'image/jpeg',
@@ -142,28 +148,24 @@ export async function uploadReceipt(data: {
   baseUrl: string
   enabled: boolean
 }): Promise<Response> {
-  if (data.request.headers.get('origin') !== new URL(data.baseUrl).origin) return json(403, 'Origin not allowed')
-  if (!data.principal) return json(401, 'Authentication required')
-  if (!data.enabled) return json(403, 'Receipts are disabled')
+  if (!sameOrigin(data.request, data.baseUrl)) return jsonError({ status: 403, message: 'Origin not allowed' })
+  if (!data.principal) return jsonError({ status: 401, message: 'Authentication required' })
+  if (!data.enabled) return jsonError({ status: 403, message: 'Receipts are disabled' })
   // Cap the body before parsing it.
   const length = Number(data.request.headers.get('content-length'))
-  if (!length || length > MAX_RECEIPT_BYTES + ENVELOPE_BYTES) return json(413, 'Receipt must be at most 5 MiB')
+  if (!length || length > MAX_RECEIPT_BYTES + ENVELOPE_BYTES) return jsonError({ status: 413, message: 'Receipt must be at most 5 MiB' })
   let form: FormData
   try {
     form = await data.request.formData()
   } catch {
-    return json(400, 'Group and image are required')
+    return jsonError({ status: 400, message: 'Group and image are required' })
   }
   const groupId = form.get('groupId')
   const file = form.get('file')
-  if (typeof groupId !== 'string' || typeof file === 'string' || file === null) return json(400, 'Group and image are required')
-  let member: { groupId: string }
-  try {
-    member = await requireMember(data.db, { principal: data.principal, group: groupId })
-  } catch {
-    return json(403, 'Group access denied')
-  }
-  const invalid = () => json(400, 'Could not upload receipt. Use a JPEG or PNG image up to 5 MiB.')
+  if (typeof groupId !== 'string' || typeof file === 'string' || file === null) return jsonError({ status: 400, message: 'Group and image are required' })
+  const member = await memberOrNull(data.db, { principal: data.principal, group: groupId })
+  if (!member) return jsonError({ status: 403, message: 'Group access denied' })
+  const invalid = () => jsonError({ status: 400, message: 'Could not upload receipt. Use a JPEG or PNG image up to 5 MiB.' })
   const bytes = new Uint8Array(await file.arrayBuffer())
   const info = bytes.length && bytes.length <= MAX_RECEIPT_BYTES ? imageInfo(bytes) : null
   if (!info) return invalid()

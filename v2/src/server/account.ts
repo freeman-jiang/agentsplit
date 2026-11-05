@@ -1,6 +1,6 @@
 // The signed-in user's account: profile, API keys, connected apps, and the
-// one-time owner bootstrap. This module must not import Better Auth: the RPC
-// handlers load it on every isolate.
+// one-time owner bootstrap. This module does not import Better Auth: the RPC
+// handlers do not call Better Auth (docs/v2/BUILDING.md).
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { authBootstrap, oauthConnections } from '../../db/schema/app'
 import * as authSchema from '../../db/schema/auth'

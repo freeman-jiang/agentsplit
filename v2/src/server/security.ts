@@ -36,6 +36,15 @@ export function secured(response: Response): Response {
   return copy
 }
 
+export const noStore = { 'Cache-Control': 'no-store' } as const
+
+/** A JSON error body `{error}`, as the current app answers, kept out of caches. */
+export const jsonError = (data: { status: number; message: string; headers?: Record<string, string> }) =>
+  Response.json({ error: data.message }, { status: data.status, headers: { ...noStore, ...data.headers } })
+
+/** Is the request from the app's own origin? The session cookie alone must not authorize a cross-site write. */
+export const sameOrigin = (request: Request, baseUrl: string) => request.headers.get('origin') === new URL(baseUrl).origin
+
 const TEXT = { 'Cache-Control': 'no-cache' }
 
 /**
