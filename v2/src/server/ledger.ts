@@ -565,7 +565,12 @@ export async function updateExpense(
     // An edit that changes nothing adds no revision, as in the current app.
     if (unchanged({ before, after: expense, documentsBefore: savedDocuments, documentsAfter: data.documents })) return before
     await ensureBaseline(tx, { groupId, expenseId: data.expenseId, revision, principal: data.principal })
-    await tx.update(expenses).set({ ...columns(expense), revision: revision + 1 }).where(eq(expenses.id, data.expenseId))
+    // A new amount or currency drops a legacy conversion, which no longer describes it (P-EXP-135).
+    const moneyChanged = before.currency !== expense.currency || before.amount !== formatMinor({ amount: expense.amount, currency: expense.currency })
+    await tx
+      .update(expenses)
+      .set({ ...columns(expense), revision: revision + 1, ...(moneyChanged ? { originalAmount: null, originalCurrency: null, conversionRate: null } : {}) })
+      .where(eq(expenses.id, data.expenseId))
     await writeParts(tx, { expenseId: data.expenseId, groupId, expense })
     if (data.documents) await writeDocuments(tx, { groupId, expenseId: data.expenseId, documents: data.documents })
     await syncRecurrence(tx, {

@@ -1,6 +1,6 @@
 // The expenses area against a real database: receipts on expenses, recurring
 // series, balances with settlements, and the edit screen's detail read.
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { activities, expenses, groups, memberships, participants, receipts, recurringLinks } from '../../db/schema/app'
@@ -125,6 +125,22 @@ describe('expense writes', () => {
       updateExpense(db, { principal: alice, group: 'g1', expenseId: 'x1', expectedRevision: 3, idempotencyKey: key(), expense: draft({ title: 'Food' }), documents: [doc2] }),
     )
     expect(same.revision).toBe(3)
+  })
+
+  it('drops a legacy conversion when the amount changes, and keeps it otherwise', async () => {
+    // Only imported rows carry a conversion: insert one as the importer does, at revision 0.
+    await tx(async (db) => {
+      await db.execute(sql`INSERT INTO expenses (id, group_id, revision, kind, title, notes, category_id, expense_date, currency, amount, split_mode, original_amount, original_currency, conversion_rate)
+        VALUES ('conv', 'g1', 0, 'expense', 'Groceries', '', 9, '2026-11-01', 'USD', 9000, 'evenly', 12000, 'CAD', '0.75')`)
+      await db.execute(sql`INSERT INTO expense_payers (expense_id, group_id, participant_id, amount) VALUES ('conv', 'g1', 'pa', 9000)`)
+      await db.execute(sql`INSERT INTO expense_shares (expense_id, group_id, participant_id, amount) VALUES ('conv', 'g1', 'pa', 3000), ('conv', 'g1', 'pb', 3000), ('conv', 'g1', 'pc', 3000)`)
+    })
+    const conversion = async () => (await tx((db) => db.select({ c: expenses.originalCurrency }).from(expenses).where(eq(expenses.id, 'conv'))))[0]?.c
+    await tx((db) => updateExpense(db, { principal: alice, group: 'g1', expenseId: 'conv', expectedRevision: 0, idempotencyKey: key(), expense: draft({ title: 'Renamed', vendor: null }) }))
+    expect(await conversion()).toBe('CAD')
+    await tx((db) => updateExpense(db, { principal: alice, group: 'g1', expenseId: 'conv', expectedRevision: 1, idempotencyKey: key(), expense: draft({ title: 'Renamed', vendor: null, amount: '60.00', payers: [{ participantId: 'pa', amount: '60.00' }] }) }))
+    expect(await conversion()).toBeNull()
+    await tx((db) => deleteExpense(db, { principal: alice, group: 'g1', expenseId: 'conv', expectedRevision: 2, idempotencyKey: key() }))
   })
 
   it('names who added and who last edited an expense', async () => {
