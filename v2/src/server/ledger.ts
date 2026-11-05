@@ -19,6 +19,7 @@ import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../sha
 import { formatMinor, minor, type Minor } from '../shared/money'
 import type { Db } from './db'
 import { randomId } from './ids'
+import { assertPrivateWrite } from './ungrouped'
 
 export type Principal = {
   readonly userId: string
@@ -399,6 +400,7 @@ export async function createExpense(
   return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request: { op: 'create', groupId, expenseId: data.expenseId, expense: data.expense } }, async () => {
     const [existing] = await tx.select({ groupId: expenses.groupId }).from(expenses).where(eq(expenses.id, data.expenseId))
     if (existing) throw new Invalid({ message: 'An expense with this ID already exists; choose another ID', field: 'expenseId' })
+    await assertPrivateWrite(tx, { groupId, expenseId: data.expenseId, op: 'create', draft: data.expense })
     const people = await groupParticipants(tx, groupId)
     const expense = resolve(data.expense, people)
     await tx.insert(expenses).values({ id: data.expenseId, groupId, revision: 1, ...columns(expense) })
@@ -450,6 +452,7 @@ export async function updateExpense(
   const { groupId } = await requireMember(tx, data)
   return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request: { op: 'update', groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision, expense: data.expense } }, async () => {
     const revision = await currentRevision(tx, { groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision })
+    await assertPrivateWrite(tx, { groupId, expenseId: data.expenseId, op: 'update', draft: data.expense })
     const people = await groupParticipants(tx, groupId)
     const expense = resolve(data.expense, people)
     await ensureBaseline(tx, { groupId, expenseId: data.expenseId, revision, principal: data.principal })
@@ -478,6 +481,7 @@ export async function deleteExpense(
   const { groupId } = await requireMember(tx, data)
   return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request: { op: 'delete', groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision } }, async () => {
     const revision = await currentRevision(tx, { groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision })
+    await assertPrivateWrite(tx, { groupId, expenseId: data.expenseId, op: 'delete' })
     await ensureBaseline(tx, { groupId, expenseId: data.expenseId, revision, principal: data.principal })
     await tx.update(expenses).set({ deletedAt: new Date(), revision: revision + 1 }).where(eq(expenses.id, data.expenseId))
     await tx.insert(activities).values({ id: randomId(), groupId, type: 'delete_expense', expenseId: data.expenseId, expenseRevision: revision + 1, ...actor(data.principal) })
