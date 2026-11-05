@@ -209,12 +209,19 @@ export async function importLegacy(data: { source: pg.PoolClient; target: pg.Poo
   await target.query(`SELECT setval(pg_get_serial_sequence('activities', 'sequence'), (SELECT coalesce(max(sequence), 1) FROM activities))`)
 
   await copy('ReceiptObject', 'receipts')
+  // The current app reads an expense's receipts without ORDER BY, so in the
+  // table's physical order: the order they were attached. Positions keep it.
+  const positions = new Map<string, number>()
   await copy(
     'ExpenseDocument',
     'expense_documents',
-    (await read(`SELECT * FROM "ExpenseDocument"`)).map((d) =>
-      d['expenseId'] === null ? fail(`document ${d['id']}: no expense; orphan documents are not supported`) : d,
-    ),
+    (await read(`SELECT * FROM "ExpenseDocument" ORDER BY "expenseId", ctid`)).map((d) => {
+      if (d['expenseId'] === null) return fail(`document ${d['id']}: no expense; orphan documents are not supported`)
+      const expenseId = str(d['expenseId'])
+      const position = positions.get(expenseId) ?? 0
+      positions.set(expenseId, position + 1)
+      return { ...d, position }
+    }),
   )
   await copy('RecurringExpenseLink', 'recurring_links')
   await copy('UngroupedExpense', 'private_contexts', (await read(`SELECT "groupId", "expenseId" FROM "UngroupedExpense"`)))

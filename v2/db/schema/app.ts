@@ -273,8 +273,10 @@ export const expenseDocuments = pgTable(
     url: text().notNull(),
     width: integer().notNull(),
     height: integer().notNull(),
+    /** The receipt's place in the expense's list, from 0, in the order the receipts were attached. */
+    position: integer().notNull(),
   },
-  (t) => [index().on(t.expenseId)],
+  (t) => [index().on(t.expenseId), unique('expense_documents_expense_position').on(t.expenseId, t.position)],
 )
 
 export const recurringLinks = pgTable(
