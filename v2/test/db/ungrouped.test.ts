@@ -421,4 +421,20 @@ describe('ungrouped expenses', () => {
     ).rejects.toMatchObject({ message: 'Cannot record a repayment for a deleted expense.' })
     expect(await feedIds(alice, { groupId: privateId })).toEqual([])
   })
+  it('links an invited email that belongs to a contact, without an invitation', async () => {
+    const id = randomId()
+    const result = await tx((db) =>
+      createUngroupedExpense(db, {
+        principal: alice,
+        baseUrl: BASE_URL,
+        expenseId: id,
+        idempotencyKey: key(),
+        people: [people[0]!, { kind: 'email', id: 'c', name: 'Typed name', email: 'CAROL@example.com' }],
+        expense: draft({ payers: paid('me'), shares: even(['me', 'c']) }),
+      }),
+    )
+    expect(result.invitations).toEqual([])
+    expect(result.participants.find((p) => p.localId === 'c')?.name).toBe('Carol')
+    expect(await feedIds(carol, { groupId: id })).toEqual([id])
+  })
 })
