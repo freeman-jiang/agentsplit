@@ -4,20 +4,16 @@ import { createRootRouteWithContext, Link, Outlet } from '@tanstack/react-router
 import { Toaster } from 'sonner'
 import { AccountMenu } from '~/client/components/account-menu'
 import { Brand } from '~/client/components/brand'
+import { useDocumentTitle } from '~/client/components/page-title'
 import { meQuery } from '~/client/queries'
 import { Button } from '~/client/ui/button'
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   component: Root,
-  errorComponent: ({ error }) => (
-    <main className="mx-auto max-w-xl px-4 py-16">
-      <h1 className="mb-2 text-xl font-semibold">Something went wrong</h1>
-      <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : 'The page could not load.'}</p>
-    </main>
-  ),
 })
 
 function Root() {
+  useDocumentTitle()
   const { data: me } = useQuery(meQuery)
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">

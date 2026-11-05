@@ -1,6 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { CopyButton } from '~/client/components/copy-button'
-import { usePageTitle } from '~/client/components/page-title'
 import { requireSignedIn } from '~/client/queries/account'
 import { Button } from '~/client/ui/button'
 
@@ -28,7 +27,6 @@ function Configuration(props: { title: string; description: string; code: string
 }
 
 function AgentSetup() {
-  usePageTitle('Set up your agent')
   // The SPA is served only from BASE_URL, so this page's origin is the MCP origin.
   const endpoint = new URL('/api/mcp', window.location.origin).href
   const codex = `[mcp_servers.agentsplit]\nurl = ${JSON.stringify(endpoint)}\nenv_http_headers = { "X-API-Key" = "AGENTSPLIT_API_KEY" }`

@@ -5,8 +5,8 @@ Items that areas deferred to the lead, with their source. Each is closed with th
 | Item | What | From | Status |
 | --- | --- | --- | --- |
 | P-GROUP-24 | The default currency for a new group (the current app reads `DEFAULT_CURRENCY_CODE`) | groups | closed: production sets neither currency variable (Coolify env names, 2026-11-05), so its default is the code fallback USD; the v2 create form defaults to USD |
-| P-GROUP-48 | Page titles per screen | groups | open |
-| P-GROUP-53 | The error page inside a group | groups | open |
+| P-GROUP-48 | Page titles per screen | groups | closed: one exhaustive route-to-title map in `components/page-title.ts`, read by the root layout; group pages read "<page> · <group> · AgentSplit"; e2e `a group opens on its expenses` checks two titles |
+| P-GROUP-53 | The error page inside a group | groups | closed: `components/error-state.tsx` is the router's default error component, with the current wording; inside a group it renders under the tabs. It never shows the exception text (the old v2 root error page did); e2e `a tab that fails to load` |
 | P-AUTH-49 | `/groups`, `/$group` and `/` keep the requested page when they send a signed-out visitor to sign-in (use `requireSignedIn` from `src/client/queries/account.ts`) | account | closed: both routes use `requireSignedIn`; e2e `a signed-out visitor returns to the page they asked for` |
 | — | The `/agents` instructions: update them with the final MCP tool names and the PLAN.md guidance on full payments and notes | account, mcp | open |
 | — | Replace the feed area's compact expense and payment forms (`routes/expenses/-*.tsx`) with the expenses area's forms after that merge | feed, expenses | open |

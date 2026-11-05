@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { ErrorState } from './components/error-state'
 import { registerServiceWorker } from './pwa'
 import { routeTree } from './routeTree.gen'
 import './styles.css'
@@ -14,6 +15,7 @@ const router = createRouter({
   // Hovering a link loads its data, so the next screen opens from the cache.
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 0,
+  defaultErrorComponent: ErrorState,
 })
 
 declare module '@tanstack/react-router' {

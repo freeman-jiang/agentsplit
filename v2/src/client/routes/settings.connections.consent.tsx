@@ -1,7 +1,6 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
-import { usePageTitle } from '~/client/components/page-title'
 import { authClient } from '~/client/auth-client'
 import { consentClientQuery, errorMessage } from '~/client/queries/account'
 import { meQuery } from '~/client/queries'
@@ -57,7 +56,6 @@ function parseRequest(search: string): Request | null {
 }
 
 function Consent() {
-  usePageTitle('Connect an app')
   const [request] = useState(() => parseRequest(window.location.search))
   const client = useQuery({ ...consentClientQuery(request?.clientId ?? ''), enabled: request !== null })
   if (request && client.isPending) return <main className="mx-auto max-w-lg px-4 py-12" aria-busy="true" />

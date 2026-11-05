@@ -1,5 +1,4 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { usePageTitle } from '~/client/components/page-title'
 
 // Public: no sign-in check. The text matches the current app, except where v2
 // runs on other infrastructure (Cloudflare and Google Cloud instead of one server).
@@ -8,7 +7,6 @@ export const Route = createFileRoute('/privacy')({
 })
 
 function Privacy() {
-  usePageTitle('Privacy')
   return (
     <main className="mx-auto w-full max-w-3xl space-y-6 px-4 py-12">
       <h1 className="font-display text-4xl">Privacy in AgentSplit</h1>
