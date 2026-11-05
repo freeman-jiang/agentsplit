@@ -210,17 +210,18 @@ export async function importLegacy(data: { source: pg.PoolClient; target: pg.Poo
 
   await copy('ReceiptObject', 'receipts')
   // The current app reads an expense's receipts without ORDER BY, so in the
-  // table's physical order: the order they were attached. Positions keep it.
-  const positions = new Map<string, number>()
+  // table's physical order: the order they were attached. Positions keep it,
+  // as migration 0010 numbers them.
   await copy(
     'ExpenseDocument',
     'expense_documents',
-    (await read(`SELECT * FROM "ExpenseDocument" ORDER BY "expenseId", ctid`)).map((d) => {
+    (
+      await read(
+        `SELECT *, (row_number() OVER (PARTITION BY "expenseId" ORDER BY ctid) - 1)::int AS position FROM "ExpenseDocument" ORDER BY "expenseId", ctid`,
+      )
+    ).map((d) => {
       if (d['expenseId'] === null) return fail(`document ${d['id']}: no expense; orphan documents are not supported`)
-      const expenseId = str(d['expenseId'])
-      const position = positions.get(expenseId) ?? 0
-      positions.set(expenseId, position + 1)
-      return { ...d, position }
+      return d
     }),
   )
   await copy('RecurringExpenseLink', 'recurring_links')
