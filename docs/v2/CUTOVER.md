@@ -48,7 +48,17 @@ The import wrote 2 groups, 6 participants, 4 memberships, 3 invitations, 48 expe
 
 Production has no recurring and no ungrouped expenses today. So a second run added synthetic rows to the scratch source: a monthly expense on 31 October with its recurring link, and an ungrouped expense between the first user and an email-only friend. The import wrote 1 recurring link with `anchor_day` 31 and 1 private context with 2 people, and the verifier passed again.
 
-These are local times. On `apps-pg` through the proxy, each statement adds a network round trip, so the import will take longer. The window rehearsal against `apps-pg` measures that before the window.
+### 2026-11-05, `apps-pg`, all 8 migrations
+
+Freeman approved a scratch database on `apps-pg` for this run. The admin IAM user created `agentsplit_rehearsal` with `CREATE DATABASE`, without `app-db create`, so no role or service account was made. The source was the same backup, restored locally. The target was reached through `cloud-sql-proxy` from the dev box, as in the window.
+
+| Step | Time |
+| --- | --- |
+| Apply the migrations | 528 ms |
+| Import | 1,589 ms |
+| Verify | 307 ms |
+
+The verifier passed: the same IDs, balances and expenses as the local run. Then `agentsplit_rehearsal` was dropped, and `app-db list` no longer shows it. With the freeze, the final backup and the DNS switch, the window needs minutes, not hours.
 
 ## Rollback
 
