@@ -331,7 +331,7 @@ describe('receipt endpoints', () => {
       const denied = await downloadReceipt({ db, bucket, principal: mallory, url: get({ groupId: 'g1', url: doc1.url }) })
       expect(denied.status).toBe(403)
       expect(denied.headers.get('cache-control')).toBe('no-store')
-      expect(await denied.json()).toEqual({ error: 'Group access denied' })
+      expect(await denied.json()).toEqual({ error: 'Group not found, or you are not a member' })
       // PostgreSQL text cannot hold a NUL byte: such a reference is denied or not found, never a database error.
       expect((await downloadReceipt({ db, bucket, principal: alice, url: get({ groupId: 'g1\0', url: doc1.url }) })).status).toBe(403)
       expect((await downloadReceipt({ db, bucket, principal: alice, url: get({ groupId: 'g1', url: `${doc1.url}\0` }) })).status).toBe(404)

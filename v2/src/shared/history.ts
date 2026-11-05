@@ -153,10 +153,30 @@ export const V2GroupSnapshot = Schema.Struct({
   }),
 })
 
+/**
+ * The private-context `create_group` snapshot that v2 wrote until the parity
+ * audit (P-HIST-03): the group row itself, so the currency is in
+ * `defaultCurrency`. Activities are permanent, so these rows stay readable.
+ */
+const V2PrivateGroupRow = Schema.Struct({
+  schemaVersion: Schema.Literal(2),
+  kind: Schema.Literal('group'),
+  group: Schema.Struct({
+    id: Schema.String,
+    kind: Schema.Literal('private'),
+    name: Schema.String,
+    slug: Schema.Null,
+    defaultCurrency: Currency,
+    information: Schema.String,
+    revision: Schema.Number,
+    participants: Schema.Array(Person),
+  }),
+})
+
 const decodeV1Expense = Schema.decodeUnknownSync(V1Expense)
 const decodeV1Group = Schema.decodeUnknownSync(V1Group)
 const decodeV2Expense = Schema.decodeUnknownSync(V2Expense)
-const decodeV2Group = Schema.decodeUnknownSync(V2GroupSnapshot)
+const decodeV2Group = Schema.decodeUnknownSync(Schema.Union([V2GroupSnapshot, V2PrivateGroupRow]))
 
 const V1_SPLIT: Record<'EVENLY' | 'BY_SHARES' | 'BY_PERCENTAGE' | 'BY_AMOUNT', SplitMode> = {
   EVENLY: 'evenly',
@@ -309,7 +329,8 @@ export function readSnapshot(data: { raw: unknown; categories: ReadonlyMap<numbe
     if (v?.schemaVersion === 1) return { _tag: 'expense', expense: fromV1(decodeV1Expense(data.raw), data.categories) }
     if (v?.schemaVersion === 2 && v.kind === 'group') {
       const g = decodeV2Group(data.raw).group
-      return { _tag: 'group', group: { schemaVersion: 2, name: g.name, slug: g.slug, currency: g.currency, information: g.information, participants: g.participants } }
+      const currency = 'currency' in g ? g.currency : g.defaultCurrency
+      return { _tag: 'group', group: { schemaVersion: 2, name: g.name, slug: g.slug, currency, information: g.information, participants: g.participants } }
     }
     if (v?.schemaVersion === 2) return { _tag: 'expense', expense: fromV2(decodeV2Expense(data.raw), data.categories) }
   } catch (cause) {

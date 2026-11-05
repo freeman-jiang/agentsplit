@@ -4,6 +4,7 @@
 // P-BAL-30 and P-RECUR-08).
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { activities, expenseDocuments, groups, participants, recurringLinks } from '../../db/schema/app'
+import { titleWithVendor } from '../shared/history'
 import type { Db } from './db'
 import { randomId } from './ids'
 import { actor, expenseDocumentsOf, loadExpenses, requireMember, snapshot, type Principal } from './ledger'
@@ -136,6 +137,7 @@ export async function materializeNext(tx: Db, data: { today: string; groupId?: s
     type: 'create_expense',
     expenseId: id,
     expenseRevision: 1,
+    data: titleWithVendor(stored),
     snapshot: snapshot({ group, expense: stored, names: new Map(people.map((p) => [p.id, p.name])), documents: await expenseDocumentsOf(tx, id) }),
     // Without a user it shows as "Automatic recurrence" (P-RECUR-17).
     ...(data.principal ? actor(data.principal) : { source: 'system', actorName: null, actorUserId: null, agentKeyId: null }),

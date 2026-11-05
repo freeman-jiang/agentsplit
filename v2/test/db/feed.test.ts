@@ -25,7 +25,7 @@ async function tx<A>(work: (db: Db) => Promise<A>): Promise<A> {
 }
 
 const alice: Principal = { userId: 'u-alice', name: 'Alice', email: 'alice@example.com', source: 'web', agentKeyId: null }
-const bob: Principal = { userId: 'u-bob', name: 'Bob', email: 'bob@example.com', source: 'mcp', agentKeyId: 'key-1' }
+const bob: Principal = { userId: 'u-bob', name: 'Bob', email: 'bob@example.com', source: 'agent', agentKeyId: 'key-1' }
 let keys = 0
 const key = () => `feed-key-${++keys}`.padEnd(12, '0')
 const draft = (over: Partial<ExpenseDraft>): ExpenseDraft => ({
@@ -133,7 +133,7 @@ describe('feed', () => {
       (await tx((db) => listFeed(db, { principal: p, filter: { involvingMe: false }, cursor: null, limit: 100 }))).expenses.find((e) => e.id === id)
     // Bob created it; Alice is the payer.
     const rent = await one('e-rent')
-    expect(rent?.attribution.createdBy).toEqual({ userId: bob.userId, name: 'Bob', source: 'mcp' })
+    expect(rent?.attribution.createdBy).toEqual({ userId: bob.userId, name: 'Bob', source: 'agent' })
     expect(rent?.attribution.updatedBy).toBeNull()
     await tx((db) => updateExpense(db, { principal: alice, group: 'g1', expenseId: 'e-rent', expectedRevision: 1, idempotencyKey: key(), expense: draft({ title: 'Rent', categoryId: 18, expenseDate: '2026-10-02', payers: [{ participantId: 'pb', amount: '30' }] }) }))
     const edited = await one('e-rent')
