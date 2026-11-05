@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { pickSearch } from '~/client/search'
 import { useState } from 'react'
-import { randomExpenseId, searchText } from '~/client/components/ids'
+import { searchText } from '~/client/components/ids'
+import { randomId } from '~/shared/ids'
 import { PaymentForm, type PaymentPrefill } from '~/client/components/payment-form'
 import { errorMessage, expenseContextQuery } from '~/client/queries/feed'
 import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
@@ -24,7 +25,7 @@ function RecordPayment() {
   const search = Route.useSearch()
   const context = useQuery(expenseContextQuery(expenseId))
   // One ID per form: a save that reached the server is found again instead of being recorded twice (P-BAL-84).
-  const [paymentId] = useState(randomExpenseId)
+  const [paymentId] = useState(() => randomId())
   if (context.error) return <p role="alert">{errorMessage(context.error)}</p>
   if (!context.data) return <p role="status">Loading expense…</p>
   const data = context.data

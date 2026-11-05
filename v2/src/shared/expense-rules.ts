@@ -31,11 +31,13 @@ export type ResolvedExpense = Omit<ExpenseDraft, 'amount' | 'payers' | 'shares' 
 
 export type ExpenseIssue = { readonly field: string; readonly message: string }
 
-const isCalendarDate = (value: string) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+/** Does the date text name a real day (2026-02-29 and 2026-09-31 do not)? It does not check the YYYY-MM-DD form. */
+export const isRealDate = (value: string) => {
   const date = new Date(`${value}T00:00:00Z`)
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
 }
+
+const isCalendarDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && isRealDate(value)
 
 const normalizeWeight = (text: string) => {
   const { units, scale } = parseWeight(text)

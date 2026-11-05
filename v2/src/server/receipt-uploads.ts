@@ -8,7 +8,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { receipts, receiptUploads } from '../../db/schema/app'
 import type { Bucket } from './bucket'
 import type { Db } from './db'
-import { randomId } from './ids'
+import { randomId, randomToken, sha256Hex } from './ids'
 import type { Principal, StoredDocument } from './ledger'
 import { imageInfo, NEW_URL_PREFIX, type ImageInfo } from './receipts'
 
@@ -41,17 +41,6 @@ export class UploadError extends Error {
   }
 }
 
-async function sha256Hex(text: string) {
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))
-  return [...digest].map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-/** 256 random bits, URL-safe. */
-function secret() {
-  const bytes = crypto.getRandomValues(new Uint8Array(32))
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
 /**
  * Upload targets for an expense that the caller just wrote, in the write's
  * transaction. The rows bind each target to the caller, the group and the
@@ -66,27 +55,25 @@ export async function prepareUploads(
   if (!data.enabled) return { uploads: [], uploadError: UPLOADS_FAILED }
   const expiresAt = new Date(Date.now() + TARGET_SECONDS * 1000)
   const origin = new URL(data.baseUrl).origin
-  const rows = await Promise.all(
-    data.requests.map(async (file) => {
-      const token = secret()
-      const id = randomId()
-      return {
-        file,
-        token,
-        row: {
-          id,
-          tokenHash: await sha256Hex(token),
-          userId: data.principal.userId,
-          groupId: data.groupId,
-          expenseId: data.expenseId,
-          key: `receipts/${randomId()}.${file.contentType === 'image/png' ? 'png' : 'jpg'}`,
-          contentType: file.contentType,
-          bytes: file.bytes,
-          expiresAt,
-        },
-      }
-    }),
-  )
+  const rows = data.requests.map((file) => {
+    const token = randomToken()
+    const id = randomId()
+    return {
+      file,
+      token,
+      row: {
+        id,
+        tokenHash: sha256Hex(token),
+        userId: data.principal.userId,
+        groupId: data.groupId,
+        expenseId: data.expenseId,
+        key: `receipts/${randomId()}.${file.contentType === 'image/png' ? 'png' : 'jpg'}`,
+        contentType: file.contentType,
+        bytes: file.bytes,
+        expiresAt,
+      },
+    }
+  })
   await tx.insert(receiptUploads).values(rows.map((r) => r.row))
   return {
     uploads: rows.map(({ file, token, row }) => ({
@@ -115,7 +102,7 @@ export async function putUpload(data: { db: Db; bucket: Bucket; request: Request
   const claimed = await data.db
     .update(receiptUploads)
     .set({ state: 'writing' })
-    .where(and(eq(receiptUploads.tokenHash, await sha256Hex(data.token)), eq(receiptUploads.state, 'pending'), sql`${receiptUploads.expiresAt} > now()`))
+    .where(and(eq(receiptUploads.tokenHash, sha256Hex(data.token)), eq(receiptUploads.state, 'pending'), sql`${receiptUploads.expiresAt} > now()`))
     .returning({ id: receiptUploads.id, key: receiptUploads.key, contentType: receiptUploads.contentType, bytes: receiptUploads.bytes })
   const target = claimed[0]
   if (!target) return json(403, 'This upload URL is not valid, was used, or has expired')

@@ -7,7 +7,7 @@ import { sql } from 'drizzle-orm'
 import { Forbidden } from '../shared/api'
 import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/money'
-import { preferredPayer, type SplitMode } from '../shared/split'
+import { MODE_NAMES, preferredPayer, RULE_NAMES, type SplitMode } from '../shared/split'
 import type { Db } from './db'
 import { publicData, type ActivityType } from './history'
 import type { Principal } from './ledger'
@@ -102,8 +102,6 @@ const money = (amount: string, currency: CurrencyCode) => formatMinor({ amount: 
 /** The split input in the current app's units: amount-split weights are major units there, minor units here. */
 const weightText = (e: ExpenseRow, weight: string) => (e.splitMode === 'amount' ? money(weight, e.currency) : weight)
 
-const V1_SPLIT: Record<SplitMode, string> = { evenly: 'EVENLY', shares: 'BY_SHARES', percentage: 'BY_PERCENTAGE', amount: 'BY_AMOUNT' }
-const V1_RECURRENCE = { none: 'NONE', daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY' } as const
 const SPLIT_LABEL: Record<SplitMode, string> = {
   evenly: 'Evenly',
   shares: 'Unevenly – By shares',
@@ -156,8 +154,8 @@ export async function exportJson(db: Db, data: { principal: Principal; group: st
       payers: (e.payers ?? []).map((p) => ({ participantId: p.participantId, amount: money(p.amount, e.currency) })),
       paidFor: (e.shares ?? []).map((s) => ({ participantId: s.participantId, shares: weightText(e, s.weight), amount: money(s.amount, e.currency) })),
       isReimbursement: e.kind === 'payment',
-      splitMode: V1_SPLIT[e.splitMode],
-      recurrenceRule: V1_RECURRENCE[e.recurrence],
+      splitMode: MODE_NAMES[e.splitMode],
+      recurrenceRule: RULE_NAMES[e.recurrence],
       notes: e.notes,
       revision: e.revision,
       documents: e.documents ?? [],
@@ -230,6 +228,15 @@ export async function exportCsv(db: Db, data: { principal: Principal; group: str
     // The byte order mark tells spreadsheets the file is UTF-8.
     content: `﻿${csv}`,
   }
+}
+
+/**
+ * The file of the export.group RPC and the export_group MCP tool. Its name and
+ * content type are not the ones of the download routes (exportResponse).
+ */
+export async function exportFile(db: Db, data: { principal: Principal; group: string; format: 'csv' | 'json' }) {
+  const file = await (data.format === 'json' ? exportJson : exportCsv)(db, { principal: data.principal, group: data.group })
+  return { filename: `agentsplit-${file.groupId}.${data.format}`, contentType: data.format === 'json' ? 'application/json' : 'text/csv', content: file.content }
 }
 
 /** The HTTP response of an export route. */

@@ -11,10 +11,5 @@ export const HistoryHandlers = Layer.mergeAll(
   Api.toLayerHandler('history.balances', ({ groupId, ...selection }) => read((db, principal) => history.savedBalances(db, { principal, group: groupId, ...selection }))),
   Api.toLayerHandler('stats.overview', ({ groupId, ...scope }) => read((db, principal) => stats.statsOverview(db, { principal, group: groupId, ...scope }))),
   Api.toLayerHandler('stats.expenses', ({ groupId, ...scope }) => read((db, principal) => stats.statsExpenses(db, { principal, group: groupId, ...scope }))),
-  Api.toLayerHandler('export.group', ({ groupId, format }) =>
-    read(async (db, principal) => {
-      const file = await (format === 'json' ? exports.exportJson : exports.exportCsv)(db, { principal, group: groupId })
-      return { filename: `agentsplit-${file.groupId}.${format}`, contentType: format === 'json' ? 'application/json' : 'text/csv', content: file.content }
-    }),
-  ),
+  Api.toLayerHandler('export.group', ({ groupId, format }) => read((db, principal) => exports.exportFile(db, { principal, group: groupId, format }))),
 )

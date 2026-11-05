@@ -25,7 +25,7 @@ import {
 import type { CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/money'
 import type { Db } from './db'
-import { randomId } from './ids'
+import { randomId, randomToken, sha256Hex } from './ids'
 import { actor, displayNames, idempotent, requireMember, type Principal } from './ledger'
 import { iso } from './sql'
 
@@ -182,15 +182,11 @@ export async function getGroupDetails(db: Db, data: { principal: Principal; grou
 
 // ---------- writes: settings and people ----------
 
-const hex = (bytes: ArrayBuffer) => [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('')
 /** The stored form of an invitation token: hex SHA-256, as in the current app, so imported invitations keep working. */
-export const invitationTokenHash = async (token: string) => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)))
+export const invitationTokenHash = (token: string) => sha256Hex(token)
 
-/** 32 random bytes in base64url without padding: 43 characters. */
-function newInvitationToken() {
-  const bytes = crypto.getRandomValues(new Uint8Array(32))
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
+/** The secret of an invitation link: 32 random bytes in base64url without padding, 43 characters. */
+export const newInvitationToken = randomToken
 
 /** The normalized slug, null to remove it, or an Invalid error. */
 function checkedSlug(raw: string | null): string | null {
@@ -391,7 +387,7 @@ async function invitationFromUrl(tx: Db, data: { shareUrl: string; baseUrl: stri
   const token = url?.pathname.match(/^\/invite\/([A-Za-z0-9_-]{43})$/)?.[1]
   if (!url || url.origin !== new URL(data.baseUrl).origin || url.username || url.password || !token)
     throw new Invalid({ message: 'Use an email-bound invitation link from this app. A group URL does not grant access.', field: 'shareUrl' })
-  const [invitation] = await tx.select().from(invitations).where(eq(invitations.tokenHash, await invitationTokenHash(token)))
+  const [invitation] = await tx.select().from(invitations).where(eq(invitations.tokenHash, invitationTokenHash(token)))
   if (!invitation) throw new NotFound({ entity: 'invitation', id: 'token' })
   return invitation
 }
@@ -516,7 +512,7 @@ async function applyAccess(
       email,
       participantId: participant.id,
       participantName: participant.name,
-      tokenHash: await invitationTokenHash(token),
+      tokenHash: invitationTokenHash(token),
       createdBy: me.userId,
       expiresAt: new Date(Date.now() + INVITATION_DAYS * 24 * 60 * 60 * 1000),
     }
@@ -602,7 +598,7 @@ export async function previewInvitation(db: Db, data: { principal: Principal; to
     })
     .from(invitations)
     .innerJoin(groups, eq(groups.id, invitations.groupId))
-    .where(eq(invitations.tokenHash, await invitationTokenHash(data.token)))
+    .where(eq(invitations.tokenHash, invitationTokenHash(data.token)))
     .orderBy(asc(invitations.id))
     .limit(1)
   if (!row || row.revokedAt || row.expiresAt <= new Date() || row.email !== data.principal.email.toLowerCase() || !row.participantId)

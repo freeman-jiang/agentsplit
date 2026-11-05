@@ -5,7 +5,7 @@ import type { CurrencyCode } from '~/shared/currencies'
 import { validateExpense, type ExpenseDraft, type ExpenseIssue } from '~/shared/expense-rules'
 import type { DecimalString } from '~/shared/money'
 import { formatMinor, minor, minorOrNull, sumMinor } from '~/shared/minor'
-import { apportion, compareIds, parseWeight, preferredPayer, type SplitMode } from '~/shared/split'
+import { apportion, compareIds, MODE_NAMES, parseWeight, preferredPayer, type SplitMode } from '~/shared/split'
 import type { FormDocument } from './expense-documents'
 
 export type Recurrence = ExpenseDraft['recurrence']
@@ -177,8 +177,7 @@ export function payerRemainder(state: FormState, order: readonly string[]): stri
 // ---------- saved splitting defaults ----------
 
 // The current app's localStorage format, so defaults saved there keep working (P-EXP-93).
-const OLD_MODES = { evenly: 'EVENLY', shares: 'BY_SHARES', percentage: 'BY_PERCENTAGE', amount: 'BY_AMOUNT' } as const
-type Stored = { splitMode: (typeof OLD_MODES)[SplitMode]; paidFor: { participant: string; shares: string }[] | null }
+type Stored = { splitMode: (typeof MODE_NAMES)[SplitMode]; paidFor: { participant: string; shares: string }[] | null }
 const storageKey = (groupId: string) => `${groupId}-defaultSplittingOptions-v2`
 
 type SplitDefaults = { splitMode: SplitMode; weights: Record<string, string>; selected: Record<string, boolean> }
@@ -199,7 +198,7 @@ export function loadSplitDefaults(data: { groupId: string; participants: readonl
     return evenly
   }
   if (!stored) return evenly
-  const mode = (Object.keys(OLD_MODES) as SplitMode[]).find((m) => OLD_MODES[m] === stored.splitMode)
+  const mode = (Object.keys(MODE_NAMES) as SplitMode[]).find((m) => MODE_NAMES[m] === stored.splitMode)
   if (!mode) return evenly
   if (stored.paidFor === null) return { ...evenly, splitMode: mode }
   if (stored.paidFor.some((p) => !data.participants.includes(p.participant))) {
@@ -218,7 +217,7 @@ export function saveSplitDefaults(data: { groupId: string; state: FormState; par
   const { state } = data
   const picked = data.participants.filter((id) => state.selected[id])
   const value: Stored = {
-    splitMode: OLD_MODES[state.splitMode],
+    splitMode: MODE_NAMES[state.splitMode],
     paidFor:
       state.splitMode === 'amount'
         ? null

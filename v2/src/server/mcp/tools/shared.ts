@@ -1,9 +1,10 @@
 // Small pieces the MCP tool areas share: wire formats of the current app.
 import { Result, Schema } from 'effect'
 import { CURRENCIES, type CurrencyCode } from '../../../shared/currencies'
+import { isRealDate } from '../../../shared/expense-rules'
 import { formatMinor, minor, parseMinor, type Minor } from '../../../shared/money'
 import { RecordedTime as HistoryRecordedTime } from '../../../shared/api/history'
-import type { SplitMode } from '../../../shared/split'
+import { MODE_NAMES, RULE_NAMES, type SplitMode } from '../../../shared/split'
 
 /** The app origin, without a trailing slash, for links. */
 export const origin = (baseUrl: string) => new URL(baseUrl).origin
@@ -22,9 +23,8 @@ export const Money = Schema.String.annotate({ description: 'Exact decimal string
 // ---------- vocabulary: the current app's names for v2 values ----------
 
 export const MODES = { EVENLY: 'evenly', BY_SHARES: 'shares', BY_PERCENTAGE: 'percentage', BY_AMOUNT: 'amount' } as const satisfies Record<string, SplitMode>
-export const MODE_NAMES = { evenly: 'EVENLY', shares: 'BY_SHARES', percentage: 'BY_PERCENTAGE', amount: 'BY_AMOUNT' } as const
 export const RULES = { NONE: 'none', DAILY: 'daily', WEEKLY: 'weekly', MONTHLY: 'monthly' } as const
-export const RULE_NAMES = { none: 'NONE', daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY' } as const
+export { MODE_NAMES, RULE_NAMES }
 export type Rule = keyof typeof RULE_NAMES
 
 const CODES = Object.keys(CURRENCIES) as [CurrencyCode, ...CurrencyCode[]]
@@ -35,10 +35,6 @@ export const RecurrenceInput = Schema.Literals(['NONE', 'DAILY', 'WEEKLY', 'MONT
 /** An exact decimal string; JSON numbers, exponents, spaces and separators are refused. */
 export const Decimal = Schema.String.check(Schema.isMaxLength(32), Schema.isPattern(/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/))
 
-const isRealDate = (value: string) => {
-  const date = new Date(`${value}T00:00:00Z`)
-  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
-}
 /** A real calendar date, YYYY-MM-DD (2026-02-29 and 2026-09-31 are refused). */
 export const CalendarDate = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/),

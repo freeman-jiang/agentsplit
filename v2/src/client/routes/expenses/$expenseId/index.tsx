@@ -12,7 +12,7 @@ import { errorMessage, expenseContextQuery } from '~/client/queries/feed'
 import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 import { Input } from '~/client/ui/input'
-import { randomId } from '~/server/ids'
+import { randomId } from '~/shared/ids'
 import type { ExpenseContext } from '~/shared/api'
 
 export const Route = createFileRoute('/expenses/$expenseId/')({

@@ -9,7 +9,7 @@ import { errorMessage, expenseContextQuery, feedOptionsQuery, invalidateExpenses
 import { Button } from '~/client/ui/button'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
-import { randomId } from '~/server/ids'
+import { randomId } from '~/shared/ids'
 import type { FeedOptions, Reference, UngroupedResult } from '~/shared/api'
 
 export const Route = createFileRoute('/expenses/create')({

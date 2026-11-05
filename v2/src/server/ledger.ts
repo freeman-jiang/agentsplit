@@ -16,7 +16,7 @@ import type { CurrencyCode } from '../shared/currencies'
 import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../shared/expense-rules'
 import { formatMinor, type Minor } from '../shared/money'
 import type { Db } from './db'
-import { randomId } from './ids'
+import { randomId, sha256Hex } from './ids'
 import { balancesOf, balanceSums, displayName, escapeLike, expenseColumns, involves, toExpense, type BalanceSum, type ExpenseRow } from './sql'
 import { stopRecurrence, syncRecurrence, type LinkState } from './recurring'
 import { assertPrivateWrite, privateContextOf, type PrivateContext } from './ungrouped'
@@ -257,11 +257,6 @@ export async function getExpense(db: Db, data: { principal: Principal; group: st
 
 // ---------- writes ----------
 
-async function sha256(text: string) {
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))
-  return [...digest].map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-
 const idempotencyPrincipal = (principal: Principal) => `${principal.userId}:${principal.agentKeyId ?? 'web'}`
 
 /** A used idempotency key: the hash of its request, and the stored result (any JSON value). */
@@ -280,7 +275,7 @@ export async function idempotent<A>(
 ): Promise<A> {
   if (data.key === null) return write()
   const principal = idempotencyPrincipal(data.principal)
-  const requestHash = await sha256(JSON.stringify(data.request))
+  const requestHash = sha256Hex(JSON.stringify(data.request))
   const [previous] =
     data.previous === undefined
       ? await tx.select().from(idempotencyKeys).where(and(eq(idempotencyKeys.principal, principal), eq(idempotencyKeys.key, data.key)))

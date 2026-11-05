@@ -1,9 +1,14 @@
-const ALPHABET = 'useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict'
+// IDs, secrets and their stored hashes. The client imports src/shared/ids.ts
+// instead: this module uses node:crypto.
+import { createHash, randomBytes } from 'node:crypto'
 
-/** A 21-character URL-safe random ID, the same format as the current app's nanoid() IDs. */
-export function randomId(size = 21): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(size))
-  let id = ''
-  for (const byte of bytes) id += ALPHABET[byte & 63]
-  return id
-}
+export { randomId } from '../shared/ids'
+
+/** SHA-256 of the UTF-8 text, as lowercase hex. */
+export const sha256Hex = (text: string) => createHash('sha256').update(text).digest('hex')
+
+/** SHA-256 of the UTF-8 text, as base64url without padding. */
+export const sha256Base64url = (text: string) => createHash('sha256').update(text).digest('base64url')
+
+/** A secret of 32 random bytes, as base64url without padding: 43 characters. */
+export const randomToken = () => randomBytes(32).toString('base64url')

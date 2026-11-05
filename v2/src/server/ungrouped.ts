@@ -10,8 +10,9 @@ import { Conflict, Forbidden, Invalid, Unauthorized } from '../shared/api'
 import type { ExpenseDraft } from '../shared/expense-rules'
 import type { Db } from './db'
 import { contacts } from './feed'
+import { invitationTokenHash, newInvitationToken } from './groups'
 import { randomId } from './ids'
-import { createExpense, requireMember, type Principal } from './ledger'
+import { actor, createExpense, requireMember, type Principal } from './ledger'
 
 const INVITATION_DAYS = 7
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -20,22 +21,11 @@ export type PrivatePerson =
   | { readonly kind: 'account'; readonly id: string; readonly userId: string }
   | { readonly kind: 'email'; readonly id: string; readonly name: string; readonly email: string }
 
-const hex = (bytes: ArrayBuffer) => [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('')
-
-/** A private link: the secret goes to the caller once; only its SHA-256 hash is stored. */
-async function newInvitationSecret() {
-  const raw = crypto.getRandomValues(new Uint8Array(32))
-  const secret = btoa(String.fromCharCode(...raw)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-  const tokenHash = hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret)))
-  return { secret, tokenHash }
+/** A private link, in the format of a group invitation: the secret goes to the caller once; only its hash is stored. */
+function newInvitationSecret() {
+  const secret = newInvitationToken()
+  return { secret, tokenHash: invitationTokenHash(secret) }
 }
-
-const actor = (principal: Principal) => ({
-  source: principal.source,
-  actorName: principal.name,
-  actorUserId: principal.userId,
-  agentKeyId: principal.agentKeyId,
-})
 
 /**
  * Creates an ungrouped expense with two or more people: existing contacts by
@@ -135,7 +125,7 @@ export async function createUngroupedExpense(
 
   const links = []
   for (const person of stored.filter((p) => !p.userId)) {
-    const { secret, tokenHash } = await newInvitationSecret()
+    const { secret, tokenHash } = newInvitationSecret()
     const expiresAt = new Date(Date.now() + INVITATION_DAYS * 86_400_000)
     await tx.insert(invitations).values({
       id: randomId(),
@@ -178,7 +168,7 @@ export async function renewPrivateInvitation(tx: Db, data: { principal: Principa
     .update(invitations)
     .set({ revokedAt: new Date() })
     .where(and(eq(invitations.groupId, membership.groupId), eq(invitations.participantId, data.participantId), isNull(invitations.acceptedAt), isNull(invitations.revokedAt)))
-  const { secret, tokenHash } = await newInvitationSecret()
+  const { secret, tokenHash } = newInvitationSecret()
   const id = randomId()
   const expiresAt = new Date(Date.now() + INVITATION_DAYS * 86_400_000)
   await tx.insert(invitations).values({

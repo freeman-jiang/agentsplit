@@ -25,12 +25,12 @@ function connectionClaims(db: Db): OAuthProviderExtension {
           throw new APIError('FORBIDDEN', { error: 'access_denied', error_description: 'A verified account grant is required' })
         const body = ctx.body as Record<string, unknown>
         let authorizationCodeId: string | null | undefined
-        if (grantType === 'authorization_code' && typeof body['code'] === 'string') authorizationCodeId = await hashOAuthToken(body['code'])
+        if (grantType === 'authorization_code' && typeof body['code'] === 'string') authorizationCodeId = hashOAuthToken(body['code'])
         if (grantType === 'refresh_token' && typeof body['refresh_token'] === 'string') {
           const [refresh] = await db
             .select()
             .from(authSchema.oauthRefreshToken)
-            .where(eq(authSchema.oauthRefreshToken.token, await hashOAuthToken(body['refresh_token'])))
+            .where(eq(authSchema.oauthRefreshToken.token, hashOAuthToken(body['refresh_token'])))
           if (refresh?.userId === user.id && refresh.clientId === client.clientId) authorizationCodeId = refresh.authorizationCodeId
         }
         if (!authorizationCodeId) throw new APIError('BAD_REQUEST', { error: 'invalid_grant' })
