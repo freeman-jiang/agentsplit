@@ -15,8 +15,6 @@ type Tag = Rpcs['_tag']
 type ByTag<T extends Tag> = Extract<Rpcs, { readonly _tag: T }>
 type PayloadOf<T extends Tag> = Rpc.Payload<ByTag<T>>
 type SuccessOf<T extends Tag> = Rpc.Success<ByTag<T>>
-/** The typed errors a procedure can reject with; each has a `_tag`. */
-export type ErrorOf<T extends Tag> = Rpc.Error<ByTag<T>>
 
 // Branded types (DecimalString) are narrower than their encoded string but identical at runtime;
 // a transform such as Date or bigint makes the decoded type unassignable to the encoded one.

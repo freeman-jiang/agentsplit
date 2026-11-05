@@ -6,6 +6,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Banknote, Bus, ChartBarStacked, ChartColumnStacked, ChevronRight, FerrisWheel, HandHelping, Home, PlugZap, Utensils } from 'lucide-react'
 import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { cn } from '~/client/cn'
+import { localToday } from '~/client/components/local-today'
 import { money } from '~/client/components/money'
 import { groupQuery } from '~/client/queries'
 import { statsQuery, type StatsScope } from '~/client/queries/history'
@@ -34,18 +35,16 @@ const PERIODS = [
 type Period = (typeof PERIODS)[number][0]
 type Range = { from?: string; to?: string }
 
-const localDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-
 /** A named period as an inclusive range of local calendar dates; a custom range with reversed bounds is swapped. */
 function resolveRange(data: { period: Period; custom: Range; now: Date }): Range {
   const { now } = data
   switch (data.period) {
     case 'thisMonth':
-      return { from: localDate(new Date(now.getFullYear(), now.getMonth(), 1)), to: localDate(now) }
+      return { from: localToday(new Date(now.getFullYear(), now.getMonth(), 1)), to: localToday(now) }
     case 'last30':
-      return { from: localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29)), to: localDate(now) }
+      return { from: localToday(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29)), to: localToday(now) }
     case 'thisYear':
-      return { from: localDate(new Date(now.getFullYear(), 0, 1)), to: localDate(now) }
+      return { from: localToday(new Date(now.getFullYear(), 0, 1)), to: localToday(now) }
     case 'custom': {
       const { from, to } = data.custom
       if (from && to && from > to) return { from: to, to: from }
@@ -63,7 +62,7 @@ const scopeOf = (data: { currency: CurrencyCode | undefined; range: Range }): St
 })
 
 export const Route = createFileRoute('/$group/stats')({
-  loader: ({ context, params }) => context.queryClient.ensureQueryData(statsQuery(params.group, { today: localDate(new Date()) })),
+  loader: ({ context, params }) => context.queryClient.ensureQueryData(statsQuery(params.group, { today: localToday(new Date()) })),
   component: StatsTab,
 })
 
@@ -108,7 +107,7 @@ function StatsTab() {
   const range = resolveRange({ period, custom, now })
   const scope = scopeOf({ currency, range })
   // Each filter change is one new request (P-STATS-02); the previous figures stay until it answers.
-  const { data } = useQuery({ ...statsQuery(group, { ...scope, today: localDate(now) }), placeholderData: keepPreviousData })
+  const { data } = useQuery({ ...statsQuery(group, { ...scope, today: localToday(now) }), placeholderData: keepPreviousData })
   const c = data?.currency
   const drill = { group, groupId: g.id, range }
   return (

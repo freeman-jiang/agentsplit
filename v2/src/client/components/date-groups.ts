@@ -30,11 +30,6 @@ const parts = (date: string) => {
   return { y, m, d, day: Date.UTC(y, m - 1, d) / 86_400_000 }
 }
 
-/** Today's calendar date where the viewer is. */
-export function localToday(now = new Date()) {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
-
 export function dateGroup(data: { date: string; today: string; weekStartsOn: number }): DateGroup {
   const date = parts(data.date)
   const today = parts(data.today)

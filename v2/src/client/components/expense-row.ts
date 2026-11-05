@@ -1,7 +1,7 @@
 // What an expense card says about the viewer, ported from the current app's
 // src/lib/expense-row.ts, for several payers. Presentation only: the amounts
 // come from the stored, resolved parts.
-import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
+import type { CurrencyCode } from '~/shared/currencies'
 import { formatMinor, minor, minorOrNull } from '~/shared/minor'
 
 type Part = { readonly participantId: string; readonly amount: string }
@@ -58,5 +58,3 @@ export function expenseRowFigures(data: { expense: RowExpense; viewer: string | 
     },
   }
 }
-
-export const decimalsOf = (currency: CurrencyCode) => CURRENCIES[currency].decimals
