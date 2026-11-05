@@ -69,6 +69,13 @@ export default {
         }
       })
     }
+    if (url.pathname === '/api/mcp')
+      // The MCP endpoint and its auth load only for this route.
+      return withConnection(async (client) => (await import('./mcp/endpoint')).handleMcp(request, { db: makeDb(client), baseUrl: config.baseUrl }))
+    if (url.pathname.startsWith('/.well-known/oauth-protected-resource')) {
+      const mcp = await import('./mcp/challenge')
+      if (mcp.METADATA_PATHS.has(url.pathname)) return mcp.protectedResourceMetadata(request, config.baseUrl)
+    }
     if (url.pathname.startsWith('/api/auth/'))
       // Better Auth loads only for these routes, so RPC requests never parse it.
       return withConnection(async (client) => (await import('./auth')).createAuth({ ...config, db: makeDb(client) }).handler(request))
