@@ -1,6 +1,6 @@
 // Ledger reads and writes. Every function checks group access itself, so the
 // RPC handlers and the MCP tools cannot skip it. Writes take a transaction.
-import { and, asc, eq, isNull, or, sql, type SQL } from 'drizzle-orm'
+import { and, asc, eq, isNull, sql, type SQL } from 'drizzle-orm'
 import { Result } from 'effect'
 import {
   activities,
@@ -39,7 +39,7 @@ export async function requireMember(db: Db, data: { principal: Principal; group:
     .select({ groupId: groups.id, role: memberships.role, participantId: memberships.participantId, active: memberships.active })
     .from(groups)
     .innerJoin(memberships, and(eq(memberships.groupId, groups.id), eq(memberships.userId, data.principal.userId)))
-    .where(or(eq(groups.id, data.group), eq(groups.slug, data.group)))
+    .where(eq(groups.id, sql`agentsplit_group_id(${data.group})`))
     .limit(1)
   if (!row?.active) throw new Forbidden({ message: 'Group access denied' })
   if (data.admin && row.role !== 'admin') throw new Forbidden({ message: 'Only admins can do this' })
@@ -100,6 +100,18 @@ function toBalances(sums: GroupRow['sums']) {
 }
 
 /**
+ * The group's participants with their display names: a bound, verified
+ * account's name replaces the participant's placeholder name, as in the
+ * current app (P-GROUP-55).
+ */
+export const displayNames = (groupId: SQL) => sql`
+  SELECT p.id, coalesce(
+    (SELECT u.name FROM memberships m JOIN "user" u ON u.id = m.user_id AND u.email_verified
+      WHERE m.group_id = p.group_id AND m.participant_id = p.id),
+    p.name) AS name
+  FROM participants p WHERE p.group_id = ${groupId}`
+
+/**
  * A group with its participants and balances, in one statement that also
  * checks the caller's membership. One round trip keeps the request within the
  * Workers CPU budget.
@@ -109,12 +121,12 @@ export async function getGroup(db: Db, data: { principal: Principal; group: stri
     WITH g AS (
       SELECT g.id, g.slug, g.name, g.default_currency, g.information, g.revision, m.role, m.participant_id, m.active
       FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
-      WHERE g.id = ${data.group} OR g.slug = ${data.group}
+      WHERE g.id = agentsplit_group_id(${data.group})
       LIMIT 1
     )
     SELECT g.*,
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id)
-        FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
+        FROM (${displayNames(sql`g.id`)}) p), '[]') AS participants,
       coalesce((SELECT json_agg(json_build_object('currency', s.currency, 'participantId', s.participant_id, 'paid', s.paid::text, 'owed', s.owed::text))
         FROM (
           SELECT e.currency, parts.participant_id, sum(parts.paid) AS paid, sum(parts.owed) AS owed
@@ -264,7 +276,7 @@ export async function listExpenses(
   // The membership check is part of the statement: rows come only from a group the caller belongs to.
   const member = sql`WITH g AS (
     SELECT g.id FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId} AND m.active
-    WHERE g.id = ${data.group} OR g.slug = ${data.group} LIMIT 1
+    WHERE g.id = agentsplit_group_id(${data.group}) LIMIT 1
   )`
   const where: SQL[] = [sql`e.group_id = (SELECT id FROM g)`, sql`e.deleted_at IS NULL`]
   if (f.search?.trim()) {
@@ -327,7 +339,7 @@ async function sha256(text: string) {
  * Runs a write once per (principal, key). A retry with the same request gets
  * the stored result; the same key with a different request is refused.
  */
-async function idempotent<A>(tx: Db, data: { principal: Principal; key: string; request: unknown }, write: () => Promise<A>): Promise<A> {
+export async function idempotent<A>(tx: Db, data: { principal: Principal; key: string; request: unknown }, write: () => Promise<A>): Promise<A> {
   const principal = `${data.principal.userId}:${data.principal.agentKeyId ?? 'web'}`
   const requestHash = await sha256(JSON.stringify(data.request))
   const [previous] = await tx.select().from(idempotencyKeys).where(and(eq(idempotencyKeys.principal, principal), eq(idempotencyKeys.key, data.key)))
@@ -371,7 +383,7 @@ async function writeParts(tx: Db, data: { expenseId: string; groupId: string; ex
   await tx.insert(expenseShares).values(data.expense.shares.map((s) => ({ expenseId: data.expenseId, groupId: data.groupId, participantId: s.participantId, amount: s.amount, weight: s.weight })))
 }
 
-const actor = (principal: Principal) => ({
+export const actor = (principal: Principal) => ({
   source: principal.source,
   actorName: principal.name,
   actorUserId: principal.userId,
