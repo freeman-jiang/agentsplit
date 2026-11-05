@@ -1,0 +1,105 @@
+// The Balances card and the suggested payments, ported from the current app's
+// balances-list.tsx and reimbursement-list.tsx. Shared by the Balances and Payments tabs.
+import { Link } from '@tanstack/react-router'
+import { money } from '~/client/components/money'
+import { Button } from '~/client/ui/button'
+import type { CurrencyBalances } from '~/shared/api'
+
+type Currencies = ReadonlyArray<typeof CurrencyBalances.Type>
+type Names = ReadonlyMap<string, string>
+
+/** Minor-unit magnitude of a decimal string, for bar widths only. */
+const size = (amount: string) => Math.abs(Number(amount.replace('.', '')))
+
+export function BalancesCard(props: { currencies: Currencies; names: Names }) {
+  return (
+    <section className="border bg-card p-4" aria-labelledby="balances-title">
+      <h2 id="balances-title" className="font-medium">
+        Balances
+      </h2>
+      <p className="mb-3 text-sm text-muted-foreground">This is the amount that each participant paid or was paid for.</p>
+      {props.currencies.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No expenses yet. Your balances will appear here.</p>
+      ) : (
+        props.currencies.map((c) => {
+          const largest = Math.max(1, ...c.balances.map((b) => size(b.net)))
+          return (
+            <div key={c.currency} className="mb-4 last:mb-0">
+              <h3 className="mb-1 text-sm font-medium">{c.currency}</h3>
+              <ul className="space-y-1">
+                {c.balances.map((b) => {
+                  const positive = !b.net.startsWith('-') && size(b.net) > 0
+                  const width = `${(size(b.net) / largest) * 100}%`
+                  return (
+                    <li key={b.participantId} className="grid grid-cols-2 items-center text-sm" data-testid="balance-row">
+                      {/* The name sits on the empty half; the bar grows from the middle (P-BAL-45). */}
+                      <div className={'relative flex h-8 items-center justify-end px-2'}>
+                        {positive ? (
+                          <span className="truncate">{props.names.get(b.participantId) ?? 'Unknown'}</span>
+                        ) : (
+                          <>
+                            {size(b.net) > 0 && <span aria-hidden="true" className="absolute inset-y-1 right-0 bg-destructive/20" style={{ width }} />}
+                            <span className="relative tabular-nums">{money(b.net, c.currency)}</span>
+                          </>
+                        )}
+                      </div>
+                      <div className="relative flex h-8 items-center px-2">
+                        {positive ? (
+                          <>
+                            <span aria-hidden="true" className="absolute inset-y-1 left-0 bg-primary/20" style={{ width }} />
+                            <span className="relative tabular-nums">{money(b.net, c.currency)}</span>
+                          </>
+                        ) : (
+                          <span className="truncate">{props.names.get(b.participantId) ?? 'Unknown'}</span>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )
+        })
+      )}
+    </section>
+  )
+}
+
+/** "<from> owes <to>" per currency with a "Record payment" link that prefills the payment (P-BAL-47..49). */
+export function SuggestedPayments(props: { currencies: Currencies; names: Names; group: string }) {
+  const pending = props.currencies.filter((c) => c.settlements.length > 0)
+  return (
+    <section className="border bg-card p-4" aria-labelledby="suggested-title">
+      <h2 id="suggested-title" className="font-medium">
+        Suggested payments
+      </h2>
+      <p className="mb-3 text-sm text-muted-foreground">Suggested payments to settle group balances.</p>
+      {pending.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No payments needed.</p>
+      ) : (
+        pending.map((c) => (
+          <div key={c.currency} className="mb-4 last:mb-0">
+            <h3 className="mb-1 text-sm font-medium">{c.currency}</h3>
+            <ul className="divide-y border">
+              {c.settlements.map((s) => (
+                <li key={`${s.from}-${s.to}`} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm" data-testid="suggestion">
+                  <span>
+                    <strong>{props.names.get(s.from) ?? 'Unknown'}</strong> owes <strong>{props.names.get(s.to) ?? 'Unknown'}</strong>
+                  </span>
+                  <span className="flex items-center gap-3">
+                    <span className="tabular-nums">{money(s.amount, c.currency)}</span>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to="/$group/payments/create" params={{ group: props.group }} search={{ from: s.from, to: s.to, amount: s.amount, currencyCode: c.currency }}>
+                        Record payment
+                      </Link>
+                    </Button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      )}
+    </section>
+  )
+}
