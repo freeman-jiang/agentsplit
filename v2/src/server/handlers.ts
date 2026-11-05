@@ -5,5 +5,6 @@ import { CoreHandlers } from './handlers/core'
 import { ExpensesHandlers } from './handlers/expenses'
 import { FeedHandlers } from './handlers/feed'
 import { GroupsHandlers } from './handlers/groups'
+import { HistoryHandlers } from './handlers/history'
 
-export const HandlersLive = Layer.mergeAll(CoreHandlers, GroupsHandlers, FeedHandlers, AccountHandlers, ExpensesHandlers)
+export const HandlersLive = Layer.mergeAll(CoreHandlers, GroupsHandlers, FeedHandlers, AccountHandlers, ExpensesHandlers, HistoryHandlers)

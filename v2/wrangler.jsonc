@@ -6,7 +6,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/.well-known/*", "/robots.txt", "/sitemap.xml"]
+
+    "run_worker_first": ["/api/*", "/.well-known/*", "/robots.txt", "/sitemap.xml", "/*/expenses/export/*", "/groups/*/expenses/export/*"]
   },
   "observability": { "enabled": true },
   "vars": { "BASE_URL": "https://agentsplit-preview.freemanjiang.workers.dev", "ENABLE_EXPENSE_DOCUMENTS": "true" },
