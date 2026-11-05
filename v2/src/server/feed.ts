@@ -9,6 +9,7 @@ import type { CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/money'
 import type { Db } from './db'
 import type { Principal } from './ledger'
+import { actorName } from './sql'
 
 export type FeedFilter = {
   readonly scope?: 'all' | 'grouped' | 'ungrouped'
@@ -79,7 +80,9 @@ const expenseColumns = sql`e.id, e.group_id, e.revision, e.kind, e.title, e.vend
     FROM expense_payers p WHERE p.expense_id = e.id), '[]') AS payers,
   coalesce((SELECT json_agg(json_build_object('participantId', s.participant_id, 'amount', s.amount::text, 'weight', s.weight) ORDER BY s.participant_id)
     FROM expense_shares s WHERE s.expense_id = e.id), '[]') AS shares,
-  (SELECT count(*)::int FROM expense_documents d WHERE d.expense_id = e.id) AS document_count`
+  (SELECT count(*)::int FROM expense_documents d WHERE d.expense_id = e.id) AS document_count,
+  (SELECT ${actorName} FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = 1) AS added_by,
+  (SELECT ${actorName} FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = e.revision AND e.revision > 1 AND a.type = 'update_expense') AS edited_by`
 
 type ExpenseRow = {
   id: string
@@ -100,6 +103,8 @@ type ExpenseRow = {
   payers: { participantId: string; amount: string }[]
   shares: { participantId: string; amount: string; weight: string }[]
   document_count: number
+  added_by: string | null
+  edited_by: string | null
 }
 
 function toExpense(e: ExpenseRow) {
@@ -124,6 +129,8 @@ function toExpense(e: ExpenseRow) {
     createdAt: e.created_at,
     updatedAt: e.updated_at,
     documentCount: e.document_count,
+    addedBy: e.added_by,
+    editedBy: e.edited_by,
   }
 }
 
