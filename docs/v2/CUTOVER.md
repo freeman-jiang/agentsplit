@@ -4,8 +4,9 @@ Status: **ready for Freeman's review** (2026-11-05). Freeman approves this runbo
 
 ## Gates before the window
 
-- Receipt uploads through MCP are merged into `v2` and pass on the preview. Freeman held the MCP tools off the preview until then (DECISIONS.md).
-- The nightly backup (dots#56) is live on the dev box, and its alert is applied. The dots thread owns this: `devbox-apply` was blocked by a stale login scope.
+- Met 2026-11-05: receipt uploads through MCP are merged into `v2` (5b0f4f4) and passed the full flow on the preview.
+- Write CPU: an MCP expense write costs about 40 ms at p50 (BASELINE.md). A branch that removes duplicate statements is in progress; Freeman decides whether it merges, and whether writes need more.
+- Met 2026-11-05: the nightly backup (dots#56) is live on the dev box. `agentsplit-backup.timer` is enabled, with its first run on 2026-11-06 at 03:31 PST, and the alert "AgentSplit backup failed" is applied. Agents now have root on the box through `devbox-root` (dots#60), audited in Cloud Audit Logs.
 - CI is green on `v2`, and every parity item is covered, changed with a reason, or deferred with Freeman's agreement.
 - Every production step below (preparation steps 2 to 5, and the window) starts with a new verified backup: `agentsplit-backup coolify` with its test restore passing. A failed backup stops the step.
 
