@@ -14,7 +14,7 @@ const url = process.env['DATABASE_URL']
 const tokenFile = process.argv[2]
 if (!url || !tokenFile) throw new Error('Usage: DATABASE_URL=... bun scripts/seed-synthetic.ts <token-file>')
 const database = new URL(url).pathname.slice(1)
-if (!/(_preview|test|dev)$/.test(database)) throw new Error(`Refusing to seed ${database}: synthetic data goes only to preview, test or dev`)
+if (!/(_preview$|test|_dev($|_))/.test(database)) throw new Error(`Refusing to seed ${database}: synthetic data goes only to preview, test or dev`)
 
 const pool = new pg.Pool({ connectionString: url, max: 1 })
 const role = process.env['DB_ROLE']
