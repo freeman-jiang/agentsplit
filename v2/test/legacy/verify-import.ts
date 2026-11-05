@@ -3,12 +3,14 @@
 // v2 from the imported tables.
 //
 //   TZ=UTC SOURCE_DATABASE_URL=... TARGET_DATABASE_URL=... bun test/legacy/verify-import.ts
+import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { getCurrency } from '../../../src/lib/currency'
 import { getExpenseShares } from '../../../src/lib/shares'
 import { computeBalances, type LedgerEntry } from '../../src/shared/balances'
 import type { CurrencyCode } from '../../src/shared/currencies'
 import { formatMinor, minor, type Minor } from '../../src/shared/money'
+import { receiptKey } from '../../src/server/receipts'
 
 if (process.env['TZ'] !== 'UTC') throw new Error('Run with TZ=UTC')
 const source = new pg.Pool({ connectionString: process.env['SOURCE_DATABASE_URL'], max: 1 })
@@ -133,6 +135,30 @@ for (const e of allOld) {
     same(`share ${id}`, toUnits(oldShares.get(id) ?? '0', e.currencyCode), newShares.get(id) ?? 0n)
 }
 console.log(`ok  ${allOld.length} expenses compared field by field and share by share`)
+
+// 4. Receipt objects: with RECEIPTS_JSONL (the backup's receipts.jsonl), every
+// stored receipt and document URL must map, through v2's own key rule, to an
+// object in that backup. Otherwise the receipt would answer 404 after the cutover.
+const receiptsFile = process.env['RECEIPTS_JSONL']
+if (receiptsFile) {
+  const sizes = new Map(
+    readFileSync(receiptsFile, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const o = JSON.parse(line) as { k: string; s: number }
+        return [o.k, o.s] as const
+      }),
+  )
+  const urls = await q(target, `SELECT url FROM receipts UNION SELECT url FROM expense_documents`)
+  const before = problems.length
+  for (const { url } of urls) {
+    const key = receiptKey(String(url))
+    if (!key) problems.push(`receipt ${url}: v2 derives no storage key`)
+    else if (!sizes.has(key)) problems.push(`receipt ${url}: object ${key} is not in the backup`)
+  }
+  if (problems.length === before) console.log(`ok  ${urls.length} receipt URLs map to ${sizes.size} backed-up objects`)
+}
 
 await source.end()
 await target.end()
