@@ -180,7 +180,11 @@ describe('people', () => {
   })
 
   it('refuses to reassign a bound member', async () => {
-    await tx((c) => c.query(`INSERT INTO memberships (user_id, group_id, participant_id) VALUES ('u1', $1, $2)`, [group, alice]).then(() => {}))
+    const user = id('u')
+    await tx(async (c) => {
+      await c.query(`INSERT INTO "user" (id, name, email, created_at, updated_at) VALUES ($1, 'Alice', $2, now(), now())`, [user, `${user}@example.com`])
+      await c.query(`INSERT INTO memberships (user_id, group_id, participant_id) VALUES ($1, $2, $3)`, [user, group, alice])
+    })
     await rejects((c) => c.query(`UPDATE memberships SET participant_id = $1 WHERE group_id = $2`, [bob, group]).then(() => {}))
   })
 

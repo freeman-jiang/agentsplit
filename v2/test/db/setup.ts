@@ -16,3 +16,10 @@ export async function resetTestDatabase(): Promise<Pool> {
   await migrate(drizzle({ client: pool }), { migrationsFolder: new URL('../../db/migrations', import.meta.url).pathname })
   return pool
 }
+
+/**
+ * Account rows for test users: a membership needs its user (migration 0009).
+ * The emails are unverified, so group views keep the participant names.
+ */
+export const testUsers = (people: { userId: string; name: string; email: string }[]) =>
+  people.map((p) => ({ id: p.userId, name: p.name, email: p.email, emailVerified: false, createdAt: new Date(), updatedAt: new Date() }))
