@@ -18,7 +18,7 @@ import { titleWithVendor } from '../shared/history'
 import { formatMinor, type Minor } from '../shared/money'
 import type { Db } from './db'
 import { randomId, sha256Hex } from './ids'
-import { balancesOf, balanceSums, displayName, escapeLike, expenseColumns, involves, toExpense, type BalanceSum, type ExpenseRow } from './sql'
+import { displayName, escapeLike, expenseColumns, involves, toExpense, type ExpenseRow } from './sql'
 import { stopRecurrence, syncRecurrence, type LinkState } from './recurring'
 import { assertPrivateWrite, privateContextOf, type PrivateContext } from './ungrouped'
 
@@ -70,7 +70,6 @@ export async function listGroups(db: Db, principal: Principal) {
 
 type GroupRow = {
   id: string
-  kind: 'named' | 'private'
   context_expense_id: string | null
   slug: string | null
   name: string
@@ -81,20 +80,6 @@ type GroupRow = {
   participant_id: string | null
   active: boolean
   participants: { id: string; name: string }[]
-  sums: BalanceSum[]
-}
-
-/** Per-person sums to balances, with the zero-sum check of computeBalances. */
-function toBalances(sums: GroupRow['sums']) {
-  return [...balancesOf(sums)].flatMap(([currency, byPerson]) =>
-    [...byPerson].map(([participantId, b]) => ({
-      participantId,
-      currency,
-      paid: formatMinor({ amount: b.paid, currency }),
-      owed: formatMinor({ amount: b.owed, currency }),
-      net: formatMinor({ amount: b.net, currency }),
-    })),
-  )
 }
 
 /**
@@ -107,13 +92,13 @@ export const displayNames = (groupId: SQL) => sql`
   FROM participants p WHERE p.group_id = ${groupId}`
 
 /**
- * A group with its participants and balances, in one statement that also
- * checks the caller's membership, so the request makes one round trip.
+ * A group with its participants, in one statement that also checks the
+ * caller's membership, so the request makes one round trip.
  */
 export async function getGroup(db: Db, data: { principal: Principal; group: string }) {
   const result = await db.execute<GroupRow>(sql`
     WITH g AS (
-      SELECT g.id, g.kind, g.slug, g.name, g.default_currency, g.information, g.revision, m.role, m.participant_id, m.active,
+      SELECT g.id, g.slug, g.name, g.default_currency, g.information, g.revision, m.role, m.participant_id, m.active,
         (SELECT pc.expense_id FROM private_contexts pc WHERE pc.group_id = g.id) AS context_expense_id
       FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
       WHERE g.id = agentsplit_group_id(${data.group})
@@ -121,15 +106,13 @@ export async function getGroup(db: Db, data: { principal: Principal; group: stri
     )
     SELECT g.*,
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id)
-        FROM (${displayNames(sql`g.id`)}) p), '[]') AS participants,
-      ${balanceSums({ group: sql`g.id` })} AS sums
+        FROM (${displayNames(sql`g.id`)}) p), '[]') AS participants
     FROM g
   `)
   const [g] = result.rows
   if (!g?.active) throw new Forbidden({ message: 'Group access denied' })
   return {
     id: g.id,
-    kind: g.kind,
     contextExpenseId: g.context_expense_id,
     slug: g.slug,
     name: g.name,
@@ -139,7 +122,6 @@ export async function getGroup(db: Db, data: { principal: Principal; group: stri
     information: g.information,
     revision: g.revision,
     participants: g.participants,
-    balances: toBalances(g.sums),
   }
 }
 

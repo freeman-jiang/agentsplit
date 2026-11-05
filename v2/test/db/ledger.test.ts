@@ -4,6 +4,7 @@ import { groups, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { makeDb, type Db } from '~/server/db'
+import { listBalances } from '~/server/expenses'
 import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense, type Principal } from '~/server/ledger'
 import { resetTestDatabase, testUsers } from './setup'
 
@@ -59,8 +60,8 @@ describe('ledger', () => {
     const e = await tx((db) => createExpense(db, { principal: alice, group: 'home', expenseId: 'e1', idempotencyKey: 'key-e1-0001', expense: draft() }))
     expect(e.revision).toBe(1)
     expect(e.shares.map((s) => [s.participantId, s.amount])).toEqual([['pa', '33.34'], ['pb', '33.33'], ['pc', '33.33']])
-    const group = await tx((db) => getGroup(db, { principal: alice, group: 'g1' }))
-    expect(group.balances.find((b) => b.participantId === 'pa')?.net).toBe('66.66')
+    const { currencies } = await tx((db) => listBalances(db, { principal: alice, group: 'g1' }))
+    expect(currencies.flatMap((c) => c.balances).find((b) => b.participantId === 'pa')?.net).toBe('66.66')
   })
 
   it('returns the stored result when a write is retried with the same key', async () => {
@@ -114,8 +115,8 @@ describe('ledger', () => {
 
   it('deletes by tombstone and keeps balances consistent', async () => {
     await tx((db) => deleteExpense(db, { principal: alice, group: 'g1', expenseId: 'e2', expectedRevision: 2, idempotencyKey: 'key-d-e2-1' }))
-    const group = await tx((db) => getGroup(db, { principal: alice, group: 'g1' }))
-    expect(group.balances.reduce((sum, b) => sum + Math.round(Number(b.net) * 100), 0)).toBe(0)
+    const { currencies } = await tx((db) => listBalances(db, { principal: alice, group: 'g1' }))
+    expect(currencies.flatMap((c) => c.balances).reduce((sum, b) => sum + Math.round(Number(b.net) * 100), 0)).toBe(0)
   })
 
   it('refuses non-members', async () => {
