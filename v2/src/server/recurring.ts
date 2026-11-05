@@ -28,17 +28,21 @@ export function nextDate(data: { from: string; rule: Exclude<Rule, 'none'>; anch
 
 const dayOf = (date: string) => Number(date.slice(8, 10))
 
+/** The recurring link of an expense, as the expense write context (ledger.ts) reads it. */
+export type LinkState = { readonly id: string; readonly actedOn: boolean }
+
 /**
  * Keeps an expense's open link in step with its rule and date. Called in the
- * same transaction as the expense write. An older occurrence (its link already
- * acted on) never restarts the series (P-RECUR-23).
+ * same transaction as the expense write, with the link that the write read
+ * before it changed anything. An older occurrence (its link already acted on)
+ * never restarts the series (P-RECUR-23).
  */
 export async function syncRecurrence(
   tx: Db,
-  data: { groupId: string; expenseId: string; rule: Rule; expenseDate: string; previous: { rule: Rule; expenseDate: string } | null },
+  data: { groupId: string; expenseId: string; rule: Rule; expenseDate: string; previous: { rule: Rule; expenseDate: string } | null; link: LinkState | null },
 ) {
-  const [link] = await tx.select().from(recurringLinks).where(eq(recurringLinks.currentFrameExpenseId, data.expenseId))
-  if (link?.nextExpenseCreatedAt) return
+  const { link } = data
+  if (link?.actedOn) return
   if (data.rule === 'none') {
     if (link) await tx.delete(recurringLinks).where(eq(recurringLinks.id, link.id))
     return
