@@ -1,83 +1,103 @@
 # AgentSplit on Coolify
 
-Use `compose.coolify.yaml` for a new deployment. It contains the application,
-PostgreSQL, and Garage, each with persistent data where needed. The existing
-`compose.yaml` remains the upstream local-development setup.
-
-Google sign-in, private groups, and user-owned API keys are described in [AUTH.md](AUTH.md).
-Web receipts upload through an authenticated app endpoint; MCP receipt writes
-prepare signed S3 uploads. Both use private Garage storage and authenticated
-receipt downloads. Storage credentials never reach the browser or agent.
-
-## Configuration
-
-1. Create a Docker Compose resource from this repository and branch in Coolify.
-   Select `/compose.coolify.yaml` as the Compose file.
-   Enable **Preserve Repository During Deployment** so the repository-backed
-   Garage configuration is available for its read-only file mount.
-2. Set the values listed in `coolify.env.example` in that resource's environment.
-   `BASE_URL` must be the exact HTTPS app origin, without a trailing slash.
-   `STORAGE_HOST` is a hostname only, such as `receipts.example.com`.
-   Mark the referenced Compose variables as available at build time as well as
-   runtime: Compose validates the full definition during the build. Credentials
-   are not declared as Dockerfile build arguments or copied into the image.
-3. Generate independent secrets with `openssl rand -hex 32` for
-   `POSTGRES_PASSWORD`, `GARAGE_RPC_SECRET`, and `S3_UPLOAD_SECRET`. The access
-   key is `GK` followed by the output of `openssl rand -hex 16`.
-   Store these only in Coolify; do not commit them or change them casually after
-   initialization.
-4. Point both app and storage hostnames to this server. Assign the app's HTTPS
-   domain to the `app` service, using internal port 3000. Leave `garage`'s
-   automatic Domains field empty: its explicit Traefik labels handle routing.
-   The labels use the production app/storage domains literally so Coolify label
-   escaping can remain enabled; update those labels if deploying at other domains.
-5. Configure Google and `BETTER_AUTH_SECRET` as described in `AUTH.md`, then deploy.
-   Garage automatically initializes the single-node layout, bucket, and key.
-   Do not enable or route anonymous website access to the receipt bucket.
-6. Sign in with the configured bootstrap Google email. Verify existing groups,
-   create a test expense, attach an image, and verify it after saving. A signed-out
-   request to the receipt URL must fail. Test the same group with an agent key.
-
-This configuration assumes Coolify's standard Traefik proxy, with entrypoint
-`https`, certificate resolver `letsencrypt`, and external Docker network
-`coolify`. Custom proxy installations need corresponding label/network changes.
-
-## Why the storage proxy labels exist
-
-Garage's S3 API is exposed on port 3900 behind HTTPS. Traefik preserves the Host
-and path used by signed MCP uploads. CORS permits only the app origin. The public
-website endpoint on port 3902 is not routed. `/api/receipts` checks current group
-membership before retrieving an object, including old audit attachments.
-
-## Persistence and verification
-
-Back up `postgres-data`, `garage-meta`, and `garage-data`. Single-node Garage has
-no replication; a persistent volume is not a backup. Back up Garage's metadata
-and data together. This Compose file creates a fresh PostgreSQL 17 database; it
-does not migrate an existing `postgres-data` directory from another deployment.
-
-Garage is pinned to v2.4.1 and PostgreSQL to 17.11-alpine, both with immutable
-image digests. Node is pinned to 26.12.1-bookworm with an immutable digest; that
-image includes OpenSSL, avoiding a separate live OS-package installation. The
-build installs only the npm lockfile with scripts disabled, generates the Prisma
-client explicitly, and reuses those production dependencies for migrations.
-Local dependency installation and application checks are recorded in
-`INSTALL_REVIEW.md`. The deployed application and Garage PNG upload/save/reopen
-flow were verified on September 30, 2026; see `VERIFICATION.md` for evidence and
-remaining checks, including service-restart persistence.
-
-Attachments are enabled in this deployment. Analytics, Next.js/Prisma telemetry,
-built-in AI features, and automatic third-party exchange rates remain disabled.
-Changing `STORAGE_HOST` requires rebuilding the app image because Next.js bakes
-the storage image/CSP allowlist at build time. Keep the storage hostname stable
-to preserve previously saved receipt URLs.
-
-The standard AWS SDK setting `AWS_REQUEST_CHECKSUM_CALCULATION=WHEN_REQUIRED`
-avoids signing a checksum for an empty body before the browser sends the receipt.
-The application uses its existing upload library and does not proxy file uploads.
+AgentSplit v2 runs on Coolify on the Oracle host, at https://agentsplit.freemanjiang.com. It has served production since 2026-11-05 at 18:00:48 UTC. The cutover record and its checks are in [docs/v2/CUTOVER.md](docs/v2/CUTOVER.md).
 
 ## Production data preservation
 
-AgentSplit now contains real household data. Never reset, truncate, reseed, destructively migrate, or delete production records as part of development, deployment, or testing. Earlier permission to reset unused data no longer applies. Take a scoped database backup before schema changes, apply additive migrations, and compare existing expenses, participant IDs, splits and immutable audit records afterward. Do not overwrite legitimate concurrent user edits when checking a baseline.
+AgentSplit holds real household data. Never reset, truncate, reseed, destructively migrate or delete production records as part of development, deployment or testing. Ask Freeman before every production write, deploy, or merge into `main`. Take a verified backup before each production step. Production checks write only in the group **AgentSplit test**, never in a household group.
 
-Automated integration and browser tests use disposable loopback PostgreSQL databases and synthetic verified accounts/sessions. They do not log in as the owner's Google account. Production checks should be read-only against real ledgers; any synthetic production exercise must stay explicitly isolated and must not delete real data.
+Automated tests use disposable local databases and synthetic accounts. They never sign in with a real Google account.
+
+## The application
+
+| Setting | Value |
+| --- | --- |
+| Coolify application | `AgentSplit`, `6xpohwok1yiguyk3syzqgumj` |
+| Repository and branch | `freeman-jiang/agentsplit`, `main` |
+| Build pack | Docker Compose |
+| Compose file | `/compose.v2.coolify.yaml` |
+| Domain | `https://agentsplit.freemanjiang.com`, on the `app` service |
+
+The services of `compose.v2.coolify.yaml`:
+
+- `app`: the v2 server, built from `v2/Dockerfile`. Bun's distroless image runs the server bundle as user 65532 on port 3000. Coolify's Traefik ends TLS and routes the domain to it.
+- `db2`: PostgreSQL 18 with the volume `postgres18-data`. v2 stores everything here. Its network alias is `agentsplit-db2`.
+- `garage`: Garage v2.4.1 with the volumes `garage-meta` and `garage-data`, bucket `agentsplit-receipts`. It is unchanged from the old app, so v2 reads the old receipts in place. Its network alias is `agentsplit-garage`. Its Traefik labels still route the authenticated S3 API at `agentsplit-receipts.freemanjiang.com`; v2 does not use that route, because the app reaches Garage on the internal network.
+- `db`: the old app's PostgreSQL 17 with the volume `postgres-data`. v2 does not use it. It stays for a rollback.
+
+The app sits on the stack's internal `backend` network and on Coolify's shared `coolify` network. On the shared network a plain service name can resolve to another stack, so the app reaches `db2` and Garage only by the unique aliases. Coolify keeps `/etc/garage.toml` as a file storage of this resource; a new resource would get a directory there, and Garage would not start.
+
+All images are pinned by digest.
+
+## Environment variables
+
+Set these in the Coolify resource environment. Never commit, print or paste their values. `coolify.v2.env.example` lists them with comments.
+
+| Variable | Purpose |
+| --- | --- |
+| `BASE_URL` | The public origin. OAuth issuers, cookies and upload targets use it. |
+| `DB2_PASSWORD` | The password of `db2`. The Compose file builds `DATABASE_URL` from it. |
+| `POSTGRES_PASSWORD` | The password of the old `db`. Keep it for a rollback. |
+| `BETTER_AUTH_SECRET` | Signs session cookies and decrypts the imported signing keys. It must stay the production value (AUTH.md). |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | The Google sign-in client. |
+| `AUTH_BOOTSTRAP_EMAIL` | The owner email for the one-time bootstrap (AUTH.md). |
+| `GARAGE_RPC_SECRET` | Garage's RPC secret. |
+| `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET` | The Garage access key and secret. The same values as the old app. |
+| `AGENTSPLIT_MAINTENANCE` | The maintenance switch (below). Empty in normal operation. |
+
+v2 does not read `STORAGE_HOST`, `MCP_ACCESS_GRANTS`, `AUTH_BOOTSTRAP_LEGACY_USER_ID` or `BETTER_AUTH_TELEMETRY`. Keep them, because the old Compose file needs them for a rollback.
+
+The Compose file and the image set the other settings of `v2/src/server/server.ts`: `DATABASE_URL`, `ENABLE_EXPENSE_DOCUMENTS=true`, `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_BUCKET`, `S3_UPLOAD_REGION`, `PORT`, `CLIENT_DIR` and `MIGRATIONS_DIR`. `DATABASE_POOL_SIZE` (default 10) and `HOST` (default `0.0.0.0`) are optional. A missing required setting stops the server at start with its name.
+
+## Deploy
+
+A push to `main` does not deploy by itself.
+
+1. Get Freeman's approval for the deploy.
+2. Take a verified backup (below).
+3. Push the change to `main`.
+4. Start a deploy of `6xpohwok1yiguyk3syzqgumj` in the Coolify dashboard, or through the Coolify API (`GET https://coolify.freemanjiang.com/api/v1/deploy?uuid=6xpohwok1yiguyk3syzqgumj`, with the Cloudflare Access headers and the API token), or with the `coolify_oracle` MCP server.
+5. Watch the deployment to its end.
+6. Check `https://agentsplit.freemanjiang.com/api/health` and the home page.
+
+Coolify builds `v2/Dockerfile`. At each start, the container applies the new SQL migrations from `MIGRATIONS_DIR` before it takes requests. A failed migration stops the start. Then the health check (`/api/health`, which runs `SELECT 1`) must pass. `/api/health/liveness` answers without the database.
+
+On SIGTERM, the server stops taking connections, lets running requests and the hourly job finish, and exits within 25 seconds. Compose gives it 30 seconds. The hourly job runs at minute 7 of each hour: it creates due recurring expenses, deletes stale receipt uploads, and deletes expired DPoP replay rows.
+
+## Maintenance switch
+
+With `AGENTSPLIT_MAINTENANCE=1`, the server answers 503 with `Retry-After: 300` to every request except `/api/health`: a maintenance page for browsers, a JSON error for other clients. The hourly job pauses. The container still starts, migrates and passes its health check, so nothing writes to `db2`.
+
+1. Set `AGENTSPLIT_MAINTENANCE=1` on the application.
+2. Deploy.
+3. Do the work.
+4. Clear `AGENTSPLIT_MAINTENANCE`.
+5. Deploy again.
+
+The variable is read at start, so each change needs a deploy.
+
+## Backups
+
+The nightly job `agentsplit-backup` runs on the dev box from the dots flake (`devbox/bin/agentsplit-backup`, timer `agentsplit-backup.timer`). It writes a PostgreSQL dump and every receipt object to `~/backups/agentsplit/<UTC date>/`, restores the dump into a throwaway PostgreSQL to check it, and keeps 60 days. restic copies the home folder hourly. A failure writes an error to the log `agentsplit-backup`, and the alert "AgentSplit backup failed" watches it.
+
+The job still dumps the old `db` and copies receipts with `node` inside the `app` container, which v2's image does not have. The dots thread is changing it to dump `db2` and copy receipts with Bun. Until that change is live, the job does not back up v2.
+
+Back up `postgres18-data`, `garage-meta` and `garage-data`. Single-node Garage has no replication, and a volume is not a backup. Back up Garage's metadata and data together.
+
+## Rollback
+
+The old app runs on `db`, which the import only read. A rollback loses every write made in v2 after the cutover, because those writes are only in `db2`.
+
+1. Get Freeman's approval.
+2. Export the `activities` rows of `db2` since 2026-11-05 18:00:48 UTC, so that the writes made in v2 can be entered again by hand. Decide with Freeman what to do with them.
+3. Set the application's Compose file to `/compose.coolify.yaml`.
+4. Deploy the `main` commit before the cutover merge (`bb26b78`).
+5. Check the old app, its sign-in and the Macademia group.
+
+The cutover cleared the application's post-deployment command, because it ran `node`, which the v2 image does not have. Its old value is not recorded in this repository.
+
+Keep `db`, `postgres-data` and `compose.coolify.yaml` intact until Freeman says otherwise. Never delete a volume.
+
+## Preview
+
+The Coolify application `AgentSplit v2 preview` (`o4vyiomler6rstiocphgzwv6`) runs branch `v2` with `/compose.v2.preview.yaml` at https://agentsplit-v2-preview.freemanjiang.com. It holds synthetic data only (`v2/scripts/seed-synthetic.ts`), in its own PostgreSQL database `agentsplit_preview` and its own Garage. It has no `db` service and no Traefik labels, and it does not touch the production application. Remove it after the cutover unless Freeman keeps it.
