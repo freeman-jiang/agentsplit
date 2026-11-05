@@ -51,6 +51,14 @@ const INTERNAL_MESSAGE = 'Unable to complete this operation. Check the arguments
 /** The current app's access-denial text, now with a certain outcome (DECISIONS.md, P-MCP-41). */
 export const ACCESS_DENIED = 'This connection cannot access the requested group'
 
+/** The current app's texts for what a service did not find, by NotFound entity. */
+const NOT_FOUND: Readonly<Record<string, string>> = {
+  expense: 'Expense not found',
+  'history boundary in this group': 'History boundary not found in this group',
+  'saved expense revision at this point': 'Expense revision not found at this point',
+  'group at this time': 'The group did not exist at this time',
+}
+
 /**
  * The error result body `{error: {code, message, outcomeUnknown, recovery}}`.
  * Only an unexpected failure of a write leaves its outcome unknown.
@@ -63,7 +71,7 @@ export function errorBody(data: { error: unknown; kind: 'read' | 'write' }) {
       : error instanceof Forbidden
         ? ['FORBIDDEN', error.message === 'Group access denied' ? ACCESS_DENIED : error.message]
         : error instanceof NotFound
-          ? ['NOT_FOUND', error.entity === 'expense' ? 'Expense not found' : 'Group not found.']
+          ? ['NOT_FOUND', NOT_FOUND[error.entity] ?? 'Group not found.']
           : error instanceof Conflict
             ? ['CONFLICT', 'The record changed. Read its current revision and retry your intended changes.']
             : error instanceof Invalid
@@ -90,7 +98,10 @@ const isNode = (value: JsonValue | undefined): value is Node => typeof value ===
 function close(node: Node, path: string, strict: ReadonlySet<string>): Node {
   const out: Node = { ...node }
   if (node['type'] === 'object') {
+    const extra = node['additionalProperties']
     if (strict.has(path)) out['additionalProperties'] = false
+    // A record keeps the schema of its values; only the open-object marker goes.
+    else if (isNode(extra)) out['additionalProperties'] = close(extra, `${path}[*]`, strict)
     else delete out['additionalProperties']
     const properties = node['properties']
     if (isNode(properties))
@@ -144,8 +155,14 @@ type ToolSpec<I extends Schema.Top, O extends Schema.Top> = {
   readonly run: (context: ToolContext, args: I['Type']) => Promise<O['Encoded'] & object>
 }
 
+/**
+ * The JSON Schemas are built on first use, not at definition: a new isolate
+ * whose first request calls one tool builds only that tool's input schema.
+ */
 export function defineTool<I extends Schema.Top & Schema.ConstraintDecoder<unknown>, O extends Schema.Top>(spec: ToolSpec<I, O>): McpTool {
-  const inputSchema = jsonSchemaOf({ schema: spec.input, strict: spec.strict })
+  let input: JsonSchema | undefined
+  let output: JsonSchema | undefined
+  const inputSchema = () => (input ??= jsonSchemaOf({ schema: spec.input, strict: spec.strict }))
   const decoder = Schema.decodeUnknownResult(spec.input, { errors: 'all' })
   return {
     name: spec.name,
@@ -153,12 +170,16 @@ export function defineTool<I extends Schema.Top & Schema.ConstraintDecoder<unkno
     kind: spec.kind,
     destructive: spec.kind === 'write' && (spec.destructive ?? true),
     idempotent: spec.kind === 'read' || (spec.idempotent ?? false),
-    inputSchema,
-    outputSchema: jsonSchemaOf({ schema: spec.output }),
+    get inputSchema() {
+      return inputSchema()
+    },
+    get outputSchema() {
+      return (output ??= jsonSchemaOf({ schema: spec.output }))
+    },
     output: spec.output,
     decode: (args) => {
       const excess: string[] = []
-      excessKeys(inputSchema, args ?? {}, '', excess)
+      excessKeys(inputSchema(), args ?? {}, '', excess)
       if (excess.length) return Result.fail(excess.join('; '))
       const decoded = decoder(args ?? {})
       return Result.isSuccess(decoded) ? Result.succeed(decoded.success) : Result.fail(decoded.failure.message)

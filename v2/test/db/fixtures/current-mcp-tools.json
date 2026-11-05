@@ -2,7 +2,589 @@
   "source": "tools/list of the current app (src/lib/mcp/server.ts, SDK 2.0.0), generated 2026-11-05",
   "tools": [
     {
-      "name": "list_groups",
+      "name": "list_all_expenses",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "date",
+                  "createdAt",
+                  "id"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "default": 30,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "scope": {
+            "default": "all",
+            "type": "string",
+            "enum": [
+              "all",
+              "grouped",
+              "ungrouped"
+            ]
+          },
+          "groupId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "filter": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "involvingMe": {
+            "default": false,
+            "type": "boolean"
+          },
+          "personId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "paidByUserId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "currencyCode": {
+            "type": "string",
+            "enum": [
+              "USD",
+              "EUR",
+              "JPY",
+              "BGN",
+              "CZK",
+              "DKK",
+              "GBP",
+              "HUF",
+              "PLN",
+              "RON",
+              "SEK",
+              "CHF",
+              "ISK",
+              "NOK",
+              "TRY",
+              "AUD",
+              "BRL",
+              "CAD",
+              "CNY",
+              "HKD",
+              "IDR",
+              "ILS",
+              "INR",
+              "KRW",
+              "MKD",
+              "MXN",
+              "MYR",
+              "NZD",
+              "PHP",
+              "SGD",
+              "THB",
+              "VND",
+              "ZAR",
+              "COP"
+            ]
+          },
+          "categoryId": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "isReimbursement": {
+            "type": "boolean"
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "expenses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "groupId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "vendor": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "amount": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                  "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                },
+                "currencyCode": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                "expenseDate": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                "categoryId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "paidById": {
+                  "type": "string"
+                },
+                "originalAmount": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 32,
+                      "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                      "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "originalCurrency": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "conversionRate": {
+                  "description": "Serialized decimal exchange rate",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isReimbursement": {
+                  "type": "boolean"
+                },
+                "splitMode": {
+                  "type": "string",
+                  "enum": [
+                    "EVENLY",
+                    "BY_SHARES",
+                    "BY_PERCENTAGE",
+                    "BY_AMOUNT"
+                  ]
+                },
+                "notes": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "recurrenceRule": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "NONE",
+                        "DAILY",
+                        "WEEKLY",
+                        "MONTHLY"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "recurringExpenseLinkId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "deletedAt": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "group": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "slug"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "contextExpenseId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "contextExpenseTitle": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "participantId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "attribution": {
+                  "type": "object",
+                  "properties": {
+                    "createdAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastEditedByYouAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdBy": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "userId": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "userId",
+                            "name",
+                            "source"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedBy": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "userId": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "userId",
+                            "name",
+                            "source"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "createdBy",
+                    "updatedBy"
+                  ],
+                  "additionalProperties": false
+                },
+                "paidBy": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                "paidFor": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "participant": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "shares": {
+                        "type": "string",
+                        "maxLength": 32,
+                        "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])"
+                      }
+                    },
+                    "required": [
+                      "participant",
+                      "shares"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "category": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "grouping": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "grouping"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "_count": {
+                  "type": "object",
+                  "properties": {
+                    "documents": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "documents"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "id",
+                "groupId",
+                "title",
+                "vendor",
+                "amount",
+                "currencyCode",
+                "createdAt",
+                "expenseDate",
+                "categoryId",
+                "paidById",
+                "originalAmount",
+                "originalCurrency",
+                "conversionRate",
+                "isReimbursement",
+                "splitMode",
+                "notes",
+                "recurrenceRule",
+                "recurringExpenseLinkId",
+                "deletedAt",
+                "revision",
+                "group",
+                "contextExpenseId",
+                "contextExpenseTitle",
+                "participantId",
+                "paidBy",
+                "paidFor",
+                "category",
+                "_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "date",
+                  "createdAt",
+                  "id"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "expenses",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      },
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -26,7 +608,186 @@
             ]
           }
         ]
+      }
+    },
+    {
+      "name": "get_expense_options",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
       },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "slug"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "email"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "userId",
+          "groups",
+          "people"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "securitySchemes": [
+        {
+          "type": "oauth2",
+          "scopes": [
+            "agentsplit:read"
+          ]
+        }
+      ],
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "oauth2",
+            "scopes": [
+              "agentsplit:read"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "update_profile",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50,
+            "description": "Your single global display name, used across all current groups, expenses and future entries. Historical audit names and snapshots are preserved. Updates only the authenticated account; never changes email, IDs, membership or money."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "profile": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "emailVerified": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "email",
+              "emailVerified"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "profile"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "securitySchemes": [
+        {
+          "type": "oauth2",
+          "scopes": [
+            "agentsplit:read",
+            "agentsplit:write"
+          ]
+        }
+      ],
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "oauth2",
+            "scopes": [
+              "agentsplit:read",
+              "agentsplit:write"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "list_groups",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -146,10 +907,7 @@
           "nextCursor"
         ],
         "additionalProperties": false
-      }
-    },
-    {
-      "name": "get_group",
+      },
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -173,7 +931,10 @@
             ]
           }
         ]
-      },
+      }
+    },
+    {
+      "name": "get_group",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -429,10 +1190,7 @@
           "links"
         ],
         "additionalProperties": false
-      }
-    },
-    {
-      "name": "list_expenses",
+      },
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -456,7 +1214,575 @@
             ]
           }
         ]
+      }
+    },
+    {
+      "name": "create_group",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "group": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 50
+              },
+              "slug": {
+                "description": "Optional unique group URL slug, e.g. macademia. Set null or empty string to remove it.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 63
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "information": {
+                "type": "string",
+                "maxLength": 10000
+              },
+              "currency": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 5
+              },
+              "currencyCode": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 3
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "const": ""
+                  }
+                ]
+              },
+              "participants": {
+                "maxItems": 99,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 50
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "currency",
+              "participants"
+            ]
+          },
+          "groupId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{21}$"
+          }
+        },
+        "required": [
+          "group"
+        ],
+        "additionalProperties": false
       },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "groupId": {
+            "type": "string"
+          },
+          "group": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "slug": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "information": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "revision": {
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "currency": {
+                "type": "string"
+              },
+              "currencyCode": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "participants": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "groupId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "groupId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "slug",
+              "information",
+              "revision",
+              "currency",
+              "currencyCode",
+              "createdAt",
+              "participants"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "groupId",
+          "group"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "securitySchemes": [
+        {
+          "type": "oauth2",
+          "scopes": [
+            "agentsplit:read",
+            "agentsplit:write"
+          ]
+        }
+      ],
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "oauth2",
+            "scopes": [
+              "agentsplit:read",
+              "agentsplit:write"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "update_group",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "groupId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "changes": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 50
+              },
+              "slug": {
+                "description": "Optional unique group URL slug, e.g. macademia. Set null or empty string to remove it.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 63
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "information": {
+                "type": "string",
+                "maxLength": 10000
+              },
+              "currency": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 5
+              },
+              "currencyCode": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 3
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "const": ""
+                  }
+                ]
+              },
+              "participants": {
+                "minItems": 1,
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "maxLength": 64
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 50
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "groupId",
+          "changes",
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "groupId": {
+            "type": "string"
+          },
+          "group": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "slug": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "information": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "revision": {
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "currency": {
+                "type": "string"
+              },
+              "currencyCode": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "participants": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "groupId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "groupId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "slug",
+              "information",
+              "revision",
+              "currency",
+              "currencyCode",
+              "createdAt",
+              "participants"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "groupId",
+          "group"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "securitySchemes": [
+        {
+          "type": "oauth2",
+          "scopes": [
+            "agentsplit:read",
+            "agentsplit:write"
+          ]
+        }
+      ],
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "oauth2",
+            "scopes": [
+              "agentsplit:read",
+              "agentsplit:write"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "manage_group_access",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "join",
+              "leave",
+              "invite",
+              "renew_invitation",
+              "revoke_invitation",
+              "remove_member",
+              "set_role",
+              "bind_member"
+            ]
+          },
+          "groupId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "shareUrl": {
+            "description": "For join: the email-bound invitation URL, not a group URL.",
+            "type": "string",
+            "maxLength": 2000,
+            "format": "uri"
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email",
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          },
+          "invitationId": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "userId": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "participantId": {
+            "description": "The existing participant to invite or bind. A membership identity cannot later be switched.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "member"
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "groupId": {
+            "type": "string"
+          },
+          "joined": {
+            "type": "boolean"
+          },
+          "invitation": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "url": {
+                "type": "string"
+              },
+              "participantId": {
+                "type": "string"
+              },
+              "participantName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "email",
+              "expiresAt",
+              "url",
+              "participantId",
+              "participantName"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "groupId",
+          "joined"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "securitySchemes": [
+        {
+          "type": "oauth2",
+          "scopes": [
+            "agentsplit:read",
+            "agentsplit:write"
+          ]
+        }
+      ],
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "oauth2",
+            "scopes": [
+              "agentsplit:read",
+              "agentsplit:write"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "list_expenses",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -938,10 +2264,7 @@
           "nextCursor"
         ],
         "additionalProperties": false
-      }
-    },
-    {
-      "name": "get_expense",
+      },
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -965,7 +2288,10 @@
             ]
           }
         ]
-      },
+      }
+    },
+    {
+      "name": "get_expense",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -1788,22 +3114,18 @@
           "expense"
         ],
         "additionalProperties": false
-      }
-    },
-    {
-      "name": "create_expense",
+      },
       "annotations": {
-        "readOnlyHint": false,
+        "readOnlyHint": true,
         "destructiveHint": false,
-        "idempotentHint": false,
+        "idempotentHint": true,
         "openWorldHint": false
       },
       "securitySchemes": [
         {
           "type": "oauth2",
           "scopes": [
-            "agentsplit:read",
-            "agentsplit:write"
+            "agentsplit:read"
           ]
         }
       ],
@@ -1812,12 +3134,14 @@
           {
             "type": "oauth2",
             "scopes": [
-              "agentsplit:read",
-              "agentsplit:write"
+              "agentsplit:read"
             ]
           }
         ]
-      },
+      }
+    },
+    {
+      "name": "create_expense",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -2248,13 +3572,10 @@
           "groupId"
         ],
         "additionalProperties": false
-      }
-    },
-    {
-      "name": "update_expense",
+      },
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": true,
+        "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false
       },
@@ -2277,7 +3598,10 @@
             ]
           }
         ]
-      },
+      }
+    },
+    {
+      "name": "update_expense",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -2594,10 +3918,7 @@
           "uploadError"
         ],
         "additionalProperties": false
-      }
-    },
-    {
-      "name": "delete_expense",
+      },
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -2623,7 +3944,10 @@
             ]
           }
         ]
-      },
+      }
+    },
+    {
+      "name": "delete_expense",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -2672,6 +3996,2488 @@
           "deleted"
         ],
         "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "securitySchemes": [
+        {
+          "type": "oauth2",
+          "scopes": [
+            "agentsplit:read",
+            "agentsplit:write"
+          ]
+        }
+      ],
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "oauth2",
+            "scopes": [
+              "agentsplit:read",
+              "agentsplit:write"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_balances",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "Recorded-change timestamp with timezone, e.g. 2026-10-01T15:00:00Z; not the expense date."
+          },
+          "atActivityId": {
+            "description": "Exact inclusive history boundary from this group. Reuse the returned boundary for stable pagination.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "groupId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "currencyCode": {
+            "type": "string",
+            "enum": [
+              "USD",
+              "EUR",
+              "JPY",
+              "BGN",
+              "CZK",
+              "DKK",
+              "GBP",
+              "HUF",
+              "PLN",
+              "RON",
+              "SEK",
+              "CHF",
+              "ISK",
+              "NOK",
+              "TRY",
+              "AUD",
+              "BRL",
+              "CAD",
+              "CNY",
+              "HKD",
+              "IDR",
+              "ILS",
+              "INR",
+              "KRW",
+              "MKD",
+              "MXN",
+              "MYR",
+              "NZD",
+              "PHP",
+              "SGD",
+              "THB",
+              "VND",
+              "ZAR",
+              "COP"
+            ]
+          }
+        },
+        "required": [
+          "groupId"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "history": {
+            "type": "object",
+            "properties": {
+              "asOf": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "Recorded-change timestamp with timezone, e.g. 2026-10-01T15:00:00Z; not the expense date."
+              },
+              "atActivityId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "complete": {
+                "type": "boolean"
+              },
+              "unavailableExpenseIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "asOf",
+              "atActivityId",
+              "complete",
+              "unavailableExpenseIds"
+            ],
+            "additionalProperties": false
+          },
+          "currencies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "currencyCode": {
+                  "type": "string"
+                },
+                "balances": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "paid": {
+                        "type": "string",
+                        "maxLength": 32,
+                        "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                        "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                      },
+                      "paidFor": {
+                        "type": "string",
+                        "maxLength": 32,
+                        "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                        "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                      },
+                      "total": {
+                        "type": "string",
+                        "maxLength": 32,
+                        "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                        "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                      }
+                    },
+                    "required": [
+                      "paid",
+                      "paidFor",
+                      "total"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "reimbursements": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "from": {
+                        "type": "string"
+                      },
+                      "to": {
+                        "type": "string"
+                      },
+                      "amount": {
+                        "type": "string",
+                        "maxLength": 32,
+                        "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                        "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to",
+                      "amount"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "currencyCode",
+                "balances",
+                "reimbursements"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "currencies"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "securitySchemes": [
+        {
+          "type": "oauth2",
+          "scopes": [
+            "agentsplit:read"
+          ]
+        }
+      ],
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "oauth2",
+            "scopes": [
+              "agentsplit:read"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_participant_balances",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "groups": {
+            "description": "Omit to include every currently accessible named group and private expense context, without a page-size cap. Supply a unique list to restrict the scope.",
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "groupId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "participantId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                }
+              },
+              "required": [
+                "groupId"
+              ]
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "totals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "currencyCode": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                  "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                }
+              },
+              "required": [
+                "currencyCode",
+                "amount"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "unboundGroupIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "balances": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "groupId": {
+                  "type": "string"
+                },
+                "groupName": {
+                  "type": "string"
+                },
+                "currency": {
+                  "type": "string"
+                },
+                "currencyCode": {
+                  "type": "string"
+                },
+                "participantId": {
+                  "type": "string"
+                },
+                "participantName": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                  "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                }
+              },
+              "required": [
+                "groupId",
+                "groupName",
+                "currency",
+                "currencyCode",
+                "participantId",
+                "participantName",
+                "amount"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "totals",
+          "unboundGroupIds",
+          "balances"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "securitySchemes": [
+        {
+          "type": "oauth2",
+          "scopes": [
+            "agentsplit:read"
+          ]
+        }
+      ],
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "oauth2",
+            "scopes": [
+              "agentsplit:read"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_spending_stats",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "groupId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "participantId": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "currencyCode": {
+            "type": "string",
+            "enum": [
+              "USD",
+              "EUR",
+              "JPY",
+              "BGN",
+              "CZK",
+              "DKK",
+              "GBP",
+              "HUF",
+              "PLN",
+              "RON",
+              "SEK",
+              "CHF",
+              "ISK",
+              "NOK",
+              "TRY",
+              "AUD",
+              "BRL",
+              "CAD",
+              "CNY",
+              "HKD",
+              "IDR",
+              "ILS",
+              "INR",
+              "KRW",
+              "MKD",
+              "MXN",
+              "MYR",
+              "NZD",
+              "PHP",
+              "SGD",
+              "THB",
+              "VND",
+              "ZAR",
+              "COP"
+            ]
+          }
+        },
+        "required": [
+          "groupId"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "currencyCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "availableCurrencyCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "totalGroupSpendings": {
+            "type": "string",
+            "maxLength": 32,
+            "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+            "description": "Exact decimal string in the stated currency, e.g. 12.34"
+          },
+          "totalParticipantSpendings": {
+            "type": "string",
+            "maxLength": 32,
+            "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+            "description": "Exact decimal string in the stated currency, e.g. 12.34"
+          },
+          "totalParticipantShare": {
+            "type": "string",
+            "maxLength": 32,
+            "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+            "description": "Exact decimal string in the stated currency, e.g. 12.34"
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "expenseCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "totalSpending": {
+                "type": "string",
+                "maxLength": 32,
+                "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                "description": "Exact decimal string in the stated currency, e.g. 12.34"
+              },
+              "averageExpense": {
+                "type": "string",
+                "maxLength": 32,
+                "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                "description": "Exact decimal string in the stated currency, e.g. 12.34"
+              },
+              "largestExpense": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string"
+                      },
+                      "amount": {
+                        "type": "string",
+                        "maxLength": 32,
+                        "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                        "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "amount"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "firstDate": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lastDate": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "expenseCount",
+              "totalSpending",
+              "averageExpense",
+              "largestExpense",
+              "firstDate",
+              "lastDate"
+            ],
+            "additionalProperties": false
+          },
+          "months": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "month": {
+                  "type": "string"
+                },
+                "total": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                  "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                }
+              },
+              "required": [
+                "month",
+                "total"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "monthlyCategorySpending": {
+            "type": "object",
+            "properties": {
+              "months": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "year": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "month": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "amount": {
+                      "type": "string",
+                      "maxLength": 32,
+                      "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                      "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                    },
+                    "expenseAmount": {
+                      "type": "string",
+                      "maxLength": 32,
+                      "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                      "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                    },
+                    "incomeAmount": {
+                      "type": "string",
+                      "maxLength": 32,
+                      "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                      "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                    },
+                    "categories": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "categoryId": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "grouping": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "amount": {
+                            "type": "string",
+                            "maxLength": 32,
+                            "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                            "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                          },
+                          "expenseAmount": {
+                            "type": "string",
+                            "maxLength": 32,
+                            "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                            "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                          },
+                          "incomeAmount": {
+                            "type": "string",
+                            "maxLength": 32,
+                            "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                            "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "categoryId",
+                          "grouping",
+                          "name",
+                          "amount",
+                          "expenseAmount",
+                          "incomeAmount"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "year",
+                    "month",
+                    "amount",
+                    "expenseAmount",
+                    "incomeAmount",
+                    "categories"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "categories": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "categoryId": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "grouping": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "amount": {
+                      "type": "string",
+                      "maxLength": 32,
+                      "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                      "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                    },
+                    "expenseAmount": {
+                      "type": "string",
+                      "maxLength": 32,
+                      "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                      "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                    },
+                    "incomeAmount": {
+                      "type": "string",
+                      "maxLength": 32,
+                      "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                      "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "categoryId",
+                    "grouping",
+                    "name",
+                    "amount",
+                    "expenseAmount",
+                    "incomeAmount"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "maxExpenseAmount": {
+                "type": "string",
+                "maxLength": 32,
+                "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                "description": "Exact decimal string in the stated currency, e.g. 12.34"
+              }
+            },
+            "required": [
+              "months",
+              "categories",
+              "maxExpenseAmount"
+            ],
+            "additionalProperties": false
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "participantId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "paid": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                  "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                },
+                "paidCount": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "share": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                  "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                }
+              },
+              "required": [
+                "participantId",
+                "name",
+                "paid",
+                "paidCount",
+                "share"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "grouping": {
+                  "type": "string"
+                },
+                "categoryId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "total": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                  "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                }
+              },
+              "required": [
+                "name",
+                "grouping",
+                "categoryId",
+                "total"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "recurring": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "estimatedMonthly": {
+                "type": "string",
+                "maxLength": 32,
+                "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                "description": "Exact decimal string in the stated currency, e.g. 12.34"
+              },
+              "estimatedYearly": {
+                "type": "string",
+                "maxLength": 32,
+                "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                "description": "Exact decimal string in the stated currency, e.g. 12.34"
+              },
+              "byPeriod": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "period": {
+                      "type": "string",
+                      "enum": [
+                        "DAILY",
+                        "WEEKLY",
+                        "MONTHLY"
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "total": {
+                      "type": "string",
+                      "maxLength": 32,
+                      "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                      "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                    }
+                  },
+                  "required": [
+                    "period",
+                    "count",
+                    "total"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "count",
+              "estimatedMonthly",
+              "estimatedYearly",
+              "byPeriod"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "currencyCode",
+          "availableCurrencyCodes",
+          "totalGroupSpendings",
+          "summary",
+          "months",
+          "monthlyCategorySpending",
+          "participants",
+          "categories",
+          "recurring"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "securitySchemes": [
+        {
+          "type": "oauth2",
+          "scopes": [
+            "agentsplit:read"
+          ]
+        }
+      ],
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "oauth2",
+            "scopes": [
+              "agentsplit:read"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "list_activity",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "Recorded-change timestamp with timezone, e.g. 2026-10-01T15:00:00Z; not the expense date."
+          },
+          "atActivityId": {
+            "description": "Exact inclusive history boundary from this group. Reuse the returned boundary for stable pagination.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "recordedFrom": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "Recorded-change timestamp with timezone, e.g. 2026-10-01T15:00:00Z; not the expense date."
+          },
+          "recordedTo": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "Recorded-change timestamp with timezone, e.g. 2026-10-01T15:00:00Z; not the expense date."
+          },
+          "order": {
+            "default": "desc",
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "groupId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "cursor": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "default": 5,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "expenseId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "activityType": {
+            "type": "string",
+            "enum": [
+              "CREATE_GROUP",
+              "JOIN_GROUP",
+              "LEAVE_GROUP",
+              "UPDATE_GROUP",
+              "CREATE_EXPENSE",
+              "UPDATE_EXPENSE",
+              "DELETE_EXPENSE"
+            ]
+          }
+        },
+        "required": [
+          "groupId"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "atActivityId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "activities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "groupId": {
+                  "type": "string"
+                },
+                "time": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                "activityType": {
+                  "type": "string",
+                  "enum": [
+                    "CREATE_GROUP",
+                    "JOIN_GROUP",
+                    "LEAVE_GROUP",
+                    "UPDATE_GROUP",
+                    "CREATE_EXPENSE",
+                    "UPDATE_EXPENSE",
+                    "DELETE_EXPENSE"
+                  ]
+                },
+                "participantId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "expenseId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "data": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "expenseRevision": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "snapshot": {
+                  "anyOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "schemaVersion": {
+                              "type": "number",
+                              "const": 1
+                            },
+                            "kind": {
+                              "type": "string",
+                              "const": "expense"
+                            },
+                            "group": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "slug": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "currency": {
+                                  "type": "string"
+                                },
+                                "currencyCode": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name",
+                                "currency",
+                                "currencyCode"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "expense": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "groupId": {
+                                  "type": "string"
+                                },
+                                "revision": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "vendor": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "amount": {
+                                  "type": "string",
+                                  "maxLength": 32,
+                                  "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])"
+                                },
+                                "currencyCode": {
+                                  "type": "string",
+                                  "enum": [
+                                    "USD",
+                                    "EUR",
+                                    "JPY",
+                                    "BGN",
+                                    "CZK",
+                                    "DKK",
+                                    "GBP",
+                                    "HUF",
+                                    "PLN",
+                                    "RON",
+                                    "SEK",
+                                    "CHF",
+                                    "ISK",
+                                    "NOK",
+                                    "TRY",
+                                    "AUD",
+                                    "BRL",
+                                    "CAD",
+                                    "CNY",
+                                    "HKD",
+                                    "IDR",
+                                    "ILS",
+                                    "INR",
+                                    "KRW",
+                                    "MKD",
+                                    "MXN",
+                                    "MYR",
+                                    "NZD",
+                                    "PHP",
+                                    "SGD",
+                                    "THB",
+                                    "VND",
+                                    "ZAR",
+                                    "COP"
+                                  ]
+                                },
+                                "expenseDate": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                },
+                                "createdAt": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                },
+                                "categoryId": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                "category": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "id": {
+                                          "type": "integer",
+                                          "minimum": -9007199254740991,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "name": {
+                                          "type": "string"
+                                        },
+                                        "grouping": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "id",
+                                        "name",
+                                        "grouping"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "originalAmount": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 32,
+                                      "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "originalCurrency": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "conversionRate": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "paidBy": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "paidFor": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "participantId": {
+                                        "type": "string"
+                                      },
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "shares": {
+                                        "type": "string",
+                                        "maxLength": 32,
+                                        "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])"
+                                      }
+                                    },
+                                    "required": [
+                                      "participantId",
+                                      "name",
+                                      "shares"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "splitMode": {
+                                  "type": "string",
+                                  "enum": [
+                                    "EVENLY",
+                                    "BY_SHARES",
+                                    "BY_PERCENTAGE",
+                                    "BY_AMOUNT"
+                                  ]
+                                },
+                                "isReimbursement": {
+                                  "type": "boolean"
+                                },
+                                "notes": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "recurrenceRule": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "NONE",
+                                        "DAILY",
+                                        "WEEKLY",
+                                        "MONTHLY"
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "documents": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "url": {
+                                        "type": "string"
+                                      },
+                                      "width": {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991
+                                      },
+                                      "height": {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "url",
+                                      "width",
+                                      "height"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "groupId",
+                                "revision",
+                                "title",
+                                "amount",
+                                "currencyCode",
+                                "expenseDate",
+                                "createdAt",
+                                "categoryId",
+                                "category",
+                                "originalAmount",
+                                "originalCurrency",
+                                "conversionRate",
+                                "paidBy",
+                                "paidFor",
+                                "splitMode",
+                                "isReimbursement",
+                                "notes",
+                                "recurrenceRule",
+                                "documents"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "schemaVersion",
+                            "kind",
+                            "group",
+                            "expense"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "schemaVersion": {
+                              "type": "number",
+                              "const": 1
+                            },
+                            "kind": {
+                              "type": "string",
+                              "const": "group"
+                            },
+                            "group": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "slug": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "currency": {
+                                  "type": "string"
+                                },
+                                "currencyCode": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "information": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "revision": {
+                                  "default": 0,
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "participants": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "name": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "name"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name",
+                                "currency",
+                                "currencyCode",
+                                "information",
+                                "revision",
+                                "participants"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "schemaVersion",
+                            "kind",
+                            "group"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "previousSnapshot": {
+                  "anyOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "schemaVersion": {
+                              "type": "number",
+                              "const": 1
+                            },
+                            "kind": {
+                              "type": "string",
+                              "const": "expense"
+                            },
+                            "group": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "slug": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "currency": {
+                                  "type": "string"
+                                },
+                                "currencyCode": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name",
+                                "currency",
+                                "currencyCode"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "expense": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "groupId": {
+                                  "type": "string"
+                                },
+                                "revision": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "vendor": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "amount": {
+                                  "type": "string",
+                                  "maxLength": 32,
+                                  "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])"
+                                },
+                                "currencyCode": {
+                                  "type": "string",
+                                  "enum": [
+                                    "USD",
+                                    "EUR",
+                                    "JPY",
+                                    "BGN",
+                                    "CZK",
+                                    "DKK",
+                                    "GBP",
+                                    "HUF",
+                                    "PLN",
+                                    "RON",
+                                    "SEK",
+                                    "CHF",
+                                    "ISK",
+                                    "NOK",
+                                    "TRY",
+                                    "AUD",
+                                    "BRL",
+                                    "CAD",
+                                    "CNY",
+                                    "HKD",
+                                    "IDR",
+                                    "ILS",
+                                    "INR",
+                                    "KRW",
+                                    "MKD",
+                                    "MXN",
+                                    "MYR",
+                                    "NZD",
+                                    "PHP",
+                                    "SGD",
+                                    "THB",
+                                    "VND",
+                                    "ZAR",
+                                    "COP"
+                                  ]
+                                },
+                                "expenseDate": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                },
+                                "createdAt": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                },
+                                "categoryId": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                "category": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "id": {
+                                          "type": "integer",
+                                          "minimum": -9007199254740991,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "name": {
+                                          "type": "string"
+                                        },
+                                        "grouping": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "id",
+                                        "name",
+                                        "grouping"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "originalAmount": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 32,
+                                      "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "originalCurrency": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "conversionRate": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "paidBy": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "paidFor": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "participantId": {
+                                        "type": "string"
+                                      },
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "shares": {
+                                        "type": "string",
+                                        "maxLength": 32,
+                                        "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])"
+                                      }
+                                    },
+                                    "required": [
+                                      "participantId",
+                                      "name",
+                                      "shares"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "splitMode": {
+                                  "type": "string",
+                                  "enum": [
+                                    "EVENLY",
+                                    "BY_SHARES",
+                                    "BY_PERCENTAGE",
+                                    "BY_AMOUNT"
+                                  ]
+                                },
+                                "isReimbursement": {
+                                  "type": "boolean"
+                                },
+                                "notes": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "recurrenceRule": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "NONE",
+                                        "DAILY",
+                                        "WEEKLY",
+                                        "MONTHLY"
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "documents": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "url": {
+                                        "type": "string"
+                                      },
+                                      "width": {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991
+                                      },
+                                      "height": {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "url",
+                                      "width",
+                                      "height"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "groupId",
+                                "revision",
+                                "title",
+                                "amount",
+                                "currencyCode",
+                                "expenseDate",
+                                "createdAt",
+                                "categoryId",
+                                "category",
+                                "originalAmount",
+                                "originalCurrency",
+                                "conversionRate",
+                                "paidBy",
+                                "paidFor",
+                                "splitMode",
+                                "isReimbursement",
+                                "notes",
+                                "recurrenceRule",
+                                "documents"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "schemaVersion",
+                            "kind",
+                            "group",
+                            "expense"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "schemaVersion": {
+                              "type": "number",
+                              "const": 1
+                            },
+                            "kind": {
+                              "type": "string",
+                              "const": "group"
+                            },
+                            "group": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "slug": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "currency": {
+                                  "type": "string"
+                                },
+                                "currencyCode": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "information": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "revision": {
+                                  "default": 0,
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "participants": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "name": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "name"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name",
+                                "currency",
+                                "currencyCode",
+                                "information",
+                                "revision",
+                                "participants"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "schemaVersion",
+                            "kind",
+                            "group"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source": {
+                  "type": "string"
+                },
+                "actorName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "actorUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "agentKeyId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "expense": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "groupId": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "vendor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "amount": {
+                      "type": "string",
+                      "maxLength": 32,
+                      "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                      "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                    },
+                    "currencyCode": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    },
+                    "expenseDate": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    },
+                    "categoryId": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "paidById": {
+                      "type": "string"
+                    },
+                    "originalAmount": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 32,
+                          "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$(?![\\s\\S])",
+                          "description": "Exact decimal string in the stated currency, e.g. 12.34"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "originalCurrency": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "conversionRate": {
+                      "description": "Serialized decimal exchange rate",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "isReimbursement": {
+                      "type": "boolean"
+                    },
+                    "splitMode": {
+                      "type": "string",
+                      "enum": [
+                        "EVENLY",
+                        "BY_SHARES",
+                        "BY_PERCENTAGE",
+                        "BY_AMOUNT"
+                      ]
+                    },
+                    "notes": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "recurrenceRule": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "NONE",
+                            "DAILY",
+                            "WEEKLY",
+                            "MONTHLY"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recurringExpenseLinkId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deletedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "groupId",
+                    "title",
+                    "vendor",
+                    "amount",
+                    "currencyCode",
+                    "createdAt",
+                    "expenseDate",
+                    "categoryId",
+                    "paidById",
+                    "originalAmount",
+                    "originalCurrency",
+                    "conversionRate",
+                    "isReimbursement",
+                    "splitMode",
+                    "notes",
+                    "recurrenceRule",
+                    "recurringExpenseLinkId",
+                    "deletedAt",
+                    "revision"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "id",
+                "groupId",
+                "time",
+                "activityType",
+                "participantId",
+                "expenseId",
+                "data",
+                "expenseRevision",
+                "snapshot",
+                "previousSnapshot",
+                "source",
+                "actorName",
+                "actorUserId",
+                "agentKeyId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "atActivityId",
+          "asOf",
+          "activities",
+          "hasMore",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "securitySchemes": [
+        {
+          "type": "oauth2",
+          "scopes": [
+            "agentsplit:read"
+          ]
+        }
+      ],
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "oauth2",
+            "scopes": [
+              "agentsplit:read"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "process_recurring_expenses",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "groupId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "groupId"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "createdExpenseIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "createdExpenseIds"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "securitySchemes": [
+        {
+          "type": "oauth2",
+          "scopes": [
+            "agentsplit:read",
+            "agentsplit:write"
+          ]
+        }
+      ],
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "oauth2",
+            "scopes": [
+              "agentsplit:read",
+              "agentsplit:write"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_reference_data",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "name": {
+                  "type": "string"
+                },
+                "grouping": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "grouping"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "currencies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "enum": [
+                    "USD",
+                    "EUR",
+                    "JPY",
+                    "BGN",
+                    "CZK",
+                    "DKK",
+                    "GBP",
+                    "HUF",
+                    "PLN",
+                    "RON",
+                    "SEK",
+                    "CHF",
+                    "ISK",
+                    "NOK",
+                    "TRY",
+                    "AUD",
+                    "BRL",
+                    "CAD",
+                    "CNY",
+                    "HKD",
+                    "IDR",
+                    "ILS",
+                    "INR",
+                    "KRW",
+                    "MKD",
+                    "MXN",
+                    "MYR",
+                    "NZD",
+                    "PHP",
+                    "SGD",
+                    "THB",
+                    "VND",
+                    "ZAR",
+                    "COP"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "symbol": {
+                  "type": "string"
+                },
+                "decimalPlaces": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "code",
+                "name",
+                "symbol",
+                "decimalPlaces"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "splitModes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "EVENLY",
+                "BY_SHARES",
+                "BY_PERCENTAGE",
+                "BY_AMOUNT"
+              ]
+            }
+          },
+          "recurrenceRules": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "NONE",
+                "DAILY",
+                "WEEKLY",
+                "MONTHLY"
+              ]
+            }
+          },
+          "attachments": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "contentTypes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "maxBytes": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "enabled",
+              "contentTypes",
+              "maxBytes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "categories",
+          "currencies",
+          "splitModes",
+          "recurrenceRules",
+          "attachments"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "securitySchemes": [
+        {
+          "type": "oauth2",
+          "scopes": [
+            "agentsplit:read"
+          ]
+        }
+      ],
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "oauth2",
+            "scopes": [
+              "agentsplit:read"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "export_group",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "groupId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "format": {
+            "default": "json",
+            "type": "string",
+            "enum": [
+              "json",
+              "csv"
+            ]
+          }
+        },
+        "required": [
+          "groupId"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "contentType",
+          "content"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "securitySchemes": [
+        {
+          "type": "oauth2",
+          "scopes": [
+            "agentsplit:read"
+          ]
+        }
+      ],
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "oauth2",
+            "scopes": [
+              "agentsplit:read"
+            ]
+          }
+        ]
       }
     }
   ]

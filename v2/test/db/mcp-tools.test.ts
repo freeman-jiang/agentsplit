@@ -185,7 +185,7 @@ describe('tool advertisement', () => {
           // v2 adds `payers` beside paidBy; every current field stays.
           const added = Object.keys(a.properties ?? {}).filter((k) => !(k in (b.properties ?? {})))
           expect({ path, missing: Object.keys(b.properties).filter((k) => !(k in (a.properties ?? {}))) }).toEqual({ path, missing: [] })
-          expect({ path, added }).toEqual({ path, added: path.endsWith('.expense') || path.endsWith('.changes') ? ['payers'] : [] })
+          expect({ path, added }).toEqual({ path, added: path === 'create_expense.expense' || path === 'update_expense.changes' ? ['payers'] : [] })
           // paidBy became optional because payers can replace it; nothing else changed.
           const required = (b.required ?? []).filter((k) => k !== 'paidBy')
           expect({ path, required: [...(a.required ?? [])].sort() }).toEqual({ path, required: required.sort() })
@@ -195,11 +195,10 @@ describe('tool advertisement', () => {
       }
       compare(now.inputSchema, before.inputSchema, now.name)
       expect(now.outputSchema.type).toBe('object')
-      // Every current output field is still there, except the historical-read
-      // `history` block, which comes with the history tools (docs/v2/parity/mcp.md).
+      // Every current output field is still there.
       const outputs = (a: JsonNode | undefined, b: JsonNode | undefined, path: string) => {
         if (!a || !b?.properties) return
-        const missing = Object.keys(b.properties).filter((k) => !(k in (a.properties ?? {})) && !(k === 'history' && !path.includes('.')))
+        const missing = Object.keys(b.properties).filter((k) => !(k in (a.properties ?? {})))
         expect({ path, missing }).toEqual({ path, missing: [] })
         for (const key of Object.keys(b.properties)) outputs(a.properties?.[key], b.properties[key], `${path}.${key}`)
         outputs(a.items, b.items, `${path}[]`)
@@ -424,7 +423,7 @@ describe('expense writes and reads', () => {
       const refused = await failure(h, { name: 'list_expenses', args: { groupId: 'g1', ...args }, headers: alice })
       expect(refused.code).toBe('VALIDATION')
     }
-    const history = await failure(h, { name: 'list_expenses', args: { groupId: 'g1', asOf: '2026-11-01T00:00:00Z' }, headers: alice })
+    const history = await failure(h, { name: 'list_expenses', args: { groupId: 'g1', asOf: '2026-11-01T00:00:00Z', atActivityId: 'a1' }, headers: alice })
     expect(history.code).toBe('BAD_REQUEST')
     const denied = await failure(h, { name: 'list_expenses', args: { groupId: 'g3' }, headers: alice })
     expect(denied.code).toBe('FORBIDDEN')
