@@ -6,6 +6,7 @@
 //
 // The shared dev Cloudflare token cannot write R2 objects, so the cutover runs
 // this one command under `sops exec-env secrets/admin.env` (docs/v2/CUTOVER.md).
+import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,8 +24,9 @@ const objects = readFileSync(file, 'utf8')
 const contentType = (key: string) => (/\.png$/.test(key) ? 'image/png' : /\.jpe?g$/.test(key) ? 'image/jpeg' : null)
 
 const wrangler = (args: string[]) => {
-  const run = Bun.spawnSync(['bunx', 'wrangler', 'r2', 'object', ...args, '--remote'], { stdout: 'pipe', stderr: 'pipe' })
-  if (run.exitCode !== 0) throw new Error(`wrangler r2 object ${args[0]} ${args[1]} failed: ${run.stderr.toString().trim()}`)
+  const run = spawnSync('bunx', ['wrangler', 'r2', 'object', ...args, '--remote'], { maxBuffer: 64 * 1024 * 1024 })
+  if (run.error) throw run.error
+  if (run.status !== 0) throw new Error(`wrangler r2 object ${args[0]} ${args[1]} failed: ${run.stderr.toString().trim()}`)
   return run.stdout
 }
 

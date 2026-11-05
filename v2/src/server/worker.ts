@@ -126,7 +126,9 @@ async function route(request: Request): Promise<Response> {
   }
   // The MCP endpoint and its auth load only for this route.
   if (url.pathname === '/api/mcp')
-    return withConnection(async (client) => (await import('./mcp/endpoint')).handleMcp(request, { db: makeDb(client), baseUrl: config.baseUrl }))
+    return withConnection(async (client) =>
+      (await import('./mcp/endpoint')).handleMcp(request, { db: makeDb(client), baseUrl: config.baseUrl, bucket: appEnv.RECEIPTS, documentsEnabled: config.documentsEnabled }),
+    )
   // The Worker serves the protected-resource metadata itself: Better Auth's MCP plugin drops
   // offline_access from it, which left Claude Code without refresh tokens (OAUTH-CLAUDE-CODE.md).
   if (url.pathname.startsWith('/.well-known/oauth-protected-resource')) {
@@ -149,11 +151,23 @@ async function route(request: Request): Promise<Response> {
     await client.connect()
     try {
       const db = makeDb(client)
-      const { downloadReceipt, uploadReceipt } = await import('./receipts')
-      const principal = await principalOf(db, request)
+      const { downloadReceipt, receiptReader, uploadReceipt } = await import('./receipts')
       return await (request.method === 'GET'
-        ? downloadReceipt({ db, bucket: appEnv.RECEIPTS, principal, url })
-        : uploadReceipt({ db, bucket: appEnv.RECEIPTS, principal, request, baseUrl: config.baseUrl, enabled: config.documentsEnabled }))
+        ? downloadReceipt({ db, bucket: appEnv.RECEIPTS, principal: await receiptReader(db, { request, baseUrl: config.baseUrl, secret: config.secret }), url })
+        : uploadReceipt({ db, bucket: appEnv.RECEIPTS, principal: await principalOf(db, request), request, baseUrl: config.baseUrl, enabled: config.documentsEnabled }))
+    } finally {
+      await client.end().catch(() => {})
+    }
+  }
+  // An agent's upload target from create_expense or update_expense. The secret in the path is the credential.
+  const uploadRoute = /^\/api\/receipt-uploads\/([^/]+)$/.exec(url.pathname)
+  if (uploadRoute) {
+    if (request.method !== 'PUT') return Response.json({ error: 'Method not allowed' }, { status: 405, headers: { Allow: 'PUT' } })
+    const client = new pg.Client({ connectionString: appEnv.HYPERDRIVE.connectionString })
+    await client.connect()
+    try {
+      const { putUpload } = await import('./receipt-uploads')
+      return await putUpload({ db: makeDb(client), bucket: appEnv.RECEIPTS, request, token: uploadRoute[1] ?? '', enabled: config.documentsEnabled })
     } finally {
       await client.end().catch(() => {})
     }
@@ -195,6 +209,9 @@ export default {
         onError: (error) => console.error('Recurring expense failed', error),
       })
       if (created.length) console.log(`Created ${created.length} recurring expenses`)
+      const { removeStaleUploads } = await import('./receipt-uploads')
+      const removed = await removeStaleUploads({ db, bucket: appEnv.RECEIPTS })
+      if (removed) console.log(`Removed ${removed} stale receipt upload targets`)
     } finally {
       await client.end().catch(() => {})
     }

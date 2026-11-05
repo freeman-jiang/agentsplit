@@ -8,6 +8,7 @@ import pg from 'pg'
 import { groups, memberships, participants } from '../db/schema/app'
 import { session, user } from '../db/schema/auth'
 import type { ExpenseDraft } from '../src/shared/expense-rules'
+import { createAuth } from '../src/server/auth'
 import { makeDb, type Db } from '../src/server/db'
 import { createExpense, updateExpense, type Principal } from '../src/server/ledger'
 
@@ -75,3 +76,10 @@ export const addExpense = (household: Household, expenseId: string, expense: Exp
 
 export const editExpense = (household: Household, expenseId: string, expectedRevision: number, expense: ExpenseDraft) =>
   tx((db) => updateExpense(db, { principal: household.owner, group: household.groupId, expenseId, expectedRevision, idempotencyKey: `e2e-edit-${expenseId}-${expectedRevision}`, expense }))
+
+/** A raw agent API key for a seeded account, from Better Auth's own createApiKey, as Settings creates it. */
+export const agentKey = (userId: string, baseURL: string) =>
+  withDb(async (db) => {
+    const auth = createAuth({ db, baseUrl: baseURL, secret, googleClientId: 'e2e-client', googleClientSecret: 'e2e-secret' })
+    return (await auth.api.createApiKey({ body: { userId } })).key
+  })

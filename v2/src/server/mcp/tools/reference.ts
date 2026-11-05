@@ -19,9 +19,8 @@ export const getReferenceData = defineTool({
     recurrenceRules: Schema.Array(RecurrenceInput),
     attachments: Schema.Struct({ enabled: Schema.Boolean, contentTypes: Schema.Array(Schema.String), maxBytes: Schema.Int }),
   }),
-  run: async ({ db }) => {
-    // MCP cannot attach receipts yet (create_expense and update_expense answer uploadError), so uploads are off here.
-    const reference = await expenses.getReference(db, { documentsEnabled: false })
+  run: async ({ db, documentsEnabled }) => {
+    const reference = await expenses.getReference(db, { documentsEnabled })
     return {
       categories: reference.categories.map((c) => ({ id: c.id, name: c.name, grouping: c.grouping })),
       currencies: reference.currencies.map((c) => ({ code: c.code, name: c.name, symbol: c.symbol, decimalPlaces: c.decimals })),
