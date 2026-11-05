@@ -3,3 +3,5 @@ dist/
 .wrangler/
 .dev.vars
 src/client/routeTree.gen.ts
+test-results/
+playwright-report/

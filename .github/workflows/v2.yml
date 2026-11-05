@@ -50,3 +50,16 @@ jobs:
         run: bun run check-types
       - name: Tests
         run: bun run test
+      - name: Install Chromium for the e2e suite
+        run: bunx playwright install --with-deps chromium
+      - name: End-to-end tests against the production build
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: "5437"
+          PGUSER: postgres
+        run: |
+          # db-reset comes from the dev shell locally; CI provides the same with psql.
+          mkdir -p "$RUNNER_TEMP/bin"
+          printf '#!/usr/bin/env bash\ndropdb --if-exists --force "$1" && createdb "$1"\n' > "$RUNNER_TEMP/bin/db-reset"
+          chmod +x "$RUNNER_TEMP/bin/db-reset"
+          PATH="$RUNNER_TEMP/bin:$PATH" SKIP_BUILD=1 ./scripts/e2e.sh
