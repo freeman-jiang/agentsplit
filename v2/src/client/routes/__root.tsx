@@ -1,0 +1,63 @@
+import type { QueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
+import { createRootRouteWithContext, Link, Outlet } from '@tanstack/react-router'
+import { Toaster } from 'sonner'
+import { AccountMenu } from '~/client/components/account-menu'
+import { Brand } from '~/client/components/brand'
+import { useDocumentTitle } from '~/client/components/page-title'
+import { meQuery } from '~/client/queries'
+import { Button } from '~/client/ui/button'
+
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  component: Root,
+})
+
+function Root() {
+  useDocumentTitle()
+  const { data: me } = useQuery(meQuery)
+  return (
+    <div className="flex min-h-dvh flex-col bg-background text-foreground">
+      <header className="sticky top-0 z-50 border-b bg-background/95 px-3 py-3 backdrop-blur-sm sm:px-8">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+          <Link className="flex items-center gap-2" to="/">
+            <Brand />
+          </Link>
+          {me && (
+            <>
+              <nav aria-label="Workspace" className="col-span-full row-start-2 flex flex-wrap gap-1 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:justify-end">
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/">Dashboard</Link>
+                </Button>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/groups">Groups</Link>
+                </Button>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/agents">Agents</Link>
+                </Button>
+              </nav>
+              <div className="col-start-2 row-start-1 flex justify-end sm:col-start-3">
+                <AccountMenu name={me.name} />
+              </div>
+            </>
+          )}
+        </div>
+      </header>
+      <div className="flex flex-1 flex-col">
+        <Outlet />
+      </div>
+      <footer className="mt-12 flex flex-col gap-4 border-t px-4 py-6 text-xs text-muted-foreground sm:flex-row sm:items-end sm:justify-between sm:px-8">
+        <div className="space-y-2">
+          <Link to="/" className="text-foreground">
+            <Brand className="text-xl" />
+          </Link>
+          <p>A little less keeping track.</p>
+          <Link to="/privacy" className="underline underline-offset-4">
+            Privacy
+          </Link>
+        </div>
+        <p>Built on Spliit, by Sebastien Castiel and contributors.</p>
+      </footer>
+      <Toaster position="bottom-center" />
+    </div>
+  )
+}

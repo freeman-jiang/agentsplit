@@ -1,0 +1,131 @@
+@import 'tailwindcss';
+@config '../../tailwind.config.cjs';
+
+@layer base {
+  :root {
+    --background: 42 39% 94%;
+    --foreground: 84 9% 20%;
+    --card: 45 57% 97%;
+    --card-foreground: 84 9% 20%;
+    --popover: 45 57% 97%;
+    --popover-foreground: 84 9% 20%;
+    --primary: 90 17% 32%;
+    --primary-foreground: 45 100% 98%;
+    --secondary: 45 28% 88%;
+    --secondary-foreground: 84 9% 20%;
+    --muted: 45 28% 88%;
+    --muted-foreground: 67 7% 42%;
+    --accent: 60 19% 87%;
+    --accent-foreground: 90 17% 27%;
+    --destructive: 12 50% 39%;
+    --destructive-foreground: 45 100% 98%;
+    --border: 47 19% 81%;
+    --input: 47 19% 75%;
+    --ring: 90 17% 32%;
+    --radius: 0rem;
+    --chart-1: 90 17% 32%;
+    --chart-2: 25 33% 44%;
+    --chart-3: 170 18% 37%;
+    --chart-4: 43 40% 49%;
+    --chart-5: 10 28% 47%;
+  }
+  .dark {
+    --background: 60 8% 13%;
+    --foreground: 45 32% 90%;
+    --card: 67 11% 16%;
+    --card-foreground: 45 32% 90%;
+    --popover: 67 11% 16%;
+    --popover-foreground: 45 32% 90%;
+    --primary: 85 27% 72%;
+    --primary-foreground: 90 28% 16%;
+    --secondary: 78 13% 19%;
+    --secondary-foreground: 45 32% 90%;
+    --muted: 78 13% 19%;
+    --muted-foreground: 60 11% 68%;
+    --accent: 78 15% 23%;
+    --accent-foreground: 85 27% 82%;
+    --destructive: 15 69% 72%;
+    --destructive-foreground: 12 40% 16%;
+    --border: 73 10% 28%;
+    --input: 73 10% 34%;
+    --ring: 85 27% 72%;
+    --chart-1: 85 27% 72%;
+    --chart-2: 25 45% 67%;
+    --chart-3: 170 25% 60%;
+    --chart-4: 43 47% 67%;
+    --chart-5: 10 42% 68%;
+  }
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  input,
+  select,
+  textarea,
+  button {
+    border-radius: 0;
+  }
+}
+
+.landing-header strong {
+  @apply font-normal text-primary;
+}
+
+/* Spacing and hierarchy shared by the expense editor's existing fields. */
+.expense-editor label {
+  @apply text-sm leading-5 font-normal text-muted-foreground;
+}
+.expense-editor [data-participant-name] {
+  @apply text-foreground;
+}
+.expense-editor details > summary {
+  @apply flex min-h-12 cursor-pointer items-center justify-between gap-4 py-3 text-sm;
+  list-style: none;
+}
+.expense-editor details > summary::-webkit-details-marker {
+  display: none;
+}
+.expense-editor details > summary::after {
+  content: '+';
+  @apply text-muted-foreground;
+}
+.expense-editor details[open] > summary::after {
+  content: '−';
+}
+.expense-editor details > summary:focus-visible {
+  @apply outline-2 outline-offset-4 outline-ring;
+}
+.expense-editor .expense-summary {
+  @apply bg-muted p-6;
+}
+
+@media (pointer: coarse) {
+  button,
+  [role='tab'],
+  [role='combobox'] {
+    min-height: 44px;
+  }
+}
+@media (max-width: 640px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+.brand-mark {
+  background: currentColor;
+  mask: url('/brand-mark.svg') center / contain no-repeat;
+  -webkit-mask: url('/brand-mark.svg') center / contain no-repeat;
+}
+
+.payment-editor label {
+  @apply block text-sm font-medium text-muted-foreground;
+}
+.payment-editor input,
+.payment-editor select {
+  @apply h-11;
+}

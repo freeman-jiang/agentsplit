@@ -1,0 +1,7 @@
+node_modules/
+dist/
+# Bun loads .env files from the working folder; dev secrets go there.
+.env*
+src/client/routeTree.gen.ts
+test-results/
+playwright-report/
