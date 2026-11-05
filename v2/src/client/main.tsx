@@ -3,7 +3,7 @@ import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ErrorState } from './components/error-state'
-import { registerServiceWorker } from './pwa'
+import { addAppleSplashImages, registerServiceWorker } from './pwa'
 import { routeTree } from './routeTree.gen'
 import './styles.css'
 
@@ -29,6 +29,7 @@ declare module '@tanstack/react-router' {
 // Better Auth refreshes the session's expiry here; RPC calls only read the session.
 void fetch('/api/auth/get-session', { credentials: 'same-origin' }).catch(() => {})
 void registerServiceWorker().catch((error: unknown) => console.error('Service worker registration failed', error))
+addAppleSplashImages({ icon: '/logo-with-text.png', color: '#526044' })
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Missing #root')
