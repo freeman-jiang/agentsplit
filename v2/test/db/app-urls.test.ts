@@ -1,7 +1,8 @@
-// The server's half of the current app's group URLs (src/proxy.ts at bb26b78).
-// A wrong redirect fails silently: old links stop working.
+// The server's half of the current app's group URLs (src/proxy.ts at bb26b78)
+// and the request ID of RPC responses. A wrong redirect or a missing ID fails
+// silently: old links stop working, or a quoted error reference finds no log line.
 import type { Pool } from 'pg'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { groups } from '../../db/schema/app'
 import { createApp, type App } from '~/server/app'
 import { makeDb } from '~/server/db'
@@ -64,5 +65,37 @@ describe('group URLs', () => {
       expect(response.status, path).toBe(200)
     }
     expect((await get(`/groups/${SLUGGED}/balances`, 'POST')).status).toBe(200)
+  })
+})
+
+/** Node, which runs the tests, needs `duplex` to send a streamed body. Bun, which runs the server, does not. */
+class StreamingRequest extends Request {
+  constructor(input: RequestInfo | URL, init?: RequestInit) {
+    super(input, init?.body ? Object.assign({}, init, { duplex: 'half' }) : init)
+  }
+}
+
+describe('RPC request IDs', () => {
+  it('returns the request ID in a header and logs a failed call with it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubGlobal('Request', StreamingRequest)
+    try {
+      const response = await app.fetch(
+        new Request(`${BASE}/api/rpc`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', origin: BASE },
+          body: JSON.stringify([{ _tag: 'Request', id: '1', tag: 'groups.directory', payload: { offset: 0 }, headers: [] }]),
+        }),
+      )
+      expect(response.status).toBe(200)
+      const id = response.headers.get('x-request-id') ?? ''
+      expect(id).toMatch(/^[0-9a-f-]{36}$/)
+      // Signed out: the call answers Unauthorized, and the log line names the same ID.
+      expect(JSON.stringify(await response.json())).toContain('Unauthorized')
+      expect(warn).toHaveBeenCalledWith('RPC groups.directory answered Unauthorized', { requestId: id })
+    } finally {
+      vi.unstubAllGlobals()
+      warn.mockRestore()
+    }
   })
 })

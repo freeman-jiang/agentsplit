@@ -9,6 +9,7 @@
 // the type checker refuse a contract change that breaks this.
 import type { Rpc, RpcGroup } from 'effect/rpc'
 import type { AgentSplitApi } from '../shared/api'
+import { REQUEST_ID_RESPONSE_HEADER } from '../shared/ids'
 
 type Rpcs = RpcGroup.Rpcs<typeof AgentSplitApi>
 type Tag = Rpcs['_tag']
@@ -26,7 +27,23 @@ void _jsonIdentical
 /** A failure the server did not declare (a defect or a broken response). */
 export class RpcFailure extends Error {
   readonly _tag = 'RpcFailure'
+  /** The server's ID of the request, when a response came back. */
+  readonly requestId: string | null
+  constructor(message: string, requestId: string | null = null) {
+    super(message)
+    this.requestId = requestId
+  }
 }
+
+/** The server's ID of the request that failed with `error`, or null if no response came back. */
+export function requestIdOf(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null || !('requestId' in error)) return null
+  return typeof error.requestId === 'string' ? error.requestId : null
+}
+
+/** A declared error with the request's ID added, so the error page can show it. */
+const withRequestId = (error: unknown, requestId: string | null) =>
+  requestId !== null && typeof error === 'object' && error !== null ? { ...error, requestId } : error
 
 type Pending = { readonly id: string; readonly tag: Tag; readonly payload: unknown; resolve: (value: unknown) => void; reject: (error: unknown) => void }
 type ExitMessage = {
@@ -46,6 +63,7 @@ async function flush() {
   const batch = queue
   queue = []
   timer = undefined
+  let requestId: string | null = null
   try {
     const response = await fetch('/api/rpc', {
       method: 'POST',
@@ -53,20 +71,21 @@ async function flush() {
       credentials: 'same-origin',
       body: JSON.stringify(batch.map((p) => ({ _tag: 'Request', id: p.id, tag: p.tag, payload: p.payload, headers: [] }))),
     })
-    if (!response.ok) throw new RpcFailure(`The server answered ${response.status}`)
+    requestId = response.headers.get(REQUEST_ID_RESPONSE_HEADER)
+    if (!response.ok) throw new RpcFailure(`The server answered ${response.status}`, requestId)
     const messages = (await response.json()) as ExitMessage[]
     const byId = new Map(messages.filter((m) => m._tag === 'Exit').map((m) => [m.requestId, m.exit]))
     for (const p of batch) {
       const exit = byId.get(p.id)
-      if (!exit) p.reject(new RpcFailure('The response ended before this call completed'))
+      if (!exit) p.reject(new RpcFailure('The response ended before this call completed', requestId))
       else if (exit._tag === 'Success') p.resolve(exit.value)
       else {
         const failure = exit.cause.find((c) => c._tag === 'Fail')
-        p.reject(failure ? failure.error : new RpcFailure('The server failed unexpectedly'))
+        p.reject(failure ? withRequestId(failure.error, requestId) : new RpcFailure('The server failed unexpectedly', requestId))
       }
     }
   } catch (error) {
-    for (const p of batch) p.reject(error instanceof RpcFailure ? error : new RpcFailure(error instanceof Error ? error.message : 'The request failed'))
+    for (const p of batch) p.reject(error instanceof RpcFailure ? error : new RpcFailure(error instanceof Error ? error.message : 'The request failed', requestId))
   }
 }
 
