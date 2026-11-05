@@ -1,11 +1,12 @@
 // Agent receipt uploads: the current app's staged S3 uploads
-// (src/lib/expense-uploads.ts), on the R2 binding. A Worker cannot presign S3
-// URLs without R2 S3 credentials, so an upload target is a Worker URL with a
-// single-use secret. The agent PUTs the bytes there once; the Worker streams
-// them into R2 at their final key. Only update_expense with attachUploadIds
+// (src/lib/expense-uploads.ts). An upload target is an app URL with a
+// single-use secret, not a presigned storage URL, so the bucket stays off the
+// public internet. The agent PUTs the bytes there once; the server streams
+// them into the bucket at their final key. Only update_expense with attachUploadIds
 // registers the image to the group and attaches it, so a target alone saves nothing.
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { receipts, receiptUploads } from '../../db/schema/app'
+import type { Bucket } from './bucket'
 import type { Db } from './db'
 import { randomId } from './ids'
 import type { Principal, StoredDocument } from './ledger'
@@ -105,10 +106,10 @@ const json = (status: number, error: string) => Response.json({ error }, { statu
 /**
  * PUT /api/receipt-uploads/<token>. The secret in the URL is the only
  * credential, as with a presigned URL. The request claims the target first,
- * so a second PUT with the same URL fails. The body streams into R2; R2 checks
- * its length. If the write fails, the target is free again until it expires.
+ * so a second PUT with the same URL fails. The body streams into the bucket,
+ * and the stored size must be the declared size. If the write fails, the target is free again until it expires.
  */
-export async function putUpload(data: { db: Db; bucket: R2Bucket; request: Request; token: string; enabled: boolean }): Promise<Response> {
+export async function putUpload(data: { db: Db; bucket: Bucket; request: Request; token: string; enabled: boolean }): Promise<Response> {
   if (!data.enabled) return json(403, 'Receipts are disabled')
   if (!/^[A-Za-z0-9_-]{43}$/.test(data.token)) return json(403, 'This upload URL is not valid, was used, or has expired')
   const claimed = await data.db
@@ -126,11 +127,11 @@ export async function putUpload(data: { db: Db; bucket: R2Bucket; request: Reque
     await release()
     return json(400, `Send exactly the headers of the upload target: Content-Type ${target.contentType} and Content-Length ${target.bytes}`)
   }
-  let stored: R2Object | null = null
+  let stored: { size: number; etag: string } | null = null
   try {
-    stored = await data.bucket.put(target.key, data.request.body, { httpMetadata: { contentType: target.contentType, cacheControl: 'private,no-store' } })
+    stored = await data.bucket.put(target.key, data.request.body, { contentType: target.contentType })
   } catch (error) {
-    console.error('Receipt upload to R2 failed', error)
+    console.error('Receipt upload to storage failed', error)
   }
   if (stored?.size !== target.bytes) {
     if (stored) await data.bucket.delete(target.key).catch(() => {})
@@ -138,17 +139,17 @@ export async function putUpload(data: { db: Db; bucket: R2Bucket; request: Reque
     return json(400, 'Upload is incomplete')
   }
   await data.db.update(receiptUploads).set({ state: 'stored', uploadedAt: sql`now()` }).where(eq(receiptUploads.id, target.id))
-  return new Response(null, { status: 200, headers: { 'Cache-Control': 'no-store', ETag: stored.httpEtag } })
+  return new Response(null, { status: 200, headers: { 'Cache-Control': 'no-store', ETag: stored.etag } })
 }
 
 /** The image header of a stored object: the first part, or all of it when the frame header comes later. */
-async function storedImage(bucket: R2Bucket, data: { key: string; bytes: number }): Promise<ImageInfo | null> {
+async function storedImage(bucket: Bucket, data: { key: string; bytes: number }): Promise<ImageInfo | null> {
   const head = await bucket.get(data.key, { range: { offset: 0, length: HEADER_BYTES } })
   if (!head || head.size !== data.bytes) return null
-  const info = imageInfo(new Uint8Array(await head.arrayBuffer()))
+  const info = imageInfo(await head.bytes())
   if (info || head.size <= HEADER_BYTES) return info
   const whole = await bucket.get(data.key)
-  return whole ? imageInfo(new Uint8Array(await whole.arrayBuffer())) : null
+  return whole ? imageInfo(await whole.bytes()) : null
 }
 
 /**
@@ -160,7 +161,7 @@ async function storedImage(bucket: R2Bucket, data: { key: string; bytes: number 
  */
 export async function attachUploads(
   tx: Db,
-  data: { principal: Principal; groupId: string; expenseId: string; uploadIds: readonly string[]; bucket: R2Bucket; enabled: boolean },
+  data: { principal: Principal; groupId: string; expenseId: string; uploadIds: readonly string[]; bucket: Bucket; enabled: boolean },
 ): Promise<StoredDocument[]> {
   const ids = [...new Set(data.uploadIds)]
   if (!ids.length) return []
@@ -206,16 +207,14 @@ export async function attachUploads(
 
 /**
  * Removes targets that can no longer be attached, and their objects. Runs from
- * the hourly cron. The current app left unattached pending-receipts objects in the bucket.
+ * the hourly job. The current app left unattached pending-receipts objects in the bucket.
  */
-export async function removeStaleUploads(data: { db: Db; bucket: R2Bucket }) {
+export async function removeStaleUploads(data: { db: Db; bucket: Bucket }) {
   const removed = await data.db
     .delete(receiptUploads)
     .where(sql`${receiptUploads.createdAt} < now() - make_interval(hours => ${ATTACH_HOURS + 1})`)
     .returning({ key: receiptUploads.key, state: receiptUploads.state })
-  const keys = removed.filter((r) => r.state !== 'pending').map((r) => r.key)
-  // R2 deletes at most 1000 keys per call.
-  for (let at = 0; at < keys.length; at += 1000) await data.bucket.delete(keys.slice(at, at + 1000))
+  await data.bucket.delete(removed.filter((r) => r.state !== 'pending').map((r) => r.key))
   return removed.length
 }
 

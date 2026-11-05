@@ -9,7 +9,7 @@ import { makeDb, type Db } from '~/server/db'
 import { getExpenseContext, getExpenseDetail, listBalances, listCategories } from '~/server/expenses'
 import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense, type Principal } from '~/server/ledger'
 import { downloadReceipt, uploadReceipt } from '~/server/receipts'
-import { fakeBucket } from './fake-r2'
+import { fakeBucket } from './fake-bucket'
 import { listRecurring, materializeDue, processGroup } from '~/server/recurring'
 import { resetTestDatabase } from './setup'
 
@@ -342,7 +342,7 @@ describe('receipt endpoints', () => {
     }
   })
 
-  it('uploads to R2 for a member on the app origin, and serves the image with safe headers', async () => {
+  it('uploads to the bucket for a member on the app origin, and serves the image with safe headers', async () => {
     const { bucket, objects } = fakeBucket()
     const client = await pool.connect()
     const db = makeDb(client)
