@@ -1,10 +1,15 @@
 // The MCP server instructions. This is the current app's text
-// (src/lib/mcp/server.ts) with the v2 rules for recording an expense
-// (docs/v2/PLAN.md, "New features") and multiple payers added.
+// (src/lib/mcp/server.ts) with the v2 rules for recording an expense and a
+// payment (docs/v2/PLAN.md, "New features"; DECISIONS.md, P-BAL-93) and
+// multiple payers added.
 
 /** How an agent records one expense. The create and update field descriptions repeat it. */
 export const RECORDING_RULES =
   'Record the full payment, including the payer’s own share: amount is everything that was paid, never only what others owe. Include the payer in paidFor with their share, unless the payer paid only for other people. Put the full calculation in notes, so that a person can recalculate every number (each item, tax, tip, discount and each person’s part). Keep the title short.'
+
+/** How an agent records a payment (a repayment or a reimbursement). create_expense repeats it. */
+export const PAYMENT_RULES =
+  'Record payments (repayments and reimbursements) with create_expense and isReimbursement=true: the people who sent money in paidBy or payers, the people who received it in paidFor. A payment may involve several people and may have a negative amount. For money that one person receives and the group shares, such as a refund, record an expense with a negative amount: the receiver in paidBy and everyone who shares it in paidFor.'
 
 export const INSTRUCTIONS = [
   'AgentSplit ledger API.',
@@ -17,7 +22,7 @@ export const INSTRUCTIONS = [
   'Money uses exact decimal strings at face value: 6000 USD is 6000 dollars, 6000 JPY is 6000 yen. Keep currencies separate. The payer gets the first rounding remainder.',
   RECORDING_RULES,
   'One person usually pays: set paidBy. When several people paid parts of one bill, set payers instead, with each payer’s exact amount; the amounts add up to amount.',
-  'Record payments with create_expense and isReimbursement=true.',
+  PAYMENT_RULES,
   'For edits/deletion use the current expectedRevision; conflicts require a fresh read. Supply stable create IDs and check an uncertain result before retrying.',
   'Optional upload targets are not attachments: upload bytes directly, then finalize uploadIds through update_expense.',
   'For evolution, list_activity supports chronological order and precise recorded-time filters. Historical expense/list/balance reads accept asOf or atActivityId; these refer to recorded changes, not expense dates. Reuse the returned activity boundary when paging, check history coverage, and never use an old revision as the current version for a write.',

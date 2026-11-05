@@ -240,7 +240,7 @@ export async function createGroup(
   return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request: { op: 'create_group', groupId: data.groupId, group: data.group } }, async () => {
     const groupId = data.groupId ?? randomId()
     const [prior] = await tx.select({ id: groups.id }).from(groups).where(eq(groups.id, groupId))
-    if (prior) throw new Invalid({ message: 'Group ID is already in use; read it before retrying or choose a new ID', field: 'groupId' })
+    if (prior) throw new Invalid({ message: 'Group ID is already in use; read it before retrying or choose a new ID', field: 'groupId', reason: 'state' })
     const creator = { id: randomId(), name: data.principal.name.trim().slice(0, 50) || 'Member' }
     const people = [creator, ...data.group.participants.map((name) => ({ id: randomId(), name }))]
     if (new Set(people.map((p) => p.name)).size !== people.length)
@@ -358,7 +358,7 @@ async function replacePeople(tx: Db, data: { groupId: string; people: NonNullabl
   const kept = new Map(data.people.flatMap((p) => (p.id === undefined ? [] : [[p.id, p.name] as const])))
   for (const person of current.rows) {
     if (person.reserved && kept.get(person.id) !== person.name)
-      throw new Invalid({ message: 'Members and invited participant identities cannot be renamed or removed.', field: 'participants' })
+      throw new Invalid({ message: 'Members and invited participant identities cannot be renamed or removed.', field: 'participants', reason: 'state' })
     if (!kept.has(person.id) && person.in_expenses)
       throw new Invalid({ message: `${person.name} is part of expenses, so they cannot be removed.`, field: 'participants' })
   }
@@ -446,17 +446,17 @@ async function applyAccess(
     if (invitation.revokedAt || invitation.expiresAt <= new Date() || invitation.email !== me.email.toLowerCase())
       throw new Forbidden({ message: 'This invitation is expired, revoked, or addressed to a different email' })
     if (!invitation.participantId)
-      throw new Invalid({ message: 'This older invitation has no participant identity. Ask an admin to issue a new invitation.' })
+      throw new Invalid({ message: 'This older invitation has no participant identity. Ask an admin to issue a new invitation.', reason: 'state' })
     if (membership?.participantId && membership.participantId !== invitation.participantId)
-      throw new Invalid({ message: 'Your account is already tied to another participant in this group.' })
+      throw new Invalid({ message: 'Your account is already tied to another participant in this group.', reason: 'state' })
     const [claimed] = await tx
       .select({ userId: memberships.userId })
       .from(memberships)
       .where(and(eq(memberships.groupId, groupId), eq(memberships.participantId, invitation.participantId), ne(memberships.userId, me.userId)))
-    if (claimed) throw new Invalid({ message: 'This participant is already tied to another account.' })
+    if (claimed) throw new Invalid({ message: 'This participant is already tied to another account.', reason: 'state' })
     if (invitation.acceptedAt) {
       if (membership?.active) return done()
-      throw new Invalid({ message: 'Invitation already used' })
+      throw new Invalid({ message: 'Invitation already used', reason: 'state' })
     }
     await tx.update(invitations).set({ acceptedAt: new Date() }).where(eq(invitations.id, invitation.id))
     if (membership)
@@ -481,9 +481,9 @@ async function applyAccess(
       ? await tx.select().from(memberships).where(and(eq(memberships.userId, target.id), eq(memberships.groupId, groupId)))
       : []
     if (targetAccess?.participantId && targetAccess.participantId !== participant.id)
-      throw new Invalid({ message: 'That account is already tied to a different participant.' })
+      throw new Invalid({ message: 'That account is already tied to a different participant.', reason: 'state' })
     const [claimed] = await tx.select({ userId: memberships.userId }).from(memberships).where(and(eq(memberships.groupId, groupId), eq(memberships.participantId, participant.id)))
-    if (claimed && claimed.userId !== target?.id) throw new Invalid({ message: 'That participant is already tied to another account.' })
+    if (claimed && claimed.userId !== target?.id) throw new Invalid({ message: 'That participant is already tied to another account.', reason: 'state' })
     const [pending] = await tx
       .select({ id: invitations.id })
       .from(invitations)
@@ -496,17 +496,17 @@ async function applyAccess(
           or(eq(invitations.email, email), eq(invitations.participantId, participant.id)),
         ),
       )
-    if (pending) throw new Invalid({ message: 'An invitation already reserves this email or participant. Revoke it before making another.' })
+    if (pending) throw new Invalid({ message: 'An invitation already reserves this email or participant. Revoke it before making another.', reason: 'state' })
 
     if (input.action === 'bind_member') {
       if (!target?.emailVerified || target.id !== input.userId || !targetAccess?.active)
         throw new Invalid({ message: 'The verified email must match the existing member account.' })
-      if (targetAccess.participantId) throw new Invalid({ message: 'This member already has a fixed identity.' })
+      if (targetAccess.participantId) throw new Invalid({ message: 'This member already has a fixed identity.', reason: 'state' })
       await tx.update(memberships).set({ participantId: participant.id }).where(and(eq(memberships.userId, target.id), eq(memberships.groupId, groupId)))
       await log({ type: 'update_group', data: `Member identity bound: ${target.name} as ${participant.name}`, participantId: participant.id })
       return done()
     }
-    if (targetAccess?.active) throw new Invalid({ message: 'That account is already a member. Bind its identity in member settings if needed.' })
+    if (targetAccess?.active) throw new Invalid({ message: 'That account is already a member. Bind its identity in member settings if needed.', reason: 'state' })
 
     const token = newInvitationToken()
     const invitation = {
@@ -564,7 +564,7 @@ async function applyAccess(
       .select({ count: sql<number>`count(*)::int` })
       .from(memberships)
       .where(and(eq(memberships.groupId, groupId), eq(memberships.active, true), eq(memberships.role, 'admin')))
-    if ((admins?.count ?? 0) <= 1) throw new Invalid({ message: 'Choose another admin before removing or demoting the last admin' })
+    if ((admins?.count ?? 0) <= 1) throw new Invalid({ message: 'Choose another admin before removing or demoting the last admin', reason: 'state' })
   }
   const where = and(eq(memberships.userId, targetUserId), eq(memberships.groupId, groupId))
   if (nextRole) {

@@ -82,7 +82,7 @@ const normalRange = (range: stats.DateRange): stats.DateRange =>
 
 export async function statsOverview(
   db: Db,
-  data: { principal: Principal; group: string; currency?: CurrencyCode; from?: string; to?: string; today?: string },
+  data: { principal: Principal; group: string; currency?: CurrencyCode; from?: string; to?: string; today?: string; participantId?: string },
 ) {
   const { head, expenses } = await load(db, data)
   const recurringAll = expenses.filter((e) => e.activeRecurring && e.kind === 'expense')
@@ -94,7 +94,8 @@ export async function statsOverview(
     range,
   )
   const money = (amount: Minor) => formatMinor({ amount, currency })
-  const totals = stats.totals({ expenses: selected, participantId: head.participant_id })
+  // The caller's own figures, unless an agent asks for another participant (MCP get_spending_stats).
+  const totals = stats.totals({ expenses: selected, participantId: data.participantId ?? head.participant_id })
   const summary = stats.summary(selected)
   const months = stats.statsMonths({ expenses: selected, range, today: data.today ?? todayUtc() })
   const recurring = stats.recurring(recurringAll.filter((e) => e.currency === currency))
