@@ -4,7 +4,7 @@ import { Paperclip, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '~/client/cn'
 import { groupByDate, weekStartsOn } from '~/client/components/date-groups'
-import { localToday } from '~/client/components/local-today'
+import { localDate } from '~/client/components/local-date'
 import { expenseRowFigures, type Figure } from '~/client/components/expense-row'
 import { money } from '~/client/components/money'
 import { expensesQuery, groupQuery } from '~/client/queries'
@@ -63,7 +63,7 @@ function ExpensesTab() {
   const expenses = useSuspenseInfiniteQuery(expensesQuery(group, { sort, ...(q ? { search: q } : {}) }))
   const names = new Map(g.participants.map((p) => [p.id, p.name]))
   const rows = expenses.data.pages.flatMap((p) => p.expenses)
-  const sections = sort === 'date' ? groupByDate({ expenses: rows, today: localToday(), weekStartsOn: weekStartsOn(navigator.language) }) : [{ key: 'all', label: '', expenses: rows }]
+  const sections = sort === 'date' ? groupByDate({ expenses: rows, today: localDate(), weekStartsOn: weekStartsOn(navigator.language) }) : [{ key: 'all', label: '', expenses: rows }]
 
   // The next page loads when the end of the list scrolls into view (P-EXP-07).
   const end = useRef<HTMLDivElement>(null)

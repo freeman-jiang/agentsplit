@@ -31,8 +31,9 @@ const config = {
 const publicOrigin = new URL(config.baseUrl).origin
 const maintenance = /^(true|yes|1|on)$/i.test(optional('AGENTSPLIT_MAINTENANCE') ?? '')
 
-// One pool for the process. Each request takes one connection and returns it
-// when its response is complete, as the Worker did with one connection per request.
+// One pool for the process. RPC, MCP, receipt and export requests each take
+// one connection and return it when the response is complete. Better Auth
+// takes connections from the pool for each of its own queries.
 const pool = new pg.Pool({
   connectionString: required('DATABASE_URL'),
   max: Number(optional('DATABASE_POOL_SIZE') ?? 10),

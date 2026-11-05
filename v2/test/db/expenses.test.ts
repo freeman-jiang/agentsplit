@@ -332,6 +332,9 @@ describe('receipt endpoints', () => {
       expect(denied.status).toBe(403)
       expect(denied.headers.get('cache-control')).toBe('no-store')
       expect(await denied.json()).toEqual({ error: 'Group access denied' })
+      // PostgreSQL text cannot hold a NUL byte: such a reference is denied or not found, never a database error.
+      expect((await downloadReceipt({ db, bucket, principal: alice, url: get({ groupId: 'g1\0', url: doc1.url }) })).status).toBe(403)
+      expect((await downloadReceipt({ db, bucket, principal: alice, url: get({ groupId: 'g1', url: `${doc1.url}\0` }) })).status).toBe(404)
       // Another group's receipt is not found through this group.
       expect((await downloadReceipt({ db, bucket, principal: alice, url: get({ groupId: 'g1', url: 'r2://agentsplit-receipts/receipts/ccccccccccccccccccccc.jpg' }) })).status).toBe(404)
       expect(calls).toEqual([])

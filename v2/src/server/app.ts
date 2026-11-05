@@ -75,10 +75,11 @@ export function createApp(platform: Platform) {
   }
 
   /** The response with its whole body read, and the given Cache-Control. */
-  async function complete(response: Response, cacheControl: string): Promise<Response> {
+  async function complete(data: { response: Response; cacheControl: string }): Promise<Response> {
+    const { response } = data
     const body = await response.arrayBuffer()
     const headers = new Headers(response.headers)
-    headers.set('Cache-Control', cacheControl)
+    headers.set('Cache-Control', data.cacheControl)
     return new Response(body, { status: response.status, statusText: response.statusText, headers })
   }
 
@@ -87,7 +88,7 @@ export function createApp(platform: Platform) {
    * it after the response body is complete.
    */
   function withConnection(work: (client: pg.PoolClient) => Promise<Response>, cacheControl = 'no-store'): Promise<Response> {
-    return withClient(async (client) => complete(await work(client), cacheControl))
+    return withClient(async (client) => complete({ response: await work(client), cacheControl }))
   }
 
   /**
@@ -100,7 +101,7 @@ export function createApp(platform: Platform) {
   async function authHandler(request: Request): Promise<Response> {
     try {
       auth ??= createAuth({ ...config, db: platform.pool })
-      return await complete(await auth.handler(request), 'no-store')
+      return await complete({ response: await auth.handler(request), cacheControl: 'no-store' })
     } catch (error) {
       // Better Auth answers client errors itself (4xx). Only a real failure gets here.
       console.error('Auth handler failed', error)
@@ -117,14 +118,14 @@ export function createApp(platform: Platform) {
     try {
       group = decodeURIComponent(data.group)
     } catch {
-      return Response.json({ error: 'Invalid group ID' }, { status: 404 })
+      return jsonError({ status: 404, message: 'Invalid group ID' })
     }
     const principal = await sessionPrincipal(data.db, { cookie: data.cookie, secret: config.secret, baseUrl: config.baseUrl })
-    if (!principal) return Response.json({ error: 'Sign in required' }, { status: 401 })
+    if (!principal) return jsonError({ status: 401, message: 'Sign in required' })
     try {
       return exportResponse(await (data.format === 'json' ? exportJson : exportCsv)(data.db, { principal, group }))
     } catch (error) {
-      if (error instanceof Forbidden) return Response.json({ error: 'Group access denied' }, { status: 403 })
+      if (error instanceof Forbidden) return jsonError({ status: 403, message: 'Group access denied' })
       throw error
     }
   }
@@ -133,7 +134,7 @@ export function createApp(platform: Platform) {
     const url = new URL(request.url)
     // The Effect RPC client joins its base URL with a slash, so it posts to /api/rpc/.
     if (url.pathname === '/api/rpc' || url.pathname === '/api/rpc/') {
-      if (request.method === 'POST' && !sameOrigin(request, config.baseUrl)) return jsonError({ status: 403, message: 'Origin not allowed' })
+      if (request.method === 'POST' && !sameOrigin({ request, baseUrl: config.baseUrl })) return jsonError({ status: 403, message: 'Origin not allowed' })
       url.pathname = '/api/rpc'
       // Only the server sets this header: it names the connection the middleware uses.
       const id = crypto.randomUUID()
@@ -153,7 +154,7 @@ export function createApp(platform: Platform) {
       return withConnection((client) => handleMcp(request, { db: makeDb(client), baseUrl: config.baseUrl, bucket, documentsEnabled: config.documentsEnabled }))
     // The server serves the protected-resource metadata itself: Better Auth's MCP plugin drops
     // offline_access from it, which left Claude Code without refresh tokens (OAUTH-CLAUDE-CODE.md).
-    if (url.pathname.startsWith('/.well-known/oauth-protected-resource') && METADATA_PATHS.has(url.pathname))
+    if (METADATA_PATHS.has(url.pathname))
       return protectedResourceMetadata(request, config.baseUrl)
     // OAuth discovery: Better Auth serves the authorization-server metadata.
     if (url.pathname.startsWith('/api/auth/') || url.pathname.startsWith('/.well-known/')) return authHandler(request)
@@ -162,9 +163,10 @@ export function createApp(platform: Platform) {
     if (url.pathname === '/robots.txt') return robotsTxt(config.baseUrl)
     if (url.pathname === '/sitemap.xml') return sitemapXml(config.baseUrl)
     if (url.pathname === '/api/receipts') {
-      if (request.method !== 'GET' && request.method !== 'POST') return Response.json({ error: 'Method not allowed' }, { status: 405 })
+      if (request.method !== 'GET' && request.method !== 'POST') return jsonError({ status: 405, message: 'Method not allowed' })
+      // An upload is a cookie-authenticated write: other origins are refused before any database work, as for RPC.
+      if (request.method === 'POST' && !sameOrigin({ request, baseUrl: config.baseUrl })) return jsonError({ status: 403, message: 'Origin not allowed' })
       // Not withConnection: the image streams from the bucket after the database work is done, with its own headers.
-      // uploadReceipt refuses other origins first, as RPC does: an upload is a cookie-authenticated write.
       return withClient(async (client) => {
         const db = makeDb(client)
         return request.method === 'GET'
@@ -175,7 +177,7 @@ export function createApp(platform: Platform) {
     // An agent's upload target from create_expense or update_expense. The secret in the path is the credential.
     const uploadRoute = /^\/api\/receipt-uploads\/([^/]+)$/.exec(url.pathname)
     if (uploadRoute) {
-      if (request.method !== 'PUT') return Response.json({ error: 'Method not allowed' }, { status: 405, headers: { Allow: 'PUT' } })
+      if (request.method !== 'PUT') return jsonError({ status: 405, message: 'Method not allowed', headers: { Allow: 'PUT' } })
       return withClient((client) => putUpload({ db: makeDb(client), bucket, request, token: uploadRoute[1] ?? '', enabled: config.documentsEnabled }))
     }
     const exportRoute = /^\/(?:groups\/)?([^/]+)\/expenses\/export\/(csv|json)$/.exec(url.pathname)
@@ -189,7 +191,7 @@ export function createApp(platform: Platform) {
     }
     // The current app's presigned upload route is gone for good (P-RECEIPT-28).
     if (url.pathname === '/api/s3-upload') return jsonError({ status: 410, message: 'Use the authenticated receipt upload flow' })
-    if (url.pathname.startsWith('/api/')) return Response.json({ error: 'Not found' }, { status: 404 })
+    if (url.pathname.startsWith('/api/')) return jsonError({ status: 404, message: 'Not found' })
     return platform.assets(request)
   }
 
