@@ -109,6 +109,8 @@ type ActivityRow = {
   data: string | null
   source: string
   actorName: string | null
+  actorUserId: string | null
+  agentKeyId: string | null
   verified: boolean
   agent: boolean
   snapshot: unknown
@@ -133,7 +135,7 @@ export type ActivityQuery = Boundary & {
  * none is given), with each event's saved state and the state before it, in
  * one statement.
  */
-export async function listActivities(db: Db, data: { principal: Principal; group: string } & ActivityQuery) {
+export async function listActivities(db: Db, data: { principal: Principal; group: string; withActors?: boolean } & ActivityQuery) {
   checkBoundary(data)
   if (data.recordedFrom && data.recordedTo && Date.parse(data.recordedFrom) > Date.parse(data.recordedTo))
     throw new Invalid({ message: 'recordedFrom must be on or before recordedTo', field: 'recordedFrom' })
@@ -162,7 +164,7 @@ export async function listActivities(db: Db, data: { principal: Principal; group
         SELECT json_agg(json_build_object(
           'id', p.id, 'time', ${ISO(sql`p.time`)}, 'type', p.type, 'participantId', p.participant_id,
           'expenseId', p.expense_id, 'expenseRevision', p.expense_revision, 'data', p.data, 'source', p.source,
-          'actorName', coalesce(p.actor_name, who.name), 'verified', p.actor_user_id IS NOT NULL,
+          'actorName', coalesce(p.actor_name, who.name), 'actorUserId', p.actor_user_id, 'agentKeyId', p.agent_key_id, 'verified', p.actor_user_id IS NOT NULL,
           'agent', p.agent_key_id IS NOT NULL OR p.source IN ('agent', 'mcp'),
           'snapshot', p.snapshot, 'previous', prev.snapshot,
           'live', ${historical ? sql`NULL` : sql`(SELECT json_build_object('kind', e.kind) FROM expenses e WHERE e.id = p.expense_id AND e.group_id = p.group_id AND e.deleted_at IS NULL)`}
@@ -196,6 +198,8 @@ export async function listActivities(db: Db, data: { principal: Principal; group
       snapshot: read(a.snapshot, categories),
       previousSnapshot: read(a.previous, categories),
       expense: a.live,
+      // Only on request (MCP list_activity): the Log never shows user or key IDs (P-ACCESS-30, P-EXPORT-14).
+      ...(data.withActors ? { actor: { userId: a.actorUserId, agentKeyId: a.agentKeyId } } : {}),
     })),
     hasMore: rows.length > limit,
     nextCursor: cursor + limit,

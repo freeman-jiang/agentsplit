@@ -172,7 +172,7 @@ export async function renewPrivateInvitation(tx: Db, data: { principal: Principa
     .leftJoin(memberships, and(eq(memberships.groupId, privatePeople.groupId), eq(memberships.participantId, privatePeople.participantId)))
     .where(and(eq(privatePeople.participantId, data.participantId), eq(privatePeople.groupId, membership.groupId)))
   if (membership.role !== 'admin' || !person) throw new Forbidden({ message: 'Only the expense creator can reissue its original invitations.' })
-  if (person.joined) throw new Invalid({ message: 'This person has already joined.', field: 'participantId' })
+  if (person.joined) throw new Invalid({ message: 'This person has already joined.', field: 'participantId', reason: 'state' })
   await tx
     .update(invitations)
     .set({ revokedAt: new Date() })
@@ -220,7 +220,7 @@ export async function assertPrivateWrite(tx: Db, data: { groupId: string; expens
   const original = data.expenseId === context.expense_id
   if (data.op === 'delete') {
     if (original && context.live_payments > 0)
-      throw new Invalid({ message: 'Remove this expense’s recorded repayments before deleting the expense.' })
+      throw new Invalid({ message: 'Remove this expense’s recorded repayments before deleting the expense.', reason: 'state' })
     return
   }
   const { draft } = data

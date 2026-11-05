@@ -1,12 +1,19 @@
-// Group tools: list_groups and get_group, with the current app's inputs and
-// output shapes (src/trpc/routers/groups/list.procedure.ts, getDetails.procedure.ts).
-// Each read is one statement whose membership check is part of the query.
-import { Schema } from 'effect'
+// Group tools: list_groups, get_group, create_group, update_group and
+// manage_group_access, with the current app's inputs and output shapes
+// (src/trpc/routers/groups/*, src/lib/group-access.ts). Each read is one
+// statement whose membership check is part of the query. Writes call the
+// groups and ungrouped services, which check access and write the log.
+import { Result, Schema } from 'effect'
 import { sql } from 'drizzle-orm'
 import { CURRENCIES, type CurrencyCode } from '../../../shared/currencies'
-import { Forbidden } from '../../../shared/api'
-import { defineTool } from '../registry'
-import { DateTime, Id, isoSql, NonNegativeInt, NullableString, origin, participantNameSql } from './shared'
+import { Forbidden, Invalid, NotFound } from '../../../shared/api'
+import { AccessRequest, GroupChanges, GroupCreateInput } from '../../../shared/api/groups'
+import type { Db } from '../../db'
+import * as groups from '../../groups'
+import { randomId } from '../../ids'
+import { renewPrivateInvitation } from '../../ungrouped'
+import { defineTool, ToolError } from '../registry'
+import { DateTime, Id, isCurrencyCode, isoSql, NonNegativeInt, NullableString, origin, participantNameSql } from './shared'
 
 const MAX_GROUPS = 100
 
@@ -160,4 +167,216 @@ export const getGroup = defineTool({
   },
 })
 
-export const groupTools = [listGroups, getGroup]
+// ---------- writes ----------
+
+const ParticipantRow = Schema.Struct({ id: Id, name: Schema.String, groupId: Id })
+const GroupWritten = Schema.Struct({ groupId: Id, group: Schema.Struct({ ...GroupFields, participants: Schema.Array(ParticipantRow) }) })
+
+/** The group as a write leaves it, in the same transaction. The service has checked access. */
+async function readGroup(db: Db, groupId: string): Promise<typeof GroupWritten.Encoded> {
+  const result = await db.execute<GroupRow & { participants: { id: string; name: string; groupId: string }[] }>(sql`
+    SELECT ${groupColumns},
+      coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${participantNameSql(sql`p.id`)}, 'groupId', p.group_id) ORDER BY p.created_at, p.id)
+        FROM participants p WHERE p.group_id = g.id), '[]') AS participants
+    FROM groups g WHERE g.id = ${groupId}`)
+  const g = result.rows[0]
+  if (!g) throw new NotFound({ entity: 'group', id: groupId })
+  return { groupId: g.id, group: { ...groupFields(g), participants: g.participants } }
+}
+
+const NO_CUSTOM_CURRENCY = 'Set currencyCode to a supported currency code, such as USD. Groups use registered currencies, not custom symbols.'
+
+/**
+ * The group currency from the current app's pair: currencyCode, else a
+ * `currency` that is a code or the symbol of exactly one currency. v2 has no
+ * custom symbols (docs/v2/parity/groups.md, P-GROUP-23).
+ */
+function currencyOf(data: { currency: string | undefined; currencyCode: string | null | undefined }): CurrencyCode {
+  if (data.currencyCode) {
+    if (!isCurrencyCode(data.currencyCode)) throw new ToolError('BAD_REQUEST', NO_CUSTOM_CURRENCY)
+    return data.currencyCode
+  }
+  const text = data.currency?.trim() ?? ''
+  if (isCurrencyCode(text.toUpperCase())) return text.toUpperCase() as CurrencyCode
+  const bySymbol = (Object.keys(CURRENCIES) as CurrencyCode[]).filter((code) => CURRENCIES[code].symbol === text)
+  const [only] = bySymbol
+  if (bySymbol.length !== 1 || !only) throw new ToolError('BAD_REQUEST', NO_CUSTOM_CURRENCY)
+  return only
+}
+
+/** Applies the RPC contract's checks to a value built from MCP input, as the RPC decoder would. */
+function contract<S extends Schema.Top & Schema.ConstraintDecoder<unknown>>(schema: S, value: unknown): S['Type'] {
+  const decoded = Schema.decodeUnknownResult(schema, { errors: 'all' })(value)
+  if (Result.isFailure(decoded)) throw new ToolError('BAD_REQUEST', decoded.failure.message)
+  return decoded.success
+}
+
+const Slug = Schema.NullOr(Schema.String.check(Schema.isMaxLength(63))).annotate({
+  description: 'Optional unique group URL slug, e.g. macademia. Set null or empty string to remove it.',
+})
+const CurrencyCodeField = Schema.Union([Schema.NullOr(Schema.String.check(Schema.isBetweenLength(3, 3))), Schema.Literal('')])
+const GroupInputFields = {
+  name: Schema.String.check(Schema.isBetweenLength(2, 50)),
+  slug: Slug,
+  information: Schema.String.check(Schema.isMaxLength(10_000)),
+  currency: Schema.String.check(Schema.isBetweenLength(1, 5)),
+  currencyCode: CurrencyCodeField,
+}
+
+export const createGroup = defineTool({
+  name: 'create_group',
+  kind: 'write',
+  destructive: false,
+  description:
+    'Create a group. The authenticated creator is automatically added as a participant using their account name and becomes admin. Supply name, optional unique slug, currency/default currencyCode, and OTHER participant names in group.participants (empty array allowed); do not include the creator. currencyCode must be a supported code (get_reference_data); custom currency symbols are not supported. All keys inherit the fixed membership. An optional caller-minted 21-character groupId prevents accidental duplicate creation; check it before retrying an uncertain result.',
+  input: Schema.Struct({
+    group: Schema.Struct({
+      name: GroupInputFields.name,
+      slug: Schema.optionalKey(GroupInputFields.slug),
+      information: Schema.optionalKey(GroupInputFields.information),
+      currency: GroupInputFields.currency,
+      currencyCode: Schema.optionalKey(GroupInputFields.currencyCode),
+      participants: Schema.Array(Schema.Struct({ name: Schema.String.check(Schema.isBetweenLength(1, 50)) })).check(Schema.isMaxLength(99)),
+    }),
+    groupId: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{21}$/))),
+  }),
+  strict: [''],
+  output: GroupWritten,
+  run: async ({ db, principal }, input) => {
+    const g = input.group
+    const group = contract(GroupCreateInput, {
+      name: g.name.trim(),
+      slug: g.slug ?? null,
+      information: g.information ?? '',
+      defaultCurrency: currencyOf({ currency: g.currency, currencyCode: g.currencyCode }),
+      participants: g.participants.map((p) => p.name.trim()),
+    })
+    const created = await groups.createGroup(db, { principal, groupId: input.groupId ?? null, idempotencyKey: `mcp:${randomId()}`, group }).catch((error: unknown) => {
+      // A reused ID is an uncertain earlier create: read it before retrying (P-TOOL-CREATEGROUP-04).
+      throw error instanceof Invalid && error.field === 'groupId' ? new ToolError('CONFLICT', error.message) : error
+    })
+    return readGroup(db, created.id)
+  },
+})
+
+export const updateGroup = defineTool({
+  name: 'update_group',
+  kind: 'write',
+  description:
+    'Admins only: edit group settings (including optional unique slug) or participants using a partial changes object and the current expectedRevision from get_group. Omitted fields stay unchanged. Existing participant IDs preserve identities; entries without IDs create participants. Historical participants cannot be erased. currencyCode must be a supported code.',
+  input: Schema.Struct({
+    groupId: Schema.String.check(Schema.isMinLength(1)),
+    changes: Schema.Struct({
+      name: Schema.optionalKey(GroupInputFields.name),
+      slug: Schema.optionalKey(GroupInputFields.slug),
+      information: Schema.optionalKey(GroupInputFields.information),
+      currency: Schema.optionalKey(GroupInputFields.currency),
+      currencyCode: Schema.optionalKey(GroupInputFields.currencyCode),
+      participants: Schema.optionalKey(
+        Schema.Array(Schema.Struct({ id: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))), name: Schema.String.check(Schema.isBetweenLength(1, 50)) })).check(
+          Schema.isBetweenLength(1, 100),
+        ),
+      ),
+    }),
+    expectedRevision: NonNegativeInt,
+  }),
+  strict: ['', 'changes'],
+  output: GroupWritten,
+  run: async ({ db, principal }, input) => {
+    const c = input.changes
+    const changes = contract(GroupChanges, {
+      ...(c.name === undefined ? {} : { name: c.name.trim() }),
+      ...(c.slug === undefined ? {} : { slug: c.slug }),
+      ...(c.information === undefined ? {} : { information: c.information }),
+      ...(c.currency === undefined && c.currencyCode === undefined ? {} : { defaultCurrency: currencyOf({ currency: c.currency, currencyCode: c.currencyCode }) }),
+      ...(c.participants === undefined
+        ? {}
+        : { participants: c.participants.map((p) => ({ ...(p.id === undefined ? {} : { id: p.id }), name: p.name.trim() })) }),
+    })
+    const updated = await groups.updateGroup(db, { principal, group: input.groupId, expectedRevision: input.expectedRevision, idempotencyKey: `mcp:${randomId()}`, changes })
+    return readGroup(db, updated.id)
+  },
+})
+
+const ACTIONS = ['join', 'leave', 'invite', 'renew_invitation', 'revoke_invitation', 'remove_member', 'set_role', 'bind_member'] as const
+type Action = (typeof ACTIONS)[number]
+type AccessField = 'shareUrl' | 'groupId' | 'email' | 'invitationId' | 'userId' | 'participantId' | 'role'
+
+/** The fields each action needs, as the current app's groupAccessInput requires them. */
+const REQUIRED: Record<Action, readonly AccessField[]> = {
+  join: ['shareUrl'],
+  leave: ['groupId'],
+  invite: ['groupId', 'email', 'participantId'],
+  renew_invitation: ['groupId', 'participantId'],
+  revoke_invitation: ['groupId', 'invitationId'],
+  remove_member: ['groupId', 'userId'],
+  set_role: ['groupId', 'userId', 'role'],
+  bind_member: ['groupId', 'userId', 'email', 'participantId'],
+}
+
+const AccessInput = Schema.Struct({
+  action: Schema.Literals(ACTIONS),
+  groupId: Schema.optionalKey(Schema.String.check(Schema.isBetweenLength(1, 64))),
+  shareUrl: Schema.optionalKey(
+    Schema.String.check(Schema.isMaxLength(2000)).annotate({ format: 'uri', description: 'For join: the email-bound invitation URL, not a group URL.' }),
+  ),
+  email: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(254), Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)).annotate({ format: 'email' })),
+  invitationId: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
+  userId: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(128))),
+  participantId: Schema.optionalKey(
+    Schema.String.check(Schema.isBetweenLength(1, 64)).annotate({ description: 'The existing participant to invite or bind. A membership identity cannot later be switched.' }),
+  ),
+  role: Schema.optionalKey(Schema.Literals(['admin', 'member'])),
+}).check(
+  Schema.makeFilter((input) => {
+    const missing = REQUIRED[input.action].filter((field) => !input[field])
+    return missing.length === 0 || missing.map((field) => `${field} is required`).join('; ')
+  }),
+)
+
+/** The current app's texts for what an access change did not find. */
+const notFound = (error: NotFound) =>
+  error.entity === 'invitation'
+    ? new ToolError('NOT_FOUND', error.id === 'token' ? 'Invitation not found or no longer valid' : 'Pending invitation not found')
+    : error.entity === 'member'
+      ? new ToolError('NOT_FOUND', 'Member not found')
+      : error
+
+export const manageGroupAccess = defineTool({
+  name: 'manage_group_access',
+  kind: 'write',
+  description:
+    'Manage membership: join with an email-bound invitation shareUrl; leave with groupId. Admin actions: invite with groupId, email and participantId (an existing unclaimed participant) (returns a single-use URL valid for 7 days; share it with the intended person), revoke_invitation with invitationId, remove_member with userId, set_role with userId and role=admin|member. Read members, their fixed participantId, and pending invitations with get_group. For an unbound legacy member only, an admin can bind_member with userId, verified email and participantId. For a private ungrouped expense, renew_invitation with groupId and participantId atomically replaces its invitation, including an expired one; only its original email can be invited. For a new named-group participant, first call update_group preserving all existing participants, then invite the returned participantId. This returns a link and sends no email. joined is true only after a join. Identity bindings cannot be changed; removal retains the identity and history. The last admin cannot leave or be demoted. A group URL grants no access. Changes apply immediately to all user keys; ledger history is preserved. Invitations are not idempotent: do not blindly retry an uncertain invite; inspect get_group first.',
+  input: AccessInput,
+  strict: [''],
+  output: Schema.Struct({
+    groupId: Id,
+    joined: Schema.Boolean,
+    invitation: Schema.optionalKey(
+      Schema.Struct({ id: Id, email: Schema.String, expiresAt: DateTime, url: Schema.String, participantId: Id, participantName: Schema.String }),
+    ),
+  }),
+  run: async ({ db, principal, baseUrl }, input) => {
+    const field = (name: AccessField) => input[name] ?? ''
+    if (input.action === 'renew_invitation') {
+      const invitation = await renewPrivateInvitation(db, { principal, baseUrl, groupId: field('groupId'), participantId: field('participantId') })
+      return { groupId: field('groupId'), joined: false, invitation }
+    }
+    const request = contract(AccessRequest, {
+      action: input.action,
+      ...Object.fromEntries(REQUIRED[input.action].map((name) => [name, field(name)])),
+    })
+    const result = await groups.changeAccess(db, { principal, baseUrl, idempotencyKey: `mcp:${randomId()}`, request }).catch((error: unknown) => {
+      throw error instanceof NotFound ? notFound(error) : error
+    })
+    const i = result.invitation
+    return {
+      groupId: result.groupId,
+      // The current app answered true for every action but leave (DECISIONS.md group C, P-TOOL-ACCESS-28).
+      joined: input.action === 'join',
+      ...(i && i.url && i.participantId ? { invitation: { id: i.id, email: i.email, expiresAt: i.expiresAt, url: i.url, participantId: i.participantId, participantName: i.participantName ?? '' } } : {}),
+    }
+  },
+})
+
+export const groupTools = [listGroups, getGroup, createGroup, updateGroup, manageGroupAccess]

@@ -20,7 +20,16 @@ export class Conflict extends Schema.TaggedError<Conflict>()('Conflict', {
   /** What conflicts, when it is not a revision: a slug in use, the last admin leaving. */
   message: Schema.optional(Schema.String),
 }) {}
-export class Invalid extends Schema.TaggedError<Invalid>()('Invalid', { message: Schema.String, field: Schema.optional(Schema.String) }) {}
+/**
+ * The request cannot apply. `reason: 'state'` marks a conflict with the current
+ * state (the last admin, a used invitation, a taken ID), which agents see as
+ * CONFLICT and resolve by reading again, as in the current app.
+ */
+export class Invalid extends Schema.TaggedError<Invalid>()('Invalid', {
+  message: Schema.String,
+  field: Schema.optional(Schema.String),
+  reason: Schema.optional(Schema.Literal('state')),
+}) {}
 /** The server could not complete the request; the outcome of a write is unknown, so read before retrying. */
 export class Unavailable extends Schema.TaggedError<Unavailable>()('Unavailable', { message: Schema.String }) {}
 

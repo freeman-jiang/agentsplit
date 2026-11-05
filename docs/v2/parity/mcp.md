@@ -1,6 +1,6 @@
-# Parity record: MCP endpoint, agent authentication, first tools
+# Parity record: MCP endpoint, agent authentication and tools
 
-This records the [PARITY.md](../PARITY.md) items of the MCP server (P-MCP) and the tools of this pass (P-TOOL) that this area covers, changes or leaves to another pass. The code is in `v2/src/server/mcp/`. The tests are in `v2/test/db/mcp-tools.test.ts` (tools), `mcp-auth.test.ts` (auth) and `mcp-oauth.test.ts` (oauth), and they run against a real database.
+This records the [PARITY.md](../PARITY.md) items of the MCP server (P-MCP) and of all 20 tools (P-TOOL) that this area covers, changes or leaves to another area. The first pass ported the endpoint, the authentication and 7 tools. The second pass ported the other 13 tools and the historical and ungrouped forms of the first 7. The code is in `v2/src/server/mcp/`. The tests are in `v2/test/db/mcp-tools.test.ts` (tools, first pass), `mcp-more-tools.test.ts` (more, second pass), `mcp-auth.test.ts` (auth) and `mcp-oauth.test.ts` (oauth), and they run against a real database.
 
 Status words:
 
@@ -14,6 +14,10 @@ Status words:
 - `endpoint.ts` serves `/api/mcp` in this order: host and origin, authentication, the rate limit, the scope step-up, the protocol header, then the JSON-RPC call through `createMcpHandler` (stateless, `responseMode: 'json'`). It builds a new `McpServer` per request.
 - `registry.ts` has `defineTool`. Each area writes its tools in `tools/<area>.ts` and adds one line to `tools/index.ts`. Inputs and outputs are Effect schemas. The JSON Schemas come from them once per isolate. Writes run in one SERIALIZABLE transaction, which rechecks OAuth write access. Errors map to the current `{error: {code, message, outcomeUnknown, recovery}}` body.
 - The writes call `createExpense`, `updateExpense`, `deleteExpense` and `getExpense` in `src/server/ledger.ts`. The reads are one SQL statement each in `tools/`, because the current wire shapes (offset pages, names, categories, attribution) need columns that the RPC reads do not return. Each read checks membership in the same statement.
+- Second pass: every tool calls the service that the web RPC uses, and only maps names (`EVENLY`, `isReimbursement`, `currencyCode`) and shapes. The services are `feed.ts` (list_all_expenses, get_expense_options, get_participant_balances), `ungrouped.ts` (ungrouped create_expense, renew_invitation), `account.ts` (update_profile), `groups.ts` (create_group, update_group, manage_group_access), `expenses.ts` (get_balances, get_reference_data), `history.ts` (list_activity, the asOf forms of list_expenses, get_expense and get_balances), `stats.ts`, `export.ts` and `recurring.ts`. Writes go through the same SERIALIZABLE path with the OAuth write recheck.
+- Three tools need one more statement for columns that the service does not return: list_all_expenses (original amount, exchange rate, recurring link, category), list_activity (the live `expense` beside a current entry) and the historical get_expense (attribution up to that revision). Each reads only rows that the service has already checked.
+- Small additive changes to the services: `accountBalances` takes an optional scope (groups, and another participant per group), `statsOverview` takes an optional `participantId`, `listActivities` returns actor IDs only with `withActors` (the Log stays without user and key IDs), and `readSnapshot` keeps the group that a revision saved. The web RPC output is unchanged.
+- `tools/index.ts` lists the tools in the current app's order and fails at startup if a defined tool has no place in it.
 - API keys: `api-key.ts` ports Better Auth's `validateApiKey` for the plugin settings in `auth-options.ts`. A differential test runs both on identical rows (13 states: disabled, expired, rate limited, window reset, quota, refill and others). The test requires the same answer and the same row changes.
 - OAuth: `oauth.ts` runs Better Auth's own `verifyJwsAccessToken` and `enforceDpopBinding` (`better-auth/oauth2`). The key set comes from the `jwks` table, as `/api/auth/jwks` publishes it, because a Worker cannot fetch its own hostname. The DPoP replay store writes the same `verification` rows as Better Auth's `createDpopReplayStore`.
 - The protected-resource metadata comes from `challenge.ts`, routed in `worker.ts`. Better Auth's MCP plugin removes `offline_access` from that document, and the fix needs it there.
@@ -26,11 +30,11 @@ Status words:
 | P-MCP-02 | covered | `responseMode: 'json'`. A legacy request whose Accept allows SSE gets one SSE event, as with the current SDK. |
 | P-MCP-03 | covered | A new server per request (tools "isolates two concurrent users"). |
 | P-MCP-04, 05 | covered | tools "initializes legacy 2025 clients" (2025-03-26 and 2025-06-18). |
-| P-MCP-06 | changed | The instructions text adds the v2 recording rules (PLAN.md "New features") and multiple payers. The rest of the current text stays. It still contains "decimal strings" and "global", and it does not contain "minor units" (same test). |
+| P-MCP-06 | changed | The instructions text adds the v2 recording rules (PLAN.md "New features"): record the full payment with the payer's own share, include the payer in paidFor unless they paid only for others, and put the full calculation in notes. It adds the payment rules (DECISIONS.md, P-BAL-93): a payment may involve several people and may be negative, and money that one person receives and the group shares is a negative expense. It adds multiple payers. The rest of the current text stays. It still contains "decimal strings" and "global", and it does not contain "minor units" (same test). |
 | P-MCP-07, 09 | covered | tools "serves modern … requests and checks the standard headers". |
 | P-MCP-08 | covered | tools "requires MCP-Protocol-Version". |
 | P-MCP-10 | covered | Asserted for 200, 400, 401, 403, 405 and 429. |
-| P-MCP-11 | deferred | This pass has 7 of the 20 tools. The other areas add the other 13 in the second pass (see below). |
+| P-MCP-11 | covered | All 20 tools, in the current order (tools "advertises the current names…"). |
 | P-MCP-12, 13 | covered | tools "rejects an unknown tool and the removed month tool". |
 | P-MCP-14 | changed | No tRPC registry. A tool is one `defineTool` value whose types connect its schema to its handler. The type check replaces the startup check. |
 
@@ -38,12 +42,16 @@ Status words:
 
 | Item | Status | Evidence or reason |
 | --- | --- | --- |
-| P-MCP-15, 16 | covered | tools "advertises the current names, annotations, scopes and input fields". The test compares field by field with `test/db/fixtures/current-mcp-tools.json`, the current app's real `tools/list`. It checks closed objects, fields, required fields and enums. |
-| P-MCP-17 to 23 | covered | The same test requires equal `annotations`, `securitySchemes` and `_meta` for all seven tools. |
+| P-MCP-15, 16 | covered | tools "advertises the current names, annotations, scopes and input fields". The test compares field by field with `test/db/fixtures/current-mcp-tools.json`, the current app's real `tools/list` of all 20 tools (regenerated on 2026-11-05 from `createAgentSplitMcpServer`, without descriptions). It checks the order, closed objects, input fields, required fields and enums, and that every current output field is still there. |
+| P-MCP-17 to 23 | covered | The same test requires equal `annotations`, `securitySchemes` and `_meta` for all 20 tools. |
 | P-MCP-24, 26, 27, 28 | covered | The same test. Conversion fields and `saveDefaultSplittingOptions` are not in the schema, and the closed object refuses them (tools "refuses invalid money…", `originalAmount`). |
 | P-MCP-25 | covered | `participantId` is not an input; a call with it fails validation (same test). |
 | — | changed | `expense.payers` and `changes.payers` are new: multiple payers. `paidBy` is no longer required in the schema, because `payers` can replace it. A call needs exactly one of the two. The test allows exactly these differences. |
 | — | changed | The create and update field descriptions carry the recording rules (tools "describes the recording rules"). |
+| — | changed | `list_all_expenses.involvingMe` defaults to true, and its description says so (DECISIONS.md, P-FEED-19). The test does not compare defaults. |
+| — | changed | Tool descriptions: create_expense and get_balances state the payment rules; create_group and update_group say that currencyCode must be a supported code; manage_group_access says that `joined` is true only after a join; list_activity says that agentKeyId is shown only for your own changes; list_all_expenses states the involvingMe default. |
+| — | changed | Outputs: `payers` beside `paidBy` in list_all_expenses rows and in saved snapshots. In historical get_expense, `documents[].width` and `height` are optional, because a saved revision keeps only the receipt pointer. Snapshot unions are not compared by the test (it follows `properties` and `items` only). |
+| — | changed | `get_balances.currencies[].balances` advertises its value schema (`additionalProperties`); `registry.ts` dropped it before. |
 
 ## Tool call results and errors
 
@@ -137,7 +145,7 @@ The Claude Code emulation (oauth "Claude Code flow emulation") follows the repro
 | --- | --- | --- |
 | 01, 02, 05, 06, 09 | covered | tools "reads a group with access, names, members…". |
 | 03 | changed | A missing group is FORBIDDEN, like a group of someone else. The current pre-check also answered this way before NOT_FOUND could happen. |
-| 04 | code | `ungrouped` when a `private_contexts` row exists; tested with the ungrouped area. |
+| 04 | covered | more "records repayments inside the private context…" (`{kind: 'ungrouped', expenseId}`). |
 | 07 | code | Admins get pending invitations, private contexts with expired ones included. The access area tests it with real invitations. |
 | 08 | covered | tools "lists the participants referenced by any expense". |
 
@@ -148,7 +156,8 @@ The Claude Code emulation (oauth "Claude Code flow emulation") follows the repro
 | 01 to 09, 12, 13, 17 | covered | tools "lists with filters before offset pagination…", "refuses bad list bounds…". `filter` matches title or vendor, not notes, as in the current app. |
 | 10 | covered | `{expenses, hasMore, nextCursor}`. `history` comes with historical reads. |
 | 11 | changed | Same fields, plus `payers` (every payer and amount). `paidBy` is the payer who paid the most. Money uses the currency's full decimals ("30.00", not "30"). |
-| 14 to 16 | deferred | Historical reads (`asOf`, `atActivityId`) belong to the history area. The fields are in the schema; a call with them answers BAD_REQUEST until then. |
+| 14, 15 | covered | `history.listSavedExpenses` filters saved values, then pages (more "reads a saved revision and a historical list…"). Both selections at once answer BAD_REQUEST (tools "refuses bad list bounds…"); the message is the history area's "Choose asOf, atActivityId or revision, not more than one". |
+| 16 | covered | `asOf` uses the RPC contract's RecordedTime: a time zone and at most milliseconds (more "reads balances as of…" refuses `.0001Z`). A future time answers "asOf cannot be in the future". |
 
 ### get_expense
 
@@ -156,7 +165,8 @@ The Claude Code emulation (oauth "Claude Code flow emulation") follows the repro
 | --- | --- | --- |
 | 01, 03, 04 | covered | tools "records the authenticated actor…", "accepts several payers…", "refuses bad list bounds…". Adds `payers`. |
 | 05 | code | `downloadUrl` is built as in the current app; documents arrive with the receipts area. |
-| 02, 07 to 10 | deferred | History area (`revision`, `asOf`, `atActivityId` answer BAD_REQUEST until then). |
+| 02, 07, 09, 10 | covered | `history.getSavedExpense`; the history block carries the saved snapshot with its saved names; recurring links are null; attribution counts events up to that revision (more "reads a saved revision…"). |
+| 08 | code | A deletion revision returns the prior snapshot, `deleted: true` and `deletedAt` (history area tests prove the service). |
 | 06 | deferred | Receipts area (`/api/receipts`). |
 
 ### create_expense
@@ -171,7 +181,10 @@ The Claude Code emulation (oauth "Claude Code flow emulation") follows the repro
 | 15 | changed | Same fields; money uses the currency's full decimals. |
 | 17 | covered | `isReimbursement` records a payment (`kind: payment`); ledger tests prove balances. |
 | 18 | deferred | The recurrence rule is saved. Recurring links and the scheduled job belong to the recurring area. |
-| 19 to 28 | deferred | Ungrouped expenses belong to the feed/ungrouped area. The `people` input is in the schema; without `groupId` the call answers BAD_REQUEST until then. |
+| 19, 24, 25 | covered | `createUngroupedExpense`; the result maps labels to `<expenseId>_<label>` participants and returns invitation links (more "creates a private expense with people…"). A retried ID answers CONFLICT. |
+| 20 to 22, 26, 27 | code | The ungrouped service's rules, proven in `ungrouped.test.ts`. |
+| 23 | covered | Upload requests are refused before any write: "Save an ungrouped expense first, then attach its receipts."; recurrence and payments are refused by the service. |
+| 28 | covered | A repayment inside the context is allowed (more "records repayments inside the private context…"); a new purchase there is refused by the service. |
 | 30 to 32 | deferred | Receipts area. Upload requests return `uploads: []` and the current `uploadError` text (tools "returns an upload error…"); `documents` must be empty. |
 
 ### update_expense
@@ -183,7 +196,7 @@ The Claude Code emulation (oauth "Claude Code flow emulation") follows the repro
 | — | changed | Multiple payers: a changed amount on an expense with several payers needs `payers` again. With one payer, that payer's part follows the amount. |
 | 08 | deferred | The ledger's update keeps `original_*` columns when the amount or currency changes. Fix in `ledger.ts` (expenses area). |
 | 09 to 14 | deferred | Receipts area; `documents` and `attachUploadIds` answer BAD_REQUEST until then. |
-| 16 | deferred | Ungrouped area. |
+| 16 | covered | The ledger's private-context rules (more "records repayments inside…": a changed set of people answers BAD_REQUEST). |
 
 ### delete_expense
 
@@ -191,20 +204,144 @@ The Claude Code emulation (oauth "Claude Code flow emulation") follows the repro
 | --- | --- | --- |
 | 01 to 04, 08 | covered | tools "soft-deletes with the current revision…". |
 | 05 | covered | Excluded from reads; revisions 1 and 2 stay in `activities`. `list_activity` comes with the history area. |
-| 06, 07 | deferred | Recurring area and ungrouped area. |
+| 06 | code | `stopRecurrence` in the ledger delete (recurring area tests). |
+| 07 | covered | CONFLICT with the same message (more "records repayments inside…"). The ungrouped service throws Invalid with `reason: 'state'`, which the MCP error map answers as CONFLICT. |
 
-## The other 13 tools (second pass)
+## Tools of the second pass
 
-| Tool | Owner |
-| --- | --- |
-| `list_all_expenses`, `get_expense_options` | feed and ungrouped expenses |
-| `create_group`, `update_group`, `manage_group_access` | groups and access |
-| `get_balances`, `get_participant_balances`, `process_recurring_expenses` | expenses, payments and recurring |
-| `list_activity`, `get_spending_stats`, `export_group` | history, stats and export |
-| `update_profile` | account and settings |
-| `get_reference_data` | expenses (categories, currencies) |
+The service that owns each behavior is named in the design section above. "code" means that the service's own tests prove the rule, and the tool only passes the arguments through.
 
-Each adds `tools/<area>.ts` and one line in `tools/index.ts`. Then `tools/list` order and count match the fixture of all 20 tools.
+### list_all_expenses (feed.ts)
+
+| Item | Status | Evidence or reason |
+| --- | --- | --- |
+| P-TOOL-LISTALL-01 | changed | A tool over `feed.listFeed`, not over tRPC `expenses.list`. |
+| 02 | changed | The same inputs. `involvingMe` defaults to true (DECISIONS.md, P-FEED-19), and the description says so. `cursor.createdAt` takes up to microseconds, so rows created in the same millisecond are not skipped; `cursor.date` takes a date or the returned midnight timestamp. |
+| 03 | code | The feed's "The start date must be on or before the end date." |
+| 04, 09 | covered | more "lists only expenses involving the caller by default…". |
+| 05, 06 | covered | more "pages with the returned cursor…". |
+| 07, 10 to 13, 16 | code | `feed.test.ts` and `ungrouped.test.ts`. |
+| 08 | changed | As P-FEED-18: a private context ID works as `groupId` for its own people. |
+| 14 | changed | The same fields, plus `payers`; `paidBy` and `paidById` are the payer who paid the most. Money has the currency's full decimals. `attribution.*.source` is `agent` for MCP writes, as in the current app. |
+| 15 | covered | more "renames only the caller…". |
+| 17 | covered | Reads never write (P-MCP-43). |
+
+### get_expense_options (feed.ts)
+
+| Item | Status | Evidence or reason |
+| --- | --- | --- |
+| P-TOOL-OPTIONS-01 to 05 | covered | more "lists the caller, shared verified people and named groups only" (also refuses an extra key). `feedOptions` also returns categories; the tool leaves them out, as in the current shape. |
+
+### update_profile (account.ts)
+
+| Item | Status | Evidence or reason |
+| --- | --- | --- |
+| P-TOOL-PROFILE-01 | covered | tools "advertises…" (write, not destructive, idempotent). |
+| 02 to 04, 06 to 08 | covered | more "renames only the caller, at once in current views, and keeps old audit names". A blank name answers BAD_REQUEST ("Display name must be 1 to 50 characters"). |
+| 05 | code | `updateProfile` refuses an unverified account. An unverified account cannot reach a tool: its key gets 401 (P-MCP-52). |
+| 09 | code | The write scope gate of every write tool (oauth step 5). |
+
+### create_group (groups.ts)
+
+| Item | Status | Evidence or reason |
+| --- | --- | --- |
+| P-TOOL-CREATEGROUP-01, 03, 05, 09, 10 | covered | more "creates a group with the creator as admin…". The creator is the first participant. |
+| 02 | changed | The same fields. v2 has registered currencies only (P-GROUP-23): `currencyCode`, else a `currency` that is a code or the symbol of exactly one currency, gives the group currency. Anything else answers BAD_REQUEST. Names are trimmed, as the RPC contract requires. |
+| 04 | covered | A reused groupId answers CONFLICT with the current message (same test). |
+| 06, 08 | code | `groups.test.ts`. The group starts at revision 1 (same test). |
+| 07 | code | An unverified account cannot reach a tool (P-MCP-52). |
+
+### update_group (groups.ts)
+
+| Item | Status | Evidence or reason |
+| --- | --- | --- |
+| P-TOOL-UPDATEGROUP-01 to 04, 11, 12 | covered | more "edits as admin with the current revision only". The stale-revision path is now proven (the current test sent a wrong key). |
+| 05, 06, 08 to 10 | code | `groups.test.ts`. |
+| 07 | code | CONFLICT with the same message: the groups service throws Invalid with `reason: 'state'`. |
+
+### manage_group_access (groups.ts, ungrouped.ts)
+
+| Item | Status | Evidence or reason |
+| --- | --- | --- |
+| P-TOOL-ACCESS-01 to 03 | covered | tools "advertises…"; more "invites by email…" (`email is required`). |
+| 04, 13, 17, 21 to 24, 29 | code | `groups.test.ts` and `ungrouped.test.ts`. The log has no emails (P-ACCESS-30). |
+| 05, 09, 14, 16, 18, 19 | covered | more "invites by email, joins with the link…": a group URL is refused, the email is lowercased, the join binds the invited participant as a member, and NOT_FOUND has the current texts. |
+| 06 | code | "Invitation not found or no longer valid" for an unknown token. |
+| 07 | code | FORBIDDEN, as in the current app. |
+| 08, 10, 11, 15, 20, 26 | covered | CONFLICT with the same messages: the services throw Invalid with `reason: 'state'`. more "invites by email…" checks 10 (a used invitation) and 20 (the last admin); the others share the same path. |
+| 12 | code | An unverified account cannot reach a tool (P-MCP-52). |
+| 25, 27 | covered | more "renews the original invitation of a private expense". |
+| 28 | changed (DECISIONS.md group C) | `joined` is true only after a join. |
+
+### get_balances (expenses.ts, history.ts)
+
+| Item | Status | Evidence or reason |
+| --- | --- | --- |
+| P-TOOL-BALANCES-01 to 03, 05 | covered | more "derives public balances from the suggested repayments, per currency". `balances` comes from the suggested repayments, as in the current app (DECISIONS.md group D). |
+| 04 | changed | Money has the currency's full decimals ("15.00", JPY "1500"). |
+| 06 | covered | more "records a repayment with several people…". |
+| 07 | code | PRECONDITION_FAILED with the current text when `historicalLedger` is incomplete. No MCP test creates a legacy expense without a snapshot; `history.test.ts` proves the detection. |
+| 08, 09 | covered | more "reads balances as of an earlier recorded change". |
+| 10 | covered | Reads never write (P-MCP-43). |
+
+### get_participant_balances (feed.ts)
+
+| Item | Status | Evidence or reason |
+| --- | --- | --- |
+| P-TOOL-PBAL-01, 02, 05 to 08 | covered | more "sums account balances per currency, restricts the scope…". |
+| 03 | changed | FORBIDDEN for the whole call, checked in the same statement as the read instead of before it. No data is returned. |
+| 04, 09 | code | `feed.test.ts` (unbound groups, no memberships). |
+| 10 | covered | Reads never write (P-MCP-43). |
+
+### get_spending_stats (stats.ts)
+
+| Item | Status | Evidence or reason |
+| --- | --- | --- |
+| P-TOOL-STATS-01, 03, 05, 06 | covered | more "reports stats in one currency, for a chosen participant". |
+| 02, 07 | code | `stats-export.test.ts`. |
+| 04 | changed | The same fields. `monthlyCategorySpending` covers the same months as `months` (DECISIONS.md, P-STATS-36). Payments are not spending. |
+| 08 | covered | Reads never write (P-MCP-43). |
+
+### list_activity (history.ts)
+
+| Item | Status | Evidence or reason |
+| --- | --- | --- |
+| P-TOOL-ACTIVITY-01, 02, 05, 07 | covered | more "shows agent writes…", "keeps pages fixed at the returned boundary…". |
+| 03, 10 | code | `history.test.ts`. |
+| 04 | covered | NOT_FOUND "History boundary not found in this group" (same test). |
+| 06 | changed | The same fields. Snapshots are the saved state in the current field names, read from either stored format: `schemaVersion` is the stored format (1 or 2), expense snapshots add `payers`, documents have no size, and group snapshots have no revision. `expense` (current reads only) is the live expense row. |
+| 08 | changed (DECISIONS.md group B) | `source` is `agent` and `actorUserId` is the account. `agentKeyId` is shown only for the caller's own changes: other people's key and connection IDs stay private (more "shows agent writes with their actor, and the key ID only to its owner"). |
+| 09 | covered | Reads never write (P-MCP-43). |
+
+### process_recurring_expenses (recurring.ts)
+
+| Item | Status | Evidence or reason |
+| --- | --- | --- |
+| P-TOOL-RECUR-01 to 05 | covered | more "creates due occurrences only in the given group, once". |
+| — | changed | All occurrences of one call commit in the tool's one SERIALIZABLE transaction (at most 50 per call). The scheduled job also creates them each day (DECISIONS.md group C). |
+
+### get_reference_data (expenses.ts)
+
+| Item | Status | Evidence or reason |
+| --- | --- | --- |
+| P-TOOL-REF-01, 02, 04 | covered | more "lists reference data in the current names". |
+| 03 | changed | The same 34 currencies, in code order instead of the current list order. |
+| 05 | changed | `attachments.enabled` is false: MCP cannot attach receipts yet (create_expense and update_expense answer uploadError). The receipts area turns it on with the upload tools. |
+
+### export_group (export.ts)
+
+| Item | Status | Evidence or reason |
+| --- | --- | --- |
+| P-TOOL-EXPORT-01, 02, 05 | covered | more "exports the group as the export RPC does". The file is the export RPC's file. |
+| 03 | changed (DECISIONS.md group B) | JSON with `id` and the preserved history, without user IDs, connection IDs or emails (P-EXPORT-14). |
+| 04 | changed | A group outside the caller's access answers FORBIDDEN, like get_group (same test). |
+| 06 | deferred | The HTTP export routes with an OAuth bearer belong to the export and auth areas. |
+
+## Open questions (second pass)
+
+1. Resolved by the lead: state conflicts (P-TOOL-ACCESS-08, 10, 11, 15, 20, 26, P-TOOL-UPDATEGROUP-07, P-TOOL-DELETEEXP-07) answer CONFLICT again, through `Invalid.reason = 'state'`.
+2. `create_group` and `update_group` refuse a custom currency symbol. An agent that sends only `currency: "$"` gets BAD_REQUEST, because several currencies use that symbol.
+3. `get_reference_data.attachments.enabled` is false until MCP can attach receipts. This differs from the web's flag.
 
 ## Cost
 
@@ -218,3 +355,30 @@ Measured on 2026-11-05 on the dev box, with V8 (Node 24) and the built Worker ch
 | Warm request, API key, `list_expenses` (10 or 30 rows), `get_group` | p50 0.5 to 0.6 ms, p90 1 to 2.3 ms |
 | Warm request, OAuth bearer, `tools/list` or `list_expenses` | p50 0.7 ms, p90 1.2 ms |
 | The alternative: build Better Auth and call `verifyApiKey` per request | p50 3.0 ms, p90 15 ms, plus about 55 ms to load its chunk on a new isolate |
+
+### Second pass
+
+Measured on 2026-11-05 on the dev box: warm requests with an API key, through the in-process endpoint and the pg driver, 30 expenses in two currencies. These numbers include the test client and the driver, so they are higher than the server-only numbers above. Compare the tools with each other: the first-pass tools in the same run are the reference. These are predictions for workerd, not preview `wrangler tail` numbers.
+
+| Request | p50 | p90 |
+| --- | --- | --- |
+| list_expenses (30 rows), first pass | 3.0 ms | 5.7 ms |
+| get_group, first pass | 2.0 ms | 4.6 ms |
+| list_all_expenses (30 rows, 2 statements) | 3.3 ms | 9.1 ms |
+| list_activity (30 events, 2 statements) | 3.6 ms | 7.0 ms |
+| export_group (JSON) | 3.2 ms | 4.1 ms |
+| get_spending_stats | 1.9 ms | 3.0 ms |
+| get_balances, get_participant_balances, get_expense_options, get_reference_data | 1.6 to 1.7 ms | 2.3 to 3.4 ms |
+| tools/list (20 tools) | 2.4 ms | 2.9 ms |
+
+The tools load no new libraries: the services they call are already in the Worker for the web RPC.
+
+A new isolate imports the endpoint chunk on its first MCP request. Measured with Node and the built chunks (CPU, 3 runs each):
+
+| Build | Import of the endpoint chunk |
+| --- | --- |
+| v2 before this pass (7 tools) | about 92 ms |
+| 20 tools, JSON Schemas built at definition | about 110 ms |
+| 20 tools, JSON Schemas built on first use (this pass) | about 84 ms |
+
+`defineTool` now builds a tool's JSON Schemas on first use, and `server.ts` builds the tools/list answer on the first tools/list. A first tools/call builds only that tool's input schema. The first tools/list on an isolate pays the rest, about 26 ms once (the difference above).
