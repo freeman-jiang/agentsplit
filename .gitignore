@@ -57,3 +57,7 @@ postgres-data
 
 # Private MCP connection keys
 /.mcp-credentials/
+
+# dev shell
+.direnv/
+.pg/
