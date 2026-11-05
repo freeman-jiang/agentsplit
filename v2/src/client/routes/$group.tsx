@@ -1,105 +1,113 @@
-import { useSuspenseInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query'
-import { createFileRoute } from '@tanstack/react-router'
-import { Schema } from 'effect'
-import { useDeferredValue } from 'react'
-import { CURRENCIES } from '../../shared/currencies'
-import { expensesQuery, groupQuery } from '../queries'
-
-const Search = Schema.Struct({
-  sort: Schema.optionalKey(Schema.Literals(['date', 'updated'])),
-  q: Schema.optionalKey(Schema.String),
-})
+import { useSuspenseQuery } from '@tanstack/react-query'
+import { createFileRoute, Link, Outlet, redirect } from '@tanstack/react-router'
+import { ArrowLeftRight, BarChart3, Info, Receipt, Scale, ScrollText, Settings } from 'lucide-react'
+import { useState } from 'react'
+import { cn } from '~/client/cn'
+import { money } from '~/client/components/money'
+import { groupQuery, meQuery } from '~/client/queries'
 
 export const Route = createFileRoute('/$group')({
-  validateSearch: Schema.toStandardSchemaV1(Search),
-  loaderDeps: ({ search }) => search,
-  loader: ({ context, params, deps }) =>
-    Promise.all([
-      context.queryClient.ensureQueryData(groupQuery(params.group)),
-      context.queryClient.ensureInfiniteQueryData(expensesQuery(params.group, { sort: deps.sort ?? 'date', ...(deps.q ? { search: deps.q } : {}) })),
-    ]),
-  component: GroupPage,
+  beforeLoad: async ({ context }) => {
+    if (!(await context.queryClient.ensureQueryData(meQuery))) throw redirect({ to: '/sign-in' })
+  },
+  loader: ({ context, params }) => context.queryClient.ensureQueryData(groupQuery(params.group)),
+  component: GroupLayout,
 })
 
-const money = (amount: string, currency: keyof typeof CURRENCIES) => `${CURRENCIES[currency].symbol}${amount}`
+const TABS = [
+  { to: '/$group/expenses', label: 'Expenses', Icon: Receipt },
+  { to: '/$group/payments', label: 'Payments', Icon: ArrowLeftRight },
+  { to: '/$group/balances', label: 'Balances', Icon: Scale },
+  { to: '/$group/information', label: 'Information', Icon: Info },
+  { to: '/$group/stats', label: 'Stats', Icon: BarChart3 },
+  { to: '/$group/activity', label: 'Log', Icon: ScrollText },
+  { to: '/$group/edit', label: 'Settings', Icon: Settings },
+] as const
 
-function GroupPage() {
+/**
+ * Every group page shares this layout: tabs above, the tab's content on the
+ * left, and a sticky net-balance rail on the right. The rail always describes
+ * the whole group, whatever the tab filters; on mobile it becomes a compact
+ * expandable summary above the content. Do not recreate it in a tab.
+ */
+function GroupLayout() {
   const { group } = Route.useParams()
-  const search = Route.useSearch()
-  const navigate = Route.useNavigate()
-  const sort = search.sort ?? 'date'
-  const q = useDeferredValue(search.q ?? '')
   const { data: g } = useSuspenseQuery(groupQuery(group))
-  const expenses = useSuspenseInfiniteQuery(expensesQuery(group, { sort, ...(q ? { search: q } : {}) }))
-  const names = new Map(g.participants.map((p) => [p.id, p.name]))
-  const rows = expenses.data.pages.flatMap((p) => p.expenses)
-
   return (
-    <div className="grid gap-6 md:grid-cols-[1fr_16rem]">
-      <main>
-        <h1 className="mb-4 text-xl font-semibold">{g.name}</h1>
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <div role="radiogroup" aria-label="Sort expenses" className="inline-flex rounded-lg border border-stone-200 p-0.5 text-sm">
-            {(
-              [
-                ['date', 'By date'],
-                ['updated', 'Recently changed'],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={sort === value}
-                onClick={() => navigate({ search: (s) => ({ ...s, sort: value }), replace: true })}
-                className={`rounded-md px-3 py-1 ${sort === value ? 'bg-stone-900 text-white' : 'text-stone-600'}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <input
-            type="search"
-            placeholder="Search expenses"
-            defaultValue={search.q ?? ''}
-            onChange={(e) => {
-              const value = e.target.value
-              navigate({ search: ({ q: _q, ...rest }) => (value ? { ...rest, q: value } : rest), replace: true })
-            }}
-            className="min-w-48 flex-1 rounded-lg border border-stone-200 px-3 py-1.5 text-sm"
-          />
+    <div className="mx-auto w-full max-w-6xl px-3 py-6 sm:px-8">
+      <h1 className="mb-3 font-display text-2xl">{g.name}</h1>
+      <nav aria-label="Group" className="mb-4 flex flex-wrap gap-x-2 gap-y-1 border-b sm:gap-x-4">
+        {TABS.map(({ to, label, Icon }) => (
+          <Link
+            key={to}
+            to={to}
+            params={{ group }}
+            className="inline-flex min-h-11 items-center gap-2 border-b-2 border-transparent px-2 py-3 text-xs text-muted-foreground sm:text-sm"
+            activeProps={{ className: 'border-primary! text-primary!' }}
+          >
+            <Icon className="hidden h-4 w-4 lg:block" aria-hidden="true" />
+            {label}
+          </Link>
+        ))}
+      </nav>
+      <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_16rem]">
+        <div className="md:hidden">
+          <BalanceSummary group={group} />
         </div>
-        <ul className="divide-y divide-stone-200 rounded-lg border border-stone-200" data-testid="expense-list">
-          {rows.map((e) => (
-            <li key={e.id} className="flex items-start justify-between gap-4 px-4 py-3">
-              <div className="min-w-0">
-                {e.vendor && <div className="text-xs text-stone-500">{e.vendor}</div>}
-                <div className="truncate">{e.title}</div>
-                <div className="text-xs text-stone-500">
-                  {e.expenseDate} · paid by {e.payers.map((p) => names.get(p.participantId) ?? '?').join(', ')}
-                </div>
-              </div>
-              <div className="shrink-0 tabular-nums">{money(e.amount, e.currency)}</div>
-            </li>
-          ))}
-        </ul>
-        {expenses.hasNextPage && (
-          <button type="button" onClick={() => expenses.fetchNextPage()} className="mt-3 text-sm text-stone-600 underline">
-            Load more
-          </button>
-        )}
-      </main>
-      <aside className="h-fit rounded-lg border border-stone-200 p-4 md:sticky md:top-6" aria-label="Balances">
-        <h2 className="mb-2 font-medium">Balances</h2>
-        <ul className="space-y-1 text-sm">
-          {g.balances.map((b) => (
-            <li key={`${b.participantId}-${b.currency}`} className="flex justify-between gap-2">
-              <span>{names.get(b.participantId) ?? '?'}</span>
-              <span className={`tabular-nums ${b.net.startsWith('-') ? 'text-red-700' : 'text-emerald-700'}`}>{money(b.net, b.currency)}</span>
-            </li>
-          ))}
-        </ul>
-      </aside>
+        <div className="min-w-0">
+          <Outlet />
+        </div>
+        <aside className="hidden h-fit md:sticky md:top-24 md:block" aria-label="Balances">
+          <BalanceRail group={group} />
+        </aside>
+      </div>
     </div>
+  )
+}
+
+function useNets(group: string) {
+  const { data: g } = useSuspenseQuery(groupQuery(group))
+  const names = new Map(g.participants.map((p) => [p.id, p.name]))
+  return g.balances.map((b) => ({ ...b, name: names.get(b.participantId) ?? 'Unknown' }))
+}
+
+function NetList({ group }: { group: string }) {
+  const nets = useNets(group)
+  if (nets.length === 0) return <p className="text-sm text-muted-foreground">No balances yet.</p>
+  return (
+    <ul className="space-y-1 text-sm">
+      {nets.map((b) => (
+        <li key={`${b.participantId}-${b.currency}`} className="flex justify-between gap-2">
+          <span className="truncate">{b.name}</span>
+          <span className={cn('tabular-nums', b.net.startsWith('-') ? 'text-destructive' : 'text-primary')}>{money(b.net, b.currency)}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function BalanceRail({ group }: { group: string }) {
+  return (
+    <section className="border bg-card p-4">
+      <h2 className="mb-2 font-medium">Balances</h2>
+      <NetList group={group} />
+    </section>
+  )
+}
+
+function BalanceSummary({ group }: { group: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <section className="border bg-card">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium">
+        Balances
+        <span aria-hidden="true">{open ? '−' : '+'}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-3">
+          <NetList group={group} />
+        </div>
+      )}
+    </section>
   )
 }
