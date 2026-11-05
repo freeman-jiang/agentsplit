@@ -15,7 +15,7 @@ Status: **draft**. Freeman approves this runbook, the maintenance window, and ea
 2. Create the production database and identities: `app-db create agentsplit`. Apply the migrations as `agentsplit_owner`: `scripts/with-apps-pg.sh agentsplit bun db/migrate.ts`.
 3. Create the production Hyperdrive from `app-db url agentsplit`, piped through `jq` into the Cloudflare API, never printed. Caching off.
 4. Deploy the production Worker as `agentsplit` on `workers.dev` only, bound to the production Hyperdrive and the `agentsplit-receipts` bucket.
-5. Copy the production secrets from Coolify into the Worker with `wrangler secret put`, piped, never printed: `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_BOOTSTRAP_EMAIL`.
+5. Copy the production secrets from Coolify into the Worker with `wrangler secret put`, piped, never printed: `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_BOOTSTRAP_EMAIL`, `AUTH_BOOTSTRAP_LEGACY_USER_ID`. Production sets no `DEFAULT_CURRENCY_CODE` (checked 2026-11-05), so its default currency is the code default, USD, as in v2.
 6. Rehearse steps 2 to 6 of the window against a fresh copy of the latest nightly backup in a scratch database, and record the timings.
 7. Prepare the OpenTofu change that adds the Worker custom domain `agentsplit.freemanjiang.com`, as a saved plan for Freeman to review.
 
