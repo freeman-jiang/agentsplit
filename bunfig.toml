@@ -1,0 +1,5 @@
+[install]
+# Same policy as the dev box: exact pins and a 7-day release cooldown.
+# package.json sets an empty trustedDependencies, so no install script runs.
+exact = true
+minimumReleaseAge = 604800

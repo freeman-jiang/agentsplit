@@ -1,10 +1,10 @@
 import { defineConfig, devices } from '@playwright/test'
 
 /**
- * The app under test is started by scripts/e2e.sh (docker compose), not by
- * Playwright's `webServer`: we need to build an image, we need `docker compose
- * logs` as a CI artifact on failure, and compose's healthchecks are a stricter
- * readiness signal than URL polling (they also fail when a container exits).
+ * The app under test is started by scripts/e2e.sh (scripts/app-stack.sh), not
+ * by Playwright's `webServer`: it needs a fresh migrated database first, its
+ * server log is a CI artifact on failure, and the readiness check also fails
+ * when the server process exits.
  */
 export default defineConfig({
   testDir: './e2e',
@@ -49,6 +49,12 @@ export default defineConfig({
         // formatting. Both must be pinned for text assertions to be stable.
         locale: 'en-US',
         timezoneId: 'UTC',
+        // The dev shell provides Chromium from nixpkgs; Playwright turns the
+        // Chromium sandbox off by default, so turn it back on.
+        launchOptions: {
+          executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+          chromiumSandbox: true,
+        },
       },
     },
   ],

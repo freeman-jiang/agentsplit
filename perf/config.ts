@@ -55,13 +55,12 @@ export const baseUrl =
   `http://localhost:${process.env['PERF_HOST_PORT'] ?? '3100'}`
 
 /**
- * Connection string for the seeder. This is deliberately NOT the app's
- * POSTGRES_PRISMA_URL: the app reaches postgres as `db:5432` inside the compose
- * network, while the seeder runs on the host and reaches the published port.
+ * Connection string for the seeder. `scripts/perf.sh` sets PERF_DATABASE_URL
+ * to the dev shell's Postgres, the same database the app under test uses.
  */
 export const seedDatabaseUrl =
   process.env['PERF_DATABASE_URL'] ??
-  `postgresql://postgres:perf@localhost:${process.env['PERF_DB_PORT'] ?? '55432'}/spliit_perf`
+  `postgresql://postgres@127.0.0.1:${process.env['PGPORT'] ?? '5437'}/spliit_perf`
 
 export const groupId = (index: number) =>
   `perf-group-${String(index).padStart(2, '0')}`
