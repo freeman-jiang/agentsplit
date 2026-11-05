@@ -1,3 +1,4 @@
+import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
 // Search-param parsing for route options. Route options stay in the main chunk,
 // so they must not pull in a schema library (BUILDING.md, client bundle budget).
 
@@ -12,3 +13,13 @@ export function pickSearch<const K extends string>(keys: readonly K[]) {
     return out
   }
 }
+
+/** A numeric search param, or undefined. */
+export const numberParam = (value: unknown): number | undefined => {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN
+  return Number.isFinite(n) ? n : undefined
+}
+
+/** A currency code from the registry, or undefined. */
+export const currencyParam = (value: unknown): CurrencyCode | undefined =>
+  typeof value === 'string' && value in CURRENCIES ? (value as CurrencyCode) : undefined

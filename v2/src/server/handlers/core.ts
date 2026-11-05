@@ -14,11 +14,13 @@ export const CoreHandlers = Layer.mergeAll(
   Api.toLayerHandler('expenses.get', ({ groupId, expenseId }) =>
     read((db, principal) => ledger.getExpense(db, { principal, group: groupId, expenseId })),
   ),
-  Api.toLayerHandler('expenses.create', ({ groupId, expenseId, idempotencyKey, expense }) =>
-    write((db, principal) => ledger.createExpense(db, { principal, group: groupId, expenseId, idempotencyKey, expense })),
+  Api.toLayerHandler('expenses.create', ({ groupId, expenseId, idempotencyKey, expense: { documents, ...expense } }) =>
+    write((db, principal) => ledger.createExpense(db, { principal, group: groupId, expenseId, idempotencyKey, expense, ...(documents ? { documents } : {}) })),
   ),
-  Api.toLayerHandler('expenses.update', ({ groupId, expenseId, expectedRevision, idempotencyKey, expense }) =>
-    write((db, principal) => ledger.updateExpense(db, { principal, group: groupId, expenseId, expectedRevision, idempotencyKey, expense })),
+  Api.toLayerHandler('expenses.update', ({ groupId, expenseId, expectedRevision, idempotencyKey, expense: { documents, ...expense } }) =>
+    write((db, principal) =>
+      ledger.updateExpense(db, { principal, group: groupId, expenseId, expectedRevision, idempotencyKey, expense, ...(documents ? { documents } : {}) }),
+    ),
   ),
   Api.toLayerHandler('expenses.delete', ({ groupId, expenseId, expectedRevision, idempotencyKey }) =>
     write((db, principal) => ledger.deleteExpense(db, { principal, group: groupId, expenseId, expectedRevision, idempotencyKey })),

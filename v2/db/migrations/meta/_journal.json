@@ -43,6 +43,13 @@
       "when": 1793872946232,
       "tag": "0005_private_contexts",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793874445518,
+      "tag": "0006_recurring_anchor",
+      "breakpoints": true
     }
   ]
 }

@@ -3,7 +3,7 @@ import { Layer, Scheduler } from 'effect'
 import { HttpRouter } from 'effect/http'
 import { RpcSerialization, RpcServer } from 'effect/rpc'
 import pg from 'pg'
-import { makeDb, registerRequestDb, releaseRequestDb, REQUEST_ID_HEADER } from './db'
+import { makeDb, registerRequestDb, releaseRequestDb, REQUEST_ID_HEADER, type Db } from './db'
 import type { Env } from './env'
 import { HandlersLive } from './handlers'
 import { Api, AppConfig, AuthMiddlewareLive } from './rpc'
@@ -15,6 +15,7 @@ const config = {
   secret: appEnv.BETTER_AUTH_SECRET,
   googleClientId: appEnv.GOOGLE_CLIENT_ID,
   googleClientSecret: appEnv.GOOGLE_CLIENT_SECRET,
+  documentsEnabled: /^(true|yes|1|on)$/i.test(appEnv.ENABLE_EXPENSE_DOCUMENTS ?? ''),
 }
 
 // Built once, at module scope, as Effect requires on Workers: the RPC server's
@@ -31,6 +32,12 @@ const rpcHandler = HttpRouter.toWebHandler(
     Layer.provideMerge(SyncScheduler),
   ),
 ).handler
+
+/** The signed-in web user of a plain HTTP request, from the session cookie. */
+async function principalOf(db: Db, request: Request) {
+  const { sessionPrincipal } = await import('./session')
+  return sessionPrincipal(db, { cookie: request.headers.get('cookie'), secret: config.secret, baseUrl: config.baseUrl })
+}
 
 /**
  * Runs `work` with one database connection for this request, and closes it
@@ -102,6 +109,28 @@ async function route(request: Request): Promise<Response> {
   if (url.pathname === '/api/health/liveness') return livenessResponse()
   if (url.pathname === '/robots.txt') return robotsTxt(config.baseUrl)
   if (url.pathname === '/sitemap.xml') return sitemapXml(config.baseUrl)
+  if (url.pathname === '/api/receipts') {
+    if (request.method !== 'GET' && request.method !== 'POST') return Response.json({ error: 'Method not allowed' }, { status: 405 })
+    // An upload is a cookie-authenticated write: refuse other origins, as for RPC.
+    if (request.method === 'POST' && request.headers.get('origin') !== new URL(config.baseUrl).origin)
+      return Response.json({ error: 'Origin not allowed' }, { status: 403, headers: { 'Cache-Control': 'no-store' } })
+    // Not withConnection: the image streams from R2 after the database work is done, with its own headers.
+    const client = new pg.Client({ connectionString: appEnv.HYPERDRIVE.connectionString })
+    await client.connect()
+    try {
+      const db = makeDb(client)
+      const { downloadReceipt, uploadReceipt } = await import('./receipts')
+      const principal = await principalOf(db, request)
+      return await (request.method === 'GET'
+        ? downloadReceipt({ db, bucket: appEnv.RECEIPTS, principal, url })
+        : uploadReceipt({ db, bucket: appEnv.RECEIPTS, principal, request, baseUrl: config.baseUrl, enabled: config.documentsEnabled }))
+    } finally {
+      await client.end().catch(() => {})
+    }
+  }
+  // The current app's presigned upload route is gone for good (P-RECEIPT-28).
+  if (url.pathname === '/api/s3-upload')
+    return Response.json({ error: 'Use the authenticated receipt upload flow' }, { status: 410, headers: { 'Cache-Control': 'no-store' } })
   if (url.pathname.startsWith('/api/')) return Response.json({ error: 'Not found' }, { status: 404 })
   return appEnv.ASSETS.fetch(request)
 }
@@ -109,5 +138,26 @@ async function route(request: Request): Promise<Response> {
 export default {
   async fetch(request) {
     return secured(await route(request))
+  },
+  /**
+   * The cron trigger in wrangler.jsonc. It creates due recurring expenses, so
+   * reads never have to (DECISIONS.md, P-BAL-30 and P-RECUR-08). A failed
+   * occurrence is logged and retried on the next run.
+   */
+  async scheduled(controller) {
+    const client = new pg.Client({ connectionString: appEnv.HYPERDRIVE.connectionString })
+    await client.connect()
+    try {
+      const db = makeDb(client)
+      const { materializeDue } = await import('./recurring')
+      const created = await materializeDue({
+        today: new Date(controller.scheduledTime).toISOString().slice(0, 10),
+        transaction: (work) => db.transaction(work, { isolationLevel: 'serializable' }),
+        onError: (error) => console.error('Recurring expense failed', error),
+      })
+      if (created.length) console.log(`Created ${created.length} recurring expenses`)
+    } finally {
+      await client.end().catch(() => {})
+    }
   },
 } satisfies ExportedHandler<Env>
