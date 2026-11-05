@@ -16,11 +16,44 @@ import {
   previewInvitation,
   updateGroup,
 } from '~/server/groups'
+import { accountBalances } from '~/server/feed'
 import { createExpense, getGroup, requireMember, type Principal } from '~/server/ledger'
+import { createUngroupedExpense } from '~/server/ungrouped'
 import { resetTestDatabase } from './setup'
 
 let pool: Pool
 const BASE = 'https://agentsplit.test'
+
+/** A real private expense context: the owner and one invited friend, the owner paid 10.00 evenly. */
+async function privateContext(owner: Principal, id: string) {
+  const result = await tx((db) =>
+    createUngroupedExpense(db, {
+      principal: owner,
+      baseUrl: BASE,
+      expenseId: id,
+      idempotencyKey: `key-${id}`,
+      people: [
+        { kind: 'account', id: 'me', userId: owner.userId },
+        { kind: 'email', id: 'friend', name: 'Friend', email: `friend-${id}@example.com` },
+      ],
+      expense: {
+        kind: 'expense',
+        title: 'Private dinner',
+        vendor: null,
+        notes: '',
+        categoryId: 0,
+        expenseDate: '2026-11-02',
+        currency: 'USD',
+        amount: '10.00',
+        payers: [{ participantId: 'me', amount: '10.00' }],
+        splitMode: 'evenly',
+        shares: [{ participantId: 'me', weight: '1' }, { participantId: 'friend', weight: '1' }],
+        recurrence: 'none',
+      },
+    }),
+  )
+  return result.groupId
+}
 const person = (id: string, name: string): Principal => ({ userId: id, name, email: `${id}@example.com`, source: 'web', agentKeyId: null })
 const alice = person('alice', 'Alice Admin')
 const bob = person('bob', 'Bob')
@@ -317,11 +350,9 @@ describe('people', () => {
   })
 
   it('refuses settings edits of a private expense context (P-GROUP-74)', async () => {
-    await tx(async (db) => {
-      await db.insert(groups).values({ id: 'private-ctx', kind: 'private', name: 'Private', defaultCurrency: 'USD', revision: 1 })
-      await db.insert(memberships).values({ userId: alice.userId, groupId: 'private-ctx', role: 'admin' })
-    })
-    await expect(update(alice, 'private-ctx', 1, { name: 'Renamed' })).rejects.toMatchObject({ message: expect.stringContaining('A private expense is not a named group') })
+    const context = await privateContext(alice, 'private-settings')
+    const [row] = await tx((db) => db.select({ revision: groups.revision }).from(groups).where(eq(groups.id, context)))
+    await expect(update(alice, context, row?.revision ?? 0, { name: 'Renamed' })).rejects.toMatchObject({ message: expect.stringContaining('A private expense is not a named group') })
   })
 })
 
@@ -335,8 +366,8 @@ describe('directory', () => {
     const first = await create(owner, { name: 'First', participants: ['Kim'] })
     await create(owner, { name: 'Second' })
     await create(other, { name: 'Not mine' })
-    await tx((db) => db.insert(groups).values({ id: 'dir-private', kind: 'private', name: 'Hidden', defaultCurrency: 'USD' }))
-    await tx((db) => db.insert(memberships).values({ userId: owner.userId, groupId: 'dir-private', role: 'admin' }))
+    // A private expense context: hidden from the directory, but part of the account total.
+    await privateContext(owner, 'dir-private')
     const [me, kim] = (await details(owner, first.id)).people
     await tx((db) =>
       createExpense(db, {
@@ -363,9 +394,13 @@ describe('directory', () => {
     const dir = await tx((db) => listDirectory(db, { principal: owner, offset: 0 }))
     expect(dir.groups.map((g) => g.name)).toEqual(['Second', 'First'])
     expect(dir.groups[1]).toMatchObject({ id: first.id, participantCount: 2 })
-    expect(dir.totals).toEqual([{ currency: 'USD', net: '50.00' }])
-    // The private context has no participant binding, so it counts as unbound.
-    expect(dir.unboundGroupCount).toBe(1)
+    // 50.00 from the named group and 5.00 from the private expense.
+    expect(dir.totals).toEqual([{ currency: 'USD', net: '55.00' }])
+    expect(dir.unboundGroupCount).toBe(0)
+    // The directory card and the dashboard card show the same total (P-BAL-106).
+    const account = await tx((db) => accountBalances(db, { principal: owner }))
+    expect(account.totals.map((t) => ({ currency: t.currency, net: t.amount }))).toEqual(dir.totals)
+    expect(account.unboundGroupIds).toHaveLength(dir.unboundGroupCount)
     expect(dir.nextOffset).toBeNull()
   })
 })
