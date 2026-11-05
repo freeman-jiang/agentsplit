@@ -245,6 +245,10 @@ export const activities = pgTable(
     }).onDelete('restrict'),
     index().on(t.groupId, t.time.desc(), t.id.desc()),
     index().on(t.groupId, t.sequence.desc()),
+    // The participant foreign key's RESTRICT check reads this when a participant is deleted.
+    index()
+      .on(t.participantId, t.groupId)
+      .where(sql`${t.participantId} IS NOT NULL`),
   ],
 )
 
@@ -276,7 +280,8 @@ export const expenseDocuments = pgTable(
     /** The receipt's place in the expense's list, from 0, in the order the receipts were attached. */
     position: integer().notNull(),
   },
-  (t) => [index().on(t.expenseId), unique('expense_documents_expense_position').on(t.expenseId, t.position)],
+  // The unique key also serves lookups by expense.
+  (t) => [unique('expense_documents_expense_position').on(t.expenseId, t.position)],
 )
 
 export const recurringLinks = pgTable(
