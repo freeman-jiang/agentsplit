@@ -8,6 +8,7 @@ import { and, eq, isNull, sql, type SQL } from 'drizzle-orm'
 import { activities, expenses, groups, invitations, memberships, participants, privateContexts, privatePeople } from '../../db/schema/app'
 import { Conflict, Forbidden, Invalid, Unauthorized } from '../shared/api'
 import type { ExpenseDraft } from '../shared/expense-rules'
+import type { V2GroupSnapshot } from '../shared/history'
 import type { Db } from './db'
 import { contacts } from './feed'
 import { invitationTokenHash, newInvitationToken } from './groups'
@@ -104,7 +105,11 @@ export async function createUngroupedExpense(
     groupId,
     type: 'create_group',
     data: 'Private expense',
-    snapshot: { schemaVersion: 2, kind: 'group', group: { ...group, information: '', participants: stored.map((p) => ({ id: p.id, name: p.name })) } },
+    snapshot: {
+      schemaVersion: 2,
+      kind: 'group',
+      group: { id: groupId, name: group.name, slug: null, currency: group.defaultCurrency, information: '', revision: group.revision, participants: stored.map((p) => ({ id: p.id, name: p.name })) },
+    } satisfies typeof V2GroupSnapshot.Encoded,
     ...actor(data.principal),
   })
   const toStored = new Map(stored.map((p) => [p.localId, p.id]))

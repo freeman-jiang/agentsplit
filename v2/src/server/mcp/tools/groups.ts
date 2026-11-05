@@ -151,6 +151,8 @@ export const getGroup = defineTool({
     const g = result.rows[0]
     if (!g) throw new Forbidden({ message: 'Group access denied' })
     const path = `${origin(baseUrl)}${g.slug ? `/${g.slug}` : `/groups/${g.id}`}`
+    // A private context has no group page: people open its expense (P-UNGROUP-39).
+    const share = g.context_expense_id ? `${origin(baseUrl)}/expenses/${g.context_expense_id}` : path
     return {
       context: { kind: g.context_expense_id ? ('ungrouped' as const) : ('group' as const), expenseId: g.context_expense_id },
       access: {
@@ -162,7 +164,7 @@ export const getGroup = defineTool({
       },
       group: { ...groupFields(g), participants: g.participants },
       participantsWithExpenses: g.with_expenses,
-      links: { share: path, csv: `${path}/expenses/export/csv`, json: `${path}/expenses/export/json` },
+      links: { share, csv: `${path}/expenses/export/csv`, json: `${path}/expenses/export/json` },
     }
   },
 })

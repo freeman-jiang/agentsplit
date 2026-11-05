@@ -21,6 +21,8 @@ export const Route = createFileRoute('/$group')({
         throw redirect({ to: '/groups', search: { access: 'denied' }, replace: true })
       throw error
     })
+    // A private context has no group pages: its expense page shows it (P-GROUP-47, P-UNGROUP-39).
+    if (g.contextExpenseId) throw redirect({ to: '/expenses/$expenseId', params: { expenseId: g.contextExpenseId }, replace: true })
     // An ID, an old slug or another letter case moves to the group's current URL (P-GROUP-105, P-GROUP-106).
     const canonical = groupRef(g)
     if (params.group !== canonical) {

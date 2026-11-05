@@ -11,7 +11,7 @@ import { readSnapshot, savedEntry, type Category, type SavedExpense, type SavedS
 import { formatMinor } from '../shared/money'
 import type { Db } from './db'
 import type { Principal } from './ledger'
-import { iso } from './sql'
+import { activityData, activitySource, iso } from './sql'
 
 export type ActivityType = 'create_group' | 'join_group' | 'leave_group' | 'update_group' | 'create_expense' | 'update_expense' | 'delete_expense'
 export type Boundary = { readonly asOf?: string; readonly atActivityId?: string }
@@ -163,7 +163,7 @@ export async function listActivities(db: Db, data: { principal: Principal; group
       coalesce((
         SELECT json_agg(json_build_object(
           'id', p.id, 'time', ${iso(sql`p.time`)}, 'type', p.type, 'participantId', p.participant_id,
-          'expenseId', p.expense_id, 'expenseRevision', p.expense_revision, 'data', p.data, 'source', p.source,
+          'expenseId', p.expense_id, 'expenseRevision', p.expense_revision, 'data', ${activityData(sql`p`)}, 'source', ${activitySource(sql`p`)},
           'actorName', coalesce(p.actor_name, who.name), 'actorUserId', p.actor_user_id, 'agentKeyId', p.agent_key_id, 'verified', p.actor_user_id IS NOT NULL,
           'agent', p.agent_key_id IS NOT NULL OR p.source IN ('agent', 'mcp'),
           'snapshot', p.snapshot, 'previous', prev.snapshot,

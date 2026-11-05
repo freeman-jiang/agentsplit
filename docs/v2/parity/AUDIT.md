@@ -10,6 +10,23 @@ The records also mark 167 items as changed. A decision approves most of them, bu
 
 CI run 42078878350 on commit e576d71 passed 27 test files, 297 tests and 11 e2e tests. The v2 code at b83751d differs from e576d71 only in the privacy page text and one tool description. So every test that this audit names passed.
 
+### Closed after the audit
+
+Branch `t3/v2-server-gaps` closes gaps 2, 3, 7, 8, 9 and 10, and applies Freeman's agent-output decision (DECISIONS.md, "Parity audit, unapproved changes"). The counts above are from the audit and do not include these changes. Each row below names its test. The tests are in `v2/test/db/agent-output.test.ts`, `v2/test/db/mcp-oauth.test.ts` ("OAuth routes") and `v2/e2e/private-expenses.spec.ts`.
+
+| Items | Change | Test |
+| --- | --- | --- |
+| P-HIST-03 | The history reader also reads the private-context `create_group` snapshot that v2 stored before the fix (`defaultCurrency`, no `currency`). The writer now stores the shape of `V2GroupSnapshot`. | agent-output "stores the create_group snapshot…", "reads the Log and list_activity of a context whose snapshot has the shape stored before the fix" |
+| P-UNGROUP-39, P-GROUP-47, P-HIST-63 | `groups.get` returns `kind` and `contextExpenseId`. The group layout sends a private context to `/expenses/<expenseId>`. MCP `get_group` gives that page as the share link. | e2e "the ID of a private context opens its expense, not a group page"; agent-output "tells the client the kind and the expense…" |
+| P-AUTH-45, P-AUTH-47, P-EXPORT-05, P-TOOL-EXPORT-06 | The export URLs accept an API key (`X-API-Key` or `Authorization: Bearer`) and an OAuth bearer with read scope, as `/api/receipts` does. An agent header makes the server ignore the cookie. A bad credential gets 401 "Sign in required". A token without read scope gets the MCP endpoint's 403. | agent-output "exports …"; mcp-oauth "exports accept the OAuth bearer of a member…" |
+| P-MCP-137, P-MCP-138, P-MCP-139 | `v2/src/server/oauth-routes.ts` ports the current app's wrapper. A refresh-token revoke tombstones its connection. A deleted consent revokes the client's connections and tokens. UserInfo applies the MCP connection, consent and verified-user checks. | mcp-oauth "OAuth routes" |
+| P-FEED-40 | A historical `get_expense` names the authors as recorded at that point. | agent-output "names the authors of a historical read as recorded then…" |
+| P-EXP-107 | Every expense event stores "<vendor> — <title>". For v2 rows stored without it, `list_activity`, the Log and the JSON export take the text from the last saved snapshot at that event. | agent-output "stores … on every expense event, as the current app", "stores agent writes as `agent`…" |
+| P-DB-79 | Agent writes store `source = 'agent'`. Rows stored as `mcp` show as `agent` in the Log, MCP, the feed and the JSON export. | agent-output "stores agent writes as `agent`…" |
+| P-HIST-09, P-DB-16 | MCP attribution uses the feed's rule: a revision-0 event is a baseline, not an edit. | agent-output "does not count a v2 baseline as an edit" |
+| P-TOOL-EXPORT-04, P-EXPORT-16, P-GROUP-78 | A missing group and a group of someone else get one message, "Group not found, or you are not a member": FORBIDDEN on MCP (every tool), 403 on the export and receipt URLs. These are the status codes of the current app's access check, which runs before its existence check. | agent-output "give one message for a missing group and a group of someone else"; mcp-tools "denies a group of someone else with a certain outcome" |
+| P-TOOL-LISTEXP-11, P-TOOL-LISTALL-14, P-TOOL-CREATEEXP-15, P-TOOL-BALANCES-04, P-EXPORT-08, P-EXPORT-09, P-EXPORT-10, P-EXPORT-12, P-EXPORT-13, P-TOOL-UPDATEEXP-03, P-TOOL-CREATEEXP-08 | No change: Freeman approved full decimals and field-named errors. | — |
+
 ## Method
 
 1. Parse every table row of the seven records, expand ranges such as `P-GROUP-27 to -31` and `04–08`, and map each row to the PARITY.md IDs.
@@ -60,18 +77,18 @@ Branch `t3/v2-client-gaps` closes gaps 1, 4, 5 and 6 after the audit. Appendix A
 ### People in the browser
 
 1. **P-BAL-53, P-BAL-54, P-BAL-55, P-BAL-56, P-BAL-58, P-BAL-62, P-BAL-63.** The group balance rail shows only names and signed net amounts. It has no "You are owed", "You owe" or "Settled up" line, no "Group net balances" heading, no "gets back" or "owes" text, no "(you)", no suggested payments, no "Refresh balances" button, no "Balance details" link and other empty and error texts. Evidence: `v2/src/client/routes/$group.tsx:97-125` (`NetList`, `BalanceRail`). expenses.md line 108 gives the rail to the lead, and lead.md does not track it. **Closed:** the rail is a port of the current app's `group-balance-summary.tsx` (`v2/src/client/routes/$group.tsx` `BalanceRail`); e2e `group-expenses.spec.ts` "the rail tells the viewer what they owe, and refreshes to "Settled up" (P-BAL-53..56, P-BAL-58, P-BAL-62, P-BAL-63)".
-2. **P-UNGROUP-39, P-GROUP-47, P-HIST-63.** The ID of a private expense context opens the full group shell (tabs, Settings, Log) instead of `/expenses/<expenseId>`. MCP `get_group` gives `/groups/<contextId>` as the share link, so a person who follows it sees the wrong page. Evidence: `$group.tsx:12-30` and `getGroup` (`v2/src/server/ledger.ts:109`) never read `groups.kind`. The `Group` contract has no `kind` (`v2/src/shared/api/core.ts`).
-3. **P-HIST-03.** The Log and MCP `list_activity` fail on a private expense context. The private-context `create_group` snapshot has `defaultCurrency` and no `currency`, so the history reader throws `UnreadableSnapshot` for the whole page. Activities are permanent, so every private expense created since the cutover has this row. The fix must go in the reader. Evidence: Writer: `v2/src/server/ungrouped.ts:93,107`. Reader: `v2/src/shared/history.ts:142-153,311` and `v2/src/server/history.ts:198`. No test decodes this snapshot. The named-group writer is correct (`groups.ts:225`).
+2. **P-UNGROUP-39, P-GROUP-47, P-HIST-63.** Closed on branch `t3/v2-server-gaps` (see "Closed after the audit"). The ID of a private expense context opens the full group shell (tabs, Settings, Log) instead of `/expenses/<expenseId>`. MCP `get_group` gives `/groups/<contextId>` as the share link, so a person who follows it sees the wrong page. Evidence: `$group.tsx:12-30` and `getGroup` (`v2/src/server/ledger.ts:109`) never read `groups.kind`. The `Group` contract has no `kind` (`v2/src/shared/api/core.ts`).
+3. **P-HIST-03.** Closed on branch `t3/v2-server-gaps` (see "Closed after the audit"). The Log and MCP `list_activity` fail on a private expense context. The private-context `create_group` snapshot has `defaultCurrency` and no `currency`, so the history reader throws `UnreadableSnapshot` for the whole page. Activities are permanent, so every private expense created since the cutover has this row. The fix must go in the reader. Evidence: Writer: `v2/src/server/ungrouped.ts:93,107`. Reader: `v2/src/shared/history.ts:142-153,311` and `v2/src/server/history.ts:198`. No test decodes this snapshot. The named-group writer is correct (`groups.ts:225`).
 4. **P-EXP-22.** Expense cards show no category icon on wide screens. Evidence: No category icon component in `v2/src/client`. expenses.md line 48 defers it, with no owner. **Closed:** `v2/src/client/components/category-icon.tsx` maps the fixed category IDs to the current app's icons, on group and dashboard cards from 640 px. Checked in the browser.
 5. **P-PWA-04.** iOS shows no splash image when the app opens from the home screen. It shows the background color. Evidence: `v2/index.html` has `apple-touch-icon` only. account.md line 73 defers it as low value. No decision approves the drop. **Closed:** `addAppleSplashImages` in `v2/src/client/pwa.ts` ports the current app's script. Checked in the browser with `navigator.standalone` set: two links, portrait and landscape.
 6. **P-PWA-36.** The error page shows no error reference for the user to quote. The rest of the item is done and tested. Evidence: `v2/src/client/components/error-state.tsx:10-30`; e2e `group-expenses.spec.ts` "a tab that fails to load…". **Closed:** the page shows "Reference: <8 hex digits>" and logs the same reference with the error to the console. The server returns no request ID, so the client makes the reference. e2e `group-expenses.spec.ts` "a tab that fails to load shows the group error under the tabs, with a reference and without the exception text (P-GROUP-53, P-PWA-36)".
 
 ### Agents and scripts
 
-7. **P-AUTH-45, P-AUTH-47, P-EXPORT-05, P-TOOL-EXPORT-06.** The CSV and JSON export URLs accept only the session cookie. An API key or an OAuth bearer gets 401. MCP `get_group` still gives these URLs to agents (`mcp/tools/groups.ts:165`), and OAUTH.md promises a bearer works. MCP `export_group` works. Evidence: `v2/src/server/app.ts:116-131` (`exportGroup` calls `sessionPrincipal` only) and `app.ts:183-191`. Receipts take the key path (`receipts.ts` `receiptReader`).
-8. **P-MCP-137, P-MCP-138, P-MCP-139.** The current app's wrapper around three OAuth routes is not ported. An RFC 7009 revoke does not tombstone the connection, so the access token works for up to 300 seconds after the revoke. Delete-consent leaves the connection and the refresh tokens. UserInfo does not check the connection, the consent or a verified email. Evidence: `v2/src/server/app.ts:160` sends every `/api/auth/*` request to Better Auth. Compare `src/app/api/auth/[...all]/route.ts:13-70`. account.md line 107 gives these to the MCP area, and mcp.md line 130 gives them back.
-9. **P-FEED-40.** MCP `get_expense` with `revision`, `asOf` or `atActivityId` shows current account names in the attribution. The current app shows the names at that point. Evidence: `v2/src/server/mcp/tools/expenses.ts:437-445` (`attributionThrough` reads `user.name`).
-10. **P-EXP-107.** MCP `list_activity` returns `data: null` for v2 expense events. The current app stores "<vendor> — <title>". The web Log builds the text from the snapshot, but no test asserts it. Evidence: `v2/src/server/ledger.ts:587-595,677-685` write no `data`; `v2/src/client/routes/$group/activity.tsx:71-75`.
+7. **P-AUTH-45, P-AUTH-47, P-EXPORT-05, P-TOOL-EXPORT-06.** Closed on branch `t3/v2-server-gaps` (see "Closed after the audit"). The CSV and JSON export URLs accept only the session cookie. An API key or an OAuth bearer gets 401. MCP `get_group` still gives these URLs to agents (`mcp/tools/groups.ts:165`), and OAUTH.md promises a bearer works. MCP `export_group` works. Evidence: `v2/src/server/app.ts:116-131` (`exportGroup` calls `sessionPrincipal` only) and `app.ts:183-191`. Receipts take the key path (`receipts.ts` `receiptReader`).
+8. **P-MCP-137, P-MCP-138, P-MCP-139.** Closed on branch `t3/v2-server-gaps` (see "Closed after the audit"). The current app's wrapper around three OAuth routes is not ported. An RFC 7009 revoke does not tombstone the connection, so the access token works for up to 300 seconds after the revoke. Delete-consent leaves the connection and the refresh tokens. UserInfo does not check the connection, the consent or a verified email. Evidence: `v2/src/server/app.ts:160` sends every `/api/auth/*` request to Better Auth. Compare `src/app/api/auth/[...all]/route.ts:13-70`. account.md line 107 gives these to the MCP area, and mcp.md line 130 gives them back.
+9. **P-FEED-40.** Closed on branch `t3/v2-server-gaps` (see "Closed after the audit"). MCP `get_expense` with `revision`, `asOf` or `atActivityId` shows current account names in the attribution. The current app shows the names at that point. Evidence: `v2/src/server/mcp/tools/expenses.ts:437-445` (`attributionThrough` reads `user.name`).
+10. **P-EXP-107.** Closed on branch `t3/v2-server-gaps` (see "Closed after the audit"). MCP `list_activity` returns `data: null` for v2 expense events. The current app stores "<vendor> — <title>". The web Log builds the text from the snapshot, but no test asserts it. Evidence: `v2/src/server/ledger.ts:587-595,677-685` write no `data`; `v2/src/client/routes/$group/activity.tsx:71-75`.
 
 ### Nobody can see these yet (data safety and database rules)
 
@@ -111,13 +128,13 @@ Freeman must approve each change, or v2 must change back. In each group, the mos
 
 ### Agents and scripts can see these
 
-- **P-TOOL-LISTEXP-11, P-TOOL-LISTALL-14, P-TOOL-CREATEEXP-15, P-TOOL-BALANCES-04, P-EXPORT-08, P-EXPORT-09, P-EXPORT-10, P-EXPORT-12, P-EXPORT-13.** Money strings have the currency's full decimals ("30.00", not "30") in MCP results and in the JSON export. The value is the same. The `payers` field beside them is approved (multiple payers). history.md marks the export items covered.
+- **P-TOOL-LISTEXP-11, P-TOOL-LISTALL-14, P-TOOL-CREATEEXP-15, P-TOOL-BALANCES-04, P-EXPORT-08, P-EXPORT-09, P-EXPORT-10, P-EXPORT-12, P-EXPORT-13.** Approved (DECISIONS.md, agent output). Money strings have the currency's full decimals ("30.00", not "30") in MCP results and in the JSON export. The value is the same. The `payers` field beside them is approved (multiple payers). history.md marks the export items covered.
 - **P-RECEIPT-17, P-RECEIPT-33, P-RECEIPT-35, P-RECEIPT-39, P-RECEIPT-40, P-RECEIPT-42, P-RECEIPT-43, P-RECEIPT-44, P-TOOL-CREATEEXP-30, P-TOOL-CREATEEXP-31, P-TOOL-UPDATEEXP-13, P-TOOL-UPDATEEXP-14.** Receipt uploads use a single-use server URL instead of a presigned S3 URL, check the type at the PUT, and store the pointer `r2://agentsplit-receipts/<key>` (`receipts.ts:25`). The reason was the Worker and R2. Since the move to Coolify, v2 stores receipts in Garage, so the reason no longer holds. Agents see the new URL and pointer.
-- **P-HIST-09, P-DB-16.** A v2 baseline is type `update_expense` with the caller's source, not `create_expense` with source `baseline`. The MCP attribution queries filter only `source <> 'baseline'` (`mcp/tools/expenses.ts:327,442`), so they count a v2 baseline as an edit. The feed also checks the revision (`feed.ts:51`).
-- **P-DB-79.** v2 writes `source = 'mcp'` for agent writes, where the current app writes `agent`. The JSON export shows the stored value, so it mixes both.
+- **P-HIST-09, P-DB-16.** Changed back on branch `t3/v2-server-gaps`. A v2 baseline is type `update_expense` with the caller's source, not `create_expense` with source `baseline`. The MCP attribution queries filter only `source <> 'baseline'` (`mcp/tools/expenses.ts:327,442`), so they count a v2 baseline as an edit. The feed also checks the revision (`feed.ts:51`).
+- **P-DB-79.** Changed back on branch `t3/v2-server-gaps`. v2 writes `source = 'mcp'` for agent writes, where the current app writes `agent`. The JSON export shows the stored value, so it mixes both.
 - **P-TOOL-ACTIVITY-06.** `list_activity` snapshots changed: `schemaVersion` is the stored format, documents have no size, and group snapshots have no revision. `payers` is approved.
-- **P-TOOL-UPDATEEXP-03, P-TOOL-CREATEEXP-08.** Error messages changed: a missing `expectedRevision` fails schema validation, and payer errors name the field (`payers.0: …`).
-- **P-TOOL-EXPORT-04, P-EXPORT-16, P-GROUP-78.** A missing group answers FORBIDDEN or 403, not NOT_FOUND or 404 "Invalid group ID".
+- **P-TOOL-UPDATEEXP-03, P-TOOL-CREATEEXP-08.** Approved (DECISIONS.md, agent output). Error messages changed: a missing `expectedRevision` fails schema validation, and payer errors name the field (`payers.0: …`).
+- **P-TOOL-EXPORT-04, P-EXPORT-16, P-GROUP-78.** Changed back on branch `t3/v2-server-gaps`. A missing group answers FORBIDDEN or 403, not NOT_FOUND or 404 "Invalid group ID".
 - **P-TOOL-LISTALL-02, P-FEED-12.** The feed cursor takes `createdAt` with microseconds, so rows created in the same millisecond are not skipped. This fixes a current-app bug that group C does not name. The `involvingMe` default in P-TOOL-LISTALL-02 is approved.
 - **P-TOOL-REF-03.** `get_reference_data` lists the 34 currencies in code order, not in the current list order.
 
@@ -233,9 +250,9 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-AUTH-42 | deferred (other area) | account.md:37 | — | tested |
 | P-AUTH-43 | deferred (other area) | account.md:37 | — | tested |
 | P-AUTH-44 | deferred (other area) | account.md:37 | — | tested |
-| P-AUTH-45 | deferred (other area) | account.md:37 | — | gap |
+| P-AUTH-45 | deferred (other area) | account.md:37 | — | closed (branch `t3/v2-server-gaps`) |
 | P-AUTH-46 | deferred (other area) | account.md:37 | — | tested |
-| P-AUTH-47 | deferred (other area) | account.md:37 | — | gap |
+| P-AUTH-47 | deferred (other area) | account.md:37 | — | closed (branch `t3/v2-server-gaps`) |
 | P-AUTH-48 | covered | account.md:38 | — | — |
 | P-AUTH-49 | changed (approved: DECISIONS.md group C) | lead.md:10 | account.md:39 changed | — |
 | P-AUTH-50 | deferred (other area) | account.md:40 | — | untested |
@@ -308,7 +325,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-GROUP-44 | covered | groups.md:42 | — | — |
 | P-GROUP-45 | covered | groups.md:48 | — | — |
 | P-GROUP-46 | covered | groups.md:49 | — | — |
-| P-GROUP-47 | deferred | groups.md:50 | — | gap |
+| P-GROUP-47 | deferred | groups.md:50 | — | closed (branch `t3/v2-server-gaps`) |
 | P-GROUP-48 | covered | lead.md:8 | groups.md:51 deferred | — |
 | P-GROUP-49 | covered | groups.md:52 | — | — |
 | P-GROUP-50 | deferred (other area) | groups.md:53 | — | untested |
@@ -339,7 +356,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-GROUP-75 | covered | groups.md:79 | — | — |
 | P-GROUP-76 | changed (approved: DECISIONS.md group C) | groups.md:80 | — | — |
 | P-GROUP-77 | open | groups.md:81 | — | tested |
-| P-GROUP-78 | changed (no decision) | groups.md:82 | — | — |
+| P-GROUP-78 | changed (no decision) | groups.md:82 | — | closed (branch `t3/v2-server-gaps`) |
 | P-GROUP-79 | covered | groups.md:88 | — | — |
 | P-GROUP-80 | covered | groups.md:88 | — | — |
 | P-GROUP-81 | covered | groups.md:88 | — | — |
@@ -474,7 +491,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-EXP-104 | covered | expenses.md:62 | — | — |
 | P-EXP-105 | deferred | expenses.md:63 | — | tested |
 | P-EXP-106 | covered | expenses.md:62 | — | — |
-| P-EXP-107 | deferred | expenses.md:64 | — | gap |
+| P-EXP-107 | deferred | expenses.md:64 | — | closed (branch `t3/v2-server-gaps`) |
 | P-EXP-108 | deferred (other area) | expenses.md:65 | — | tested |
 | P-EXP-109 | covered | expenses.md:66 | — | — |
 | P-EXP-110 | covered | expenses.md:66 | — | — |
@@ -781,7 +798,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-UNGROUP-36 | deferred | feed.md:121 | — | untested |
 | P-UNGROUP-37 | covered | feed.md:122 | — | — |
 | P-UNGROUP-38 | covered | feed.md:123 | — | — |
-| P-UNGROUP-39 | deferred | feed.md:124 | — | gap |
+| P-UNGROUP-39 | deferred | feed.md:124 | — | closed (branch `t3/v2-server-gaps`) |
 | P-UNGROUP-40 | covered | feed.md:125 | — | — |
 | P-UNGROUP-41 | deferred | feed.md:126 | — | tested |
 | P-UNGROUP-42 | deferred | feed.md:127 | — | tested |
@@ -854,16 +871,16 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-FEED-37 | covered | feed.md:80 | — | — |
 | P-FEED-38 | covered | feed.md:81 | — | — |
 | P-FEED-39 | covered | feed.md:82 | — | — |
-| P-FEED-40 | deferred | feed.md:83 | — | gap |
+| P-FEED-40 | deferred | feed.md:83 | — | closed (branch `t3/v2-server-gaps`) |
 | P-HIST-01 | deferred (other area) | history.md:23 | — | tested |
 | P-HIST-02 | covered | history.md:24 | — | — |
-| P-HIST-03 | deferred (other area) | history.md:25 | — | gap |
+| P-HIST-03 | deferred (other area) | history.md:25 | — | closed (branch `t3/v2-server-gaps`) |
 | P-HIST-04 | deferred (other area) | history.md:25 | — | tested |
 | P-HIST-05 | deferred (other area) | history.md:23 | — | tested |
 | P-HIST-06 | deferred (other area) | history.md:23 | — | tested |
 | P-HIST-07 | covered | history.md:26 | — | — |
 | P-HIST-08 | deferred (other area) | history.md:27 | — | tested |
-| P-HIST-09 | changed (no decision) | history.md:28 | — | — |
+| P-HIST-09 | changed (no decision) | history.md:28 | — | closed (branch `t3/v2-server-gaps`) |
 | P-HIST-10 | deferred (other area) | history.md:23 | — | tested |
 | P-HIST-11 | deferred (other area) | history.md:23 | — | untested |
 | P-HIST-12 | deferred (other area) | history.md:23 | — | untested |
@@ -917,7 +934,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-HIST-60 | deferred (other area) | history.md:50 | — | tested |
 | P-HIST-61 | deferred (other area) | history.md:50 | — | tested |
 | P-HIST-62 | covered | history.md:51 | — | — |
-| P-HIST-63 | deferred (other area) | history.md:52 | — | gap |
+| P-HIST-63 | deferred (other area) | history.md:52 | — | closed (branch `t3/v2-server-gaps`) |
 | P-HIST-64 | covered | history.md:53 | — | — |
 | P-HIST-65 | covered | history.md:54 | — | — |
 | P-HIST-66 | covered | history.md:55 | — | — |
@@ -1094,18 +1111,18 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-EXPORT-02 | deferred | history.md:70 | — | not-applicable, change with no decision |
 | P-EXPORT-03 | covered | history.md:71 | — | — |
 | P-EXPORT-04 | covered | history.md:71 | — | — |
-| P-EXPORT-05 | deferred | history.md:72 | — | gap |
+| P-EXPORT-05 | deferred | history.md:72 | — | closed (branch `t3/v2-server-gaps`) |
 | P-EXPORT-06 | covered | history.md:73 | — | — |
 | P-EXPORT-07 | covered | history.md:74 | — | — |
-| P-EXPORT-08 | covered | history.md:75 | — | change with no decision |
-| P-EXPORT-09 | covered | history.md:75 | — | change with no decision |
-| P-EXPORT-10 | covered | history.md:75 | — | change with no decision |
+| P-EXPORT-08 | covered | history.md:75 | — | change approved (DECISIONS.md, agent output) |
+| P-EXPORT-09 | covered | history.md:75 | — | change approved (DECISIONS.md, agent output) |
+| P-EXPORT-10 | covered | history.md:75 | — | change approved (DECISIONS.md, agent output) |
 | P-EXPORT-11 | covered | history.md:76 | — | — |
-| P-EXPORT-12 | covered | history.md:75 | — | change with no decision |
-| P-EXPORT-13 | covered | history.md:75 | — | change with no decision |
+| P-EXPORT-12 | covered | history.md:75 | — | change approved (DECISIONS.md, agent output) |
+| P-EXPORT-13 | covered | history.md:75 | — | change approved (DECISIONS.md, agent output) |
 | P-EXPORT-14 | changed (approved: DECISIONS.md group B) | history.md:77 | — | — |
 | P-EXPORT-15 | changed (approved: DECISIONS.md group G) | history.md:78 | — | — |
-| P-EXPORT-16 | changed (no decision) | history.md:79 | — | — |
+| P-EXPORT-16 | changed (no decision) | history.md:79 | — | closed (branch `t3/v2-server-gaps`) |
 | P-EXPORT-17 | covered | history.md:74 | — | — |
 | P-EXPORT-18 | covered | history.md:80 | — | — |
 | P-EXPORT-19 | covered | history.md:80 | — | — |
@@ -1358,9 +1375,9 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-MCP-134 | covered | mcp.md:129 | account.md:106 deferred (other area) | — |
 | P-MCP-135 | covered | mcp.md:129 | account.md:106 deferred (other area) | — |
 | P-MCP-136 | covered | mcp.md:129 | account.md:106 deferred (other area) | — |
-| P-MCP-137 | deferred | mcp.md:130 | account.md:107 deferred (other area) | gap |
-| P-MCP-138 | deferred | mcp.md:130 | account.md:107 deferred (other area) | gap |
-| P-MCP-139 | deferred | mcp.md:130 | account.md:107 deferred (other area) | gap |
+| P-MCP-137 | deferred | mcp.md:130 | account.md:107 deferred (other area) | closed (branch `t3/v2-server-gaps`) |
+| P-MCP-138 | deferred | mcp.md:130 | account.md:107 deferred (other area) | closed (branch `t3/v2-server-gaps`) |
+| P-MCP-139 | deferred | mcp.md:130 | account.md:107 deferred (other area) | closed (branch `t3/v2-server-gaps`) |
 | P-MCP-140 | covered | account.md:108 | mcp.md:130 deferred | — |
 | P-MCP-141 | covered | account.md:109 | mcp.md:131 deferred | — |
 | P-MCP-142 | covered | account.md:109 | mcp.md:131 deferred | — |
@@ -1411,7 +1428,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-TOOL-LISTALL-11 | code | mcp.md:231 | feed.md:176 deferred | — |
 | P-TOOL-LISTALL-12 | code | mcp.md:231 | feed.md:176 deferred | — |
 | P-TOOL-LISTALL-13 | code | mcp.md:231 | feed.md:176 deferred | — |
-| P-TOOL-LISTALL-14 | changed (no decision) | mcp.md:233 | feed.md:176 deferred | — |
+| P-TOOL-LISTALL-14 | changed (approved: DECISIONS.md, agent output) | mcp.md:233 | feed.md:176 deferred | — |
 | P-TOOL-LISTALL-15 | covered | mcp.md:234 | feed.md:176 deferred | — |
 | P-TOOL-LISTALL-16 | code | mcp.md:231 | feed.md:176 deferred | — |
 | P-TOOL-LISTALL-17 | covered | mcp.md:235 | feed.md:176 deferred | — |
@@ -1508,7 +1525,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-TOOL-LISTEXP-08 | covered | mcp.md:158 | — | — |
 | P-TOOL-LISTEXP-09 | covered | mcp.md:158 | — | — |
 | P-TOOL-LISTEXP-10 | covered | mcp.md:159 | — | — |
-| P-TOOL-LISTEXP-11 | changed (no decision) | mcp.md:160 | — | — |
+| P-TOOL-LISTEXP-11 | changed (approved: DECISIONS.md, agent output) | mcp.md:160 | — | — |
 | P-TOOL-LISTEXP-12 | covered | mcp.md:158 | — | — |
 | P-TOOL-LISTEXP-13 | covered | mcp.md:158 | — | — |
 | P-TOOL-LISTEXP-14 | covered | mcp.md:161 | — | — |
@@ -1532,14 +1549,14 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-TOOL-CREATEEXP-05 | covered | mcp.md:178 | — | — |
 | P-TOOL-CREATEEXP-06 | covered | mcp.md:178 | — | — |
 | P-TOOL-CREATEEXP-07 | covered | mcp.md:178 | — | — |
-| P-TOOL-CREATEEXP-08 | changed (no decision) | mcp.md:180 | — | — |
+| P-TOOL-CREATEEXP-08 | changed (approved: DECISIONS.md, agent output) | mcp.md:180 | — | — |
 | P-TOOL-CREATEEXP-09 | covered | mcp.md:181 | — | — |
 | P-TOOL-CREATEEXP-10 | covered | mcp.md:178 | — | — |
 | P-TOOL-CREATEEXP-11 | covered | mcp.md:178 | — | — |
 | P-TOOL-CREATEEXP-12 | covered | mcp.md:181 | — | — |
 | P-TOOL-CREATEEXP-13 | covered | mcp.md:178 | — | — |
 | P-TOOL-CREATEEXP-14 | changed (approved: DECISIONS.md group B) | mcp.md:182 | — | — |
-| P-TOOL-CREATEEXP-15 | changed (no decision) | mcp.md:183 | — | — |
+| P-TOOL-CREATEEXP-15 | changed (approved: DECISIONS.md, agent output) | mcp.md:183 | — | — |
 | P-TOOL-CREATEEXP-16 | covered | mcp.md:178 | — | — |
 | P-TOOL-CREATEEXP-17 | covered | mcp.md:184 | — | — |
 | P-TOOL-CREATEEXP-18 | deferred | mcp.md:185 | — | tested |
@@ -1559,7 +1576,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-TOOL-CREATEEXP-32 | covered | mcp.md:192 | — | — |
 | P-TOOL-UPDATEEXP-01 | covered | mcp.md:198 | — | — |
 | P-TOOL-UPDATEEXP-02 | covered | mcp.md:198 | — | — |
-| P-TOOL-UPDATEEXP-03 | changed (no decision) | mcp.md:199 | — | — |
+| P-TOOL-UPDATEEXP-03 | changed (approved: DECISIONS.md, agent output) | mcp.md:199 | — | — |
 | P-TOOL-UPDATEEXP-04 | covered | mcp.md:198 | — | — |
 | P-TOOL-UPDATEEXP-05 | covered | mcp.md:198 | — | — |
 | P-TOOL-UPDATEEXP-06 | covered | mcp.md:198 | — | — |
@@ -1586,7 +1603,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-TOOL-BALANCES-01 | covered | mcp.md:288 | — | — |
 | P-TOOL-BALANCES-02 | covered | mcp.md:288 | — | — |
 | P-TOOL-BALANCES-03 | covered | mcp.md:288 | — | — |
-| P-TOOL-BALANCES-04 | changed (no decision) | mcp.md:289 | — | — |
+| P-TOOL-BALANCES-04 | changed (approved: DECISIONS.md, agent output) | mcp.md:289 | — | — |
 | P-TOOL-BALANCES-05 | covered | mcp.md:288 | — | — |
 | P-TOOL-BALANCES-06 | covered | mcp.md:290 | — | — |
 | P-TOOL-BALANCES-07 | code | mcp.md:291 | — | — |
@@ -1634,9 +1651,9 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-TOOL-EXPORT-01 | covered | mcp.md:343 | — | — |
 | P-TOOL-EXPORT-02 | covered | mcp.md:343 | — | — |
 | P-TOOL-EXPORT-03 | changed (approved: DECISIONS.md group B) | mcp.md:344 | — | — |
-| P-TOOL-EXPORT-04 | changed (no decision) | mcp.md:345 | — | — |
+| P-TOOL-EXPORT-04 | changed (no decision) | mcp.md:345 | — | closed (branch `t3/v2-server-gaps`) |
 | P-TOOL-EXPORT-05 | covered | mcp.md:343 | — | — |
-| P-TOOL-EXPORT-06 | deferred | mcp.md:346 | — | gap |
+| P-TOOL-EXPORT-06 | deferred | mcp.md:346 | — | closed (branch `t3/v2-server-gaps`) |
 | P-DB-01 | missing | — | — | tested |
 | P-DB-02 | missing | — | — | tested |
 | P-DB-03 | missing | — | — | tested |
@@ -1652,7 +1669,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-DB-13 | missing | — | — | untested |
 | P-DB-14 | missing | — | — | untested |
 | P-DB-15 | missing | — | — | approved-change |
-| P-DB-16 | missing | — | — | unapproved-change, change with no decision |
+| P-DB-16 | missing | — | — | closed (branch `t3/v2-server-gaps`) |
 | P-DB-17 | missing | — | — | tested |
 | P-DB-18 | missing | — | — | untested |
 | P-DB-19 | missing | — | — | tested |
@@ -1715,7 +1732,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-DB-76 | missing | — | — | approved-change |
 | P-DB-77 | missing | — | — | gap |
 | P-DB-78 | missing | — | — | untested |
-| P-DB-79 | missing | — | — | unapproved-change, change with no decision |
+| P-DB-79 | missing | — | — | closed (branch `t3/v2-server-gaps`) |
 | P-DB-80 | missing | — | — | tested |
 | P-DB-81 | missing | — | — | not-applicable |
 | P-DB-82 | missing | — | — | not-applicable |
@@ -1824,9 +1841,9 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-AUTH-42 | tested | authenticate.ts:18 `validKey`; test/db/mcp-auth.test.ts "reads the raw key from X-API-Key or Bearer, and refuses ambiguity" | Asserts `short`, 4097 characters, a comma and trailing text are refused. |
 | P-AUTH-43 | tested | authenticate.ts:32; test/db/mcp-auth.test.ts "reads the raw key from X-API-Key or Bearer, and refuses ambiguity"; test/db/mcp-tools.test.ts "refuses conflicting, malformed, unknown, revoked and unverified credentials with one challenge format" | Equal pair accepted, different pair 401. |
 | P-AUTH-44 | tested | authenticate.ts:29; test/db/mcp-auth.test.ts "reads the raw key from X-API-Key or Bearer, and refuses ambiguity" (`Basic <key>` with a valid X-API-Key) | No fallback to the valid header. |
-| P-AUTH-45 | gap | Receipts: v2/src/server/receipts.ts:108 `receiptReader` takes the key path when either header is present. Exports: v2/src/server/app.ts:332 `exportGroup` reads only the session cookie | Exports ignore X-API-Key and Authorization entirely, and with a key header plus a cookie they use the cookie. An agent fetching the CSV/JSON export URL with its key gets 401. |
+| P-AUTH-45 | closed (branch `t3/v2-server-gaps`) | Receipts: v2/src/server/receipts.ts:108 `receiptReader` takes the key path when either header is present. Exports: v2/src/server/app.ts:332 `exportGroup` reads only the session cookie | Exports ignore X-API-Key and Authorization entirely, and with a key header plus a cookie they use the cookie. An agent fetching the CSV/JSON export URL with its key gets 401. |
 | P-AUTH-46 | tested | app.ts:333,337 (export 401 "Sign in required", 403 "Group access denied", Cache-Control `private, no-store`); receipts.ts:127-129; e2e/expense-edit-export.spec.ts "the Expenses tab exports the group as CSV, for members only" (401); test/db/stats-export.test.ts "refuses non-members (P-EXPORT-04)"; test/db/mcp-uploads.test.ts "uploads, attaches and downloads a receipt with the same API key" (403, 401) | Tests assert statuses only, not bodies or headers. The receipt 401 body is "Authentication required" in both apps; PARITY's wording is wrong for receipts. |
-| P-AUTH-47 | gap | MCP and receipts: test/db/mcp-uploads.test.ts "uploads, attaches and downloads a receipt with the same API key"; exports: app.ts:332 cookie only | The raw key does not authenticate `/<group>/expenses/export/{csv,json}`. MCP get_group still advertises those links (mcp/tools/groups.ts:165); `export_group` over MCP is the only agent path. An agent would notice. |
+| P-AUTH-47 | closed (branch `t3/v2-server-gaps`) | MCP and receipts: test/db/mcp-uploads.test.ts "uploads, attaches and downloads a receipt with the same API key"; exports: app.ts:332 cookie only | The raw key does not authenticate `/<group>/expenses/export/{csv,json}`. MCP get_group still advertises those links (mcp/tools/groups.ts:165); `export_group` over MCP is the only agent path. An agent would notice. |
 | P-AUTH-50 | untested | v2/src/client/routes/$group.tsx:19 redirects a Forbidden load to `/groups?access=denied` | Server refusal is tested ("does not grant access through a slug"); the client redirect has no e2e. |
 | P-AUTH-59 | unapproved-change | v2/src/client/routes/index.tsx:50 `<Button asChild><Link to="/sign-in">Log In</Link></Button>` | The landing has a link in `main`, not a button; no nav, avatar or theme toggle (matches). No test. No decision covers the change. |
 | P-AUTH-60 | unapproved-change | index.tsx:50 links to `/sign-in`; the Google call is in sign-in.tsx:68 | The current landing button calls `signIn.social({provider:'google', callbackURL:'/'})` directly; v2 adds a "Welcome to AgentSplit" page and a second Log In click. A person in the browser notices. |
@@ -1837,7 +1854,7 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-AUTH-71 | untested | v2/src/client/routes/$group/edit.tsx:184 shows "<name> (you)"; no "Active user" selector | The current app also renders "(you)" (src/app/groups/[groupId]/members.tsx:164); no "Participant: <name>" text exists in src/, so the PARITY text and the old e2e assertion are stale. v2 matches the current UI. |
 | P-AUTH-72 | tested | ledger.ts:516 `actor`; test/db/mcp-tools.test.ts "records the authenticated actor and key, whoever paid"; test/db/feed.test.ts "attributes from create and update events, never the payer, and ignores baselines" | Web writes record source `web`, agentKeyId null (principal from session.ts:58). |
 | P-AUTH-73 | tested | test/db/groups.test.ts "binds a legacy member without a participant, once (P-ACCESS-60..64)"; test/db/stats-export.test.ts "hides personal totals without a bound participant (P-STATS-21)" | Bind requires the matching verified email. |
-| P-GROUP-47 | gap | v2/src/client/routes/$group.tsx loader and ledger.ts:109 `getGroup` never check `groups.kind` | A private context ID opens the group layout (tabs, Settings) instead of `/expenses/<expenseId>`. MCP get_group gives `/groups/<contextId>` as the share link for a private context (mcp/tools/groups.ts:153), so a person following it sees the wrong page. |
+| P-GROUP-47 | closed (branch `t3/v2-server-gaps`) | v2/src/client/routes/$group.tsx loader and ledger.ts:109 `getGroup` never check `groups.kind` | A private context ID opens the group layout (tabs, Settings) instead of `/expenses/<expenseId>`. MCP get_group gives `/groups/<contextId>` as the share link for a private context (mcp/tools/groups.ts:153), so a person following it sees the wrong page. |
 | P-GROUP-50 | untested | v2/src/client/routes/$group.tsx:34-42 `TABS` in the required order | No test asserts the order. "Payments" is English, as group F/G allow. |
 | P-GROUP-51 | tested | $group.tsx:72-82 `activeProps`; $group/index.tsx:4; e2e/group-expenses.spec.ts "a group opens on its expenses, sorts by date or by last change, and keeps the rail" | e2e checks the default Expenses tab and a tab click under the slug path; the active style is not asserted. |
 | P-GROUP-52 | tested | $group.tsx:84-97 grid with `aside` rail; e2e/group-expenses.spec.ts "a group opens on its expenses, sorts by date or by last change, and keeps the rail" | The expense editor routes are children of `/$group`, so they share the layout. |
@@ -1845,7 +1862,7 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-EXP-22 | browser check | v2/src/client/components/category-icon.tsx; v2/src/client/routes/$group/expenses.index.tsx, v2/src/client/routes/expenses/-feed-card.tsx | Closed after the audit. The map is keyed by the category IDs of db/migrations/0002_categories.sql, with the current app's icons. The icons are in their own 4.1 KB lazy chunk, not up front. |
 | P-EXP-47 | tested | v2/e2e/expense-edit-export.spec.ts "an expense opens from the list without a page load and shows its log"; v2/src/client/routes/$group/expenses.$expenseId.edit.tsx:50 | ExpenseLog renders under the editor; record says deferred, but the history merge did it. |
 | P-EXP-105 | tested | v2/test/db/mcp-tools.test.ts "edits only the given fields, checks the revision, and skips no-op revisions" (omitted vendor stays 'Nopa'; vendor: null clears) | The `vendor: ''` case is not asserted; v2/src/shared/expense-rules.ts:92 turns '' into null. |
-| P-EXP-107 | gap | Web: v2/src/client/routes/$group/activity.tsx:71-75 uses titleWithVendor (untested). MCP: v2/src/server/ledger.ts:587-595,677-685 write no `data`, so list_activity `data` is null (v2/src/server/mcp/tools/history.ts:316) | Agent over MCP: v2 expense events have data=null where the old app stored "<vendor> — <title>". The web Log matches but no test asserts it. |
+| P-EXP-107 | closed (branch `t3/v2-server-gaps`) | Web: v2/src/client/routes/$group/activity.tsx:71-75 uses titleWithVendor (untested). MCP: v2/src/server/ledger.ts:587-595,677-685 write no `data`, so list_activity `data` is null (v2/src/server/mcp/tools/history.ts:316) | Agent over MCP: v2 expense events have data=null where the old app stored "<vendor> — <title>". The web Log matches but no test asserts it. |
 | P-EXP-108 | tested | v2/test/db/mcp-tools.test.ts "lists with filters before offset pagination, newest expense date first" (vendor ' landlord ' finds 'Landlord'); v2/src/server/mcp/tools/expenses.ts:499-500 | Trim and case-insensitivity are asserted; a partial-match negative is not. |
 | P-EXP-111 | tested | v2/src/server/mcp/endpoint.ts:33 refuses every `kind: 'write'` tool; v2/test/db/mcp-oauth.test.ts "5. a read-only grant gets an HTTP 403 step-up challenge..." (create_expense, count unchanged); v2/test/db/mcp-tools.test.ts "advertises the current names, annotations, scopes and input fields" pins update/delete as write | Only create is exercised directly; update and delete share the same kind check. The answer is now HTTP 403 insufficient_scope, not a tool FORBIDDEN (docs/v2/OAUTH-CLAUDE-CODE.md, not in DECISIONS.md). |
 | P-EXP-112 | tested | v2/test/db/mcp-tools.test.ts "refuses bad list bounds and history selections before reading"; "advertises the current names, annotations, scopes and input fields" (fields match the current fixture); v2/src/server/mcp/tools/expenses.ts:452-467 | Default limit 10 (expenses.ts:472) and the 200-character filter cap are not asserted. |
@@ -1898,7 +1915,7 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-UNGROUP-34 | tested | v2/test/db/mcp-tools.test.ts "refuses a group outside the caller’s memberships as Forbidden, with a certain outcome" (exact message) | \| |
 | P-UNGROUP-35 | untested | v2/src/server/mcp/tools/expenses.ts:688 | \| |
 | P-UNGROUP-36 | untested | v2/src/server/mcp/tools/expenses.ts:680 | See P-EXP-128: the existing test fails the schema first. |
-| P-UNGROUP-39 | gap | v2/src/client/routes/$group.tsx:15-30, v2/src/server/ledger.ts:109-122 (getGroup has no kind filter), v2/src/shared/api/core.ts:76 (Group has no kind) | Person in the browser: /<contextId>/… and /groups/<contextId>/… open the full group shell (tabs, Settings) instead of /expenses/<expenseId>. |
+| P-UNGROUP-39 | closed (branch `t3/v2-server-gaps`) | v2/src/client/routes/$group.tsx:15-30, v2/src/server/ledger.ts:109-122 (getGroup has no kind filter), v2/src/shared/api/core.ts:76 (Group has no kind) | Person in the browser: /<contextId>/… and /groups/<contextId>/… open the full group shell (tabs, Settings) instead of /expenses/<expenseId>. |
 | P-UNGROUP-41 | tested | v2/test/db/mcp-tools.test.ts "reads a group with access, names, members, reserved IDs, expense participants and links" (group/null); v2/test/db/mcp-more-tools.test.ts "records repayments inside the private context, and keeps its people fixed" (ungrouped) | \| |
 | P-UNGROUP-42 | tested | v2/test/db/groups.test.ts "refuses settings edits of a private expense context (P-GROUP-74)" | v2/src/server/groups.ts:294-295. |
 | P-UNGROUP-43 | untested | v2/src/server/groups.ts:431-436 | The app-level FORBIDDEN text is not asserted. The database trigger is: v2/test/db/ungrouped.test.ts "private access cannot be expanded or reclassified" (outsider invitation → 23514). |
@@ -1906,9 +1923,9 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-UNGROUP-62 | tested | v2/test/db/ungrouped.test.ts "three-person ad hoc expense and email invitation are private and atomic" (guest NotFound before joining); v2/test/db/groups.test.ts "refuses the wrong email, revoked and expired invitations (P-ACCESS-38, -44)" | The wrong-email join is asserted on a named group; it is the same code (groups.ts:441-443). |
 | P-UNGROUP-63 | untested | v2/src/client/routes/invite.$token.tsx:31,36,44-45 | Copy matches the current app; no test opens a private invitation page. |
 | P-FEED-10 | tested | v2/test/db/groups.test.ts "lists named groups newest first, with counts and the caller net per currency (… P-BAL-102)" | Partial. The sum is asserted; the settled-up text and the card without an identity selector are not (groups.index.tsx:262-297). |
-| P-FEED-40 | gap | Live: v2/test/db/feed.test.ts "attributes from create and update events, never the payer, and ignores baselines". Boundary: v2/src/server/mcp/tools/expenses.ts:437-445 (attributionThrough reads the current u.name) | Agent over MCP: get_expense with revision/asOf/atActivityId shows current account names in attribution; the old app used the recorded names (src/lib/expense-attribution.ts:40-47). |
+| P-FEED-40 | closed (branch `t3/v2-server-gaps`) | Live: v2/test/db/feed.test.ts "attributes from create and update events, never the payer, and ignores baselines". Boundary: v2/src/server/mcp/tools/expenses.ts:437-445 (attributionThrough reads the current u.name) | Agent over MCP: get_expense with revision/asOf/atActivityId shows current account names in attribution; the old app used the recorded names (src/lib/expense-attribution.ts:40-47). |
 | P-HIST-01 | tested | v2/test/db/expenses.test.ts "records receipts in revision 1 and keeps them when an update omits them"; "creates every missed month on the anchor day, once, with copies of the receipts" (recurring) | Private creates go through ledger.createExpense (ungrouped.ts:112). |
-| P-HIST-03 | gap | v2/src/server/ungrouped.ts:94,107 writes group {…, defaultCurrency} with no `currency`; v2/src/shared/history.ts:142-153,311 require `currency` | Named groups are tested (groups.test.ts "lists a group edit in the Log with the snapshot the history reader accepts"). Each private-context create_group snapshot fails the reader with UnreadableSnapshot, so list_activity and the Log on a private context fail. Agent over MCP notices. Activities are append-only, so the fix must go in the reader. |
+| P-HIST-03 | closed (branch `t3/v2-server-gaps`) | v2/src/server/ungrouped.ts:94,107 writes group {…, defaultCurrency} with no `currency`; v2/src/shared/history.ts:142-153,311 require `currency` | Named groups are tested (groups.test.ts "lists a group edit in the Log with the snapshot the history reader accepts"). Each private-context create_group snapshot fails the reader with UnreadableSnapshot, so list_activity and the Log on a private context fail. Agent over MCP notices. Activities are append-only, so the fix must go in the reader. |
 | P-HIST-04 | tested | v2/db/schema/app.ts:206 (enum); v2/test/db/ungrouped.test.ts "deletes the original after its repayments, and then refuses new repayments"; v2/test/db/groups.test.ts "creates an email-bound invitation…" (create/update/join_group) | \| |
 | P-HIST-05 | tested | v2/test/db/expenses.test.ts "removing a receipt keeps it in the earlier revision, readable by members"; v2/test/db/history.test.ts "returns the values and names of a revision" | \| |
 | P-HIST-06 | tested | v2/test/db/mcp-tools.test.ts "soft-deletes with the current revision and keeps the history"; v2/test/db/invariants.test.ts "freezes a deleted expense and its allocations" | Null snapshot is enforced by v2/db/migrations/0001_invariants.sql:56. |
@@ -1931,7 +1948,7 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-HIST-27 | not-applicable | v2/src/server/ledger.ts:37-45 (missing group = Forbidden); v2/test/db/mcp-tools.test.ts "denies a group of someone else with a certain outcome" ('missing-group') | v2 answers FORBIDDEN. The old NOT_FOUND sat behind src/trpc/init.ts:91, which already answered FORBIDDEN, and groups are never deleted. |
 | P-HIST-60 | tested | v2/test/db/history.test.ts "keeps currencies separate and frozen after a currency edit (P-HIST-58)"; v2/test/db/groups.test.ts "keeps existing expenses unchanged when the default currency changes (P-GROUP-63)" | \| |
 | P-HIST-61 | tested | v2/test/db/expenses.test.ts "removing a receipt keeps it in the earlier revision, readable by members" | The "another expense with the same file" half is untested; writeDocuments deletes only this expense's rows (ledger.ts:473). |
-| P-HIST-63 | gap | v2/src/client/routes/$group.tsx:14-19 (sign-in, then Forbidden → /groups?access=denied) | Access part done, untested. Missing: private contexts do not redirect to /expenses/<expenseId> (see P-UNGROUP-39). Person in the browser notices. |
+| P-HIST-63 | closed (branch `t3/v2-server-gaps`) | v2/src/client/routes/$group.tsx:14-19 (sign-in, then Forbidden → /groups?access=denied) | Access part done, untested. Missing: private contexts do not redirect to /expenses/<expenseId> (see P-UNGROUP-39). Person in the browser notices. |
 | P-ACCESS-02 | tested | same as P-AUTH-21: v2/src/server/mcp/oauth.ts:161, endpoint.ts:33; v2/test/db/mcp-oauth.test.ts "follow the current consent: write removed means step-up, read removed means 403" | RPC has no OAuth principals (rpc.ts:39); MCP read refusal asserts 403 with `Read permission is no longer granted`. |
 | P-ACCESS-04 | tested | test/db/mcp-tools.test.ts "fails the whole call when one requested group is not the caller’s" | The record's "Deferred (MCP area)" is stale. |
 | P-ACCESS-05 | tested | test/db/mcp-more-tools.test.ts "sums account balances per currency, restricts the scope, and refuses a foreign group or participant" | With no groups it uses every membership; one foreign group fails the call. |
@@ -1943,7 +1960,7 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-SETTINGS-13 | tested | sql.ts:30 coalesce to the stored name; test/db/mcp-tools.test.ts "reads a group with access, names, members, reserved IDs, expense participants and links" (`pc` keeps "Name pc") |  |
 | P-SETTINGS-14 | untested | sql.ts:28 joins `"user"` only `AND bu.email_verified` | No test binds an unverified account to a participant and checks the name. |
 | P-EXPORT-02 | not-applicable | src/lib/analytics/config.ts:9-11 returns `{ providers: [] }` always (P-PWA-44); v2 has no analytics client (grep finds none) | The current app's export event never leaves the browser, so nobody can observe its absence. No decision covers dropping the analytics layer. |
-| P-EXPORT-05 | gap | v2/src/server/app.ts:116-124 `exportGroup` calls only `sessionPrincipal`; app.ts:188 passes only the cookie | An agent that GETs `/<group>/expenses/export/csv` with `X-API-Key` gets 401 "Sign in required". Agents over MCP can use `export_group` (content inline), so only direct-HTTP scripts notice. |
+| P-EXPORT-05 | closed (branch `t3/v2-server-gaps`) | v2/src/server/app.ts:116-124 `exportGroup` calls only `sessionPrincipal`; app.ts:188 passes only the cookie | An agent that GETs `/<group>/expenses/export/csv` with `X-API-Key` gets 401 "Sign in required". Agents over MCP can use `export_group` (content inline), so only direct-HTTP scripts notice. |
 | P-PWA-04 | browser check | v2/src/client/pwa.ts `addAppleSplashImages`; v2/src/client/main.tsx | Closed after the audit. The same algorithm, icon and color as the current app, with the same two media queries. It runs only where `navigator.standalone` exists (iOS), so other browsers skip the canvas work. |
 | P-PWA-21 | unapproved-change | v2/src/client/routes/groups.$.tsx:5-10 (client redirect); v2/src/server/assets.ts:102 serves the SPA page with `no-cache` | No server 307 and no `Cache-Control: private, no-store`; a non-JS client gets 200 HTML. groups.md P-GROUP-100 records "Changed" but DECISIONS.md has no entry. Browser users see the same end URL. |
 | P-PWA-22 | untested | v2/src/server/assets.ts:88 answers non-GET/HEAD with 405, never a redirect | No test for a POST to `/groups/<id>`. |
@@ -1971,13 +1988,13 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-MCP-125 | untested | oauth-provider `validateClientCredentials` (authorize-*.mjs:1, used at token) | No v2 test of a confidential client at all. |
 | P-MCP-126 | untested | oauth-provider `consumeClientAssertion` (authorize-*.mjs exports); account.test.ts "serves the authorization-server metadata" asserts only that private_key_jwt is advertised | No v2 test signs or replays a client assertion. |
 | P-MCP-128 | untested | v2/src/server/auth.ts:69-75 `cimdFetch`; auth-options.ts:52 `cimd(... 'mcp-2026-07-28')` | mcp-oauth.test.ts covers Claude Code's CIMD document only (fetch stubbed); ChatGPT's document, its redirect and its private_key_jwt are not exercised. |
-| P-MCP-137 | gap | v2/src/server/app.ts:160 passes /api/auth/oauth2/revoke straight to Better Auth; oauth-provider authorize-*.mjs:6218-6268 only marks the refresh row revoked and deletes opaque access rows; mcp/oauth.ts:144-155 checks `oauth_connections.revoked_at`, which nothing sets | Missing: the current app's wrapper (src/app/api/auth/[...all]/route.ts:38-70) that tombstones the connection after a successful refresh revoke. An agent over MCP keeps a working access JWT for up to 300 s after it revokes. |
-| P-MCP-138 | gap | app.ts:160 passes /api/auth/oauth2/delete-consent straight to Better Auth; oauth-provider authorize-*.mjs:5727-5747 deletes only the consent row | Partly: MCP access and refresh stop at once (mcp/oauth.ts:137,154; auth.ts:47), but the connection is not tombstoned and refresh tokens remain, so a later re-consent revives the old refresh token and any unexpired JWT. Nobody visible: the v2 settings page uses account.revokeConnection (settings.connections.index.tsx:23), which tombstones. |
-| P-MCP-139 | gap | app.ts:160 passes /api/auth/oauth2/userinfo straight to Better Auth; oauth-provider authorize-*.mjs:1363-1410 checks only the JWT, `openid` scope and that the user exists | Missing: the current app's `authenticateOAuth` gate (route.ts:13-17). An OAuth client keeps reading name and email for up to 300 s after its connection is revoked, and an unverified account passes. |
+| P-MCP-137 | closed (branch `t3/v2-server-gaps`) | v2/src/server/app.ts:160 passes /api/auth/oauth2/revoke straight to Better Auth; oauth-provider authorize-*.mjs:6218-6268 only marks the refresh row revoked and deletes opaque access rows; mcp/oauth.ts:144-155 checks `oauth_connections.revoked_at`, which nothing sets | Missing: the current app's wrapper (src/app/api/auth/[...all]/route.ts:38-70) that tombstones the connection after a successful refresh revoke. An agent over MCP keeps a working access JWT for up to 300 s after it revokes. |
+| P-MCP-138 | closed (branch `t3/v2-server-gaps`) | app.ts:160 passes /api/auth/oauth2/delete-consent straight to Better Auth; oauth-provider authorize-*.mjs:5727-5747 deletes only the consent row | Partly: MCP access and refresh stop at once (mcp/oauth.ts:137,154; auth.ts:47), but the connection is not tombstoned and refresh tokens remain, so a later re-consent revives the old refresh token and any unexpired JWT. Nobody visible: the v2 settings page uses account.revokeConnection (settings.connections.index.tsx:23), which tombstones. |
+| P-MCP-139 | closed (branch `t3/v2-server-gaps`) | app.ts:160 passes /api/auth/oauth2/userinfo straight to Better Auth; oauth-provider authorize-*.mjs:1363-1410 checks only the JWT, `openid` scope and that the user exists | Missing: the current app's `authenticateOAuth` gate (route.ts:13-17). An OAuth client keeps reading name and email for up to 300 s after its connection is revoked, and an unverified account passes. |
 | P-MCP-151 | untested | v2/src/client/routes/settings.connections.consent.tsx:68-142 (`max-w-lg px-4`, break-words/break-all on the title, client ID and host) | No e2e covers the consent page; the record checked 1280 px only. Line 101 "Signed in as {email}" has no break class, so a long email can overflow at 390 px. |
 | P-TOOL-CREATEEXP-18 | tested | v2/test/db/mcp-more-tools.test.ts "creates due occurrences only in the given group, once" (create_expense DAILY, then 2 occurrences) | v2/src/server/ledger.ts:585 → recurring.ts:51-53. The mcp.md deferral is out of date. |
 | P-TOOL-UPDATEEXP-08 | tested | v2/test/db/expenses.test.ts "drops a legacy conversion when the amount changes, and keeps it otherwise"; v2/src/server/ledger.ts:655-663 | A currency change also clears it (moneyChanged); only the amount case is asserted. |
-| P-TOOL-EXPORT-06 | gap | v2/src/server/app.ts:116-124 accepts only a session cookie | Missing: OAuth bearer (and API key) on the HTTP export routes, which OAUTH.md:48 promises. An agent fetching the export URL with its bearer gets 401. MCP `export_group` refuses another user's group (mcp-more-tools.test.ts line 351, FORBIDDEN), so MCP agents have a working path. |
+| P-TOOL-EXPORT-06 | closed (branch `t3/v2-server-gaps`) | v2/src/server/app.ts:116-124 accepts only a session cookie | Missing: OAuth bearer (and API key) on the HTTP export routes, which OAUTH.md:48 promises. An agent fetching the export URL with its bearer gets 401. MCP `export_group` refuses another user's group (mcp-more-tools.test.ts line 351, FORBIDDEN), so MCP agents have a working path. |
 | P-DB-01 | tested | v2/db/migrations/0001_invariants.sql:17-23 (activities_append_only, ERRCODE 23514); v2/test/db/invariants.test.ts "refuses to change or remove an activity" | Message text differs ("History is permanent; expenses are deleted only by setting deleted_at"); SQLSTATE is the same. |
 | P-DB-02 | tested | 0001_invariants.sql:23 (BEFORE UPDATE OR DELETE); invariants.test.ts "refuses to change or remove an activity" (DELETE case) | Same trigger as P-DB-01. |
 | P-DB-03 | tested | 0001_invariants.sql:25 activities_no_truncate (statement level); invariants.test.ts "refuses to change or remove an activity" (TRUNCATE activities CASCADE) | Parity. |
@@ -1993,7 +2010,7 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-DB-13 | untested | 0001_invariants.sql:56 (delete_expense with NULL snapshot) | Only the accepting path is tested ("freezes a deleted expense..."); no test of a delete with a snapshot or a wrong type. |
 | P-DB-14 | untested | 0001_invariants.sql:60-64; baseline writer v2/src/server/ledger.ts:608-624 | history.test.ts "counts a baseline only from its recording time" covers the success path; no test shows that a first edit without a baseline fails. |
 | P-DB-15 | approved-change | DECISIONS.md A: "Only the importer writes revision 0 rows (P-DB-15)"; app inserts revision 1 only (ledger.ts:581, recurring.ts:108-110); importer v2/scripts/import-legacy.ts:152 | The rule is enforced only by app code: the DB still accepts a direct revision-0 INSERT with no activity (0001:53 skips revision 0). |
-| P-DB-16 | unapproved-change | ledger.ts:608-624 ensureBaseline writes type 'update_expense', source = principal source (web or mcp), revision 0 | Current app writes CREATE_EXPENSE with source 'baseline'. UI treats revision 0 as a baseline (revision.tsx:22, expense-log.tsx:31), but MCP attribution filters only source <> 'baseline' (v2/src/server/mcp/tools/expenses.ts:327, 442), so a v2 baseline counts as an update event; an agent reading at the baseline's atActivityId would get the editor as updatedBy. Rare, agent-visible. |
+| P-DB-16 | closed (branch `t3/v2-server-gaps`) | ledger.ts:608-624 ensureBaseline writes type 'update_expense', source = principal source (web or mcp), revision 0 | Current app writes CREATE_EXPENSE with source 'baseline'. UI treats revision 0 as a baseline (revision.tsx:22, expense-log.tsx:31), but MCP attribution filters only source <> 'baseline' (v2/src/server/mcp/tools/expenses.ts:327, 442), so a v2 baseline counts as an update event; an agent reading at the baseline's atActivityId would get the editor as updatedBy. Rare, agent-visible. |
 | P-DB-17 | tested | ledger.ts:568-597 (revision 1 plus create_expense in one transaction); v2/test/db/expenses.test.ts "records receipts in revision 1 and keeps them when an update omits them"; history.test.ts "returns the values and names of a revision" | Recurring copies also start at revision 1 with create_expense (recurring.ts:108-140). |
 | P-DB-18 | untested | ledger.ts:568-597 inside one serializable transaction (rpc.ts:68, db.ts:60); deferred trigger 0001:69 | No test forces a failed activity insert and checks that the expense, its parts and its revision roll back. |
 | P-DB-19 | tested | ledger.ts:708 (deleted_at, revision + 1; parts and documents untouched); v2/test/db/ledger.test.ts "deletes by tombstone and keeps balances consistent"; expenses.test.ts "serves a receipt that only a deleted expense refers to" | Parity. |
@@ -2056,7 +2073,7 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-DB-76 | approved-change | v2/db/migrations/0000_init.sql:90 `default_currency text NOT NULL`; 0001_invariants.sql `groups_currency_supported`; import-legacy.ts:109 | v2 drops the symbol column and stores only a required, registry-checked code (PLAN invariant 1 "exhaustive currency registry"; DECISIONS "MCP group currency": ambiguous symbols refused); the importer fails a group with a NULL currencyCode. |
 | P-DB-77 | gap | v2/db/schema/app.ts:205 (TS enum only); 0000_init.sql:6 `"type" text NOT NULL`, no CHECK; import-legacy.ts:197 lowercases any value | The same 7 types exist in TypeScript, but the database no longer refuses another type, as the Postgres enum did. Internal: nobody notices. |
 | P-DB-78 | untested | 0000_init.sql:5 `DEFAULT clock_timestamp()`; no activity insert sets `time` (ledger.ts:587,613,677,711) | No test asserts distinct times inside one transaction. |
-| P-DB-79 | unapproved-change | mcp/authenticate.ts:64,98 and ledger.ts:28 write `source = 'mcp'`, never `agent` or `baseline`; history.ts:168 reads both; export.ts:174 exports the raw value | NOT NULL default 'web' matches (0000_init.sql:12). New agent events say `mcp`, imported ones `agent`, so a JSON export mixes both values. No decision covers the rename. |
+| P-DB-79 | closed (branch `t3/v2-server-gaps`) | mcp/authenticate.ts:64,98 and ledger.ts:28 write `source = 'mcp'`, never `agent` or `baseline`; history.ts:168 reads both; export.ts:174 exports the raw value | NOT NULL default 'web' matches (0000_init.sql:12). New agent events say `mcp`, imported ones `agent`, so a JSON export mixes both values. No decision covers the rename. |
 | P-DB-80 | tested | 0000_init.sql:2 bigserial + `activities_sequence_unique`; history.ts:66,159 order by sequence; v2/test/db/history.test.ts "keeps pages fixed at the returned boundary while events are added" | bigint instead of integer; harmless. |
 | P-DB-81 | not-applicable | import-legacy.ts:188,193 copy `sequence` verbatim in sequence order | The backfill ran once on the old database before the import; v2 keeps its result and never reruns it. No decision needed. |
 | P-DB-82 | not-applicable | import-legacy.ts:188-205 | Historical backfill; the importer copies the backfilled rows unchanged. No decision needed. |

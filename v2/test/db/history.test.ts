@@ -18,7 +18,7 @@ import { resetTestDatabase } from './setup'
 
 let pool: Pool
 const alice: Principal = { userId: 'u-alice', name: 'Alice Account', email: 'a@example.com', source: 'web', agentKeyId: null }
-const agent: Principal = { userId: 'u-alice', name: 'Alice Account', email: 'a@example.com', source: 'mcp', agentKeyId: 'key-123' }
+const agent: Principal = { userId: 'u-alice', name: 'Alice Account', email: 'a@example.com', source: 'agent', agentKeyId: 'key-123' }
 
 async function tx<A>(work: (db: Db) => Promise<A>): Promise<A> {
   const client = await pool.connect()

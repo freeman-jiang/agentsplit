@@ -42,6 +42,13 @@ export const noStore = { 'Cache-Control': 'no-store' } as const
 export const jsonError = (data: { status: number; message: string; headers?: Record<string, string> }) =>
   Response.json({ error: data.message }, { status: data.status, headers: { ...noStore, ...data.headers } })
 
+/**
+ * The one answer to agents and HTTP clients for a group that does not exist
+ * or that the caller is not a member of. It does not say which, so a group ID
+ * reveals nothing (DECISIONS.md, parity audit: agent output).
+ */
+export const GROUP_DENIED = 'Group not found, or you are not a member'
+
 /** Is the request from the app's own origin? The session cookie alone must not authorize a cross-site write. */
 export const sameOrigin = (data: { request: Request; baseUrl: string }) => data.request.headers.get('origin') === new URL(data.baseUrl).origin
 

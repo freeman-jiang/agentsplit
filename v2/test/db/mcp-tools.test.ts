@@ -239,7 +239,7 @@ describe('list_groups and get_group', () => {
   it('fails the whole call when one requested group is not the caller’s', async () => {
     expect((await checked('list_groups', { groupIds: ['g1'] }))['groups']).toHaveLength(1)
     const denied = await failure(h, { name: 'list_groups', args: { groupIds: ['g1', 'g3'] }, headers: alice })
-    expect(denied).toEqual({ code: 'FORBIDDEN', message: 'This connection cannot access the requested group', outcomeUnknown: false, recovery: 'correct_arguments' })
+    expect(denied).toEqual({ code: 'FORBIDDEN', message: 'Group not found, or you are not a member', outcomeUnknown: false, recovery: 'correct_arguments' })
   })
 
   it('reads a group with access, names, members, reserved IDs, expense participants and links', async () => {
@@ -262,7 +262,7 @@ describe('list_groups and get_group', () => {
   it('denies a group of someone else with a certain outcome', async () => {
     for (const groupId of ['g3', 'missing-group']) {
       const denied = await failure(h, { name: 'get_group', args: { groupId }, headers: alice })
-      expect(denied).toMatchObject({ code: 'FORBIDDEN', message: 'This connection cannot access the requested group', outcomeUnknown: false })
+      expect(denied).toMatchObject({ code: 'FORBIDDEN', message: 'Group not found, or you are not a member', outcomeUnknown: false })
     }
   })
 })
@@ -282,7 +282,7 @@ describe('expense writes and reads', () => {
   it('records the authenticated actor and key, whoever paid', async () => {
     await checked('create_expense', { groupId: 'g1', expenseId: id21(2), expense: expense({ paidBy: 'pb', title: 'Taxi' }) })
     const [event] = await h.withDb((db) => db.select().from(activities).where(eq(activities.expenseId, id21(2))))
-    expect(event).toMatchObject({ type: 'create_expense', actorUserId: 'alice', actorName: 'Alice', source: 'mcp', participantId: null })
+    expect(event).toMatchObject({ type: 'create_expense', actorUserId: 'alice', actorName: 'Alice', source: 'agent', participantId: null })
     expect(event?.agentKeyId).toBeTruthy()
     const read = await checked('get_expense', { groupId: 'g1', expenseId: id21(2) })
     expect((read['expense'] as { attribution: unknown }).attribution).toMatchObject({ createdBy: { userId: 'alice', name: 'Alice', source: 'agent' }, updatedBy: null })
@@ -342,7 +342,7 @@ describe('expense writes and reads', () => {
 
   it('refuses a group outside the caller’s memberships as Forbidden, with a certain outcome', async () => {
     const denied = await failure(h, { name: 'create_expense', args: { groupId: 'g3', expense: expense({ paidBy: 'rb', paidFor: [{ participant: 'rb', shares: '1' }] }) }, headers: alice })
-    expect(denied).toEqual({ code: 'FORBIDDEN', message: 'This connection cannot access the requested group', outcomeUnknown: false, recovery: 'correct_arguments' })
+    expect(denied).toEqual({ code: 'FORBIDDEN', message: 'Group not found, or you are not a member', outcomeUnknown: false, recovery: 'correct_arguments' })
     const people = await failure(h, { name: 'create_expense', args: { groupId: 'g1', people: [], expense: expense() }, headers: alice })
     expect(people.code).toBe('VALIDATION')
     const none = await failure(h, { name: 'create_expense', args: { expense: expense() }, headers: alice })

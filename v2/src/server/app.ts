@@ -11,14 +11,16 @@ import { makeDb, registerRequestDb, releaseRequestDb, REQUEST_ID_HEADER, type Db
 import { exportCsv, exportJson, exportResponse } from './export'
 import { HandlersLive } from './handlers'
 import { METADATA_PATHS, protectedResourceMetadata } from './mcp/challenge'
+import { httpReader } from './mcp/authenticate'
 import { handleMcp } from './mcp/endpoint'
 import { removeExpiredDpopProofs } from './mcp/oauth'
 import { putUpload, removeStaleUploads } from './receipt-uploads'
 import { downloadReceipt, receiptReader, uploadReceipt } from './receipts'
+import { handleAuthRoute } from './oauth-routes'
 import { materializeDue } from './recurring'
 import { Api, AppConfig, AuthMiddlewareLive } from './rpc'
 import { Forbidden } from '../shared/api'
-import { jsonError, livenessResponse, readinessResponse, robotsTxt, sameOrigin, secured, sitemapXml } from './security'
+import { GROUP_DENIED, jsonError, livenessResponse, readinessResponse, robotsTxt, sameOrigin, secured, sitemapXml } from './security'
 import { sessionPrincipal } from './session'
 
 export type Config = AppConfig['Service'] & {
@@ -95,13 +97,15 @@ export function createApp(platform: Platform) {
    * Better Auth, built on the first auth request and kept. Its hooks (the owner
    * bootstrap, the connection claims) use the pool too; none needs the
    * request's own connection. A configuration error is not kept, so each
-   * request reports it again.
+   * request reports it again. Three OAuth routes get the revocation checks of
+   * src/server/oauth-routes.ts.
    */
   let auth: Auth | undefined
   async function authHandler(request: Request): Promise<Response> {
     try {
-      auth ??= createAuth({ ...config, db: platform.pool })
-      return await complete({ response: await auth.handler(request), cacheControl: 'no-store' })
+      const ready = (auth ??= createAuth({ ...config, db: platform.pool }))
+      const response = await handleAuthRoute({ db: platform.pool, request, baseUrl: config.baseUrl, secret: config.secret, handle: (r) => ready.handler(r) })
+      return await complete({ response, cacheControl: 'no-store' })
     } catch (error) {
       // Better Auth answers client errors itself (4xx). Only a real failure gets here.
       console.error('Auth handler failed', error)
@@ -112,20 +116,26 @@ export function createApp(platform: Platform) {
   /** SELECT 1 on a pooled connection, so a failed connect is reported as unhealthy too. */
   const checkDatabase = () => withClient(async (client) => void (await client.query('SELECT 1')))
 
-  /** CSV and JSON exports, at the current app's URLs: /groups/<id>/expenses/export/<format> and /<slug>/expenses/export/<format>. */
-  async function exportGroup(data: { db: Db; cookie: string | null; group: string; format: 'csv' | 'json' }) {
+  /**
+   * CSV and JSON exports, at the current app's URLs: /groups/<id>/expenses/export/<format> and /<slug>/expenses/export/<format>.
+   * The web session, an API key or an OAuth access token with read scope may download them (P-EXPORT-05, P-TOOL-EXPORT-06).
+   */
+  async function exportGroup(data: { db: Db; request: Request; group: string; format: 'csv' | 'json' }) {
+    const reader = await httpReader(data.db, { request: data.request, baseUrl: config.baseUrl, secret: config.secret })
+    // A missing read scope, the rate limit and an outage keep their own answers; a bad credential is "Sign in required", as in the current app.
+    if ('response' in reader && reader.response.status !== 401) return reader.response
+    const principal = 'principal' in reader ? reader.principal : null
+    if (!principal) return jsonError({ status: 401, message: 'Sign in required' })
     let group: string
     try {
       group = decodeURIComponent(data.group)
     } catch {
-      return jsonError({ status: 404, message: 'Invalid group ID' })
+      return jsonError({ status: 403, message: GROUP_DENIED })
     }
-    const principal = await sessionPrincipal(data.db, { cookie: data.cookie, secret: config.secret, baseUrl: config.baseUrl })
-    if (!principal) return jsonError({ status: 401, message: 'Sign in required' })
     try {
       return exportResponse(await (data.format === 'json' ? exportJson : exportCsv)(data.db, { principal, group }))
     } catch (error) {
-      if (error instanceof Forbidden) return jsonError({ status: 403, message: 'Group access denied' })
+      if (error instanceof Forbidden) return jsonError({ status: 403, message: GROUP_DENIED })
       throw error
     }
   }
@@ -185,7 +195,7 @@ export function createApp(platform: Platform) {
       const [, group = '', format] = exportRoute
       // Downloads stay out of shared caches, as in the current app.
       return withConnection(
-        (client) => exportGroup({ db: makeDb(client), cookie: request.headers.get('cookie'), group, format: format === 'json' ? 'json' : 'csv' }),
+        (client) => exportGroup({ db: makeDb(client), request, group, format: format === 'json' ? 'json' : 'csv' }),
         'private, no-store',
       )
     }

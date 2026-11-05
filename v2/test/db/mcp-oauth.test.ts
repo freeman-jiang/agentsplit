@@ -1,13 +1,13 @@
 // OAuth on the MCP endpoint, in process: Better Auth's real authorization
 // server and the v2 MCP endpoint on one database. The first block emulates
 // Claude Code step by step, as docs/v2/OAUTH-CLAUDE-CODE.md reproduced it.
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { expenses, memberships } from '../../db/schema/app'
 import { oauthConsent } from '../../db/schema/auth'
 import { revokeOAuthConnection } from '~/server/auth'
 import { removeExpiredDpopProofs } from '~/server/mcp/oauth'
-import { BASE, callTool, failure, MCP_URL, ok, rpc, startHarness, type Harness } from './mcp-harness'
+import { BASE, callTool, failure, MCP_URL, ok, rpc, SECRET, startHarness, type Harness } from './mcp-harness'
 
 /** Claude Code's published Client ID Metadata Document, as served on 2026-11-05. */
 const CLAUDE_CODE = 'https://claude.ai/oauth/claude-code-client-metadata'
@@ -336,9 +336,97 @@ describe('write recheck', () => {
     const { assertOAuthWrite } = await import('~/server/mcp/authenticate')
     const t = await connect()
     const connectionId = (JSON.parse(atob(t.access_token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/') ?? '')) as Record<string, string>)['https://agentsplit.app/connection'] ?? ''
-    const principal = { userId: 'alice', name: 'Alice', email: 'alice@example.com', source: 'mcp' as const, agentKeyId: `oauth:${connectionId}`, scopes: ['agentsplit:read', 'agentsplit:write'], oauthConnectionId: connectionId }
+    const principal = { userId: 'alice', name: 'Alice', email: 'alice@example.com', source: 'agent' as const, agentKeyId: `oauth:${connectionId}`, scopes: ['agentsplit:read', 'agentsplit:write'], oauthConnectionId: connectionId }
     await h.withDb((db) => assertOAuthWrite(db, principal))
     await h.withDb((db) => revokeOAuthConnection(db, { userId: 'alice', clientId: CLAUDE_CODE }))
     await expect(h.withDb((db) => assertOAuthWrite(db, principal))).rejects.toThrow('no longer has write permission')
+  })
+})
+
+// ---------- the OAuth route checks (src/server/oauth-routes.ts) ----------
+
+describe('OAuth routes', () => {
+  const revoke = (t: Tokens) =>
+    h.auth(
+      new Request(`${BASE}/api/auth/oauth2/revoke`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ token: t.refresh_token ?? '', token_type_hint: 'refresh_token', client_id: CLAUDE_CODE }),
+      }),
+    )
+  const userinfo = (t: Tokens) => h.auth(new Request(`${BASE}/api/auth/oauth2/userinfo`, { headers: bearer(t) }))
+
+  it('an RFC 7009 revoke of the refresh token stops its access token at once (P-MCP-137)', async () => {
+    const t = await connect()
+    const other = await connect()
+    expect((await rpc(h, { method: 'tools/list', headers: bearer(t) })).status).toBe(200)
+    const r = await revoke(t)
+    expect(r.status, await r.clone().text()).toBe(200)
+    const after = await rpc(h, { method: 'tools/list', headers: bearer(t) })
+    expect(after.status).toBe(401)
+    expect(after.headers.get('www-authenticate')).toBe(CHALLENGE)
+    // Only that grant ends; another connection of the same client keeps working.
+    expect((await rpc(h, { method: 'tools/list', headers: bearer(other) })).status).toBe(200)
+  })
+
+  it('deleting the consent revokes the connections and refresh tokens of that client (P-MCP-138)', async () => {
+    const t = await connect()
+    const [consent] = await h.withDb((db) => db.select({ id: oauthConsent.id }).from(oauthConsent).where(and(eq(oauthConsent.userId, 'alice'), eq(oauthConsent.clientId, CLAUDE_CODE))))
+    const r = await h.auth(
+      new Request(`${BASE}/api/auth/oauth2/delete-consent`, {
+        method: 'POST',
+        headers: { cookie: alice.cookie, origin: BASE, 'content-type': 'application/json' },
+        body: JSON.stringify({ id: consent?.id }),
+      }),
+    )
+    expect(r.status, await r.clone().text()).toBe(200)
+    expect((await rpc(h, { method: 'tools/list', headers: bearer(t) })).status).toBe(401)
+    const refresh = await token({ grant_type: 'refresh_token', client_id: CLAUDE_CODE, refresh_token: t.refresh_token ?? '' })
+    expect(refresh.status).toBeGreaterThanOrEqual(400)
+    const open = await h.withDb((db) => db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM oauth_connections WHERE user_id = 'alice' AND client_id = ${CLAUDE_CODE} AND revoked_at IS NULL`))
+    expect(open.rows[0]?.n).toBe(0)
+  })
+
+  it('a consent of someone else cannot be deleted, and revokes nothing (P-MCP-138)', async () => {
+    const t = await connect()
+    const [consent] = await h.withDb((db) => db.select({ id: oauthConsent.id }).from(oauthConsent).where(and(eq(oauthConsent.userId, 'alice'), eq(oauthConsent.clientId, CLAUDE_CODE))))
+    const bob = await h.withDb((db) => db.execute<{ token: string }>(sql`SELECT token FROM session WHERE user_id = 'bob'`)).then((r) => r.rows[0]?.token ?? '')
+    const { serializeSignedCookie } = await import('better-call')
+    const bobCookie = (await serializeSignedCookie('better-auth.session_token', bob, SECRET)).split(';')[0] ?? ''
+    const r = await h.auth(
+      new Request(`${BASE}/api/auth/oauth2/delete-consent`, {
+        method: 'POST',
+        headers: { cookie: bobCookie, origin: BASE, 'content-type': 'application/json' },
+        body: JSON.stringify({ id: consent?.id }),
+      }),
+    )
+    expect(r.ok).toBe(false)
+    expect((await rpc(h, { method: 'tools/list', headers: bearer(t) })).status).toBe(200)
+  })
+
+  it('UserInfo applies the MCP checks: a revoked connection gets the 401 challenge (P-MCP-139)', async () => {
+    const t = await connect({ scope: `openid email ${ALL}`, prompt: 'consent' })
+    const r = await userinfo(t)
+    expect(r.status, await r.clone().text()).toBe(200)
+    expect(await r.json()).toMatchObject({ sub: 'alice', email: 'alice@example.com' })
+    await h.withDb((db) => revokeOAuthConnection(db, { userId: 'alice', clientId: CLAUDE_CODE }))
+    const revoked = await userinfo(t)
+    expect(revoked.status).toBe(401)
+    expect(revoked.headers.get('www-authenticate')).toBe(CHALLENGE)
+  })
+
+  it('exports accept the OAuth bearer of a member, and refuse another account’s (P-TOOL-EXPORT-06)', async () => {
+    const t = await connect()
+    const json = await h.app.fetch(new Request(`${BASE}/groups/g1/expenses/export/json`, { headers: bearer(t) }))
+    expect(json.status).toBe(200)
+    expect(((await json.json()) as { id: string }).id).toBe('g1')
+    const denied = await h.app.fetch(new Request(`${BASE}/groups/g2/expenses/export/csv`, { headers: bearer(t) }))
+    expect(denied.status).toBe(403)
+    expect(await denied.json()).toEqual({ error: 'Group not found, or you are not a member' })
+    // Read scope is required: without it the export gets the 403 of the MCP endpoint.
+    await h.withDb((db) => db.update(oauthConsent).set({ scopes: ['offline_access'] }).where(eq(oauthConsent.userId, 'alice')))
+    const noRead = await h.app.fetch(new Request(`${BASE}/groups/g1/expenses/export/json`, { headers: bearer(t) }))
+    expect(noRead.status).toBe(403)
+    expect(await noRead.json()).toEqual({ error: 'Read permission is no longer granted' })
   })
 })

@@ -9,9 +9,8 @@ import type { Bucket } from './bucket'
 import type { Db } from './db'
 import { randomId } from './ids'
 import { requireMember, type Principal } from './ledger'
-import { authenticate } from './mcp/authenticate'
-import { jsonError, sameOrigin } from './security'
-import { sessionPrincipal } from './session'
+import { httpReader } from './mcp/authenticate'
+import { GROUP_DENIED, jsonError, sameOrigin } from './security'
 
 export const MAX_RECEIPT_BYTES = 5 * 1024 * 1024
 /** The multipart envelope may add this much to the image. */
@@ -106,12 +105,8 @@ async function receiptInGroup(db: Db, data: { groupId: string; url: string }) {
  * with a bad agent credential does not fall back to the cookie.
  */
 export async function receiptReader(db: Db, data: { request: Request; baseUrl: string; secret: string }): Promise<Principal | null> {
-  const headers = data.request.headers
-  if (headers.has('x-api-key') || headers.has('authorization')) {
-    const result = await authenticate(db, { request: data.request, baseUrl: data.baseUrl })
-    return 'principal' in result ? result.principal : null
-  }
-  return sessionPrincipal(db, { cookie: headers.get('cookie'), secret: data.secret, baseUrl: data.baseUrl })
+  const reader = await httpReader(db, data)
+  return 'principal' in reader ? reader.principal : null
 }
 
 /**
@@ -125,7 +120,7 @@ export async function downloadReceipt(data: { db: Db; bucket: Bucket; principal:
   if (!groupId || !url) return jsonError({ status: 400, message: 'Receipt reference is required' })
   if (!data.principal) return jsonError({ status: 401, message: 'Authentication required' })
   const member = await memberOrNull(data.db, { principal: data.principal, group: groupId })
-  if (!member) return jsonError({ status: 403, message: 'Group access denied' })
+  if (!member) return jsonError({ status: 403, message: GROUP_DENIED })
   const key = receiptKey(url)
   if (!key || !(await receiptInGroup(data.db, { groupId: member.groupId, url }))) return jsonError({ status: 404, message: 'Receipt not found' })
   const object = await data.bucket.get(key).catch(() => null)
@@ -170,7 +165,7 @@ export async function uploadReceipt(data: {
   const file = form.get('file')
   if (typeof groupId !== 'string' || typeof file === 'string' || file === null) return jsonError({ status: 400, message: 'Group and image are required' })
   const member = await memberOrNull(data.db, { principal: data.principal, group: groupId })
-  if (!member) return jsonError({ status: 403, message: 'Group access denied' })
+  if (!member) return jsonError({ status: 403, message: GROUP_DENIED })
   const invalid = () => jsonError({ status: 400, message: 'Could not upload receipt. Use a JPEG or PNG image up to 5 MiB.' })
   const bytes = new Uint8Array(await file.arrayBuffer())
   const info = bytes.length && bytes.length <= MAX_RECEIPT_BYTES ? imageInfo(bytes) : null
