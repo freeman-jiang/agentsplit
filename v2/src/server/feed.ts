@@ -3,7 +3,7 @@
 // statement with the membership check inside it, so a request stays within the
 // Workers CPU budget and a row the caller cannot see is never read.
 import { sql, type SQL } from 'drizzle-orm'
-import { Invalid, NotFound } from '../shared/api'
+import { Forbidden, Invalid, NotFound } from '../shared/api'
 import { computeBalances, suggestSettlements } from '../shared/balances'
 import type { CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/money'
@@ -227,17 +227,32 @@ export async function listFeed(db: Db, data: { principal: Principal; filter: Fee
 type BalancesRow = {
   rows: { groupId: string; groupName: string; kind: 'named' | 'private'; currency: string; participantId: string; participantName: string; amount: string }[]
   unbound: string[]
+  denied: string[]
+  foreign: string[]
 }
+
+/** Groups or contexts to include, each with an optional participant to inspect instead of the caller's own. */
+export type BalanceScope = ReadonlyArray<{ readonly groupId: string; readonly participantId?: string | undefined }>
 
 /**
  * The caller's own balance in every named group and private context with
  * active access, per currency, and the totals per currency. Groups without a
  * linked participant are listed instead of counted. It only reads: due
  * recurring expenses are created by the scheduled job, never here.
+ *
+ * A scope (MCP get_participant_balances) limits the groups and may name
+ * another participant of a group. A group outside the caller's access fails
+ * the whole read, as does a participant from another group.
  */
-export async function accountBalances(db: Db, data: { principal: Principal }) {
+export async function accountBalances(db: Db, data: { principal: Principal; scope?: BalanceScope }) {
+  const scope = data.scope ? JSON.stringify(data.scope.map((s) => ({ group_id: s.groupId, participant_id: s.participantId ?? null }))) : null
   const result = await db.execute<{ result: BalancesRow }>(sql`
-    WITH m AS (SELECT group_id, participant_id FROM memberships WHERE user_id = ${data.principal.userId} AND active),
+    WITH s AS (SELECT * FROM json_to_recordset(${scope ?? '[]'}::json) AS s(group_id text, participant_id text)),
+    m AS (
+      SELECT m.group_id, ${scope ? sql`coalesce(s.participant_id, m.participant_id)` : sql`m.participant_id`} AS participant_id
+      FROM memberships m ${scope ? sql`JOIN s ON s.group_id = m.group_id` : sql``}
+      WHERE m.user_id = ${data.principal.userId} AND m.active
+    ),
     nets AS (
       SELECT e.group_id, e.currency, m.participant_id,
         sum(coalesce((SELECT sum(p.amount) FROM expense_payers p WHERE p.expense_id = e.id AND p.participant_id = m.participant_id), 0)
@@ -250,10 +265,15 @@ export async function accountBalances(db: Db, data: { principal: Principal }) {
       'rows', coalesce((SELECT json_agg(json_build_object('groupId', g.id, 'groupName', g.name, 'kind', g.kind, 'currency', n.currency,
           'participantId', p.id, 'participantName', ${displayName}, 'amount', n.net::text) ORDER BY g.name, g.id, n.currency)
         FROM nets n JOIN groups g ON g.id = n.group_id JOIN participants p ON p.id = n.participant_id), '[]'),
-      'unbound', coalesce((SELECT json_agg(group_id) FROM m WHERE participant_id IS NULL), '[]')
+      'unbound', coalesce((SELECT json_agg(group_id) FROM m WHERE participant_id IS NULL), '[]'),
+      'denied', coalesce((SELECT json_agg(s.group_id) FROM s WHERE NOT EXISTS (SELECT 1 FROM m WHERE m.group_id = s.group_id)), '[]'),
+      'foreign', coalesce((SELECT json_agg(s.group_id) FROM s WHERE s.participant_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM participants p WHERE p.id = s.participant_id AND p.group_id = s.group_id)), '[]')
     ) AS result
   `)
-  const row = result.rows[0]?.result ?? { rows: [], unbound: [] }
+  const row = result.rows[0]?.result ?? { rows: [], unbound: [], denied: [], foreign: [] }
+  if (row.denied.length) throw new Forbidden({ message: 'Group access denied' })
+  if (row.foreign.length) throw new Invalid({ message: 'Participant does not belong to this group.', field: 'participantId' })
   const totals = new Map<CurrencyCode, bigint>()
   const balances = row.rows.map((r) => {
     const currency = r.currency as CurrencyCode
