@@ -10,6 +10,7 @@ import type { Bucket } from './bucket'
 import { makeDb, registerRequestDb, releaseRequestDb, REQUEST_ID_HEADER, type Db } from './db'
 import { exportCsv, exportJson, exportResponse } from './export'
 import { HandlersLive } from './handlers'
+import { withPerfCounters } from './perf'
 import { METADATA_PATHS, protectedResourceMetadata } from './mcp/challenge'
 import { handleMcp } from './mcp/endpoint'
 import { removeExpiredDpopProofs } from './mcp/oauth'
@@ -24,6 +25,8 @@ import { sessionPrincipal } from './session'
 export type Config = AppConfig['Service'] & {
   /** The verified email that may claim the groups created before accounts existed. */
   readonly bootstrapEmail: string | undefined
+  /** Report each request's database work in its headers. The platform must count the statements (src/server/perf.ts). */
+  readonly perfInstrumentation: boolean
 }
 
 export type Platform = {
@@ -197,7 +200,9 @@ export function createApp(platform: Platform) {
 
   return {
     async fetch(request: Request): Promise<Response> {
-      return secured(await route(request))
+      if (!config.perfInstrumentation) return secured(await route(request))
+      const counters = { queries: 0, dbMs: 0 }
+      return secured(await withPerfCounters(counters, () => route(request)), counters)
     },
     /**
      * The hourly job (src/server/server.ts runs it at minute 7). It creates due

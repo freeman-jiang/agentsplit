@@ -1,4 +1,5 @@
 // Security headers for every response, the static files and the SPA page included.
+import type { PerfCounters } from './perf'
 
 /**
  * No inline or eval scripts: the SPA is one module bundle, and the theme and
@@ -28,11 +29,19 @@ export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
 }
 
-/** A copy of `response` with the security headers; responses from fetch can have immutable headers. */
-export function secured(response: Response): Response {
+/**
+ * A copy of `response` with the security headers; responses from fetch can
+ * have immutable headers. With `perf`, it also reports the request's database
+ * work in the current app's headers (P-PWA-49).
+ */
+export function secured(response: Response, perf?: PerfCounters): Response {
   if (response.status === 101) return response
   const copy = new Response(response.body, response)
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) copy.headers.set(name, value)
+  if (perf) {
+    copy.headers.set('x-perf-db-queries', String(perf.queries))
+    copy.headers.set('server-timing', `db;dur=${perf.dbMs.toFixed(1)}`)
+  }
   return copy
 }
 
