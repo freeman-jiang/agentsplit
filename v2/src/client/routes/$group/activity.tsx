@@ -9,7 +9,6 @@ import { groupQuery } from '~/client/queries'
 import { activitiesQuery } from '~/client/queries/history'
 import { Skeleton } from '~/client/ui/skeleton'
 import type { Activity } from '~/shared/api'
-import { titleWithVendor } from '~/shared/history'
 
 type ActivityItem = typeof Activity.Type
 
@@ -68,11 +67,9 @@ function dateGroup(date: Date, today: Date): DateGroup {
 
 // ---------- summaries (P-HIST-68) ----------
 
+// The server fills `data` with the title of the latest saved state (activityData in server/sql.ts).
 function expenseTitle(activity: ActivityItem) {
-  if (activity.data !== null) return activity.data
-  // v2 events keep the title in the snapshot only.
-  const state = activity.snapshot ?? activity.previousSnapshot
-  return state?._tag === 'expense' ? titleWithVendor(state.expense) : ''
+  return activity.data ?? ''
 }
 
 function Summary({ activity }: { activity: ActivityItem }) {

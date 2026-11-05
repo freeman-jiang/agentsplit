@@ -118,7 +118,9 @@ function amountClass(amount: string) {
 function BalanceRail({ group }: { group: string }) {
   const { data: g } = useSuspenseQuery(groupQuery(group))
   // As in the current app: fresh balances on mount and on window focus (P-BAL-58).
-  const { data, isPending, isError, isFetching, refetch } = useQuery({ ...balancesQuery(group), refetchOnMount: 'always', refetchOnWindowFocus: true })
+  // The data is stale after one second, so the rail does not fetch again right
+  // after a loader fetched the same balances.
+  const { data, isPending, isError, isFetching, refetch } = useQuery({ ...balancesQuery(group), staleTime: 1000 })
   const participantId = g.participantId
   return (
     <aside
