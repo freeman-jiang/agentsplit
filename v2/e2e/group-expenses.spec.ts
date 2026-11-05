@@ -67,3 +67,17 @@ test('a tab that fails to load shows the group error under the tabs, without the
   await page.getByRole('button', { name: 'Try again' }).click()
   await expect(page.getByRole('heading', { name: 'Couldn’t load this group' })).toHaveCount(0)
 })
+
+test('returning to a tab shows a change made elsewhere (P-EXP-20)', async ({ page, context, baseURL }) => {
+  const h = await seedHousehold(context, baseURL ?? '')
+  await addExpense(h, `${h.groupId}-first`, draft(h, { title: 'First lamp', amount: '10.00', date: '2026-11-01' }))
+  await page.goto(`/${h.slug}/expenses`)
+  await expect(page.getByTestId('expense-list')).toContainText('First lamp')
+  // Another tab or person writes while this page is open.
+  await addExpense(h, `${h.groupId}-second`, draft(h, { title: 'Second lamp', amount: '12.00', date: '2026-11-02' }))
+  await page.getByRole('link', { name: 'Balances', exact: true }).click()
+  // TanStack Query treats suspense data as fresh for its first second, so wait past it, as a person would.
+  await page.waitForTimeout(1_100)
+  await page.getByRole('link', { name: 'Expenses', exact: true }).click()
+  await expect(page.getByTestId('expense-list')).toContainText('Second lamp')
+})

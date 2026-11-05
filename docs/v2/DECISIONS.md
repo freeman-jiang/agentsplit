@@ -9,7 +9,7 @@
 - Group F, translations: **English only.** v2 does not port the locale files.
 - Hosting: **stay on Workers Free** and keep each request within the CPU budget.
 - P-FEED-19 (lead, under the approval of group C): "involving me" defaults to true in the UI and in the API, so agents see what people see. The MCP tool description states the default.
-- **Pending Freeman's review**, P-EXP-20: lists stay cached for 30 seconds and refetch after every write, instead of refetching on every visit. This makes screens open instantly from the cache, but another person's change can take up to 30 seconds to appear.
+- P-EXP-20 (Freeman, 2026-11-05): refetch on every visit, as the current app does, instead of a 30-second cache. A screen shows the data the tab already holds at once and replaces it with the fresh answer when it arrives.
 - Workers Free CPU (Freeman, 2026-11-05): accept the current cost and cut over on Workers Free. Reads cost about 8 ms of CPU before their rows; pages of 30 expenses sit near 13 ms at p50 (BASELINE.md). After the cutover, watch the Worker's errors and CPU, and serve the hottest reads through plain JSON routes instead of Effect RPC only if errors appear.
 - Payments store category 1 (Payment) on every path (P-BAL-92, approved in group C).
 - Revision snapshots record the expense's receipts, so history shows them (history area question 1).
