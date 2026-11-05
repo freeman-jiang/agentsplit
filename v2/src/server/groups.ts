@@ -12,7 +12,7 @@ import {
   participants,
 } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
-import { Conflict, Forbidden, Invalid, NotFound } from '../shared/api'
+import { Conflict, Forbidden, groupAccessDenied, Invalid, NotFound } from '../shared/api'
 import {
   INVITATION_DAYS,
   INVITATION_TOKEN,
@@ -154,7 +154,7 @@ export async function getGroupDetails(db: Db, data: { principal: Principal; grou
     FROM g
   `)
   const [g] = result.rows
-  if (!g?.active) throw new Forbidden({ message: 'Group access denied' })
+  if (!g?.active) throw groupAccessDenied()
   return {
     kind: g.kind,
     id: g.id,
@@ -209,14 +209,18 @@ async function claimSlug(tx: Db, data: { slug: string; groupId: string }) {
   await tx.delete(groupSlugHistory).where(eq(groupSlugHistory.slug, data.slug))
 }
 
-/** The group and its participants as they are now, for a history snapshot. */
-async function groupSnapshot(tx: Db, groupId: string) {
-  const [group] = await tx.select().from(groups).where(eq(groups.id, groupId))
-  if (!group) throw new NotFound({ entity: 'group', id: groupId })
-  const people = await tx.execute<{ id: string; name: string }>(sql`${displayNames(sql`${groupId}`)} ORDER BY p.created_at, p.id`)
+/**
+ * The history snapshot of a group and its participants, in the given order.
+ * The caller reads them; this only builds the shape.
+ */
+export function groupSnapshotOf<C extends string>(data: {
+  group: { id: string; name: string; slug: string | null; information: string; defaultCurrency: C; revision: number }
+  participants: readonly { id: string; name: string }[]
+}) {
+  const { group } = data
   return {
-    schemaVersion: 2,
-    kind: 'group',
+    schemaVersion: 2 as const,
+    kind: 'group' as const,
     group: {
       id: group.id,
       name: group.name,
@@ -225,9 +229,17 @@ async function groupSnapshot(tx: Db, groupId: string) {
       // The field name the history reader expects (V2GroupSnapshot in src/shared/history.ts).
       currency: group.defaultCurrency,
       revision: group.revision,
-      participants: people.rows,
+      participants: data.participants,
     },
   }
+}
+
+/** The group and its participants as they are now, for a history snapshot. */
+async function groupSnapshot(tx: Db, groupId: string) {
+  const [group] = await tx.select().from(groups).where(eq(groups.id, groupId))
+  if (!group) throw new NotFound({ entity: 'group', id: groupId })
+  const people = await tx.execute<{ id: string; name: string }>(sql`${displayNames(sql`${groupId}`)} ORDER BY p.created_at, p.id`)
+  return groupSnapshotOf({ group, participants: people.rows })
 }
 
 export async function createGroup(
@@ -419,7 +431,7 @@ async function applyAccess(
   const me = data.principal
   const pendingInvitation = input.action === 'join' ? await invitationFromUrl(tx, { shareUrl: input.shareUrl, baseUrl: data.baseUrl }) : null
   const groupId = pendingInvitation?.groupId ?? (input.action === 'join' ? null : (await groupIdOf(tx, input.groupId)))
-  if (!groupId) throw new Forbidden({ message: 'Group access denied' })
+  if (!groupId) throw groupAccessDenied()
   const group = await lockGroup(tx, groupId)
   const [membership] = await tx.select().from(memberships).where(and(eq(memberships.userId, me.userId), eq(memberships.groupId, groupId)))
   const done = (joined = true): { result: AccessResult; url: null } => ({ result: { groupId, joined, invitation: null }, url: null })
@@ -439,7 +451,7 @@ async function applyAccess(
 
   if (input.action === 'join') {
     const invitation = pendingInvitation
-    if (!invitation) throw new Forbidden({ message: 'Group access denied' })
+    if (!invitation) throw groupAccessDenied()
     if (invitation.revokedAt || invitation.expiresAt <= new Date() || invitation.email !== me.email.toLowerCase())
       throw new Forbidden({ message: 'This invitation is expired, revoked, or addressed to a different email' })
     if (!invitation.participantId)
@@ -466,7 +478,7 @@ async function applyAccess(
     return done()
   }
 
-  if (!membership?.active) throw new Forbidden({ message: 'Group access denied' })
+  if (!membership?.active) throw groupAccessDenied()
   if (input.action !== 'leave' && membership.role !== 'admin') throw new Forbidden({ message: 'Only group admins can manage access' })
 
   if (input.action === 'invite' || input.action === 'bind_member') {

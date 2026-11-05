@@ -11,7 +11,7 @@ import {
   idempotencyKeys,
   memberships,
 } from '../../db/schema/app'
-import { Conflict, Forbidden, Invalid, NotFound } from '../shared/api'
+import { Conflict, Forbidden, groupAccessDenied, Invalid, NotFound } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../shared/expense-rules'
 import { titleWithVendor } from '../shared/history'
@@ -44,7 +44,7 @@ export async function requireMember(db: Db, data: { principal: Principal; group:
     .innerJoin(memberships, and(eq(memberships.groupId, groups.id), eq(memberships.userId, data.principal.userId)))
     .where(eq(groups.id, sql`agentsplit_group_id(${data.group})`))
     .limit(1)
-  if (!row?.active) throw new Forbidden({ message: 'Group access denied' })
+  if (!row?.active) throw groupAccessDenied()
   if (data.admin && row.role !== 'admin') throw new Forbidden({ message: 'Only admins can do this' })
   return { groupId: row.groupId, role: row.role, participantId: row.participantId }
 }
@@ -110,7 +110,7 @@ export async function getGroup(db: Db, data: { principal: Principal; group: stri
     FROM g
   `)
   const [g] = result.rows
-  if (!g?.active) throw new Forbidden({ message: 'Group access denied' })
+  if (!g?.active) throw groupAccessDenied()
   return {
     id: g.id,
     contextExpenseId: g.context_expense_id,
@@ -386,7 +386,7 @@ export async function loadWriteContext(
     FROM g
   `)
   const [row] = result.rows
-  if (!row?.active) throw new Forbidden({ message: 'Group access denied' })
+  if (!row?.active) throw groupAccessDenied()
   return {
     op: data.op,
     expenseId: data.expenseId,
@@ -694,10 +694,10 @@ export async function deleteExpense(
   const request = { op: 'delete', groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision }
   return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request, previous: context.previous }, async () => {
     const current = currentExpense(context, data.expectedRevision).value
-    const { revision } = current
+    const revision = current.revision + 1
     assertPrivateWrite(context.privateContext, { expenseId: data.expenseId, op: 'delete' })
     await ensureBaseline(tx, { context, principal: data.principal })
-    await tx.update(expenses).set({ deletedAt: new Date(), revision: revision + 1 }).where(eq(expenses.id, data.expenseId))
+    await tx.update(expenses).set({ deletedAt: new Date(), revision }).where(eq(expenses.id, data.expenseId))
     // Deleting the newest occurrence of a series stops it.
     if (context.link && !context.link.actedOn) await stopRecurrence(tx, { expenseId: data.expenseId })
     await tx.insert(activities).values({
@@ -705,11 +705,11 @@ export async function deleteExpense(
       groupId,
       type: 'delete_expense',
       expenseId: data.expenseId,
-      expenseRevision: revision + 1,
+      expenseRevision: revision,
       // The deleted expense's text, as the current app stores it.
       data: titleWithVendor(current),
       ...actor(data.principal),
     })
-    return { revision: revision + 1 }
+    return { revision }
   })
 }

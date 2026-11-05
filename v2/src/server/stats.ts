@@ -2,7 +2,7 @@
 // Reads only: unlike the current app, loading stats never creates due
 // recurring expenses (DECISIONS.md, P-STATS-44).
 import { sql } from 'drizzle-orm'
-import { Forbidden } from '../shared/api'
+import { groupAccessDenied } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor, type Minor } from '../shared/money'
 import * as stats from '../shared/stats'
@@ -63,7 +63,7 @@ async function load(db: Db, data: { principal: Principal; group: string }) {
     FROM g
   `)
   const head = result.rows[0]
-  if (!head?.active) throw new Forbidden({ message: 'Group access denied' })
+  if (!head?.active) throw groupAccessDenied()
   const expenses = head.expenses.map((e) => ({
     ...e,
     amount: minor(BigInt(e.amount)),

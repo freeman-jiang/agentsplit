@@ -12,9 +12,9 @@ import * as authSchema from '../../db/schema/auth'
 import { revokeOAuthConnection } from './account'
 import { hashOAuthToken } from './auth-options'
 import type { Db } from './db'
-import { challenge } from './mcp/challenge'
+import { oauthRefusal } from './mcp/authenticate'
 import { verifyOAuthRequest } from './mcp/oauth'
-import { sessionPrincipal } from './session'
+import { requestSession } from './session'
 
 const ConsentId = Schema.Struct({ id: Schema.String })
 
@@ -26,13 +26,13 @@ async function consentOwner(db: Db, data: { request: Request; secret: string; ba
     .catch(() => null)
   const input = Schema.decodeUnknownResult(ConsentId)(body)
   if (Result.isFailure(input)) return null
-  const principal = await sessionPrincipal(db, { cookie: data.request.headers.get('cookie'), secret: data.secret, baseUrl: data.baseUrl })
+  const principal = await requestSession(db, data)
   if (!principal) return null
   const [consent] = await db
-    .select({ userId: authSchema.oauthConsent.userId, clientId: authSchema.oauthConsent.clientId })
+    .select({ clientId: authSchema.oauthConsent.clientId })
     .from(authSchema.oauthConsent)
     .where(and(eq(authSchema.oauthConsent.id, input.success.id), eq(authSchema.oauthConsent.userId, principal.userId)))
-  return consent?.userId ? { userId: consent.userId, clientId: consent.clientId } : null
+  return consent ? { userId: principal.userId, clientId: consent.clientId } : null
 }
 
 /** The stored refresh token that an RFC 7009 revoke request names, before Better Auth revokes it. */
@@ -61,8 +61,7 @@ export async function handleAuthRoute(data: {
   if (path.endsWith('/oauth2/userinfo')) {
     // Better Auth's UserInfo checks the DPoP proof itself; a second check here would see the same proof as a replay.
     const result = await verifyOAuthRequest(db, { request, baseUrl: data.baseUrl, dpop: false })
-    if (result.kind === 'invalid') return challenge({ baseUrl: data.baseUrl })
-    if (result.kind === 'no-read') return challenge({ baseUrl: data.baseUrl, status: 403, message: 'Read permission is no longer granted' })
+    if (result.kind !== 'ok') return oauthRefusal({ result, baseUrl: data.baseUrl })
   }
   const owner = request.method === 'POST' && path.endsWith('/oauth2/delete-consent') ? await consentOwner(db, { request, secret: data.secret, baseUrl: data.baseUrl }) : null
   const refresh = request.method === 'POST' && path.endsWith('/oauth2/revoke') ? await refreshTokenOf(db, request) : null

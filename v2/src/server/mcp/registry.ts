@@ -3,7 +3,7 @@
 // public input onto the shared domain services in src/server/; it never
 // checks access itself (the services do) and never reads arguments as identity.
 import { Result, Schema } from 'effect'
-import { Conflict, Forbidden, Invalid, NotFound } from '../../shared/api'
+import { Conflict, Forbidden, GROUP_ACCESS_DENIED, Invalid, NotFound } from '../../shared/api'
 import type { Bucket } from '../bucket'
 import type { Db } from '../db'
 import { GROUP_DENIED } from '../security'
@@ -54,7 +54,6 @@ export class ToolError extends Error {
 
 const INTERNAL_MESSAGE = 'Unable to complete this operation. Check the arguments; for an uncertain write, read its record before retrying.'
 
-
 /** The current app's texts for what a service did not find, by NotFound entity. */
 const NOT_FOUND: Readonly<Record<string, string>> = {
   expense: 'Expense not found',
@@ -74,7 +73,7 @@ export function errorBody(data: { error: unknown; kind: 'read' | 'write' }) {
     error instanceof ToolError
       ? [error.code, error.message]
       : error instanceof Forbidden
-        ? ['FORBIDDEN', error.message === 'Group access denied' ? GROUP_DENIED : error.message]
+        ? ['FORBIDDEN', error.message === GROUP_ACCESS_DENIED ? GROUP_DENIED : error.message]
         : error instanceof NotFound
           ? ['NOT_FOUND', NOT_FOUND[error.entity] ?? 'Group not found.']
           : error instanceof Conflict

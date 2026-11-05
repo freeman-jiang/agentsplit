@@ -57,3 +57,7 @@ export async function sessionPrincipal(db: Db, data: { cookie: string | null; se
   if (!row?.verified) return null
   return { userId: row.id, name: row.name, email: row.email, source: 'web', agentKeyId: null }
 }
+
+/** The signed-in web principal of a plain HTTP request, from its session cookie, or null. */
+export const requestSession = (db: Db, data: { request: Request; secret: string; baseUrl: string }) =>
+  sessionPrincipal(db, { cookie: data.request.headers.get('cookie'), secret: data.secret, baseUrl: data.baseUrl })

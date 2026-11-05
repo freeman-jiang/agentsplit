@@ -2,7 +2,8 @@
 // before the SPA page. The client's router keeps the URLs as typed
 // (src/client/group-urls.ts).
 import { sql } from 'drizzle-orm'
-import { GROUP_ID, isIdSegment } from '../shared/groups'
+import { groupPath, isIdSegment } from '../shared/groups'
+import { GROUP_ID } from '../shared/ids'
 import type { Db } from './db'
 
 export type IdPath = {
@@ -36,7 +37,10 @@ export async function groupRedirect(db: Db, data: { path: IdPath; search: string
   const result = await db.execute<{ slug: string | null }>(sql`SELECT slug FROM groups WHERE id = ${id} AND kind = 'named'`)
   const group = result.rows[0]
   if (!group) return null
-  const target = group.slug ? `/${group.slug}${rest}` : !prefixed ? `/groups/${id}${rest}` : rest === '' ? `/groups/${id}/expenses` : null
-  if (target === null) return null
-  return new Response(null, { status: 307, headers: { Location: `${target}${data.search}`, 'Cache-Control': 'private, no-store' } })
+  const moved = (target: string) => new Response(null, { status: 307, headers: { Location: `${target}${data.search}`, 'Cache-Control': 'private, no-store' } })
+  const path = groupPath({ id, slug: group.slug })
+  if (prefixed && group.slug) return moved(`${path}${rest}`)
+  if (prefixed && rest === '') return moved(`${path}/expenses`)
+  if (!prefixed) return moved(`${path}${rest}`)
+  return null
 }

@@ -24,7 +24,7 @@ import { Api, AppConfig, AuthMiddlewareLive } from './rpc'
 import { Forbidden } from '../shared/api'
 import { REQUEST_ID_RESPONSE_HEADER } from '../shared/ids'
 import { GROUP_DENIED, jsonError, livenessResponse, readinessResponse, robotsTxt, sameOrigin, secured, sitemapXml } from './security'
-import { sessionPrincipal } from './session'
+import { requestSession } from './session'
 
 export type Config = AppConfig['Service'] & {
   /** The verified email that may claim the groups created before accounts existed. */
@@ -74,11 +74,6 @@ export function createApp(platform: Platform) {
     } finally {
       client.release(failed)
     }
-  }
-
-  /** The signed-in web user of a plain HTTP request, from the session cookie. */
-  async function principalOf(db: Db, request: Request) {
-    return sessionPrincipal(db, { cookie: request.headers.get('cookie'), secret: config.secret, baseUrl: config.baseUrl })
   }
 
   /** The response with its whole body read, and the given Cache-Control. */
@@ -189,7 +184,7 @@ export function createApp(platform: Platform) {
         const db = makeDb(client)
         return request.method === 'GET'
           ? downloadReceipt({ db, bucket, principal: await receiptReader(db, { request, baseUrl: config.baseUrl, secret: config.secret }), url })
-          : uploadReceipt({ db, bucket, principal: await principalOf(db, request), request, baseUrl: config.baseUrl, enabled: config.documentsEnabled })
+          : uploadReceipt({ db, bucket, principal: await requestSession(db, { request, secret: config.secret, baseUrl: config.baseUrl }), request, baseUrl: config.baseUrl, enabled: config.documentsEnabled })
       })
     }
     // An agent's upload target from create_expense or update_expense. The secret in the path is the credential.

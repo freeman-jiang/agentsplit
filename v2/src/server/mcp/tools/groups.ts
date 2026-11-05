@@ -6,8 +6,10 @@
 import { Result, Schema } from 'effect'
 import { sql } from 'drizzle-orm'
 import { CURRENCIES, type CurrencyCode } from '../../../shared/currencies'
-import { Forbidden, NotFound } from '../../../shared/api'
+import { groupAccessDenied, NotFound } from '../../../shared/api'
 import { AccessRequest, GroupChanges, GroupCreateInput } from '../../../shared/api/groups'
+import { groupPath } from '../../../shared/groups'
+import { GROUP_ID } from '../../../shared/ids'
 import type { Db } from '../../db'
 import * as groups from '../../groups'
 import { displayName, iso } from '../../sql'
@@ -77,7 +79,7 @@ export const listGroups = defineTool({
       const denied = await db.execute<{ n: number }>(sql`
         SELECT count(*)::int AS n FROM unnest(ARRAY[${ids}]::text[]) AS r(id)
         WHERE NOT EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = ${principal.userId} AND m.group_id = r.id AND m.active)`)
-      if (denied.rows[0]?.n !== 0) throw new Forbidden({ message: 'Group access denied' })
+      if (denied.rows[0]?.n !== 0) throw groupAccessDenied()
     }
     const result = await db.execute<GroupRow & { participants: number }>(sql`
       SELECT ${groupColumns}, (SELECT count(*)::int FROM participants p WHERE p.group_id = g.id) AS participants
@@ -149,8 +151,8 @@ export const getGroup = defineTool({
       WHERE g.id = ${groupId}
     `)
     const g = result.rows[0]
-    if (!g) throw new Forbidden({ message: 'Group access denied' })
-    const path = `${origin(baseUrl)}${g.slug ? `/${g.slug}` : `/groups/${g.id}`}`
+    if (!g) throw groupAccessDenied()
+    const path = `${origin(baseUrl)}${groupPath(g)}`
     // A private context has no group page: people open its expense (P-UNGROUP-39).
     const share = g.context_expense_id ? `${origin(baseUrl)}/expenses/${g.context_expense_id}` : path
     return {
@@ -240,7 +242,7 @@ export const createGroup = defineTool({
       currencyCode: Schema.optionalKey(GroupInputFields.currencyCode),
       participants: Schema.Array(Schema.Struct({ name: Schema.String.check(Schema.isBetweenLength(1, 50)) })).check(Schema.isMaxLength(99)),
     }),
-    groupId: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{21}$/))),
+    groupId: Schema.optionalKey(Schema.String.check(Schema.isPattern(GROUP_ID))),
   }),
   strict: [''],
   output: GroupWritten,

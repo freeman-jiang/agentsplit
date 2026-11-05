@@ -61,9 +61,6 @@ export const isIdSegment = (segment: string) => segment !== '' && !SLUG_PATTERN.
 /** The URL path of the group that a route segment names. */
 export const segmentPath = (segment: string) => (isIdSegment(segment) ? `/groups/${encodeURIComponent(segment)}` : `/${encodeURIComponent(segment)}`)
 
-/** A 21-character group ID, the format of the current app's nanoid() IDs and of randomId(). */
-export const GROUP_ID = /^[A-Za-z0-9_-]{21}$/
-
 export const INVITATION_DAYS = 7
 /** An invitation token: 32 random bytes in base64url (P-ACCESS-14). */
 export const INVITATION_TOKEN = /^[A-Za-z0-9_-]{43}$/

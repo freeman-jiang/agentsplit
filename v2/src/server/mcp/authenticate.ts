@@ -6,10 +6,10 @@ import type { Db } from '../db'
 import type { Principal } from '../ledger'
 import { verifyApiKey } from './api-key'
 import { jsonError, noStore } from '../security'
-import { sessionPrincipal } from '../session'
+import { requestSession } from '../session'
 import { challenge } from './challenge'
 import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
-import { verifyOAuthRequest } from './oauth'
+import { verifyOAuthRequest, type OAuthResult } from './oauth'
 
 /** The ledger principal, plus the OAuth connection and its scope ceiling. API keys have neither. */
 export type McpPrincipal = Principal & { readonly scopes: readonly string[] | null; readonly oauthConnectionId: string | null }
@@ -53,10 +53,15 @@ export async function assertOAuthWrite(tx: Db, principal: McpPrincipal) {
 
 const unavailable = () => jsonError({ status: 503, message: 'Authentication is temporarily unavailable' })
 
+/** The answer to an OAuth request that verifyOAuthRequest refused. The MCP endpoint and UserInfo answer the same. */
+export function oauthRefusal(data: { result: Exclude<OAuthResult, { kind: 'ok' }>; baseUrl: string }): Response {
+  if (data.result.kind === 'no-read') return challenge({ baseUrl: data.baseUrl, status: 403, message: 'Read permission is no longer granted' })
+  return challenge({ baseUrl: data.baseUrl })
+}
+
 async function oauth(db: Db, data: { request: Request; baseUrl: string }): Promise<Authentication> {
   const result = await verifyOAuthRequest(db, data)
-  if (result.kind === 'invalid') return { response: challenge({ baseUrl: data.baseUrl }) }
-  if (result.kind === 'no-read') return { response: challenge({ baseUrl: data.baseUrl, status: 403, message: 'Read permission is no longer granted' }) }
+  if (result.kind !== 'ok') return { response: oauthRefusal({ result, baseUrl: data.baseUrl }) }
   return {
     principal: {
       userId: result.userId,
@@ -116,5 +121,5 @@ export async function httpReader(
 ): Promise<{ readonly principal: Principal | null } | { readonly response: Response }> {
   const headers = data.request.headers
   if (headers.has('x-api-key') || headers.has('authorization')) return authenticate(db, { request: data.request, baseUrl: data.baseUrl })
-  return { principal: await sessionPrincipal(db, { cookie: headers.get('cookie'), secret: data.secret, baseUrl: data.baseUrl }) }
+  return { principal: await requestSession(db, data) }
 }

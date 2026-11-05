@@ -4,7 +4,7 @@
 // addresses (P-EXPORT-14), rows in a defined order (P-EXPORT-29), and the group
 // name in both file names (P-EXPORT-15).
 import { sql } from 'drizzle-orm'
-import { Forbidden } from '../shared/api'
+import { groupAccessDenied } from '../shared/api'
 import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/money'
 import { MODE_NAMES, preferredPayer, RULE_NAMES, type SplitMode } from '../shared/split'
@@ -93,7 +93,7 @@ async function load(db: Db, data: { principal: Principal; group: string; activit
     FROM g
   `)
   const head = result.rows[0]
-  if (!head?.active) throw new Forbidden({ message: 'Group access denied' })
+  if (!head?.active) throw groupAccessDenied()
   return head
 }
 

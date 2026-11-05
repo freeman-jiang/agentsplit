@@ -11,6 +11,10 @@ export const SplitModeSchema = Schema.Literals(SPLIT_MODES)
 
 export class Unauthorized extends Schema.TaggedError<Unauthorized>()('Unauthorized', {}) {}
 export class Forbidden extends Schema.TaggedError<Forbidden>()('Forbidden', { message: Schema.String }) {}
+/** The message of a denied group access. The MCP tools answer it with their own text (mcp/registry.ts). */
+export const GROUP_ACCESS_DENIED = 'Group access denied'
+/** A group that does not exist and a group the caller cannot see give the same error. */
+export const groupAccessDenied = () => new Forbidden({ message: GROUP_ACCESS_DENIED })
 export class NotFound extends Schema.TaggedError<NotFound>()('NotFound', { entity: Schema.String, id: Schema.String }) {}
 /** The expected revision is not the current one: read again, then retry. */
 export class Conflict extends Schema.TaggedError<Conflict>()('Conflict', {

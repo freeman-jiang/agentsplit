@@ -9,5 +9,8 @@ export function randomId(size = 21): string {
   return id
 }
 
+/** A 21-character ID, the format of randomId() and of the current app's nanoid() IDs. */
+export const GROUP_ID = /^[A-Za-z0-9_-]{21}$/
+
 /** The response header with the ID of an RPC request. The server logs failed calls with it, and the error page shows it. */
 export const REQUEST_ID_RESPONSE_HEADER = 'X-Request-Id'
