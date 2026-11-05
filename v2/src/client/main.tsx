@@ -3,6 +3,7 @@ import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ErrorState } from './components/error-state'
+import { groupUrls } from './group-urls'
 import { addAppleSplashImages, registerServiceWorker } from './pwa'
 import { routeTree } from './routeTree.gen'
 import './styles.css'
@@ -18,6 +19,8 @@ const router = createRouter({
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 0,
   defaultErrorComponent: ErrorState,
+  // /groups/<id>/… and /<slug> stay as the current app has them.
+  rewrite: groupUrls,
 })
 
 declare module '@tanstack/react-router' {

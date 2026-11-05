@@ -3,6 +3,7 @@
 // and links to saved attachments.
 import type { Activity } from '~/shared/api'
 import { describeRevision, REVISION_FIELDS } from '~/shared/history'
+import { fieldChanged } from './revision-diff'
 
 type ActivityItem = typeof Activity.Type
 
@@ -63,7 +64,7 @@ export function ActivityRevision({ activity, groupId }: { activity: ActivityItem
         {previous && <p className="font-medium">Changes from the preceding revision</p>}
         <dl className="space-y-2">
           {REVISION_FIELDS.map(([key, label]) => {
-            const changed = previous !== undefined && previous[key] !== current[key]
+            const changed = previous !== undefined && fieldChanged({ field: key, previous: previous[key], current: current[key] })
             return (
               <div key={key}>
                 <dt className={changed ? 'font-semibold' : 'text-muted-foreground'}>

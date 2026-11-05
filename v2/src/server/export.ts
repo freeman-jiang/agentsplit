@@ -77,7 +77,7 @@ async function load(db: Db, data: { principal: Principal; group: string; activit
           'recurrence', e.recurrence, 'notes', e.notes, 'revision', e.revision,
           'payers', (SELECT json_agg(json_build_object('participantId', x.participant_id, 'amount', x.amount::text) ORDER BY x.participant_id) FROM expense_payers x WHERE x.expense_id = e.id),
           'shares', (SELECT json_agg(json_build_object('participantId', x.participant_id, 'amount', x.amount::text, 'weight', x.weight) ORDER BY x.participant_id) FROM expense_shares x WHERE x.expense_id = e.id),
-          'documents', (SELECT json_agg(json_build_object('id', d.id, 'url', d.url, 'width', d.width, 'height', d.height) ORDER BY d.id) FROM expense_documents d WHERE d.expense_id = e.id)
+          'documents', (SELECT json_agg(json_build_object('id', d.id, 'url', d.url, 'width', d.width, 'height', d.height) ORDER BY d.position) FROM expense_documents d WHERE d.expense_id = e.id)
         ) ORDER BY e.expense_date, e.created_at, e.id)
         FROM expenses e JOIN categories c ON c.id = e.category_id
         WHERE e.group_id = g.id AND e.deleted_at IS NULL), '[]') AS expenses,

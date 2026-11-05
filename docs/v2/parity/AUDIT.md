@@ -81,7 +81,7 @@ Branch `t3/v2-client-gaps` closes gaps 1, 4, 5 and 6 after the audit. Appendix A
 3. **P-HIST-03.** Closed on branch `t3/v2-server-gaps` (see "Closed after the audit"). The Log and MCP `list_activity` fail on a private expense context. The private-context `create_group` snapshot has `defaultCurrency` and no `currency`, so the history reader throws `UnreadableSnapshot` for the whole page. Activities are permanent, so every private expense created since the cutover has this row. The fix must go in the reader. Evidence: Writer: `v2/src/server/ungrouped.ts:93,107`. Reader: `v2/src/shared/history.ts:142-153,311` and `v2/src/server/history.ts:198`. No test decodes this snapshot. The named-group writer is correct (`groups.ts:225`).
 4. **P-EXP-22.** Expense cards show no category icon on wide screens. Evidence: No category icon component in `v2/src/client`. expenses.md line 48 defers it, with no owner. **Closed:** `v2/src/client/components/category-icon.tsx` maps the fixed category IDs to the current app's icons, on group and dashboard cards from 640 px. Checked in the browser.
 5. **P-PWA-04.** iOS shows no splash image when the app opens from the home screen. It shows the background color. Evidence: `v2/index.html` has `apple-touch-icon` only. account.md line 73 defers it as low value. No decision approves the drop. **Closed:** `addAppleSplashImages` in `v2/src/client/pwa.ts` ports the current app's script. Checked in the browser with `navigator.standalone` set: two links, portrait and landscape.
-6. **P-PWA-36.** The error page shows no error reference for the user to quote. The rest of the item is done and tested. Evidence: `v2/src/client/components/error-state.tsx:10-30`; e2e `group-expenses.spec.ts` "a tab that fails to load…". **Closed:** the page shows "Reference: <8 hex digits>" and logs the same reference with the error to the console. The server returns no request ID, so the client makes the reference. e2e `group-expenses.spec.ts` "a tab that fails to load shows the group error under the tabs, with a reference and without the exception text (P-GROUP-53, P-PWA-36)".
+6. **P-PWA-36.** The error page shows no error reference for the user to quote. The rest of the item is done and tested. Evidence: `v2/src/client/components/error-state.tsx:10-30`; e2e `group-expenses.spec.ts` "a tab that fails to load…". **Closed:** the page shows "Reference: <8 hex digits>" and logs the same reference with the error to the console. The server returns no request ID, so the client makes the reference. e2e `group-expenses.spec.ts` "a tab that fails to load shows the group error under the tabs, with a reference and without the exception text (P-GROUP-53, P-PWA-36)". **Then (branch `t3/v2-ui-restore`):** the RPC response carries its request ID in `X-Request-Id`, the server logs each failed call with it (`v2/src/server/rpc.ts` `logFailure`), and the page shows that ID. A failure without a response still gets a reference from the client. Tests: test/db/app-urls.test.ts "returns the request ID in a header and logs a failed call with it"; e2e `group-expenses.spec.ts` "a failure the server answered shows the server’s request ID as the reference (P-PWA-36)".
 
 ### Agents and scripts
 
@@ -115,15 +115,17 @@ Branch `t3/v2-client-gaps` closes gaps 1, 4, 5 and 6 after the audit. Appendix A
 
 Freeman must approve each change, or v2 must change back. In each group, the most visible changes come first.
 
+Freeman decided the browser-visible changes on 2026-11-05 (DECISIONS.md, "Browser-visible differences"). Branch `t3/v2-ui-restore` restores one-click sign-in and the current app's group URLs, and fixes two bugs that the side-by-side check found: receipts listed in the wrong order (P-RECEIPT-06) and "Split between" marked as changed after a notes-only edit (P-HIST-73).
+
 ### People in the browser can see these
 
-- **P-AUTH-59, P-AUTH-60.** The landing page has a "Log In" link to `/sign-in`, not a button that opens Google. Sign-in takes a second click (`routes/index.tsx:50`). feed.md calls P-FEED-01 done and does not record the change.
+- **P-AUTH-59, P-AUTH-60.** The landing page has a "Log In" link to `/sign-in`, not a button that opens Google. Sign-in takes a second click (`routes/index.tsx:50`). feed.md calls P-FEED-01 done and does not record the change. **Restored:** the landing page's "Log In" starts Google sign-in at once (`v2/src/client/components/login-button.tsx`, which `/sign-in` also uses). `/sign-in?next=…` stays for the redirects that need it. e2e `sign-in.spec.ts`.
 - **P-EXP-11.** The expense list search also matches notes (`ledger.ts` `listExpenses`). The current app matches the title and the vendor only.
 - **P-EXP-40, P-EXP-41, P-EXP-49.** Save, delete and Cancel always go to the expense list. v2 ignores `returnHref` and `cancelHref`. The record marks these items done.
-- **P-RECEIPT-06.** A receipt thumbnail opens one image, not a carousel. The record marks the item done.
+- **P-RECEIPT-06.** A receipt thumbnail opens one image, not a carousel. The record marks the item done. Kept (Freeman, 2026-11-05). **Bug fixed:** v2 listed the receipts sorted by their random IDs; now they keep the order they were attached in, as in the current app (`expense_documents.position`, migration 0010). test/db/expenses.test.ts "lists receipts in the order they were attached, as the current app does".
 - **P-UNGROUP-15.** The private expense form hides "Save as default splitting options". The record marks the item done.
 - **P-HIST-72.** The revision panel shows split weights at the currency's precision ("share 30.00", not "share 30").
-- **P-GROUP-98, P-GROUP-100, P-PWA-21, P-PWA-23.** Group URLs: a group without a slug is at `/<id>`, not `/groups/<id>`. The client redirects `/groups/<id>/…`, so the server sends no 307 and no `private, no-store`. `/<slug>` moves to `/<slug>/expenses`, where the current app keeps the URL.
+- **P-GROUP-98, P-GROUP-100, P-PWA-21, P-PWA-23.** Group URLs: a group without a slug is at `/<id>`, not `/groups/<id>`. The client redirects `/groups/<id>/…`, so the server sends no 307 and no `private, no-store`. `/<slug>` moves to `/<slug>/expenses`, where the current app keeps the URL. **Restored:** a group without a slug is at `/groups/<id>/…`, and `/<slug>` stays as typed. The server sends the current app's 307 with `Cache-Control: private, no-store` for `/groups/<id>/…` of a group with a slug (`v2/src/server/group-urls.ts`). The router keeps each URL (`v2/src/client/group-urls.ts`). v2's first URLs, `/<id>/…`, also move with a 307. Tests: test/db/app-urls.test.ts; e2e `group-expenses.spec.ts` "group URLs are the current app’s…".
 - **P-GROUP-101, P-GROUP-102, P-PWA-25, P-PWA-26.** Unknown paths: a path with a dot, a `/_next/` path or an unknown top-level path gets the SPA page and a group lookup, not a 404. A signed-in person who types a wrong URL lands on `/groups?access=denied`. groups.md calls P-GROUP-101 and P-GROUP-102 not applicable, which is wrong for these paths.
 
 ### Agents and scripts can see these
@@ -264,8 +266,8 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-AUTH-56 | covered | account.md:44 | — | — |
 | P-AUTH-57 | covered | account.md:44 | — | — |
 | P-AUTH-58 | changed (approved: DECISIONS.md group C) | account.md:45 | — | — |
-| P-AUTH-59 | deferred (other area) | account.md:46 | — | unapproved-change, change with no decision |
-| P-AUTH-60 | deferred (other area) | account.md:46 | — | unapproved-change, change with no decision |
+| P-AUTH-59 | covered (restored: DECISIONS.md, browser-visible differences) | AUDIT.md, People in the browser can see these | account.md:46 | tested |
+| P-AUTH-60 | covered (restored: DECISIONS.md, browser-visible differences) | AUDIT.md, People in the browser can see these | account.md:46 | tested |
 | P-AUTH-61 | deferred (other area) | account.md:46 | — | untested |
 | P-AUTH-62 | deferred (other area) | account.md:46 | — | untested |
 | P-AUTH-63 | covered | account.md:47 | — | — |
@@ -376,9 +378,9 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-GROUP-95 | covered | groups.md:100 | — | — |
 | P-GROUP-96 | covered | groups.md:101 | — | — |
 | P-GROUP-97 | covered | groups.md:102 | — | — |
-| P-GROUP-98 | changed (no decision) | groups.md:103 | — | — |
+| P-GROUP-98 | covered (restored: DECISIONS.md, browser-visible differences) | AUDIT.md, People in the browser can see these | groups.md:103 | tested |
 | P-GROUP-99 | covered | groups.md:104 | — | — |
-| P-GROUP-100 | changed (no decision) | groups.md:105 | — | — |
+| P-GROUP-100 | covered (restored: DECISIONS.md, browser-visible differences) | AUDIT.md, People in the browser can see these | groups.md:105 | tested |
 | P-GROUP-101 | changed (no decision) | groups.md:106 | — | — |
 | P-GROUP-102 | changed (no decision) | groups.md:106 | — | — |
 | P-GROUP-103 | covered | groups.md:107 | — | — |
@@ -944,7 +946,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-HIST-70 | changed (approved: DECISIONS.md group C) | history.md:57 | — | — |
 | P-HIST-71 | covered | history.md:58 | — | — |
 | P-HIST-72 | changed (no decision) | history.md:59 | history.md:58 covered | — |
-| P-HIST-73 | covered | history.md:58 | — | — |
+| P-HIST-73 | covered | history.md:58 | — | people compared as a set, tested |
 | P-HIST-74 | covered | history.md:58 | — | — |
 | P-HIST-75 | changed (approved: DECISIONS.md group G) | history.md:60 | — | — |
 | P-HIST-76 | changed (approved: DECISIONS.md bullet "Revision snapshots record the expense's receipts". The code now stores them (`shared/history.ts:93`), so the record's gap is closed) | history.md:61 | history.md:58 covered | — |
@@ -965,7 +967,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-RECEIPT-03 | covered | expenses.md:131 | — | — |
 | P-RECEIPT-04 | covered | expenses.md:131 | — | — |
 | P-RECEIPT-05 | covered | expenses.md:131 | — | — |
-| P-RECEIPT-06 | covered | expenses.md:132 | — | change with no decision |
+| P-RECEIPT-06 | changed (approved: DECISIONS.md, browser-visible differences) | expenses.md:132 | — | receipt order fixed, tested |
 | P-RECEIPT-07 | covered | expenses.md:131 | — | — |
 | P-RECEIPT-08 | covered | expenses.md:133 | — | — |
 | P-RECEIPT-09 | covered | expenses.md:134 | — | — |
@@ -1203,9 +1205,9 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-PWA-18 | changed (no decision) | account.md:77 | — | — |
 | P-PWA-19 | changed (no decision) | account.md:77 | — | — |
 | P-PWA-20 | changed (approved: PLAN.md Target stack (an SPA with Effect RPC replaces Next.js and tRPC; only the SPA calls the RPC, P-AUTH-14)) | account.md:78 | — | — |
-| P-PWA-21 | deferred (other area) | account.md:79 | — | unapproved-change, change with no decision |
+| P-PWA-21 | covered (restored: DECISIONS.md, browser-visible differences) | AUDIT.md, People in the browser can see these | account.md:79 | tested |
 | P-PWA-22 | deferred (other area) | account.md:79 | — | untested |
-| P-PWA-23 | deferred (other area) | account.md:79 | — | unapproved-change, change with no decision |
+| P-PWA-23 | covered (restored: DECISIONS.md, browser-visible differences) | AUDIT.md, People in the browser can see these | account.md:79 | tested |
 | P-PWA-24 | deferred (other area) | account.md:79 | — | tested |
 | P-PWA-25 | deferred (other area) | account.md:79 | — | unapproved-change, change with no decision |
 | P-PWA-26 | deferred (other area) | account.md:79 | — | unapproved-change, change with no decision |
@@ -1845,8 +1847,8 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-AUTH-46 | tested | app.ts:333,337 (export 401 "Sign in required", 403 "Group access denied", Cache-Control `private, no-store`); receipts.ts:127-129; e2e/expense-edit-export.spec.ts "the Expenses tab exports the group as CSV, for members only" (401); test/db/stats-export.test.ts "refuses non-members (P-EXPORT-04)"; test/db/mcp-uploads.test.ts "uploads, attaches and downloads a receipt with the same API key" (403, 401) | Tests assert statuses only, not bodies or headers. The receipt 401 body is "Authentication required" in both apps; PARITY's wording is wrong for receipts. |
 | P-AUTH-47 | closed (branch `t3/v2-server-gaps`) | MCP and receipts: test/db/mcp-uploads.test.ts "uploads, attaches and downloads a receipt with the same API key"; exports: app.ts:332 cookie only | The raw key does not authenticate `/<group>/expenses/export/{csv,json}`. MCP get_group still advertises those links (mcp/tools/groups.ts:165); `export_group` over MCP is the only agent path. An agent would notice. |
 | P-AUTH-50 | untested | v2/src/client/routes/$group.tsx:19 redirects a Forbidden load to `/groups?access=denied` | Server refusal is tested ("does not grant access through a slug"); the client redirect has no e2e. |
-| P-AUTH-59 | unapproved-change | v2/src/client/routes/index.tsx:50 `<Button asChild><Link to="/sign-in">Log In</Link></Button>` | The landing has a link in `main`, not a button; no nav, avatar or theme toggle (matches). No test. No decision covers the change. |
-| P-AUTH-60 | unapproved-change | index.tsx:50 links to `/sign-in`; the Google call is in sign-in.tsx:68 | The current landing button calls `signIn.social({provider:'google', callbackURL:'/'})` directly; v2 adds a "Welcome to AgentSplit" page and a second Log In click. A person in the browser notices. |
+| P-AUTH-59 | tested | v2/src/client/routes/index.tsx `Landing` renders `LoginButton` (v2/src/client/components/login-button.tsx), which calls `signIn.social({provider:'google', callbackURL:'/'})` at once; e2e/sign-in.spec.ts "the landing page’s Log In starts Google sign-in at once (P-AUTH-59, P-AUTH-60)" | Restored on branch `t3/v2-ui-restore`. `/sign-in` keeps its page for `next` (P-AUTH-49). |
+| P-AUTH-60 | tested | v2/src/client/routes/index.tsx `Landing` renders `LoginButton` (v2/src/client/components/login-button.tsx), which calls `signIn.social({provider:'google', callbackURL:'/'})` at once; e2e/sign-in.spec.ts "the landing page’s Log In starts Google sign-in at once (P-AUTH-59, P-AUTH-60)" | Restored on branch `t3/v2-ui-restore`. `/sign-in` keeps its page for `next` (P-AUTH-49). |
 | P-AUTH-61 | untested | v2/src/client/routes/index.tsx:33 `me ? <Dashboard /> : <Landing />` | No e2e opens `/` signed in. Group G covers only the stale AUTH.md text. |
 | P-AUTH-62 | untested | index.tsx:39-55 (container, px-4) | No overflow test at 320/488/1280; not measured, so no-overflow is a prediction. |
 | P-AUTH-69 | untested | No `activeUser`/`newUser` reads anywhere in v2/src/client; personal figures come from `memberships.participant_id` (ledger.ts:35, sql.ts) | No identity picker exists; no test sets the old localStorage keys. |
@@ -1962,13 +1964,13 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-EXPORT-02 | not-applicable | src/lib/analytics/config.ts:9-11 returns `{ providers: [] }` always (P-PWA-44); v2 has no analytics client (grep finds none) | The current app's export event never leaves the browser, so nobody can observe its absence. No decision covers dropping the analytics layer. |
 | P-EXPORT-05 | closed (branch `t3/v2-server-gaps`) | v2/src/server/app.ts:116-124 `exportGroup` calls only `sessionPrincipal`; app.ts:188 passes only the cookie | An agent that GETs `/<group>/expenses/export/csv` with `X-API-Key` gets 401 "Sign in required". Agents over MCP can use `export_group` (content inline), so only direct-HTTP scripts notice. |
 | P-PWA-04 | browser check | v2/src/client/pwa.ts `addAppleSplashImages`; v2/src/client/main.tsx | Closed after the audit. The same algorithm, icon and color as the current app, with the same two media queries. It runs only where `navigator.standalone` exists (iOS), so other browsers skip the canvas work. |
-| P-PWA-21 | unapproved-change | v2/src/client/routes/groups.$.tsx:5-10 (client redirect); v2/src/server/assets.ts:102 serves the SPA page with `no-cache` | No server 307 and no `Cache-Control: private, no-store`; a non-JS client gets 200 HTML. groups.md P-GROUP-100 records "Changed" but DECISIONS.md has no entry. Browser users see the same end URL. |
+| P-PWA-21 | tested | v2/src/server/group-urls.ts `groupRedirect` (307, `Cache-Control: private, no-store`, query kept); test/db/app-urls.test.ts "moves /groups/<id>/… of a group with a slug to /<slug>/… with a private, uncached 307, keeping the query"; e2e/group-expenses.spec.ts "group URLs are the current app’s…" | Restored on branch `t3/v2-ui-restore`. Was: a client redirect only, with no 307. |
 | P-PWA-22 | untested | v2/src/server/assets.ts:88 answers non-GET/HEAD with 405, never a redirect | No test for a POST to `/groups/<id>`. |
-| P-PWA-23 | unapproved-change | v2/src/client/routes/$group/index.tsx:4 redirects `/<slug>` to `/<slug>/expenses`; e2e/group-expenses.spec.ts "a group opens on its expenses…" asserts the new URL | The current proxy rewrites `/<slug>` without a URL change (src/proxy.ts:38). `/<slug>/<rest>` matches. The e2e comment "as in the current app" is wrong. Cosmetic for a person. |
+| P-PWA-23 | tested | v2/src/client/group-urls.ts reads `/<slug>` as `/<slug>/expenses` without a URL change; e2e/group-expenses.spec.ts "a group opens on its expenses, sorts by date or by last change, and keeps the rail" and "group URLs are the current app’s…" | Restored on branch `t3/v2-ui-restore`. `/<slug>/<rest>` is unchanged. |
 | P-PWA-24 | tested | test/db/groups.test.ts "does not grant access through a slug (P-GROUP-103, P-ACCESS-09)"; e2e/group-expenses.spec.ts "a signed-out visitor returns to the page they asked for after sign-in (P-AUTH-49)" | The non-member client redirect (P-AUTH-50) has no e2e. |
 | P-PWA-25 | unapproved-change | app.ts:403 answers unknown `/api/*` with JSON 404 (matches); assets.ts:103 serves the SPA page for any other missing path, dotted or `/_next/`, and `/$group` then treats it as a group ref | A missing `/foo.png` gets 200 HTML and a group lookup instead of a 404. groups.md P-GROUP-102 calls this "Not applicable", which is wrong for dotted paths. Nobody visible except broken-asset debugging. |
 | P-PWA-26 | unapproved-change | `/$group` catches every unmatched top-level path ($group.tsx:12-21) | A non-slug path such as `/foo` sends a signed-in person to `/groups?access=denied` (signed-out: `/sign-in?next=/foo`) instead of a 404 page. No decision covers it. A person typing a wrong URL notices. |
-| P-PWA-36 | tested | v2/src/client/components/error-state.tsx; e2e/group-expenses.spec.ts "a tab that fails to load shows the group error under the tabs, with a reference and without the exception text (P-GROUP-53, P-PWA-36)" | Closed after the audit. The reference is made in the client and logged with the error, because the server returns no request ID. Only the browser console has the match, not the server logs. English-only title is approved (F). |
+| P-PWA-36 | tested | v2/src/client/components/error-state.tsx; e2e/group-expenses.spec.ts "a tab that fails to load shows the group error under the tabs, with a reference and without the exception text (P-GROUP-53, P-PWA-36)" | Closed after the audit. The reference is made in the client and logged with the error, because the server returns no request ID. Only the browser console has the match, not the server logs. English-only title is approved (F). Then the server's request ID: the RPC response header `X-Request-Id`, logged with each failed call (v2/src/server/rpc.ts), shown on the page; test/db/app-urls.test.ts and e2e "a failure the server answered shows the server’s request ID as the reference (P-PWA-36)". |
 | P-PWA-49 | gap at b83751d; fixed on `t3/v2-db-gaps` | No `server-timing`, `x-perf-db-queries` or `PERF_INSTRUMENTATION` anywhere in v2/src | v2 never emits the perf headers, so the "only when enabled" half holds, but the instrumentation is not ported. Internal; nobody visible. |
 | P-MCP-102 | untested | v2/src/server/auth-options.ts:35 `jwt()` plugin; v2/src/server/app.ts:160 routes /api/auth/* to Better Auth | No v2 test fetches /api/auth/jwks or checks for private fields. Better Auth's jwt plugin `getJwks` serves public keys; mcp/oauth.ts:33 rebuilds the same set from the jwks table. |
 | P-MCP-105 | untested | @better-auth/mcp 1.7.14 dist/index.mjs:170 `refreshTokenReuseInterval = 30` default; v2/src/server/auth-options.ts:36-51 does not override it | No v2 test repeats a refresh. Provider replay logic: oauth-provider authorize-*.mjs:1899-1925. |

@@ -1,5 +1,6 @@
 import { useRouter } from '@tanstack/react-router'
 import type { AnchorHTMLAttributes } from 'react'
+import { segmentPath } from '~/shared/groups'
 
 /**
  * The editor of an expense or a payment (P-HIST-70: payments open the payment
@@ -7,7 +8,7 @@ import type { AnchorHTMLAttributes } from 'react'
  * expenses area; until they exist they fall through to the group's index.
  */
 export const expenseHref = (data: { group: string; expenseId: string; kind: 'expense' | 'payment' }) =>
-  `/${encodeURIComponent(data.group)}/${data.kind === 'payment' ? 'payments' : 'expenses'}/${encodeURIComponent(data.expenseId)}/edit`
+  `${segmentPath(data.group)}/${data.kind === 'payment' ? 'payments' : 'expenses'}/${encodeURIComponent(data.expenseId)}/edit`
 
 /**
  * A link to an app path that is not a typed route yet. A plain click

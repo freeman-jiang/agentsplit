@@ -8,6 +8,7 @@ import pg from 'pg'
 import { groups, memberships, participants } from '../db/schema/app'
 import { session, user } from '../db/schema/auth'
 import type { ExpenseDraft } from '../src/shared/expense-rules'
+import { randomId } from '../src/shared/ids'
 import { createAuth } from '../src/server/auth'
 import { makeDb, type Db } from '../src/server/db'
 import { createExpense, updateExpense, type Principal } from '../src/server/ledger'
@@ -50,6 +51,18 @@ export async function seedHousehold(context: BrowserContext, baseURL: string): P
   const signed = (await serializeSignedCookie('better-auth.session_token', token, secret)).split(';')[0] ?? ''
   await context.addCookies([{ name: 'better-auth.session_token', value: signed.slice('better-auth.session_token='.length), url: baseURL, httpOnly: true, sameSite: 'Lax' }])
   return { slug, groupId, owner, people }
+}
+
+/** A second group of the household's owner, without a slug, with an ID as the app makes them. Returns its ID. */
+export async function seedUnsluggedGroup(household: Household): Promise<string> {
+  const groupId = randomId()
+  const participantId = randomId()
+  await withDb(async (db) => {
+    await db.insert(groups).values({ id: groupId, kind: 'named', slug: null, name: `Trip ${groupId}`, defaultCurrency: 'USD' })
+    await db.insert(participants).values({ id: participantId, groupId, name: household.owner.name })
+    await db.insert(memberships).values({ userId: household.owner.userId, groupId, role: 'admin', participantId })
+  })
+  return groupId
 }
 
 /** An even split of `amount` among everyone, paid by `payer`. */

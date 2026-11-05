@@ -311,11 +311,11 @@ export async function expenseDocumentsOf(tx: Db, expenseId: string): Promise<Sto
     .select({ id: expenseDocuments.id, url: expenseDocuments.url, width: expenseDocuments.width, height: expenseDocuments.height })
     .from(expenseDocuments)
     .where(eq(expenseDocuments.expenseId, expenseId))
-    .orderBy(asc(expenseDocuments.id))
+    .orderBy(asc(expenseDocuments.position))
 }
 
 /** The receipts of expense row `e` as JSON, in the order of expenseDocumentsOf. */
-const documentsOf = sql`coalesce((SELECT json_agg(json_build_object('id', d.id, 'url', d.url, 'width', d.width, 'height', d.height) ORDER BY d.id)
+const documentsOf = sql`coalesce((SELECT json_agg(json_build_object('id', d.id, 'url', d.url, 'width', d.width, 'height', d.height) ORDER BY d.position)
   FROM expense_documents d WHERE d.expense_id = e.id), '[]')`
 
 // ---------- write context ----------
@@ -480,7 +480,7 @@ async function writeDocuments(tx: Db, data: { groupId: string; expenseId: string
   if (data.saved.length) await tx.delete(expenseDocuments).where(eq(expenseDocuments.expenseId, data.expenseId))
   if (data.documents.length)
     await tx.insert(expenseDocuments).values(
-      data.documents.map((d) => ({ id: own.has(d.id) ? d.id : randomId(), expenseId: data.expenseId, url: d.url, width: d.width, height: d.height })),
+      data.documents.map((d, position) => ({ id: own.has(d.id) ? d.id : randomId(), expenseId: data.expenseId, url: d.url, width: d.width, height: d.height, position })),
     )
 }
 
