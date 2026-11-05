@@ -7,7 +7,9 @@ import { registerServiceWorker } from './pwa'
 import { routeTree } from './routeTree.gen'
 import './styles.css'
 
-export const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: false } } })
+// Every visit refetches its data, as the current app does (P-EXP-20, Freeman 2026-11-05).
+// A screen first shows what this tab already holds, then the fresh answer.
+export const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 0, retry: false } } })
 
 const router = createRouter({
   routeTree,
