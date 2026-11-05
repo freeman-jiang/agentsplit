@@ -1,19 +1,21 @@
 import { useSuspenseInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { Schema } from 'effect'
 import { useDeferredValue } from 'react'
 import { cn } from '~/client/cn'
 import { money } from '~/client/components/money'
 import { expensesQuery, groupQuery } from '~/client/queries'
 import { Input } from '~/client/ui/input'
 
-const Search = Schema.Struct({
-  sort: Schema.optionalKey(Schema.Literals(['date', 'updated'])),
-  q: Schema.optionalKey(Schema.String),
+type Search = { sort?: 'date' | 'updated'; q?: string }
+
+/** Route options stay in the main chunk, so this parses search params without a schema library. */
+const parseSearch = (raw: Record<string, unknown>): Search => ({
+  ...(raw['sort'] === 'date' || raw['sort'] === 'updated' ? { sort: raw['sort'] } : {}),
+  ...(typeof raw['q'] === 'string' && raw['q'] ? { q: raw['q'] } : {}),
 })
 
 export const Route = createFileRoute('/$group/expenses')({
-  validateSearch: Schema.toStandardSchemaV1(Search),
+  validateSearch: parseSearch,
   loaderDeps: ({ search }) => search,
   loader: ({ context, params, deps }) =>
     context.queryClient.ensureInfiniteQueryData(expensesQuery(params.group, { sort: deps.sort ?? 'date', ...(deps.q ? { search: deps.q } : {}) })),

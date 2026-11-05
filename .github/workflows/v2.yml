@@ -46,6 +46,8 @@ jobs:
       # The build also generates the route tree (src/client/routeTree.gen.ts) that the type check needs.
       - name: Production build
         run: bunx vite build
+      - name: Client bundle budget
+        run: bun scripts/check-bundle.ts
       - name: Check types
         run: bun run check-types
       - name: Tests

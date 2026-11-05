@@ -54,6 +54,7 @@ Each area owns its own files, so areas can be built in parallel:
 - Do not call Better Auth on the RPC path. The session is already resolved by the middleware.
 - Load large libraries only where they are needed, with a dynamic `import()`.
 - Keep the client fast: route-level code splitting (automatic), data preloaded on hover (`defaultPreload: 'intent'`), and no full page loads inside the app.
+- Never import `effect` at runtime in `src/client/`: use `import type` from the contract, and call the server through `rpc()` from `src/client/rpc.ts`. Route options (`validateSearch`, `beforeLoad`) stay in the main chunk, so keep them free of large libraries. Contract outputs must be JSON-identical (no `Date` or `bigint` transforms); `src/client/rpc.ts` checks this at compile time. CI fails when the up-front JavaScript exceeds 150 KB gzip (`scripts/check-bundle.ts`).
 
 ### Behavior
 
