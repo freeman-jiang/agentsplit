@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { localToday } from '~/client/components/local-today'
 import { money } from '~/client/components/money'
 import { balancesQuery, invalidateMoney } from '~/client/queries/expenses'
 import { rpc } from '~/client/rpc'
@@ -24,12 +25,6 @@ import { toInput } from './expense-form-state'
 import { describeWriteError, type WriteFailure } from './write-error'
 
 type DetailData = typeof ExpenseDetail.Type
-
-/** Today where the person recording the payment is (P-BAL-73). */
-const localDate = () => {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
 
 /** A payment the form can edit: one sender and one recipient (P-BAL-89). */
 export const isSimplePayment = (detail: DetailData) => detail.expense.kind === 'payment' && detail.expense.payers.length === 1 && detail.expense.shares.length === 1
@@ -50,7 +45,8 @@ export function PaymentForm(
   const [to, setTo] = useState(saved?.shares[0]?.participantId ?? (props.mode === 'create' ? (props.prefill.to ?? '') : ''))
   const [amount, setAmount] = useState(saved?.amount ?? (props.mode === 'create' ? (props.prefill.amount ?? '') : ''))
   const [currency, setCurrency] = useState<CurrencyCode>(saved?.currency ?? (props.mode === 'create' ? (props.prefill.currencyCode ?? group.defaultCurrency) : group.defaultCurrency))
-  const [date, setDate] = useState(saved?.expenseDate ?? localDate())
+  // Today where the person recording the payment is (P-BAL-73).
+  const [date, setDate] = useState(saved?.expenseDate ?? localToday())
   const [note, setNote] = useState(saved?.notes ?? '')
   const [error, setError] = useState<string | null>(null)
   const [failure, setFailure] = useState<WriteFailure | null>(null)

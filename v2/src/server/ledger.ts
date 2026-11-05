@@ -162,8 +162,6 @@ const decodeCursor = (text: string): Cursor => {
 
 type ListRow = ExpenseRow & { created_key: string; updated_key: string }
 
-/** The name shown for an activity's author; recurring copies made by the scheduled job have none. */
-
 /**
  * Expenses with their payers, shares and document count, in one statement.
  * PostgreSQL builds each row's parts as JSON, so the server parses one value
@@ -563,11 +561,9 @@ export async function createExpense(
     idempotencyKey: string | null
     expense: ExpenseDraft
     documents?: readonly StoredDocument[]
-    /** The write context, when the caller already loaded it. */
-    context?: WriteContext
   },
 ): Promise<ApiExpense> {
-  const context = await contextFor(tx, { ...data, op: 'create', context: data.context })
+  const context = await loadWriteContext(tx, { principal: data.principal, group: data.group, expenseId: data.expenseId, op: 'create', idempotencyKey: data.idempotencyKey })
   const { groupId } = context.membership
   const documents = data.documents ?? []
   const request = { op: 'create', groupId, expenseId: data.expenseId, expense: data.expense, documents }
@@ -700,11 +696,9 @@ export async function deleteExpense(
     expectedRevision: number
     /** null for a caller that never retries with the same key. */
     idempotencyKey: string | null
-    /** The write context, when the caller already loaded it. */
-    context?: WriteContext
   },
 ): Promise<{ revision: number }> {
-  const context = await contextFor(tx, { ...data, op: 'change', context: data.context })
+  const context = await loadWriteContext(tx, { principal: data.principal, group: data.group, expenseId: data.expenseId, op: 'change', idempotencyKey: data.idempotencyKey })
   const { groupId } = context.membership
   const request = { op: 'delete', groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision }
   return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request, previous: context.previous }, async () => {

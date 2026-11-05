@@ -6,8 +6,6 @@ import { rpc } from './rpc'
 
 export const meQuery = queryOptions({ queryKey: ['me'], queryFn: () => rpc((api) => api('session.me', undefined)) })
 
-export const groupsQuery = queryOptions({ queryKey: ['groups'], queryFn: () => rpc((api) => api('groups.list', undefined)) })
-
 export const groupQuery = (group: string) =>
   queryOptions({ queryKey: ['group', group], queryFn: () => rpc((api) => api('groups.get', { groupId: group })) })
 
