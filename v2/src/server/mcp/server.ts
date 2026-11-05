@@ -22,21 +22,23 @@ const annotations = (tool: McpTool) => ({
 })
 
 /**
- * What tools/list advertises, built once per isolate. OpenAI reads
- * securitySchemes at the top level; `_meta` mirrors it for other clients.
+ * What tools/list advertises, built once per isolate on the first tools/list.
+ * OpenAI reads securitySchemes at the top level; `_meta` mirrors it for other clients.
  */
-const ADVERTISED: Tool[] = MCP_TOOLS.map((tool) => {
-  const securitySchemes = tool.kind === 'read' ? READ : WRITE
-  return {
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.inputSchema as Tool['inputSchema'],
-    outputSchema: tool.outputSchema as Tool['outputSchema'],
-    annotations: annotations(tool),
-    securitySchemes,
-    _meta: { securitySchemes },
-  }
-})
+let advertised: Tool[] | undefined
+const advertisedTools = (): Tool[] =>
+  (advertised ??= MCP_TOOLS.map((tool) => {
+    const securitySchemes = tool.kind === 'read' ? READ : WRITE
+    return {
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema as Tool['inputSchema'],
+      outputSchema: tool.outputSchema as Tool['outputSchema'],
+      annotations: annotations(tool),
+      securitySchemes,
+      _meta: { securitySchemes },
+    }
+  }))
 
 /** The SDK validates arguments through this; decoding happens once, here. */
 const inputOf = (tool: McpTool): StandardSchemaWithJSON => ({
@@ -106,8 +108,8 @@ export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: s
       },
     )
   }
-  // The SDK has no option for top-level securitySchemes, so tools/list is served from ADVERTISED.
-  server.server.setRequestHandler('tools/list', () => ({ tools: ADVERTISED }))
+  // The SDK has no option for top-level securitySchemes, so tools/list is served from advertisedTools.
+  server.server.setRequestHandler('tools/list', () => ({ tools: advertisedTools() }))
   return server
 }
 
