@@ -683,8 +683,9 @@ export const createExpense = defineTool({
     const expenseId = input.expenseId ?? randomId()
     const draft = draftOf(input.expense)
     // The stable create ID is the idempotency guard: a reused ID is a Conflict, never a second expense.
+    // So the tool sends no idempotency key, and the write skips the key's lookup and row.
     const duplicate = (error: unknown) => (error instanceof Conflict && error.id === expenseId ? new ToolError('CONFLICT', DUPLICATE_ID) : error)
-    const idempotencyKey = `mcp:${randomId()}`
+    const idempotencyKey = null
     if (input.groupId === undefined) {
       if (input.uploads?.length) throw new ToolError('BAD_REQUEST', 'Save an ungrouped expense first, then attach its receipts.')
       if (input.expense.documents?.length)
@@ -731,7 +732,10 @@ export const updateExpense = defineTool({
   output: Schema.Struct(ExpenseWrite),
   run: async ({ db, principal, baseUrl, bucket, documentsEnabled }, input) => {
     const changes = input.changes ?? {}
-    const current = await ledger.getExpense(db, { principal, group: input.groupId, expenseId: input.expenseId })
+    // One read for the tool and the ledger write. Each call is new, so it sends no idempotency key.
+    const context = await ledger.loadWriteContext(db, { principal, group: input.groupId, expenseId: input.expenseId, op: 'change', idempotencyKey: null })
+    if (!context.expense || context.expense.deleted) throw new NotFound({ entity: 'expense', id: input.expenseId })
+    const current = context.expense.value
     // A stale revision conflicts before any upload is checked, so a failed call changes nothing.
     if (current.revision !== input.expectedRevision) throw new ToolError('CONFLICT', 'The record changed. Read its current revision and retry your intended changes.')
     const attached = await attachUploads(db, {
@@ -748,15 +752,16 @@ export const updateExpense = defineTool({
     // No change, no revision, as in the current app.
     if (Object.keys(changes).length > 0 || attached.length > 0) {
       // documents replaces the saved list; attached receipts join it, or the saved list when documents is omitted.
-      const documents = attached.length ? [...(changes.documents ?? (await ledger.expenseDocumentsOf(db, current.id))), ...attached] : changes.documents
+      const documents = attached.length ? [...(changes.documents ?? context.expense.documents), ...attached] : changes.documents
       saved = await ledger.updateExpense(db, {
         principal,
         group: input.groupId,
         expenseId: input.expenseId,
         expectedRevision: input.expectedRevision,
-        idempotencyKey: `mcp:${randomId()}`,
+        idempotencyKey: null,
         expense: mergedDraft(current, changes),
         ...(documents ? { documents } : {}),
+        context,
       })
     }
     const targets = await prepareUploads(db, { principal, groupId: current.groupId, expenseId: current.id, requests: input.uploads, baseUrl, enabled: documentsEnabled })
@@ -782,7 +787,7 @@ export const deleteExpense = defineTool({
       group: input.groupId,
       expenseId: input.expenseId,
       expectedRevision: input.expectedRevision,
-      idempotencyKey: `mcp:${randomId()}`,
+      idempotencyKey: null,
     })
     return { expenseId: input.expenseId, revision, deleted: true as const }
   },
