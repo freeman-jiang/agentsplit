@@ -1,10 +1,9 @@
 // Ledger reads and writes. Every function checks group access itself, so the
 // RPC handlers and the MCP tools cannot skip it. Writes take a transaction.
-import { and, asc, desc, eq, exists, gte, ilike, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm'
+import { and, asc, eq, isNull, or, sql, type SQL } from 'drizzle-orm'
 import { Result } from 'effect'
 import {
   activities,
-  expenseDocuments,
   expensePayers,
   expenses,
   expenseShares,
@@ -66,28 +65,29 @@ export async function listGroups(db: Db, principal: Principal) {
     .then((rows) => rows.map((r) => ({ ...r, defaultCurrency: r.defaultCurrency as CurrencyCode })))
 }
 
-/** Balances over every live expense of one group, per currency. */
+/**
+ * Balances over every live expense of one group, per currency. PostgreSQL sums
+ * the payments and shares per person; computeBalances then checks that each
+ * currency nets to zero, so a corrupt ledger still fails loudly.
+ */
 export async function groupBalances(db: Db, groupId: string) {
-  const live = and(eq(expenses.groupId, groupId), isNull(expenses.deletedAt))
-  const [rows, payers, shares] = await Promise.all([
-    db.select({ id: expenses.id, currency: expenses.currency }).from(expenses).where(live),
-    db
-      .select({ expenseId: expensePayers.expenseId, participantId: expensePayers.participantId, amount: expensePayers.amount })
-      .from(expensePayers)
-      .innerJoin(expenses, eq(expenses.id, expensePayers.expenseId))
-      .where(live),
-    db
-      .select({ expenseId: expenseShares.expenseId, participantId: expenseShares.participantId, amount: expenseShares.amount })
-      .from(expenseShares)
-      .innerJoin(expenses, eq(expenses.id, expenseShares.expenseId))
-      .where(live),
-  ])
-  const byExpense = <T extends { expenseId: string }>(list: T[]) => Map.groupBy(list, (r) => r.expenseId)
-  const p = byExpense(payers)
-  const s = byExpense(shares)
-  const parts = (list: { participantId: string; amount: bigint }[] | undefined) =>
-    new Map((list ?? []).map((r) => [r.participantId, minor(r.amount)] as const))
-  const balances = computeBalances(rows.map((e) => ({ currency: e.currency as CurrencyCode, payers: parts(p.get(e.id)), shares: parts(s.get(e.id)) })))
+  const result = await db.execute<{ currency: string; participant_id: string; paid: string; owed: string }>(sql`
+    SELECT e.currency, parts.participant_id, sum(parts.paid)::text AS paid, sum(parts.owed)::text AS owed
+    FROM expenses e
+    JOIN (
+      SELECT expense_id, participant_id, amount AS paid, 0::bigint AS owed FROM expense_payers WHERE group_id = ${groupId}
+      UNION ALL
+      SELECT expense_id, participant_id, 0::bigint, amount FROM expense_shares WHERE group_id = ${groupId}
+    ) parts ON parts.expense_id = e.id
+    WHERE e.group_id = ${groupId} AND e.deleted_at IS NULL
+    GROUP BY e.currency, parts.participant_id
+  `)
+  const entries = result.rows.map((r) => ({
+    currency: r.currency as CurrencyCode,
+    payers: new Map([[r.participant_id, minor(BigInt(r.paid))]]),
+    shares: new Map([[r.participant_id, minor(BigInt(r.owed))]]),
+  }))
+  const balances = computeBalances(entries)
   return [...balances].flatMap(([currency, byPerson]) =>
     [...byPerson].map(([participantId, b]) => ({
       participantId,
@@ -145,47 +145,87 @@ const decodeCursor = (text: string): Cursor => {
   throw new Invalid({ message: 'Invalid cursor', field: 'cursor' })
 }
 
-/** Expense rows with their parts, in API form. */
-async function loadExpenses(db: Db, ids: string[]) {
-  if (ids.length === 0) return []
-  const [rows, payers, shares, documents] = await Promise.all([
-    db.select().from(expenses).where(inArray(expenses.id, ids)),
-    db.select().from(expensePayers).where(inArray(expensePayers.expenseId, ids)).orderBy(asc(expensePayers.participantId)),
-    db.select().from(expenseShares).where(inArray(expenseShares.expenseId, ids)).orderBy(asc(expenseShares.participantId)),
-    db.select({ expenseId: expenseDocuments.expenseId, n: sql<number>`count(*)::int` }).from(expenseDocuments).where(inArray(expenseDocuments.expenseId, ids)).groupBy(expenseDocuments.expenseId),
-  ])
-  const p = Map.groupBy(payers, (r) => r.expenseId)
-  const s = Map.groupBy(shares, (r) => r.expenseId)
-  const d = new Map(documents.map((r) => [r.expenseId, r.n]))
-  const byId = new Map(rows.map((e) => [e.id, e]))
-  return ids.flatMap((id) => {
-    const e = byId.get(id)
-    if (!e) return []
+type ExpenseRow = {
+  id: string
+  group_id: string
+  revision: number
+  kind: 'expense' | 'payment'
+  title: string
+  vendor: string | null
+  notes: string
+  category_id: number
+  expense_date: string
+  currency: string
+  amount: string
+  split_mode: 'evenly' | 'shares' | 'percentage' | 'amount'
+  recurrence: 'none' | 'daily' | 'weekly' | 'monthly'
+  created_at: string
+  updated_at: string
+  created_key: string
+  updated_key: string
+  payers: { participantId: string; amount: string }[]
+  shares: { participantId: string; amount: string; weight: string }[]
+  document_count: number
+}
+
+/**
+ * Expenses with their payers, shares and document count, in one statement.
+ * PostgreSQL builds each row's parts as JSON, so the Worker parses one value
+ * per row instead of several result sets: this keeps a list request within the
+ * Workers CPU budget. Minor units travel as text, never as JSON numbers.
+ */
+async function selectExpenses(db: Db, data: { where: SQL; orderBy: SQL; limit?: number }) {
+  const result = await db.execute<ExpenseRow>(sql`
+    SELECT e.id, e.group_id, e.revision, e.kind, e.title, e.vendor, e.notes, e.category_id,
+      e.expense_date::text AS expense_date, e.currency, e.amount::text AS amount, e.split_mode, e.recurrence,
+      to_char(e.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at,
+      to_char(e.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at,
+      e.created_at::text AS created_key, e.updated_at::text AS updated_key,
+      coalesce((SELECT json_agg(json_build_object('participantId', p.participant_id, 'amount', p.amount::text) ORDER BY p.participant_id)
+        FROM expense_payers p WHERE p.expense_id = e.id), '[]') AS payers,
+      coalesce((SELECT json_agg(json_build_object('participantId', s.participant_id, 'amount', s.amount::text, 'weight', s.weight) ORDER BY s.participant_id)
+        FROM expense_shares s WHERE s.expense_id = e.id), '[]') AS shares,
+      (SELECT count(*)::int FROM expense_documents d WHERE d.expense_id = e.id) AS document_count
+    FROM expenses e
+    WHERE ${data.where}
+    ORDER BY ${data.orderBy}
+    ${data.limit === undefined ? sql`` : sql`LIMIT ${data.limit}`}
+  `)
+  return result.rows.map((e) => {
     const currency = e.currency as CurrencyCode
-    const money = (amount: bigint) => formatMinor({ amount: minor(amount), currency })
-    return [
-      {
+    const money = (amount: string) => formatMinor({ amount: minor(BigInt(amount)), currency })
+    return {
+      expense: {
         id: e.id,
-        groupId: e.groupId,
+        groupId: e.group_id,
         revision: e.revision,
         kind: e.kind,
         title: e.title,
         vendor: e.vendor,
         notes: e.notes,
-        categoryId: e.categoryId,
-        expenseDate: e.expenseDate,
+        categoryId: e.category_id,
+        expenseDate: e.expense_date,
         currency,
         amount: money(e.amount),
-        splitMode: e.splitMode,
-        payers: (p.get(id) ?? []).map((r) => ({ participantId: r.participantId, amount: money(r.amount) })),
-        shares: (s.get(id) ?? []).map((r) => ({ participantId: r.participantId, amount: money(r.amount), weight: r.weight })),
+        splitMode: e.split_mode,
+        payers: e.payers.map((p) => ({ participantId: p.participantId, amount: money(p.amount) })),
+        shares: e.shares.map((s) => ({ participantId: s.participantId, amount: money(s.amount), weight: s.weight })),
         recurrence: e.recurrence,
-        createdAt: e.createdAt.toISOString(),
-        updatedAt: e.updatedAt.toISOString(),
-        documentCount: d.get(id) ?? 0,
+        createdAt: e.created_at,
+        updatedAt: e.updated_at,
+        documentCount: e.document_count,
       },
-    ]
+      /** Exact PostgreSQL timestamps (microseconds) for cursors. */
+      keys: { created: e.created_key, updated: e.updated_key },
+    }
   })
+}
+
+async function loadExpenses(db: Db, ids: string[]) {
+  if (ids.length === 0) return []
+  const rows = await selectExpenses(db, { where: sql`e.id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`, orderBy: sql`e.id` })
+  const byId = new Map(rows.map((r) => [r.expense.id, r.expense]))
+  return ids.flatMap((id) => byId.get(id) ?? [])
 }
 
 export type ApiExpense = Awaited<ReturnType<typeof loadExpenses>>[number]
@@ -197,47 +237,41 @@ export async function listExpenses(
   const { groupId } = await requireMember(db, data)
   const f = data.filter
   const limit = Math.min(Math.max(Math.trunc(data.limit) || 50, 1), 200)
-  const where: SQL[] = [eq(expenses.groupId, groupId), isNull(expenses.deletedAt)]
+  const where: SQL[] = [sql`e.group_id = ${groupId}`, sql`e.deleted_at IS NULL`]
   if (f.search?.trim()) {
     const term = `%${f.search.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`
-    where.push(or(ilike(expenses.title, term), ilike(expenses.vendor, term), ilike(expenses.notes, term)) as SQL)
+    where.push(sql`(e.title ILIKE ${term} OR e.vendor ILIKE ${term} OR e.notes ILIKE ${term})`)
   }
-  if (f.currency) where.push(eq(expenses.currency, f.currency))
-  if (f.categoryId !== undefined) where.push(eq(expenses.categoryId, f.categoryId))
-  if (f.kind) where.push(eq(expenses.kind, f.kind))
-  if (f.from) where.push(gte(expenses.expenseDate, f.from))
-  if (f.to) where.push(lte(expenses.expenseDate, f.to))
-  if (f.payerId)
-    where.push(exists(db.select({ x: sql`1` }).from(expensePayers).where(and(eq(expensePayers.expenseId, expenses.id), eq(expensePayers.participantId, f.payerId)))))
+  if (f.currency) where.push(sql`e.currency = ${f.currency}`)
+  if (f.categoryId !== undefined) where.push(sql`e.category_id = ${f.categoryId}`)
+  if (f.kind) where.push(sql`e.kind = ${f.kind}`)
+  if (f.from) where.push(sql`e.expense_date >= ${f.from}::date`)
+  if (f.to) where.push(sql`e.expense_date <= ${f.to}::date`)
+  if (f.payerId) where.push(sql`EXISTS (SELECT 1 FROM expense_payers p WHERE p.expense_id = e.id AND p.participant_id = ${f.payerId})`)
   if (f.participantId)
-    where.push(
-      or(
-        exists(db.select({ x: sql`1` }).from(expenseShares).where(and(eq(expenseShares.expenseId, expenses.id), eq(expenseShares.participantId, f.participantId)))),
-        exists(db.select({ x: sql`1` }).from(expensePayers).where(and(eq(expensePayers.expenseId, expenses.id), eq(expensePayers.participantId, f.participantId)))),
-      ) as SQL,
-    )
+    where.push(sql`(EXISTS (SELECT 1 FROM expense_shares s WHERE s.expense_id = e.id AND s.participant_id = ${f.participantId})
+      OR EXISTS (SELECT 1 FROM expense_payers p WHERE p.expense_id = e.id AND p.participant_id = ${f.participantId}))`)
   const byUpdated = f.sort === 'updated'
   if (data.cursor) {
     const c = decodeCursor(data.cursor)
     where.push(
       byUpdated
-        ? sql`(${expenses.updatedAt}, ${expenses.id}) < (${c.k}::timestamptz, ${c.i})`
-        : sql`(${expenses.expenseDate}, ${expenses.createdAt}, ${expenses.id}) < (${c.k}::date, ${c.c}::timestamptz, ${c.i})`,
+        ? sql`(e.updated_at, e.id) < (${c.k}::timestamptz, ${c.i})`
+        : sql`(e.expense_date, e.created_at, e.id) < (${c.k}::date, ${c.c}::timestamptz, ${c.i})`,
     )
   }
-  const rows = await db
-    .select({ id: expenses.id, date: expenses.expenseDate, createdAt: expenses.createdAt, updatedAt: expenses.updatedAt })
-    .from(expenses)
-    .where(and(...where))
-    .orderBy(...(byUpdated ? [desc(expenses.updatedAt), desc(expenses.id)] : [desc(expenses.expenseDate), desc(expenses.createdAt), desc(expenses.id)]))
-    .limit(limit + 1)
+  const rows = await selectExpenses(db, {
+    where: sql.join(where, sql` AND `),
+    orderBy: byUpdated ? sql`e.updated_at DESC, e.id DESC` : sql`e.expense_date DESC, e.created_at DESC, e.id DESC`,
+    limit: limit + 1,
+  })
   const page = rows.slice(0, limit)
   const last = page.at(-1)
   return {
-    expenses: await loadExpenses(db, page.map((r) => r.id)),
+    expenses: page.map((r) => r.expense),
     nextCursor:
       rows.length > limit && last
-        ? encodeCursor(byUpdated ? { k: last.updatedAt.toISOString(), c: '', i: last.id } : { k: last.date, c: last.createdAt.toISOString(), i: last.id })
+        ? encodeCursor(byUpdated ? { k: last.keys.updated, c: '', i: last.expense.id } : { k: last.expense.expenseDate, c: last.keys.created, i: last.expense.id })
         : null,
   }
 }

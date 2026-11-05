@@ -15,6 +15,8 @@ export default defineConfig({
     }),
     react(),
     tailwindcss(),
-    cloudflare(),
+    cloudflare({ viteEnvironment: { name: 'worker' } }),
   ],
+  // A smaller Worker parses faster on a cold isolate, which counts against the CPU budget.
+  environments: { worker: { build: { minify: true } } },
 })

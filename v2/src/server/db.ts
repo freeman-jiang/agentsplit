@@ -1,5 +1,5 @@
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
-import { Context, Effect, Layer, Schema } from 'effect'
+import { Context, Effect, Schema } from 'effect'
 import pg from 'pg'
 import * as app from '../../db/schema/app'
 import * as auth from '../../db/schema/auth'
@@ -15,19 +15,6 @@ export const makeDb = (client: pg.Client | pg.PoolClient): Db => drizzle({ clien
 
 export class DatabaseError extends Schema.TaggedError<DatabaseError>()('DatabaseError', { message: Schema.String }) {}
 
-/** Writes that conflict with a concurrent write (serialization failure or deadlock) are retried. */
-const RETRYABLE = new Set(['40001', '40P01'])
-
-export class Database extends Context.Service<
-  Database,
-  {
-    /** Runs `work` on one connection. */
-    readonly use: <A>(work: (db: Db) => Promise<A>) => Effect.Effect<A, DatabaseError | DomainError>
-    /** Runs `work` in one SERIALIZABLE transaction, retried on serialization failures. */
-    readonly transaction: <A>(work: (db: Db) => Promise<A>) => Effect.Effect<A, DatabaseError | DomainError>
-  }
->()('agentsplit/Database') {}
-
 /** Errors the domain code throws on purpose. They pass through unchanged; anything else is a DatabaseError. */
 export type DomainError = Forbidden | NotFound | Conflict | Invalid
 const isDomainError = (cause: unknown): cause is DomainError =>
@@ -36,37 +23,36 @@ const isDomainError = (cause: unknown): cause is DomainError =>
 const errorOf = (cause: unknown): DatabaseError | DomainError =>
   isDomainError(cause) ? cause : new DatabaseError({ message: cause instanceof Error ? cause.message : String(cause) })
 
-/** One connection per call. Hyperdrive pools the real connections, so connecting is cheap. */
-export function databaseLayer(connectionString: () => string) {
-  const connect = Effect.acquireRelease(
-    Effect.tryPromise({
-      try: async () => {
-        const client = new pg.Client({ connectionString: connectionString() })
-        await client.connect()
-        return client
-      },
-      catch: errorOf,
-    }),
-    (client) => Effect.promise(() => client.end().catch(() => {})),
-  )
-  const use = <A>(work: (db: Db) => Promise<A>) =>
-    Effect.scoped(Effect.flatMap(connect, (client) => Effect.tryPromise({ try: () => work(makeDb(client)), catch: errorOf })))
-  const attempt = <A>(work: (db: Db) => Promise<A>) =>
-    Effect.scoped(
-      Effect.flatMap(connect, (client) =>
-        Effect.tryPromise({
-          try: () => makeDb(client).transaction(work, { isolationLevel: 'serializable' }),
-          catch: (cause) => cause,
-        }),
-      ),
+/**
+ * This request's database connection. The Worker opens one connection per
+ * request and registers it under a random ID that only it can set (the
+ * x-agentsplit-request header); the RPC middleware provides it to handlers.
+ */
+export class RequestDb extends Context.Service<RequestDb, Db>()('agentsplit/RequestDb') {}
+
+export const REQUEST_ID_HEADER = 'x-agentsplit-request'
+const connections = new Map<string, Db>()
+export const registerRequestDb = (id: string, db: Db) => void connections.set(id, db)
+export const releaseRequestDb = (id: string) => void connections.delete(id)
+export const requestDbFor = (id: string | undefined) => (id ? connections.get(id) : undefined)
+
+/** Runs `work` on this request's connection. */
+export const useDb = <A>(work: (db: Db) => Promise<A>): Effect.Effect<A, DatabaseError | DomainError, RequestDb> =>
+  Effect.gen(function* () {
+    const db = yield* RequestDb
+    return yield* Effect.tryPromise({ try: () => work(db), catch: errorOf })
+  })
+
+/** Writes that conflict with a concurrent write (serialization failure or deadlock) are retried. */
+const RETRYABLE = new Set(['40001', '40P01'])
+const retryable = (cause: unknown) => typeof cause === 'object' && cause !== null && RETRYABLE.has(String((cause as { code?: unknown }).code))
+
+/** Runs `work` in one SERIALIZABLE transaction on this request's connection, retried on serialization failures. */
+export const transaction = <A>(work: (db: Db) => Promise<A>): Effect.Effect<A, DatabaseError | DomainError, RequestDb> =>
+  Effect.gen(function* () {
+    const db = yield* RequestDb
+    return yield* Effect.tryPromise({ try: () => db.transaction(work, { isolationLevel: 'serializable' }), catch: (cause) => cause }).pipe(
+      Effect.retry({ times: 4, while: retryable }),
+      Effect.mapError(errorOf),
     )
-  const transaction = <A>(work: (db: Db) => Promise<A>): Effect.Effect<A, DatabaseError | DomainError> =>
-    attempt(work).pipe(
-      Effect.retry({
-        times: 4,
-        while: (cause) => typeof cause === 'object' && cause !== null && RETRYABLE.has(String((cause as { code?: unknown }).code)),
-      }),
-      Effect.mapError((cause) => (cause instanceof DatabaseError ? cause : errorOf(cause))),
-    )
-  return Layer.succeed(Database, { use, transaction })
-}
+  })
