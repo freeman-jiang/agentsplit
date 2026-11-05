@@ -39,6 +39,19 @@ export const groups = pgTable(
   (t) => [check('groups_revision_nonnegative', sql`${t.revision} >= 0`)],
 )
 
+/** Slugs a group used before: an old link redirects to the group's current URL. */
+export const groupSlugHistory = pgTable(
+  'group_slug_history',
+  {
+    slug: text().primaryKey(),
+    groupId: text()
+      .notNull()
+      .references(() => groups.id, { onDelete: 'restrict' }),
+    retiredAt: now(),
+  },
+  (t) => [index().on(t.groupId)],
+)
+
 export const participants = pgTable(
   'participants',
   {
@@ -195,6 +208,8 @@ export const activities = pgTable(
     participantId: text(),
     expenseId: text(),
     expenseRevision: integer(),
+    // Nullable: set by group changes that bump groups.revision (create_group, update_group).
+    groupRevision: integer(),
     data: text(),
     snapshot: jsonb(),
     source: text().notNull().default('web'),
@@ -204,6 +219,7 @@ export const activities = pgTable(
   },
   (t) => [
     unique('activities_expense_revision').on(t.expenseId, t.expenseRevision),
+    unique('activities_group_revision').on(t.groupId, t.groupRevision),
     check('activities_snapshot_revision', sql`${t.expenseRevision} IS NULL OR (${t.expenseId} IS NOT NULL AND ${t.expenseRevision} >= 0)`),
     index().on(t.groupId, t.time.desc(), t.id.desc()),
     index().on(t.groupId, t.sequence.desc()),

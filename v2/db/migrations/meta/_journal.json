@@ -22,6 +22,20 @@
       "when": 1793868400912,
       "tag": "0002_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793872606311,
+      "tag": "0003_group_slugs",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793872638891,
+      "tag": "0004_group_audit",
+      "breakpoints": true
     }
   ]
 }
