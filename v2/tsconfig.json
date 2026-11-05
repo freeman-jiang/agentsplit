@@ -38,7 +38,8 @@
     "db",
     "test",
     "scripts",
-    "*.ts"
+    "*.ts",
+    "e2e"
   ],
   "exclude": [
     "test/legacy"
