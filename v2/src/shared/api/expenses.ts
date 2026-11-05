@@ -4,8 +4,7 @@
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
-import { SplitModeSchema } from '../split'
-import { CalendarDateOutput, Expense, Id, NotFound, ReadError, Unavailable, WriteError } from './core'
+import { CalendarDateOutput, Expense, Id, NotFound, ReadError, SplitModeSchema, Unavailable, WriteError } from './core'
 
 export const Category = Schema.Struct({ id: Schema.Number, grouping: Schema.String, name: Schema.String })
 

@@ -11,7 +11,7 @@ Items that areas deferred to the lead, with their source. Each is closed with th
 | — | The `/agents` instructions: update them with the final MCP tool names and the PLAN.md guidance on full payments and notes | account, mcp | open |
 | — | Replace the feed area's compact expense and payment forms (`routes/expenses/-*.tsx`) with the expenses area's forms after that merge | feed, expenses | open |
 | — | One shared expense column builder and row mapper for ledger.ts and feed.ts (the feed copies the ledger's columns, and they drifted once) | expenses, feed | open |
-| — | Make `shared/expense-rules.ts` and `shared/split.ts` Effect-free, so the expense form does not load Effect when it opens | expenses | open |
+| — | Make `shared/expense-rules.ts` and `shared/split.ts` Effect-free, so the expense form does not load Effect when it opens | expenses | closed: `validateExpense` returns a plain union, the form uses `minorOrNull`, and `SplitModeSchema` is in `shared/api/core.ts`. The form no longer loads the 25 KB (gzip) chunk that held Effect; no client chunk contains Effect |
 | P-EXPORT-01, P-HIST-80..87 | The export menu on the Expenses tab and the expense log under both editors | history | closed: wired after the merges; e2e `expense-edit-export.spec.ts` |
 | — | Group snapshots: the groups area wrote `defaultCurrency`, the history reader requires `currency`, so the Log failed after any group edit | groups, history | closed: writer fixed; `test/db/groups.test.ts` "group history" crosses both areas |
 | — | Remaining MCP tools after each area merges (groups: `create_group`, `update_group`, `manage_group_access`, explicit IDs for `list_groups`; share, CSV and JSON links) | groups, mcp | open |

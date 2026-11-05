@@ -1,9 +1,8 @@
 // One validation for every expense write: the form, the RPC handlers and the
 // MCP tools all call validateExpense. The rules are the current app's
 // (src/lib/schemas.ts expenseFormSchema), plus multiple payers.
-import { Result } from 'effect'
 import { CURRENCIES, type CurrencyCode } from './currencies'
-import { formatMinor, minor, parseMinor, sumMinor, type Minor } from './money'
+import { formatMinor, minor, minorOrNull, sumMinor, type Minor } from './minor'
 import { parseWeight, preferredPayer, resolveShares, type SplitMode } from './split'
 
 export const LIMITS = { titleMin: 2, titleMax: 200, vendorMax: 100, notesMax: 5_000, people: 100, amountMax: 10_000_000n } as const
@@ -67,6 +66,9 @@ function percentMessage(total: { units: bigint; scale: number }) {
   return `The percentages add up to ${text(total.units)}%, ${text(difference)}% ${total.units > hundred ? 'more' : 'less'} than 100%.`
 }
 
+/** The outcome of validateExpense. A plain union, so the form can use it without loading Effect. */
+export type ExpenseCheck = { readonly ok: true; readonly value: ResolvedExpense } | { readonly ok: false; readonly issues: ReadonlyArray<ExpenseIssue> }
+
 /**
  * Checks a draft against the rules and the group's participants, and resolves
  * every amount into minor units. Returns every issue it finds, not only the first.
@@ -74,7 +76,7 @@ function percentMessage(total: { units: bigint; scale: number }) {
 export function validateExpense(data: {
   draft: ExpenseDraft
   participantIds: ReadonlySet<string>
-}): Result.Result<ResolvedExpense, ReadonlyArray<ExpenseIssue>> {
+}): ExpenseCheck {
   const { draft, participantIds } = data
   const issues: ExpenseIssue[] = []
   const issue = (field: string, message: string) => issues.push({ field, message })
@@ -91,8 +93,7 @@ export function validateExpense(data: {
   if (!Number.isInteger(draft.categoryId) || draft.categoryId < 0) issue('categoryId', 'Unknown category')
   if (!isCalendarDate(draft.expenseDate)) issue('expenseDate', 'Use a real calendar date, YYYY-MM-DD')
 
-  const parsedAmount = parseMinor({ amount: draft.amount, currency })
-  const amount = Result.isSuccess(parsedAmount) ? parsedAmount.success : undefined
+  const amount = minorOrNull({ amount: draft.amount, currency }) ?? undefined
   if (amount === undefined) issue('amount', moneyMessage(draft.amount, currency))
   else if (amount === 0n) issue('amount', 'The amount must not be zero.')
   else if ((amount < 0n ? -amount : amount) > LIMITS.amountMax * 10n ** BigInt(decimals))
@@ -106,11 +107,11 @@ export function validateExpense(data: {
     if (!participantIds.has(payer.participantId)) issue(field, 'The payer is not in this group')
     if (payerIds.has(payer.participantId)) issue(field, 'Each payer appears once')
     payerIds.add(payer.participantId)
-    const parsed = parseMinor({ amount: payer.amount, currency })
-    if (Result.isFailure(parsed)) return void issue(field, moneyMessage(payer.amount, currency))
-    if (parsed.success === 0n || (amount !== undefined && parsed.success < 0n !== amount < 0n))
+    const parsed = minorOrNull({ amount: payer.amount, currency })
+    if (parsed === null) return void issue(field, moneyMessage(payer.amount, currency))
+    if (parsed === 0n || (amount !== undefined && parsed < 0n !== amount < 0n))
       return void issue(field, 'Each payment must be nonzero, with the same sign as the amount')
-    payers.push({ participantId: payer.participantId, amount: parsed.success })
+    payers.push({ participantId: payer.participantId, amount: parsed })
   })
   if (draft.payers.length === 0) issue('payers', 'You must select a participant.')
   if (amount !== undefined && payers.length === draft.payers.length && payers.length && sumMinor(payers.map((p) => p.amount)) !== amount)
@@ -129,11 +130,11 @@ export function validateExpense(data: {
     if (shareIds.has(share.participantId)) issue(field, 'Duplicate beneficiary')
     shareIds.add(share.participantId)
     if (draft.splitMode === 'amount') {
-      const parsed = parseMinor({ amount: share.weight, currency })
-      if (Result.isFailure(parsed)) return void issue(field, moneyMessage(share.weight, currency))
-      if (parsed.success === 0n || (amount !== undefined && parsed.success < 0n !== amount < 0n))
+      const parsed = minorOrNull({ amount: share.weight, currency })
+      if (parsed === null) return void issue(field, moneyMessage(share.weight, currency))
+      if (parsed === 0n || (amount !== undefined && parsed < 0n !== amount < 0n))
         return void issue(field, 'Each amount must be nonzero, with the same sign as the total')
-      return void weights.push({ participantId: share.participantId, weight: parsed.success.toString() })
+      return void weights.push({ participantId: share.participantId, weight: parsed.toString() })
     }
     let weight: ReturnType<typeof parseWeight>
     try {
@@ -158,14 +159,17 @@ export function validateExpense(data: {
     if (sum !== amount) issue('shares', sumMessage({ what: 'amounts', sum, amount, currency }))
   }
 
-  if (issues.length || amount === undefined) return Result.fail(issues)
+  if (issues.length || amount === undefined) return { ok: false, issues }
   const resolved = resolveShares({ amount, mode: draft.splitMode, preferredParticipantId: preferredPayer(payers), participants: weights })
-  return Result.succeed({
-    ...draft,
-    title,
-    vendor,
-    amount,
-    payers,
-    shares: weights.map((w) => ({ ...w, amount: resolved.get(w.participantId) ?? minor(0n) })),
-  })
+  return {
+    ok: true,
+    value: {
+      ...draft,
+      title,
+      vendor,
+      amount,
+      payers,
+      shares: weights.map((w) => ({ ...w, amount: resolved.get(w.participantId) ?? minor(0n) })),
+    },
+  }
 }

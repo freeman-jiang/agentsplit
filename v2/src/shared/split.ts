@@ -1,8 +1,9 @@
-import { Schema } from 'effect'
-import { minor, sumMinor, type Minor } from './money'
+// Splitting without Effect, for the client and the server alike. The schema
+// of a split mode is SplitModeSchema in shared/api/core.ts.
+import { minor, sumMinor, type Minor } from './minor'
 
-export const SplitModeSchema = Schema.Literals(['evenly', 'shares', 'percentage', 'amount'])
-export type SplitMode = typeof SplitModeSchema.Type
+export const SPLIT_MODES = ['evenly', 'shares', 'percentage', 'amount'] as const
+export type SplitMode = (typeof SPLIT_MODES)[number]
 
 /** A weight is an exact non-negative decimal: a share count, a percentage, or an amount. */
 export type Weight = { readonly units: bigint; readonly scale: number }
@@ -16,9 +17,12 @@ export function parseWeight(text: string): Weight {
 
 const atScale = (weight: Weight, scale: number) => weight.units * 10n ** BigInt(scale - weight.scale)
 
-export class SplitError extends Schema.TaggedError<SplitError>()('SplitError', {
-  reason: Schema.Literals(['no-participants', 'zero-weights', 'amount-mismatch']),
-}) {}
+export class SplitError extends Error {
+  readonly _tag = 'SplitError'
+  constructor(readonly reason: 'no-participants' | 'zero-weights' | 'amount-mismatch') {
+    super(`Split failed: ${reason}`)
+  }
+}
 
 /**
  * Divides `amount` in proportion to `weights`, in whole minor units.
@@ -89,6 +93,6 @@ export function preferredPayer(payers: ReadonlyArray<{ readonly participantId: s
   const [first] = [...payers].sort(
     (a, b) => (b.amount > a.amount ? 1 : b.amount < a.amount ? -1 : 0) || compareIds(a.participantId, b.participantId),
   )
-  if (!first) throw new SplitError({ reason: 'no-participants' })
+  if (!first) throw new SplitError('no-participants')
   return first.participantId
 }

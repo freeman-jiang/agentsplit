@@ -1,10 +1,10 @@
 // The expense form's state and the pure rules behind it: building the draft
 // that validateExpense checks, the live share preview, and the auto-filled
 // amounts of an amount split. Ported from the current app's expense-form.tsx.
-import { Result } from 'effect'
 import type { CurrencyCode } from '~/shared/currencies'
 import { validateExpense, type ExpenseDraft, type ExpenseIssue } from '~/shared/expense-rules'
-import { formatMinor, minor, parseMinor, sumMinor, type DecimalString } from '~/shared/money'
+import type { DecimalString } from '~/shared/money'
+import { formatMinor, minor, minorOrNull, sumMinor } from '~/shared/minor'
 import { apportion, compareIds, parseWeight, preferredPayer, type SplitMode } from '~/shared/split'
 import type { FormDocument } from './expense-documents'
 
@@ -45,8 +45,8 @@ function payersOf(state: FormState, order: readonly string[]) {
 /** The payer who gets the first leftover unit, when the payers parse. */
 function preferredOf(state: FormState, order: readonly string[]): string | null {
   const payers = payersOf(state, order).flatMap((p) => {
-    const parsed = parseMinor({ amount: p.amount, currency: state.currency })
-    return Result.isSuccess(parsed) ? [{ participantId: p.participantId, amount: parsed.success }] : []
+    const parsed = minorOrNull({ amount: p.amount, currency: state.currency })
+    return parsed === null ? [] : [{ participantId: p.participantId, amount: parsed }]
   })
   return payers.length ? preferredPayer(payers) : null
 }
@@ -58,20 +58,20 @@ function preferredOf(state: FormState, order: readonly string[]): string | null 
  */
 export function autoAmounts(state: FormState, order: readonly string[]): ReadonlyMap<string, string> {
   const result = new Map<string, string>()
-  const total = parseMinor({ amount: state.amount.trim(), currency: state.currency })
-  if (Result.isFailure(total)) return result
+  const total = minorOrNull({ amount: state.amount.trim(), currency: state.currency })
+  if (total === null) return result
   const selected = order.filter((id) => state.selected[id])
   const typed = selected.filter((id) => state.edits[id] === 'edited')
   let typedSum = 0n
   for (const id of typed) {
-    const parsed = parseMinor({ amount: (state.weights[id] ?? '').trim(), currency: state.currency })
-    if (Result.isFailure(parsed)) return result
-    typedSum += parsed.success
+    const parsed = minorOrNull({ amount: (state.weights[id] ?? '').trim(), currency: state.currency })
+    if (parsed === null) return result
+    typedSum += parsed
   }
   const rest = selected.filter((id) => state.edits[id] !== 'edited').sort(compareIds)
   if (rest.length === 0) return result
   const preferred = preferredOf(state, order)
-  const parts = apportion({ amount: minor(total.success - typedSum), weights: rest.map(() => parseWeight('1')), preferred: rest.findIndex((id) => id === preferred) })
+  const parts = apportion({ amount: minor(total - typedSum), weights: rest.map(() => parseWeight('1')), preferred: rest.findIndex((id) => id === preferred) })
   rest.forEach((id, index) => result.set(id, formatMinor({ amount: parts[index] ?? minor(0n), currency: state.currency })))
   return result
 }
@@ -138,8 +138,8 @@ export function check(state: FormState, order: readonly string[]): Check {
   const draft = toDraft(state, order)
   const participantIds = new Set(order)
   const result = validateExpense({ draft, participantIds })
-  const issues = Result.isFailure(result)
-    ? result.failure.map((issue) => {
+  const issues = !result.ok
+    ? result.issues.map((issue) => {
         const [list, index] = issue.field.split('.')
         const row = index === undefined ? undefined : list === 'shares' ? draft.shares[Number(index)] : list === 'payers' ? draft.payers[Number(index)] : undefined
         return row ? { ...issue, participantId: row.participantId } : issue
@@ -149,20 +149,20 @@ export function check(state: FormState, order: readonly string[]): Check {
   const preferred = preferredOf(state, order)
   const payers = payerRemainder(state, order) === formatMinor({ amount: minor(0n), currency: state.currency }) || !preferred ? draft.payers : [{ participantId: preferred, amount: draft.amount }]
   const money = validateExpense({ draft: { ...draft, payers, title: 'Preview', vendor: null, notes: '', expenseDate: '2000-01-01', categoryId: 0 }, participantIds })
-  const preview = Result.isSuccess(money)
-    ? new Map(money.success.shares.map((s) => [s.participantId, formatMinor({ amount: s.amount, currency: state.currency })]))
+  const preview = money.ok
+    ? new Map(money.value.shares.map((s) => [s.participantId, formatMinor({ amount: s.amount, currency: state.currency })]))
     : null
   return { issues, preview }
 }
 
 /** What is left to assign among several payers, when every amount parses. */
 export function payerRemainder(state: FormState, order: readonly string[]): string | null {
-  const total = parseMinor({ amount: state.amount.trim(), currency: state.currency })
-  if (Result.isFailure(total)) return null
-  const amounts = payersOf(state, order).map((p) => parseMinor({ amount: p.amount, currency: state.currency }))
-  if (amounts.some(Result.isFailure)) return null
-  const paid = sumMinor(amounts.flatMap((a) => (Result.isSuccess(a) ? [a.success] : [])))
-  return formatMinor({ amount: minor(total.success - paid), currency: state.currency })
+  const total = minorOrNull({ amount: state.amount.trim(), currency: state.currency })
+  if (total === null) return null
+  const amounts = payersOf(state, order).map((p) => minorOrNull({ amount: p.amount, currency: state.currency }))
+  if (amounts.some((a) => a === null)) return null
+  const paid = sumMinor(amounts.flatMap((a) => (a === null ? [] : [a])))
+  return formatMinor({ amount: minor(total - paid), currency: state.currency })
 }
 
 // ---------- saved splitting defaults ----------

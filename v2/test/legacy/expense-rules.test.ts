@@ -1,5 +1,4 @@
 // v2 must accept exactly the expenses the current app accepts, and reject the rest.
-import { Result } from 'effect'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { expenseFormSchema } from '../../../src/lib/schemas'
@@ -70,7 +69,7 @@ describe('validateExpense matches the current expense form rules', () => {
         // members only when the old schema has no way to know.
         const allMembers = [d.payer, ...d.shares.map((s) => s.participantId)].every((p) => people.includes(p))
         const next = validateExpense({ draft, participantIds: new Set(allMembers ? people : [...people, 'stranger']) })
-        expect({ accepted: Result.isSuccess(next), draft: d }).toEqual({ accepted: oldAccepted, draft: d })
+        expect({ accepted: next.ok, draft: d }).toEqual({ accepted: oldAccepted, draft: d })
       }),
       { numRuns: 5000 },
     )
