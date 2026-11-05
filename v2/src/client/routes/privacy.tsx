@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-// Public: no sign-in check. The text matches the current app, except where v2
-// runs on other infrastructure (Cloudflare and Google Cloud instead of one server).
+// Public: no sign-in check. The text matches the current app: v2 runs on the
+// same operator's server, with the same storage.
 export const Route = createFileRoute('/privacy')({
   component: Privacy,
 })
@@ -30,8 +30,7 @@ function Privacy() {
       <section className="space-y-2">
         <h2 className="text-xl font-medium">Storage and history</h2>
         <p>
-          Accounts and expenses are stored in the operator’s database on Google Cloud, and receipts in the operator’s Cloudflare storage.
-          Expense edits and deletions retain an audit history, including the authenticated actor and receipt references. Removing an
+          Accounts, expenses, and receipts are stored on the operator’s infrastructure. Expense edits and deletions retain an audit history, including the authenticated actor and receipt references. Removing an
           expense or leaving a group does not erase this history. The instance operator has administrative access to the stored data.
           Contact the operator about access, retention, or deletion requests.
         </p>
@@ -39,8 +38,7 @@ function Privacy() {
       <section className="space-y-2">
         <h2 className="text-xl font-medium">External services</h2>
         <p>
-          Google processes sign-in under its own privacy policy. Cloudflare and Google Cloud host this instance for the operator. This
-          deployment does not enable analytics or AI receipt processing. If you connect an external agent, the information you ask that
+          Google processes sign-in under its own privacy policy. This deployment does not enable analytics or AI receipt processing. If you connect an external agent, the information you ask that
           agent to access is also handled by its provider. API keys are stored as hashes; newly created keys are shown once.
         </p>
       </section>

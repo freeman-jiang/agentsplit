@@ -91,10 +91,16 @@ The old app runs on `db`, which the import only read. A rollback loses every wri
 1. Get Freeman's approval.
 2. Export the `activities` rows of `db2` since 2026-11-05 18:00:48 UTC, so that the writes made in v2 can be entered again by hand. Decide with Freeman what to do with them.
 3. Set the application's Compose file to `/compose.coolify.yaml`.
-4. Deploy the `main` commit before the cutover merge (`bb26b78`).
-5. Check the old app, its sign-in and the Macademia group.
+4. Set the application's commit to `bb26b78`, the `main` commit before the cutover merge. Coolify otherwise deploys the head of `main`.
+5. Set the post-deployment command back to the value below, with container `app`. The cutover cleared it, because it runs `node`, which the v2 image does not have.
+6. Deploy.
+7. Check the old app, its sign-in and the Macademia group.
 
-The cutover cleared the application's post-deployment command, because it ran `node`, which the v2 image does not have. Its old value is not recorded in this repository.
+The old post-deployment command (it opens Garage's bucket for receipt reads; it contains no secret values):
+
+```sh
+node -e 'const {S3Client,PutBucketWebsiteCommand}=require("@aws-sdk/client-s3");new S3Client({endpoint:"http://garage:3900",region:process.env.S3_UPLOAD_REGION,forcePathStyle:true,credentials:{accessKeyId:process.env.S3_UPLOAD_KEY,secretAccessKey:process.env.S3_UPLOAD_SECRET}}).send(new PutBucketWebsiteCommand({Bucket:process.env.S3_UPLOAD_BUCKET,WebsiteConfiguration:{IndexDocument:{Suffix:"index.html"}}})).then(()=>console.log("Receipt reads enabled")).catch(e=>{console.error(e.name);process.exit(1)})'
+```
 
 Keep `db`, `postgres-data` and `compose.coolify.yaml` intact until Freeman says otherwise. Never delete a volume.
 
