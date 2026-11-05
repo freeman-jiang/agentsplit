@@ -7,6 +7,8 @@ import { makeDb, registerRequestDb, releaseRequestDb, REQUEST_ID_HEADER } from '
 import type { Env } from './env'
 import { HandlersLive } from './handlers'
 import { Api, AppConfig, AuthMiddlewareLive } from './rpc'
+import { sessionPrincipal } from './session'
+import { Forbidden } from '../shared/api'
 
 const appEnv = env as unknown as Env
 const config = {
@@ -49,6 +51,25 @@ async function withConnection(work: (client: pg.Client) => Promise<Response>): P
   }
 }
 
+/** CSV and JSON exports, at the current app's URLs: /groups/<id>/expenses/export/<format> and /<slug>/expenses/export/<format>. */
+async function exportGroup(data: { db: ReturnType<typeof makeDb>; cookie: string | null; group: string; format: 'csv' | 'json' }) {
+  let group: string
+  try {
+    group = decodeURIComponent(data.group)
+  } catch {
+    return Response.json({ error: 'Invalid group ID' }, { status: 404 })
+  }
+  const principal = await sessionPrincipal(data.db, { cookie: data.cookie, secret: config.secret, baseUrl: config.baseUrl })
+  if (!principal) return Response.json({ error: 'Sign in required' }, { status: 401 })
+  const { exportCsv, exportJson, exportResponse } = await import('./export')
+  try {
+    return exportResponse(await (data.format === 'json' ? exportJson : exportCsv)(data.db, { principal, group }))
+  } catch (error) {
+    if (error instanceof Forbidden) return Response.json({ error: 'Group access denied' }, { status: 403 })
+    throw error
+  }
+}
+
 export default {
   async fetch(request) {
     const url = new URL(request.url)
@@ -72,6 +93,16 @@ export default {
     if (url.pathname.startsWith('/api/auth/'))
       // Better Auth loads only for these routes, so RPC requests never parse it.
       return withConnection(async (client) => (await import('./auth')).createAuth({ ...config, db: makeDb(client) }).handler(request))
+    const exportRoute = /^\/(?:groups\/)?([^/]+)\/expenses\/export\/(csv|json)$/.exec(url.pathname)
+    if (exportRoute && request.method === 'GET') {
+      const [, group = '', format] = exportRoute
+      const response = await withConnection((client) =>
+        exportGroup({ db: makeDb(client), cookie: request.headers.get('cookie'), group, format: format === 'json' ? 'json' : 'csv' }),
+      )
+      // Downloads stay out of shared caches, as in the current app.
+      response.headers.set('Cache-Control', 'private, no-store')
+      return response
+    }
     if (url.pathname === '/api/health') return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } })
     if (url.pathname.startsWith('/api/')) return Response.json({ error: 'Not found' }, { status: 404 })
     return appEnv.ASSETS.fetch(request)
