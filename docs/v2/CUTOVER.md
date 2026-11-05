@@ -33,11 +33,11 @@ Status: **ready for Freeman's review** (2026-11-05). Freeman moved v2 hosting fr
 
 ## The window (Freeman approves the start)
 
-1. **Freeze writes.** Turn on Coolify maintenance mode for the AgentSplit application, so every request gets the maintenance page for the whole window. Confirm that a write fails.
+1. **Freeze writes.** Set `AGENTSPLIT_MAINTENANCE=1` on the AgentSplit application in Coolify (it has no effect on the current app). Then stop only the current `app` container over SSH (`sudo docker stop <app container>`); `db` and `garage` keep running. The domain answers 502 until step 3. Confirm that a write fails. Coolify's API cannot toggle its own maintenance mode, so v2 carries the switch (tested on the preview on 2026-11-05: pages, RPC and MCP answered 503, `/api/health` 200, the container healthy).
 2. **Final backup.** Run `agentsplit-backup coolify` and confirm that its test restore passes.
-3. **Deploy v2 behind maintenance** (Freeman approves the merge into `main`). Merge `v2` into `main`, set the application's Compose file to `/compose.v2.coolify.yaml`, and deploy. Coolify builds the v2 `app`, starts `db2` beside the unchanged `db`, and keeps `garage` with its volumes. The v2 container migrates the empty `db2` at start. Users still see the maintenance page.
+3. **Deploy v2 behind maintenance** (Freeman approves the merge into `main`). Merge `v2` into `main`, set the application's Compose file to `/compose.v2.coolify.yaml`, and deploy. Coolify builds the v2 `app`, starts `db2` beside the unchanged `db`, and keeps `garage` with its volumes. The v2 container migrates the empty `db2` at start and, with the switch on, answers 503 with a maintenance page to everything but `/api/health`. Its hourly job is paused.
 4. **Import and verify.** From the dev box, open SSH tunnels to `db` and `db2` on the Oracle host. Run `scripts/import-legacy.ts` from `db` into `db2`: one transaction, and any problem stops it with the row ID. Then run `test/legacy/verify-import.ts` with `RECEIPTS_JSONL=<final backup>/receipts.jsonl`: the same IDs in every table, every balance to the cent, every expense field by field, and every receipt URL mapped to a backed-up object. A failure here means rollback.
-5. **Open v2.** Turn off maintenance mode. Check `/api/health`.
+5. **Open v2.** Clear `AGENTSPLIT_MAINTENANCE` and deploy again (31 seconds on the preview). Check `/api/health` and the home page.
 6. **Smoke checks.** In the browser: sign in with Google, open the Macademia group (balances, expenses, a receipt), add and delete a test expense in the production test group (below), and check the Log. Agents: connect Claude Code through OAuth, list groups, make one write in the production test group, and call with an existing API key. Confirm that an existing agent connection keeps working through a token refresh. Freeman chose this check over a Google sign-in on the preview (2026-11-05), so it is the first run of a real Claude Code client against v2: connect, read, write, and keep working more than 5 minutes later, through a refresh (docs/v2/OAUTH-CLAUDE-CODE.md).
 7. **Announce** that AgentSplit is back.
 
@@ -76,7 +76,7 @@ The verifier passed: the same IDs, balances and expenses as the local run. Then 
 
 ## Rollback
 
-- **Before step 5:** set the application's Compose file back to `/compose.coolify.yaml`, deploy the previous `main` commit, and turn off maintenance mode. The old `app` runs on `db`, which the import only read. Nothing changed for users.
+- **Before step 5:** set the application's Compose file back to `/compose.coolify.yaml` and deploy the previous `main` commit (start the old `app` container again if the failure came before step 3). The old `app` runs on `db`, which the import only read. Nothing changed for users.
 - **After step 5:** the same steps. Writes made in v2 after step 5 are only in `db2`: export them first (`activities` since step 5) and re-enter them by hand, or decide with Freeman.
 - Keep `db`, `postgres-data` and the old Compose file intact until Freeman says otherwise. Do not delete volumes.
 
