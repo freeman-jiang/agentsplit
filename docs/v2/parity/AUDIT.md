@@ -4,7 +4,7 @@ This audit checks the Done criterion "The parity checklist passes in full" of [P
 
 ## Result
 
-The checklist does not pass in full. The code check finds 40 items that v2 does not implement or implements only in part. The most visible gap is the group balance rail, which every group page shows. The most urgent gap is the nightly backup: it still dumps the old database, and its next run is on 2026-11-06 at 03:31 PST (P-DB-150).
+The checklist does not pass in full. The code check finds 40 items that v2 does not implement or implements only in part. Branch `t3/v2-db-gaps` closes gaps 12 to 18 (15 items), with migration `0009_database_rules` and the performance headers. It is not merged, so the counts below still describe b83751d. The most visible gap is the group balance rail, which every group page shows. The most urgent gap is the nightly backup: it still dumps the old database, and its next run is on 2026-11-06 at 03:31 PST (P-DB-150).
 
 The records also mark 167 items as changed. A decision approves most of them, but 101 items change with no decision. Most of them are invisible or small, but Freeman must approve each one or v2 must change back.
 
@@ -74,13 +74,13 @@ Each gap is an item that v2 does not implement, or implements only in part. The 
 ### Nobody can see these yet (data safety and database rules)
 
 11. **P-DB-150, P-DB-148.** The nightly backup does not cover v2. The live `agentsplit-backup` dumps the old `db` container and runs `node` in the `app` container, which the v2 image does not have. The fix is on the unmerged dots branch `agentsplit-backup-v2` (6bb1a4d). The next run is on 2026-11-06 at 03:31 PST. Also, no step compares data after a v2 migration: `server.ts` migrates at every start. Evidence: dots `main` 773d448 `devbox/bin/agentsplit-backup:26-33`; CUTOVER.md "Follow-up". `verify-import.ts` compares only the old app with v2.
-12. **P-DB-61, P-DB-65, P-DB-93, P-DB-117, P-DB-127.** DECISIONS.md group C approves foreign keys for these references, but no migration adds them: `activities.expense_id` and `participant_id`, `recurring_links.group_id`, `memberships.user_id`, `apikey.reference_id`, and `oauth_connections.user_id` and `client_id`. Evidence: `v2/db/migrations/0000_init.sql` (no `REFERENCES` for these columns).
-13. **P-DB-95.** DECISIONS.md group A approves a role limited to admin or member, and PLAN.md wants each invariant in the database. The `role` column has no CHECK. Only TypeScript limits it. Evidence: `0000_init.sql:128`; `v2/db/schema/app.ts:76`.
-14. **P-DB-70.** DECISIONS.md group G approves a trigger that keeps receipt rows. No migration adds it. The app never deletes receipt rows. Evidence: No trigger on `receipts` in `v2/db/migrations/*.sql`.
-15. **P-DB-42, P-DB-47, P-DB-77.** The database no longer limits `split_mode`, `recurrence` and the activity `type` to their values. The current app uses PostgreSQL enums. v2 checks them only in TypeScript. Evidence: `0000_init.sql:6,71,75` (plain `text`, no CHECK).
-16. **P-DB-115, P-DB-116, P-DB-121.** Three unique keys of the current schema are gone: `account(provider_id, account_id)`, `apikey.key` and `oauth_client_resource(client_id, resource_id)`. A race can then link one Google account to two users. Evidence: `0000_init.sql:186-200,301-307,451`; the generated auth schema (`v2/db/schema/auth.ts`) emits plain indexes.
-17. **P-DB-49.** No index supports the per-currency balance query. This affects speed only. Evidence: No `(group_id, currency, deleted_at)` index in `v2/db/migrations`.
-18. **P-PWA-49.** The performance headers are not ported. They are off by default in the current app. Evidence: No `server-timing` or `x-perf-db-queries` in `v2/src`.
+12. **P-DB-61, P-DB-65, P-DB-93, P-DB-117, P-DB-127.** DECISIONS.md group C approves foreign keys for these references, but no migration adds them: `activities.expense_id` and `participant_id`, `recurring_links.group_id`, `memberships.user_id`, `apikey.reference_id`, and `oauth_connections.user_id` and `client_id`. Evidence: `v2/db/migrations/0000_init.sql` (no `REFERENCES` for these columns). **Fixed on `t3/v2-db-gaps`:** `0009_database_rules.sql` adds `activities(expense_id, group_id)` and `activities(participant_id, group_id)` to the expense and the participant of the same group, `recurring_links(current_frame_expense_id, group_id)` to its expense, so the link's group is the expense's group, `memberships.user_id` (RESTRICT), and `apikey.reference_id` and both `oauth_connections` keys (CASCADE). Test: `v2/test/db/database-rules.test.ts`, "foreign keys".
+13. **P-DB-95.** DECISIONS.md group A approves a role limited to admin or member, and PLAN.md wants each invariant in the database. The `role` column has no CHECK. Only TypeScript limits it. Evidence: `0000_init.sql:128`; `v2/db/schema/app.ts:76`. **Fixed on `t3/v2-db-gaps`:** CHECK `memberships_role`. Test: `database-rules.test.ts` "refuses a role other than admin or member".
+14. **P-DB-70.** DECISIONS.md group G approves a trigger that keeps receipt rows. No migration adds it. The app never deletes receipt rows. Evidence: No trigger on `receipts` in `v2/db/migrations/*.sql`. **Fixed on `t3/v2-db-gaps`:** the triggers `receipts_immutable` and `receipts_no_truncate` refuse UPDATE, DELETE and TRUNCATE. Test: `database-rules.test.ts` "refuses to change, delete or truncate a receipt row".
+15. **P-DB-42, P-DB-47, P-DB-77.** The database no longer limits `split_mode`, `recurrence` and the activity `type` to their values. The current app uses PostgreSQL enums. v2 checks them only in TypeScript. Evidence: `0000_init.sql:6,71,75` (plain `text`, no CHECK). **Fixed on `t3/v2-db-gaps`:** CHECKs `expenses_split_mode`, `expenses_recurrence` and `activities_type`. Tests: `database-rules.test.ts` "value lists".
+16. **P-DB-115, P-DB-116, P-DB-121.** Three unique keys of the current schema are gone: `account(provider_id, account_id)`, `apikey.key` and `oauth_client_resource(client_id, resource_id)`. A race can then link one Google account to two users. Evidence: `0000_init.sql:186-200,301-307,451`; the generated auth schema (`v2/db/schema/auth.ts`) emits plain indexes. **Fixed on `t3/v2-db-gaps`:** the three unique keys. `scripts/gen-auth-schema.ts` now emits them, and the unique key on `apikey.key` replaces its plain index. Tests: `database-rules.test.ts` "unique keys".
+17. **P-DB-49.** No index supports the per-currency balance query. This affects speed only. Evidence: No `(group_id, currency, deleted_at)` index in `v2/db/migrations`. **Fixed on `t3/v2-db-gaps`:** index `expenses_group_currency`.
+18. **P-PWA-49.** The performance headers are not ported. They are off by default in the current app. Evidence: No `server-timing` or `x-perf-db-queries` in `v2/src`. **Fixed on `t3/v2-db-gaps`:** with `PERF_INSTRUMENTATION=1`, `secured()` adds `x-perf-db-queries` and `server-timing: db;dur=<ms>` to every response (`v2/src/server/perf.ts`). Test: `v2/test/db/perf.test.ts`.
 
 ### Items that are implemented, but have no test
 
@@ -1212,7 +1212,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-PWA-46 | changed (no decision) | account.md:88 | — | — |
 | P-PWA-47 | covered | account.md:90 | — | — |
 | P-PWA-48 | changed (approved: DECISIONS.md group A) | account.md:91 | — | — |
-| P-PWA-49 | deferred | account.md:92 | — | gap |
+| P-PWA-49 | deferred | account.md:92 | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
 | P-PWA-50 | changed (approved: DECISIONS.md group F (English only)) | account.md:93 | — | — |
 | P-PWA-51 | changed (approved: DECISIONS.md group F (English only)) | account.md:93 | — | — |
 | P-PWA-52 | changed (approved: DECISIONS.md group F (English only)) | account.md:93 | — | — |
@@ -1676,14 +1676,14 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-DB-39 | missing | — | — | unapproved-change, change with no decision |
 | P-DB-40 | missing | — | — | untested |
 | P-DB-41 | missing | — | — | unapproved-change, change with no decision |
-| P-DB-42 | missing | — | — | gap |
+| P-DB-42 | missing | — | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
 | P-DB-43 | missing | — | — | unapproved-change, change with no decision |
 | P-DB-44 | missing | — | — | untested |
 | P-DB-45 | missing | — | — | unapproved-change, change with no decision |
 | P-DB-46 | missing | — | — | approved-change |
-| P-DB-47 | missing | — | — | gap |
+| P-DB-47 | missing | — | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
 | P-DB-48 | missing | — | — | untested |
-| P-DB-49 | missing | — | — | gap |
+| P-DB-49 | missing | — | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
 | P-DB-50 | missing | — | — | untested |
 | P-DB-51 | missing | — | — | tested |
 | P-DB-52 | missing | — | — | untested |
@@ -1695,23 +1695,23 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-DB-58 | missing | — | — | unapproved-change, change with no decision |
 | P-DB-59 | missing | — | — | untested |
 | P-DB-60 | missing | — | — | untested |
-| P-DB-61 | missing | — | — | gap |
+| P-DB-61 | missing | — | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
 | P-DB-62 | missing | — | — | unapproved-change, change with no decision |
 | P-DB-63 | missing | — | — | tested |
 | P-DB-64 | missing | — | — | unapproved-change, change with no decision |
-| P-DB-65 | missing | — | — | gap |
+| P-DB-65 | missing | — | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
 | P-DB-66 | missing | — | — | approved-change |
 | P-DB-67 | missing | — | — | tested |
 | P-DB-68 | missing | — | — | untested |
 | P-DB-69 | missing | — | — | untested |
-| P-DB-70 | missing | — | — | gap |
+| P-DB-70 | missing | — | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
 | P-DB-71 | missing | — | — | tested |
 | P-DB-72 | missing | — | — | untested |
 | P-DB-73 | missing | — | — | approved-change |
 | P-DB-74 | missing | — | — | tested |
 | P-DB-75 | missing | — | — | tested |
 | P-DB-76 | missing | — | — | approved-change |
-| P-DB-77 | missing | — | — | gap |
+| P-DB-77 | missing | — | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
 | P-DB-78 | missing | — | — | untested |
 | P-DB-79 | missing | — | — | unapproved-change, change with no decision |
 | P-DB-80 | missing | — | — | tested |
@@ -1727,9 +1727,9 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-DB-90 | missing | — | — | unapproved-change, change with no decision |
 | P-DB-91 | missing | — | — | untested |
 | P-DB-92 | missing | — | — | unapproved-change, change with no decision |
-| P-DB-93 | missing | — | — | gap |
+| P-DB-93 | missing | — | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
 | P-DB-94 | missing | — | — | tested |
-| P-DB-95 | missing | — | — | gap |
+| P-DB-95 | missing | — | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
 | P-DB-96 | missing | — | — | tested |
 | P-DB-97 | missing | — | — | untested |
 | P-DB-98 | missing | — | — | untested |
@@ -1749,19 +1749,19 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-DB-112 | missing | — | — | tested |
 | P-DB-113 | missing | — | — | untested |
 | P-DB-114 | missing | — | — | untested |
-| P-DB-115 | missing | — | — | gap |
-| P-DB-116 | missing | — | — | gap |
-| P-DB-117 | missing | — | — | gap |
+| P-DB-115 | missing | — | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
+| P-DB-116 | missing | — | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
+| P-DB-117 | missing | — | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
 | P-DB-118 | missing | — | — | tested |
 | P-DB-119 | missing | — | — | untested |
 | P-DB-120 | missing | — | — | untested |
-| P-DB-121 | missing | — | — | gap |
+| P-DB-121 | missing | — | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
 | P-DB-122 | missing | — | — | untested |
 | P-DB-123 | missing | — | — | untested |
 | P-DB-124 | missing | — | — | untested |
 | P-DB-125 | missing | — | — | untested |
 | P-DB-126 | missing | — | — | tested |
-| P-DB-127 | missing | — | — | gap |
+| P-DB-127 | missing | — | — | tested (fixed after the audit, `t3/v2-db-gaps`) |
 | P-DB-128 | missing | — | — | untested |
 | P-DB-129 | missing | — | — | not-applicable |
 | P-DB-130 | missing | — | — | not-applicable |
@@ -1950,7 +1950,7 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-PWA-25 | unapproved-change | app.ts:403 answers unknown `/api/*` with JSON 404 (matches); assets.ts:103 serves the SPA page for any other missing path, dotted or `/_next/`, and `/$group` then treats it as a group ref | A missing `/foo.png` gets 200 HTML and a group lookup instead of a 404. groups.md P-GROUP-102 calls this "Not applicable", which is wrong for dotted paths. Nobody visible except broken-asset debugging. |
 | P-PWA-26 | unapproved-change | `/$group` catches every unmatched top-level path ($group.tsx:12-21) | A non-slug path such as `/foo` sends a signed-in person to `/groups?access=denied` (signed-out: `/sign-in?next=/foo`) instead of a 404 page. No decision covers it. A person typing a wrong URL notices. |
 | P-PWA-36 | gap | v2/src/client/components/error-state.tsx:10-30 (router `defaultErrorComponent`, main.tsx:20); e2e/group-expenses.spec.ts "a tab that fails to load shows the group error under the tabs, without the exception text (P-GROUP-53)" | Title, generic message and "Try again" exist and the exception text is hidden (tested). No error reference is shown: v2 has no digest or request ID for the user to quote. English-only title is approved (F). |
-| P-PWA-49 | gap | No `server-timing`, `x-perf-db-queries` or `PERF_INSTRUMENTATION` anywhere in v2/src | v2 never emits the perf headers, so the "only when enabled" half holds, but the instrumentation is not ported. Internal; nobody visible. |
+| P-PWA-49 | gap at b83751d; fixed on `t3/v2-db-gaps` | No `server-timing`, `x-perf-db-queries` or `PERF_INSTRUMENTATION` anywhere in v2/src | v2 never emits the perf headers, so the "only when enabled" half holds, but the instrumentation is not ported. Internal; nobody visible. |
 | P-MCP-102 | untested | v2/src/server/auth-options.ts:35 `jwt()` plugin; v2/src/server/app.ts:160 routes /api/auth/* to Better Auth | No v2 test fetches /api/auth/jwks or checks for private fields. Better Auth's jwt plugin `getJwks` serves public keys; mcp/oauth.ts:33 rebuilds the same set from the jwks table. |
 | P-MCP-105 | untested | @better-auth/mcp 1.7.14 dist/index.mjs:170 `refreshTokenReuseInterval = 30` default; v2/src/server/auth-options.ts:36-51 does not override it | No v2 test repeats a refresh. Provider replay logic: oauth-provider authorize-*.mjs:1899-1925. |
 | P-MCP-106 | untested | oauth-provider 1.7.14 authorize-*.mjs:2324-2331 (refresh `invalid_scope` for a scope not in the refresh token); v2/src/server/auth.ts:37-47 (consent must cover scopes); mcp/oauth.ts:162 (token scopes within connection scopes) | No v2 test sends a refresh with a wider scope. |
@@ -2017,14 +2017,14 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-DB-39 | unapproved-change | 0000_init.sql:68 expense_date date NOT NULL, no DEFAULT | The CURRENT_DATE default is gone; every v2 writer sets the date. Nobody visible. |
 | P-DB-40 | untested | 0000_init.sql:67 category_id NOT NULL DEFAULT 0, FK :409 | No test relies on the default. |
 | P-DB-41 | unapproved-change | 0000_init.sql:71 split_mode text NOT NULL, no DEFAULT | The EVENLY default is gone; every v2 writer sets it. Nobody visible. |
-| P-DB-42 | gap | 0000_init.sql:71 split_mode text with no CHECK; values limited only by Drizzle text enum (v2/db/schema/app.ts:145) and app validation | The DB accepts any split_mode string, where the current app's enum refuses one. Internal: nobody visible unless a bad write slips past the app. Values map EVENLY, BY_SHARES, BY_PERCENTAGE, BY_AMOUNT to evenly, shares, percentage, amount. |
+| P-DB-42 | gap at b83751d; fixed on `t3/v2-db-gaps` | 0000_init.sql:71 split_mode text with no CHECK; values limited only by Drizzle text enum (v2/db/schema/app.ts:145) and app validation | The DB accepts any split_mode string, where the current app's enum refuses one. Internal: nobody visible unless a bad write slips past the app. Values map EVENLY, BY_SHARES, BY_PERCENTAGE, BY_AMOUNT to evenly, shares, percentage, amount. |
 | P-DB-43 | unapproved-change | 0000_init.sql:63 kind text NOT NULL ('expense' or 'payment'), no DEFAULT, no CHECK; import-legacy.ts:153 | isReimbursement becomes kind without a default and without a DB value check. Nobody visible. |
 | P-DB-44 | untested | 0000_init.sql:76 created_at DEFAULT now(); ledger.ts:581 does not set it | v2 relies on the default (transaction start time) instead of setting it explicitly; same result in practice. |
 | P-DB-45 | unapproved-change | 0000_init.sql:64-66 title NOT NULL, vendor nullable, notes NOT NULL DEFAULT ''; import-legacy.ts:156 maps NULL to '' | notes changes from nullable to non-null ''; MCP maps '' back to null (mcp/tools/expenses.ts:384, 544), so agents see no change. Nobody visible. |
 | P-DB-46 | approved-change | DECISIONS.md A: "a non-null recurrence (P-DB-46)"; 0000_init.sql:75 recurrence NOT NULL DEFAULT 'none'; import-legacy.ts:162 maps NULL to none | Implemented. |
-| P-DB-47 | gap | 0000_init.sql:75 recurrence text with no CHECK; only Drizzle enum (app.ts:150) and app validation | The DB accepts any recurrence string. Internal: nobody visible unless the app writes a bad value. |
+| P-DB-47 | gap at b83751d; fixed on `t3/v2-db-gaps` | 0000_init.sql:75 recurrence text with no CHECK; only Drizzle enum (app.ts:150) and app validation | The DB accepts any recurrence string. Internal: nobody visible unless the app writes a bad value. |
 | P-DB-48 | untested | 0000_init.sql:440 expenses_group_date (group_id, deleted_at, expense_date DESC, created_at DESC, id DESC) | Index exists and extends the current one; ordering behavior is tested in ledger.test.ts "orders by expense date or by last change, and filters". |
-| P-DB-49 | gap | No (group_id, currency, deleted_at) index in v2/db/migrations; balances (v2/src/server/sql.ts:39-50) also filter expense_payers and expense_shares by group_id, which have no group_id index | Performance only. expenses_group_date covers the group and deleted_at prefix. Nobody visible at today's size (48 expenses). |
+| P-DB-49 | gap at b83751d; fixed on `t3/v2-db-gaps` | No (group_id, currency, deleted_at) index in v2/db/migrations; balances (v2/src/server/sql.ts:39-50) also filter expense_payers and expense_shares by group_id, which have no group_id index | Performance only. expenses_group_date covers the group and deleted_at prefix. Nobody visible at today's size (48 expenses). |
 | P-DB-50 | untested | 0000_init.sql:442 expenses_feed (expense_date DESC, created_at DESC, id DESC) | Index exists; ordering is tested by v2/test/db/feed.test.ts "orders by expense date, then creation time, then ID, newest first". |
 | P-DB-51 | tested | 0000_init.sql:408 expenses group FK ON DELETE RESTRICT; 0001_invariants.sql:155 groups_no_delete; invariants.test.ts "refuses to delete a group" | v2 is stricter: no group can be deleted, even one without expenses. |
 | P-DB-52 | untested | 0000_init.sql:405 expense_payers (participant_id, group_id) FK ON DELETE RESTRICT | The invariant test deletes a share participant (Bob), not a payer; no test deletes a payer. |
@@ -2036,23 +2036,23 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-DB-58 | unapproved-change | 0000_init.sql:35 expense_documents.expense_id NOT NULL, :403 ON DELETE RESTRICT; import-legacy.ts:215-217 stops on an orphan document | Nullable SET NULL becomes NOT NULL RESTRICT; unreachable in practice, and the production import found no orphans. Nobody visible. |
 | P-DB-59 | untested | 0000_init.sql:37-38 width and height integer NOT NULL | No test. |
 | P-DB-60 | untested | 0000_init.sql:402 activities group FK ON DELETE RESTRICT | groups_no_delete fires before the FK, so the FK itself is not exercised by "refuses to delete a group". |
-| P-DB-61 | gap | 0000_init.sql:1-19, 402: activities.expense_id and activities.participant_id still have no foreign keys | DECISIONS.md C approves the fix ("Several references have no foreign keys (P-DB-61, ...)"), but v2 does not add them. Internal: nobody visible. |
+| P-DB-61 | gap at b83751d; fixed on `t3/v2-db-gaps` | 0000_init.sql:1-19, 402: activities.expense_id and activities.participant_id still have no foreign keys | DECISIONS.md C approves the fix ("Several references have no foreign keys (P-DB-61, ...)"), but v2 does not add them. Internal: nobody visible. |
 | P-DB-62 | unapproved-change | 0000_init.sql:414 participants group FK ON DELETE RESTRICT, plus groups_no_delete | CASCADE becomes RESTRICT; groups are never deleted in v2. Nobody visible. |
 | P-DB-63 | tested | 0000_init.sql:152 participants_id_group; composite FKs at :405, :407, :411, :413, :418; invariants.test.ts "refuses a participant from another group" (23503) | Only the expense_shares composite FK is exercised by a DB test; membership, invitation and private-person FKs are untested at the DB. |
 | P-DB-64 | unapproved-change | 0000_init.sql:183 unique current_frame_expense_id, :420 FK ON DELETE RESTRICT | CASCADE becomes RESTRICT; unreachable because expenses are never hard-deleted. Nobody visible. |
-| P-DB-65 | gap | 0000_init.sql:177-184, 420: recurring_links.group_id has no FK and no check that it matches the frame expense's group | DECISIONS.md C approves the fix ("P-DB-65"), not done. Expense.recurringExpenseLinkId no longer exists in v2, so that half is gone. Internal: nobody visible. |
+| P-DB-65 | gap at b83751d; fixed on `t3/v2-db-gaps` | 0000_init.sql:177-184, 420: recurring_links.group_id has no FK and no check that it matches the frame expense's group | DECISIONS.md C approves the fix ("P-DB-65"), not done. Expense.recurringExpenseLinkId no longer exists in v2, so that half is gone. Internal: nobody visible. |
 | P-DB-66 | approved-change | DECISIONS.md A: "calendar date for recurrence (P-DB-66)"; 0000_init.sql:182 next_expense_date date NOT NULL | Importer copies timestamps into the date column under TZ=UTC (import-legacy.ts:17, 219). |
 | P-DB-67 | tested | recurring.ts:86-120 (SELECT ... FOR UPDATE SKIP LOCKED on next_expense_created_at IS NULL, deterministic occurrence ID, SERIALIZABLE); expenses.test.ts "never duplicates when two runs race" | The mechanism differs (row lock plus deterministic ID, not a conditional UPDATE); the guarantee holds. |
 | P-DB-68 | untested | 0000_init.sql:419 receipts group FK ON DELETE RESTRICT | No test. |
 | P-DB-69 | untested | 0000_init.sql:174 receipts_group_url UNIQUE(group_id, url) | No test inserts a duplicate. |
-| P-DB-70 | gap | No trigger on receipts in v2/db/migrations/*.sql; the app never deletes receipts rows (no delete in v2/src) | DECISIONS.md G approves "P-DB-70 (receipt rows immutable by trigger)", not done. App behavior is tested by expenses.test.ts "removing a receipt keeps it in the earlier revision, readable by members". Internal: nobody visible. |
+| P-DB-70 | gap at b83751d; fixed on `t3/v2-db-gaps` | No trigger on receipts in v2/db/migrations/*.sql; the app never deletes receipts rows (no delete in v2/src) | DECISIONS.md G approves "P-DB-70 (receipt rows immutable by trigger)", not done. App behavior is tested by expenses.test.ts "removing a receipt keeps it in the earlier revision, readable by members". Internal: nobody visible. |
 | P-DB-71 | tested | v2/db/migrations/0002_categories.sql (IDs 0-43); expenses.test.ts "lists categories in ID order" (44 rows, 43 = Life/Donation) | Parity. |
 | P-DB-72 | untested | 0000_init.sql:91, 94 revision NOT NULL DEFAULT 0, groups_revision_nonnegative | No test of a negative group revision. |
 | P-DB-73 | approved-change | DECISIONS.md C: "Group edits have no database audit guarantee (P-DB-73)"; 0004_group_audit.sql:14-36; groups.test.ts "refuses a group edit without its activity, at the database (P-DB-73)" | Implemented and tested. |
 | P-DB-74 | tested | 0000_init.sql:87, 93 slug nullable UNIQUE; groups.test.ts "refuses a slug in use by another group (P-GROUP-95)" | The test hits the app check; the DB unique is the backstop. v2 stores lowercase slugs. |
 | P-DB-75 | tested | groups.ts:205-206 pg_advisory_xact_lock(hashtextextended(slug, 0)); groups.test.ts "lets exactly one of two concurrent creates claim a slug (P-GROUP-96)" | Parity. |
 | P-DB-76 | approved-change | v2/db/migrations/0000_init.sql:90 `default_currency text NOT NULL`; 0001_invariants.sql `groups_currency_supported`; import-legacy.ts:109 | v2 drops the symbol column and stores only a required, registry-checked code (PLAN invariant 1 "exhaustive currency registry"; DECISIONS "MCP group currency": ambiguous symbols refused); the importer fails a group with a NULL currencyCode. |
-| P-DB-77 | gap | v2/db/schema/app.ts:205 (TS enum only); 0000_init.sql:6 `"type" text NOT NULL`, no CHECK; import-legacy.ts:197 lowercases any value | The same 7 types exist in TypeScript, but the database no longer refuses another type, as the Postgres enum did. Internal: nobody notices. |
+| P-DB-77 | gap at b83751d; fixed on `t3/v2-db-gaps` | v2/db/schema/app.ts:205 (TS enum only); 0000_init.sql:6 `"type" text NOT NULL`, no CHECK; import-legacy.ts:197 lowercases any value | The same 7 types exist in TypeScript, but the database no longer refuses another type, as the Postgres enum did. Internal: nobody notices. |
 | P-DB-78 | untested | 0000_init.sql:5 `DEFAULT clock_timestamp()`; no activity insert sets `time` (ledger.ts:587,613,677,711) | No test asserts distinct times inside one transaction. |
 | P-DB-79 | unapproved-change | mcp/authenticate.ts:64,98 and ledger.ts:28 write `source = 'mcp'`, never `agent` or `baseline`; history.ts:168 reads both; export.ts:174 exports the raw value | NOT NULL default 'web' matches (0000_init.sql:12). New agent events say `mcp`, imported ones `agent`, so a JSON export mixes both values. No decision covers the rename. |
 | P-DB-80 | tested | 0000_init.sql:2 bigserial + `activities_sequence_unique`; history.ts:66,159 order by sequence; v2/test/db/history.test.ts "keeps pages fixed at the returned boundary while events are added" | bigint instead of integer; harmless. |
@@ -2068,9 +2068,9 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-DB-90 | unapproved-change | server.ts:40 `connectionTimeoutMillis: 5_000`; db.ts:58-63 4 retries; no transaction or statement timeout anywhere | v2 has no 15 s transaction cap and waits 5 s, not 10 s, for a connection. Internal: a stuck transaction can hold its locks indefinitely. |
 | P-DB-91 | untested | 0000_init.sql:132 `memberships_user_id_group_id_pk` | Matches; no test asserts the key. |
 | P-DB-92 | unapproved-change | 0000_init.sql:412 `memberships` → `groups` ON DELETE restrict; 0001_invariants.sql `groups_no_delete`; v2/test/db/invariants.test.ts "refuses to delete a group" | CASCADE becomes RESTRICT, and groups cannot be deleted. Neither app has a group delete path, so nobody notices, but no decision names it (PLAN invariant 5 comes closest). |
-| P-DB-93 | gap | 0000_init.sql:125-134 `memberships.user_id` has no FK to `user` | DECISIONS C approves the fix: "Several references have no foreign keys (P-DB-61, P-DB-65, P-DB-93, P-DB-117, P-DB-127)". v2 did not add the FK. Internal. |
+| P-DB-93 | gap at b83751d; fixed on `t3/v2-db-gaps` | 0000_init.sql:125-134 `memberships.user_id` has no FK to `user` | DECISIONS C approves the fix: "Several references have no foreign keys (P-DB-61, P-DB-65, P-DB-93, P-DB-117, P-DB-127)". v2 did not add the FK. Internal. |
 | P-DB-94 | tested | 0000_init.sql `"active" boolean DEFAULT true`; groups.ts:572 leave sets active=false; v2/test/db/groups.test.ts "lets any member leave and rejoin as the same participant (P-ACCESS-19, -50, -57)" | Matches. |
-| P-DB-95 | gap | 0000_init.sql:128 `"role" text DEFAULT 'member' NOT NULL`, no CHECK; app.ts:76 TS enum only; import-legacy.ts:115 copies roles unchecked | DECISIONS A approves "a role limited to admin or member (P-DB-95)", and PLAN wants each invariant in the database too. v2 limits the role only in TypeScript. Internal. |
+| P-DB-95 | gap at b83751d; fixed on `t3/v2-db-gaps` | 0000_init.sql:128 `"role" text DEFAULT 'member' NOT NULL`, no CHECK; app.ts:76 TS enum only; import-legacy.ts:115 copies roles unchecked | DECISIONS A approves "a role limited to admin or member (P-DB-95)", and PLAN wants each invariant in the database too. v2 limits the role only in TypeScript. Internal. |
 | P-DB-96 | tested | 0000_init.sql:130 nullable `participant_id`; import-legacy.ts:115 copies it unchanged; v2/test/db/groups.test.ts "binds a legacy member without a participant, once (P-ACCESS-60..64)" | Matches; nothing infers identities. |
 | P-DB-97 | untested | 0000_init.sql:133 `memberships_group_participant` UNIQUE(group_id, participant_id) | The constraint matches. Tests check only the app message ("That participant is already tied to another account."); no test hits the database constraint, unlike TMI. |
 | P-DB-98 | untested | 0000_init.sql:413 memberships (participant_id, group_id) → participants ON DELETE restrict | Matches. invariants.test.ts "refuses to delete a participant who is part of an expense" exercises the expense FK, not the membership FK. |
@@ -2090,19 +2090,19 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-DB-112 | tested | ungrouped.ts:221; 0005_private_contexts.sql "Remove the repayments..."; v2/test/db/mcp-more-tools.test.ts "records repayments inside the private context, and keeps its people fixed" (CONFLICT); v2/test/db/ungrouped.test.ts "repayment settles only the selected expense, preserving household balances" | MCP answers CONFLICT. The domain error is Invalid with reason 'state', so the RPC tag differs from the old tRPC CONFLICT, but the message is the same. |
 | P-DB-113 | untested | 0000_init.sql:390 `user_email_unique` | Matches. |
 | P-DB-114 | untested | 0000_init.sql:379 `session_token_unique`, :434 ON DELETE cascade | Matches. |
-| P-DB-115 | gap | 0000_init.sql:186-200 `account` has only an index on user_id; the old `Account_providerId_accountId_key` UNIQUE is missing | Cascade matches (:421). Without the unique key, a race can link one Google account to two users. Internal. |
-| P-DB-116 | gap | 0000_init.sql:451 `apikey_key_index` is a plain index, not UNIQUE (old `Apikey_key_key`); hash: v2/test/db/mcp-auth.test.ts "refuses an unknown key and stores the same hash Better Auth stores" | The hash part is tested. The uniqueness is lost, so two rows can hold one key hash. Internal. |
-| P-DB-117 | gap | 0000_init.sql:202-224 `apikey.reference_id` has no FK | DECISIONS C approves the FK fix for P-DB-117. Not done. Internal. |
+| P-DB-115 | gap at b83751d; fixed on `t3/v2-db-gaps` | 0000_init.sql:186-200 `account` has only an index on user_id; the old `Account_providerId_accountId_key` UNIQUE is missing | Cascade matches (:421). Without the unique key, a race can link one Google account to two users. Internal. |
+| P-DB-116 | gap at b83751d; fixed on `t3/v2-db-gaps` | 0000_init.sql:451 `apikey_key_index` is a plain index, not UNIQUE (old `Apikey_key_key`); hash: v2/test/db/mcp-auth.test.ts "refuses an unknown key and stores the same hash Better Auth stores" | The hash part is tested. The uniqueness is lost, so two rows can hold one key hash. Internal. |
+| P-DB-117 | gap at b83751d; fixed on `t3/v2-db-gaps` | 0000_init.sql:202-224 `apikey.reference_id` has no FK | DECISIONS C approves the FK fix for P-DB-117. Not done. Internal. |
 | P-DB-118 | tested | 0000_init.sql:204-216 defaults match; v2/test/db/account.test.ts "creates keys through Better Auth with the current prefix, rate limit and owner" | The test asserts rateLimitEnabled, 60 000 and 120. The defaults `enabled`, `requestCount` and `configId` match in SQL but are not asserted. |
 | P-DB-119 | untested | 0000_init.sql:367 `rate_limit_key_unique` | Matches. |
 | P-DB-120 | untested | 0000_init.sql:293 `oauth_client_clientId_unique`, :426 user FK cascade | Matches. |
-| P-DB-121 | gap | 0000_init.sql:301-307 `oauth_client_resource` has no UNIQUE(client_id, resource_id) (old `OauthClientResource_clientId_resourceId_key`); identifier unique :359 and both cascades :427-428 match | Duplicate client-resource rows become possible. Internal. |
+| P-DB-121 | gap at b83751d; fixed on `t3/v2-db-gaps` | 0000_init.sql:301-307 `oauth_client_resource` has no UNIQUE(client_id, resource_id) (old `OauthClientResource_clientId_resourceId_key`); identifier unique :359 and both cascades :427-428 match | Duplicate client-resource rows become possible. Internal. |
 | P-DB-122 | untested | 0000_init.sql:340 and :253 token UNIQUE | Matches. |
 | P-DB-123 | untested | 0000_init.sql:422-433 client and user FKs cascade, session FKs SET NULL, on both token tables | Matches. |
 | P-DB-124 | untested | 0000_init.sql:425 refresh_id → oauth_refresh_token ON DELETE cascade | Matches. |
 | P-DB-125 | untested | 0000_init.sql:429-430 | Matches. |
 | P-DB-126 | tested | 0000_init.sql:144 `oauth_connections_authorizationCodeId_unique`; v2/test/db/mcp-oauth.test.ts "6. after the access token expires, a refresh keeps the connection working"; v2/test/db/account.test.ts "revokes with a tombstone and deletes the tokens and consent" | Matches. |
-| P-DB-127 | gap | 0000_init.sql:136-145 no FK on user_id or client_id; `scopes text[] NOT NULL` (:141) | DECISIONS C approves the FK fix for P-DB-127; v2 fixed only the nullable scopes (the importer would fail a NULL row). The FKs are missing. Internal. |
+| P-DB-127 | gap at b83751d; fixed on `t3/v2-db-gaps` | 0000_init.sql:136-145 no FK on user_id or client_id; `scopes text[] NOT NULL` (:141) | DECISIONS C approves the FK fix for P-DB-127; v2 fixed only the nullable scopes (the importer would fail a NULL row). The FKs are missing. Internal. |
 | P-DB-128 | untested | 0000_init.sql:230 `private_key`; import-legacy.ts:59 copies Jwks; verify-import.ts:26 compares Jwks IDs | Implements DECISIONS A "The signing keys are imported with the production secret (P-DB-128)". It was verified once at the cutover (MCP 401 and OAuth worked), but no CI test covers it. |
 | P-DB-129 | not-applicable | import-legacy.ts:136 refuses any row with originalAmount/originalCurrency/conversionRate | The backfill ran on the old database long ago, and v2 imports no converted rows at all. No decision covers it, and none is needed. |
 | P-DB-130 | not-applicable | import-legacy.ts:136 | Same as P-DB-129: a historical backfill; v2 has nothing to rerun. |
