@@ -1,10 +1,13 @@
 import type { OAuthProviderExtension } from '@better-auth/oauth-provider'
 import { betterAuth } from 'better-auth'
+import { createAuthMiddleware } from 'better-auth/api'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError } from 'better-call'
-import { and, arrayContains, eq, isNull } from 'drizzle-orm'
+import { and, arrayContains, eq } from 'drizzle-orm'
 import * as authSchema from '../../db/schema/auth'
 import { oauthConnections } from '../../db/schema/app'
+import { isSafeCallback } from '../shared/api/account'
+import { bootstrapOwner } from './account'
 import { authPlugins, hashOAuthToken, OAUTH_CONNECTION_CLAIM, type ClientMetadataResourceFetch } from './auth-options'
 import type { Db } from './db'
 import { randomId } from './ids'
@@ -54,17 +57,7 @@ function connectionClaims(db: Db): OAuthProviderExtension {
   }
 }
 
-/** Keeps the grant tombstone, so old JWTs and racing refreshes never regain access. */
-export async function revokeOAuthConnection(db: Db, data: { userId: string; clientId: string }) {
-  await db.transaction(async (tx) => {
-    await tx
-      .update(oauthConnections)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(oauthConnections.userId, data.userId), eq(oauthConnections.clientId, data.clientId), isNull(oauthConnections.revokedAt)))
-    for (const table of [authSchema.oauthAccessToken, authSchema.oauthRefreshToken, authSchema.oauthConsent])
-      await tx.delete(table).where(and(eq(table.userId, data.userId), eq(table.clientId, data.clientId)))
-  })
-}
+export { revokeOAuthConnection } from './account'
 
 const SPECIAL_USE_V4 = [
   /^0\./, /^10\./, /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, /^127\./, /^169\.254\./, /^172\.(1[6-9]|2\d|3[01])\./,
@@ -95,10 +88,13 @@ export type AuthConfig = {
   readonly secret: string
   readonly googleClientId: string
   readonly googleClientSecret: string
+  /** The verified email that may claim the groups created before accounts existed. */
+  readonly bootstrapEmail?: string | undefined
 }
 
 export function createAuth(config: AuthConfig) {
-  if (config.secret.length < 32) throw new Error('BETTER_AUTH_SECRET must be at least 32 characters')
+  if (config.secret.length < 32 || !config.baseUrl || !config.googleClientId || !config.googleClientSecret)
+    throw new Error('Google sign-in is not configured')
   return betterAuth({
     appName: 'AgentSplit',
     baseURL: config.baseUrl,
@@ -112,6 +108,39 @@ export function createAuth(config: AuthConfig) {
     account: { accountLinking: { enabled: false } },
     session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24, cookieCache: { enabled: false } },
     rateLimit: { enabled: true, storage: 'database', modelName: 'rateLimit' },
+    hooks: {
+      // Better Auth accepts relative callbacks such as /\evil.example, which
+      // browsers resolve to another host. Only same-origin targets pass here.
+      before: createAuthMiddleware(async (ctx) => {
+        const body: unknown = ctx.body
+        if (typeof body !== 'object' || body === null) return
+        for (const field of ['callbackURL', 'errorCallbackURL', 'newUserCallbackURL']) {
+          const value: unknown = (body as Record<string, unknown>)[field]
+          if (value !== undefined && !isSafeCallback(value, config.baseUrl))
+            throw new APIError('FORBIDDEN', { message: `Invalid ${field}` })
+        }
+      }),
+    },
+    databaseHooks: {
+      session: {
+        create: {
+          // Runs once per sign-in, never on a session lookup. A failure is logged
+          // and does not block sign-in; the next sign-in tries again.
+          after: async (created) => {
+            if (!config.bootstrapEmail) return
+            try {
+              const [owner] = await config.db
+                .select({ id: authSchema.user.id, email: authSchema.user.email, emailVerified: authSchema.user.emailVerified })
+                .from(authSchema.user)
+                .where(eq(authSchema.user.id, created.userId))
+              if (owner) await bootstrapOwner(config.db, { user: owner, bootstrapEmail: config.bootstrapEmail })
+            } catch (error) {
+              console.error('Owner bootstrap failed', error)
+            }
+          },
+        },
+      },
+    },
     plugins: authPlugins({
       baseUrl: config.baseUrl,
       fetchClientMetadataResource: workerCimdFetch,

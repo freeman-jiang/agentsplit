@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { registerServiceWorker } from './pwa'
 import { routeTree } from './routeTree.gen'
 import './styles.css'
 
@@ -20,6 +21,10 @@ declare module '@tanstack/react-router' {
     router: typeof router
   }
 }
+
+// Better Auth refreshes the session's expiry here; RPC calls only read the session.
+void fetch('/api/auth/get-session', { credentials: 'same-origin' }).catch(() => {})
+void registerServiceWorker().catch((error: unknown) => console.error('Service worker registration failed', error))
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Missing #root')
