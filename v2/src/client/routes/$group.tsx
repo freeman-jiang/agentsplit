@@ -9,7 +9,7 @@ import { balancesQuery } from '~/client/queries/expenses'
 import { Button } from '~/client/ui/button'
 import { Skeleton } from '~/client/ui/skeleton'
 import type { CurrencyBalances } from '~/shared/api'
-import { groupRef } from '~/shared/groups'
+import { groupPath, groupRef } from '~/shared/groups'
 
 export const Route = createFileRoute('/$group')({
   // A signed-out visitor returns here after sign-in (P-AUTH-49).
@@ -28,7 +28,7 @@ export const Route = createFileRoute('/$group')({
     if (params.group !== canonical) {
       context.queryClient.setQueryData(groupQuery(canonical).queryKey, g)
       const rest = location.pathname.split('/').slice(2).join('/')
-      throw redirect({ href: `/${encodeURIComponent(canonical)}/${rest}${location.searchStr}${location.hash ? `#${location.hash}` : ''}`, replace: true })
+      throw redirect({ href: `${groupPath(g)}${rest ? `/${rest}` : ''}${location.searchStr}${location.hash ? `#${location.hash}` : ''}`, replace: true })
     }
     return g
   },

@@ -24,7 +24,6 @@ const TITLES: Record<Exclude<keyof FileRoutesById, '__root__'>, string | null> =
   '/settings/connections/': 'Connected apps',
   '/settings/connections/consent': 'Connect an app',
   '/invite/$token': 'Accept invitation',
-  '/groups/$': null,
   '/groups/': 'Recent groups',
   '/groups/create': 'Create group',
   '/$group': null,

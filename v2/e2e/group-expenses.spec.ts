@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { addExpense, draft, editExpense, seedHousehold } from './fixtures'
+import { addExpense, draft, editExpense, seedHousehold, seedUnsluggedGroup } from './fixtures'
 
 test('a group opens on its expenses, sorts by date or by last change, and keeps the rail', async ({ page, context, baseURL }) => {
   const h = await seedHousehold(context, baseURL ?? '')
@@ -8,9 +8,11 @@ test('a group opens on its expenses, sorts by date or by last change, and keeps 
   // Editing the older expense makes it the most recently changed one.
   await editExpense(h, `${h.groupId}-old`, 1, draft(h, { title: 'Old groceries (edited)', amount: '31.00', date: '2026-10-01', vendor: 'Costco' }))
 
-  // The group root redirects to the Expenses tab, as in the current app.
+  // The group's slug shows its expenses and stays in the address bar, as in the current app (P-GROUP-98).
   await page.goto(`/${h.slug}`)
-  await expect(page).toHaveURL(new RegExp(`/${h.slug}/expenses$`))
+  await expect(page.getByTestId('expense-list')).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`/${h.slug}$`))
+  await expect(page.getByRole('link', { name: 'Expenses', exact: true })).toHaveClass(/border-primary!/)
   // Titles name the page and the group, as in the current app (P-GROUP-48).
   await expect(page).toHaveTitle(/^Expenses · .+ · AgentSplit$/)
   const rows = page.getByTestId('expense-list').getByRole('listitem')
@@ -93,6 +95,50 @@ test('a signed-out visitor returns to the page they asked for after sign-in (P-A
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fgroups/)
   await page.goto('/home-xyz/expenses?sort=updated')
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fhome-xyz%2Fexpenses%3Fsort%3Dupdated/)
+  // The page is kept as the address bar showed it.
+  await page.goto('/home-xyz')
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fhome-xyz$/)
+  await page.goto('/groups/AbCdEfGhIjKlMnOpQrS_1/balances')
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fgroups%2FAbCdEfGhIjKlMnOpQrS_1%2Fbalances$/)
+})
+
+test('group URLs are the current app’s: /groups/<id>/… without a slug, /<slug>/… with one (P-GROUP-98, P-GROUP-100, P-PWA-21, P-PWA-23)', async ({ page, context, baseURL, request }) => {
+  const h = await seedHousehold(context, baseURL ?? '')
+  const tripId = await seedUnsluggedGroup(h)
+  // A group without a slug opens on its expenses at /groups/<id>/expenses.
+  await page.goto(`/groups/${tripId}`)
+  await expect(page).toHaveURL(new RegExp(`/groups/${tripId}/expenses$`))
+  await expect(page.getByRole('heading', { name: `Trip ${tripId}` })).toBeVisible()
+  // Tabs and the group's name link under /groups/<id>, without a page load.
+  await page.evaluate(() => Object.assign(window, { __e2eMarker: true }))
+  await page.getByRole('link', { name: 'Balances', exact: true }).click()
+  await expect(page).toHaveURL(new RegExp(`/groups/${tripId}/balances$`))
+  await expect(page.getByRole('link', { name: 'Stats', exact: true })).toHaveAttribute('href', `/groups/${tripId}/stats`)
+  await expect(page.getByRole('link', { name: `Trip ${tripId}` })).toHaveAttribute('href', `/groups/${tripId}`)
+  expect(await page.evaluate(() => (window as unknown as { __e2eMarker?: boolean }).__e2eMarker)).toBe(true)
+  // The groups page links each group at its URL.
+  await page.goto('/groups')
+  await expect(page.locator(`a[href="/groups/${tripId}"]`).first()).toBeVisible()
+  await expect(page.locator(`a[href="/${h.slug}"]`).first()).toBeVisible()
+  await page.locator(`a[href="/${h.slug}"]`).first().click()
+  await expect(page).toHaveURL(new RegExp(`/${h.slug}$`))
+  await expect(page.getByRole('link', { name: 'Expenses', exact: true })).toHaveClass(/border-primary!/)
+  // v2's first URL for a group without a slug moves to the current app's URL with a 307.
+  const moved = await request.get(`/${tripId}/stats?x=1`, { maxRedirects: 0 })
+  expect(moved.status()).toBe(307)
+  expect(moved.headers()['location']).toBe(`/groups/${tripId}/stats?x=1`)
+  expect(moved.headers()['cache-control']).toBe('private, no-store')
+  await page.goto(`/${tripId}/stats`)
+  await expect(page).toHaveURL(new RegExp(`/groups/${tripId}/stats$`))
+  // Letter case and the ID path of a group with a slug move to the slug.
+  await page.goto(`/${h.slug.toUpperCase()}/balances`)
+  await expect(page).toHaveURL(new RegExp(`/${h.slug}/balances$`))
+  await page.goto(`/groups/${h.groupId}/information`)
+  await expect(page).toHaveURL(new RegExp(`/${h.slug}/information$`))
+  // The export links of the Expenses tab use the same URLs.
+  await page.goto(`/groups/${tripId}/expenses`)
+  await page.getByRole('button', { name: 'Export' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Export to CSV' })).toHaveAttribute('href', `/groups/${tripId}/expenses/export/csv`)
 })
 
 test('a tab that fails to load shows the group error under the tabs, with a reference and without the exception text (P-GROUP-53, P-PWA-36)', async ({ page, context, baseURL }) => {

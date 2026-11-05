@@ -1,11 +1,12 @@
 // The Expenses tab's "Export" menu (P-EXPORT-01). The Expenses tab belongs to
 // the expenses area: render <ExportMenu group={group} /> in its toolbar.
 import { Download, FileDown, FileJson } from 'lucide-react'
+import { segmentPath } from '~/shared/groups'
 import { Button } from '~/client/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/client/ui/dropdown-menu'
 
 /** The export files open in a new tab; the Worker serves them, not the SPA. */
-export const exportHref = (data: { group: string; format: 'csv' | 'json' }) => `/${encodeURIComponent(data.group)}/expenses/export/${data.format}`
+export const exportHref = (data: { group: string; format: 'csv' | 'json' }) => `${segmentPath(data.group)}/expenses/export/${data.format}`
 
 export function ExportMenu({ group }: { group: string }) {
   return (
