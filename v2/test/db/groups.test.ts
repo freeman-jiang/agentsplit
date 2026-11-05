@@ -17,6 +17,7 @@ import {
   updateGroup,
 } from '~/server/groups'
 import { accountBalances } from '~/server/feed'
+import { listActivities } from '~/server/history'
 import { createExpense, getGroup, requireMember, type Principal } from '~/server/ledger'
 import { createUngroupedExpense } from '~/server/ungrouped'
 import { resetTestDatabase } from './setup'
@@ -353,6 +354,19 @@ describe('people', () => {
     const context = await privateContext(alice, 'private-settings')
     const [row] = await tx((db) => db.select({ revision: groups.revision }).from(groups).where(eq(groups.id, context)))
     await expect(update(alice, context, row?.revision ?? 0, { name: 'Renamed' })).rejects.toMatchObject({ message: expect.stringContaining('A private expense is not a named group') })
+  })
+})
+
+describe('group history', () => {
+  // The groups area writes group snapshots and the history area reads them; this
+  // crosses both, because each area's own tests cannot see a shape mismatch.
+  it('lists a group edit in the Log with the snapshot the history reader accepts', async () => {
+    const group = await create(alice, { name: 'Logged' })
+    await update(alice, group.id, 1, { name: 'Logged renamed' })
+    const page = await tx((db) => listActivities(db, { principal: alice, group: group.id }))
+    const json = JSON.stringify(page)
+    expect(json).toContain('Logged renamed')
+    expect(json).toContain('"currency":"USD"')
   })
 })
 
