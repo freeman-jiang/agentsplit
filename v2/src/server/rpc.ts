@@ -2,7 +2,7 @@ import { Context, Effect, Layer } from 'effect'
 import { RpcMiddleware } from 'effect/rpc'
 import { AgentSplitApi, Conflict, Unauthorized, Unavailable } from '../shared/api'
 import { DatabaseError, REQUEST_ID_HEADER, RequestDb, requestDbFor, transaction, useDb, type Db, type DomainError } from './db'
-import * as ledger from './ledger'
+import type * as ledger from './ledger'
 import { sessionPrincipal } from './session'
 
 /** Settings from the Worker environment that the handlers need. */
@@ -39,38 +39,25 @@ export const AuthMiddlewareLive = Layer.effect(AuthMiddleware)(
   }),
 )
 
-const currentPrincipal = Effect.gen(function* () {
+export const currentPrincipal = Effect.gen(function* () {
   return yield* CurrentPrincipal
 })
-const requirePrincipal = Effect.flatMap(currentPrincipal, (p) => (p ? Effect.succeed(p) : Effect.fail(new Unauthorized())))
+export const requirePrincipal = Effect.flatMap(currentPrincipal, (p) => (p ? Effect.succeed(p) : Effect.fail(new Unauthorized())))
 
 /** Maps a database failure to Unavailable; domain errors pass through. */
 const run = <A, R>(effect: Effect.Effect<A, DatabaseError | DomainError, R>) =>
   Effect.mapError(effect, (e) => (e instanceof DatabaseError ? new Unavailable({ message: e.message }) : e))
 
-const read = <A>(work: (db: Db, principal: ledger.Principal) => Promise<A>) =>
+/** A read on this request's connection, for a signed-in caller. */
+export const read = <A>(work: (db: Db, principal: ledger.Principal) => Promise<A>) =>
   Effect.flatMap(requirePrincipal, (principal) =>
     run(useDb((db) => work(db, principal))).pipe(
       // Reads never check revisions; a Conflict here would be a bug, so report it as a failure.
       Effect.mapError((e) => (e instanceof Conflict ? new Unavailable({ message: 'Unexpected conflict on a read' }) : e)),
     ),
   )
-const write = <A>(work: (db: Db, principal: ledger.Principal) => Promise<A>) =>
+/** A write in one SERIALIZABLE transaction, for a signed-in caller. */
+export const write = <A>(work: (db: Db, principal: ledger.Principal) => Promise<A>) =>
   Effect.flatMap(requirePrincipal, (principal) => run(transaction((db) => work(db, principal))))
 
 export const Api = AgentSplitApi.middleware(AuthMiddleware)
-
-export const HandlersLive = Api.toLayer({
-  'session.me': () => Effect.map(currentPrincipal, (p) => (p ? { userId: p.userId, name: p.name, email: p.email } : null)),
-  'groups.list': () => read((db, principal) => ledger.listGroups(db, principal)),
-  'groups.get': ({ groupId }) => read((db, principal) => ledger.getGroup(db, { principal, group: groupId })),
-  'expenses.list': ({ groupId, filter, cursor, limit }) =>
-    read((db, principal) => ledger.listExpenses(db, { principal, group: groupId, filter, cursor, limit })),
-  'expenses.get': ({ groupId, expenseId }) => read((db, principal) => ledger.getExpense(db, { principal, group: groupId, expenseId })),
-  'expenses.create': ({ groupId, expenseId, idempotencyKey, expense }) =>
-    write((db, principal) => ledger.createExpense(db, { principal, group: groupId, expenseId, idempotencyKey, expense })),
-  'expenses.update': ({ groupId, expenseId, expectedRevision, idempotencyKey, expense }) =>
-    write((db, principal) => ledger.updateExpense(db, { principal, group: groupId, expenseId, expectedRevision, idempotencyKey, expense })),
-  'expenses.delete': ({ groupId, expenseId, expectedRevision, idempotencyKey }) =>
-    write((db, principal) => ledger.deleteExpense(db, { principal, group: groupId, expenseId, expectedRevision, idempotencyKey })),
-})
