@@ -1,18 +1,20 @@
 import { useMatch, useRouter, type ErrorComponentProps } from '@tanstack/react-router'
 import { useEffect, useMemo } from 'react'
+import { requestIdOf } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 
 /**
  * The fallback of every route without its own error component (P-GROUP-53).
  * As in the current app, the exception message is never shown: it stays in
  * the browser console. Inside a group it renders under the group's tabs.
- * The server returns no request ID, so the reference is made here and logged
- * with the error: a person can quote it, and the console line matches it (P-PWA-36).
+ * The reference is the server's request ID, which the server logs with the
+ * failure. A failure without a response has none, so a reference is made here.
+ * The console line repeats it, so a quoted reference finds both (P-PWA-36).
  */
 export function ErrorState({ error, reset }: ErrorComponentProps) {
   const router = useRouter()
   const inGroup = useMatch({ from: '/$group', shouldThrow: false }) !== undefined
-  const reference = useMemo(() => crypto.randomUUID().slice(0, 8), [error])
+  const reference = useMemo(() => requestIdOf(error) ?? crypto.randomUUID().slice(0, 8), [error])
   useEffect(() => {
     console.error(`Error reference ${reference}`, error)
   }, [error, reference])

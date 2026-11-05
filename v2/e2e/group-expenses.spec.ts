@@ -165,6 +165,16 @@ test('a tab that fails to load shows the group error under the tabs, with a refe
   await expect(page.getByRole('heading', { name: 'Couldn’t load this group' })).toHaveCount(0)
 })
 
+test('a failure the server answered shows the server’s request ID as the reference (P-PWA-36)', async ({ page, context, baseURL }) => {
+  const h = await seedHousehold(context, baseURL ?? '')
+  const answered = page.waitForResponse((response) => response.url().endsWith('/api/rpc') && (response.request().postData() ?? '').includes('"expenses.detail"'))
+  await page.goto(`/${h.slug}/expenses/${h.groupId}-missing/edit`)
+  await expect(page.getByRole('heading', { name: 'Couldn’t load this group' })).toBeVisible()
+  const requestId = (await answered).headers()['x-request-id'] ?? ''
+  expect(requestId).toMatch(/^[0-9a-f-]{36}$/)
+  await expect(page.getByTestId('error-reference')).toHaveText(`Reference: ${requestId}`)
+})
+
 test('returning to a tab shows a change made elsewhere (P-EXP-20)', async ({ page, context, baseURL }) => {
   const h = await seedHousehold(context, baseURL ?? '')
   await addExpense(h, `${h.groupId}-first`, draft(h, { title: 'First lamp', amount: '10.00', date: '2026-11-01' }))

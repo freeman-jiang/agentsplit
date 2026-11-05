@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from 'effect'
+import { Cause, Context, Effect, Layer, Option } from 'effect'
 import { RpcMiddleware } from 'effect/rpc'
 import { AgentSplitApi, Conflict, Unauthorized, Unavailable } from '../shared/api'
 import { DatabaseError, REQUEST_ID_HEADER, RequestDb, requestDbFor, transaction, useDb, type Db, type DomainError } from './db'
@@ -28,20 +28,39 @@ export class AuthMiddleware extends RpcMiddleware.Service<AuthMiddleware, { prov
 
 const unavailable = (error: DatabaseError | DomainError) => new Unavailable({ message: error instanceof DatabaseError ? error.message : 'Sign-in check failed' })
 
+/** Declared errors that answer the caller's own request. Every other failure is the server's. */
+const ANSWERS: ReadonlySet<string> = new Set(['Unauthorized', 'Forbidden', 'NotFound', 'Conflict', 'Invalid'])
+
+/**
+ * Logs a failed call with the request ID that the response header carries and
+ * the error page shows, so a quoted reference finds its log line.
+ */
+const logFailure = (data: { requestId: string | undefined; rpc: string; cause: Cause.Cause<unknown> }) =>
+  Effect.sync(() => {
+    if (Cause.hasInterruptsOnly(data.cause)) return
+    const error = Cause.findErrorOption(data.cause)
+    const tag = Option.isSome(error) && typeof error.value === 'object' && error.value !== null && '_tag' in error.value ? String(error.value._tag) : null
+    if (tag !== null && ANSWERS.has(tag)) console.warn(`RPC ${data.rpc} answered ${tag}`, { requestId: data.requestId })
+    else console.error(`RPC ${data.rpc} failed`, { requestId: data.requestId }, Cause.pretty(data.cause))
+  })
+
 export const AuthMiddlewareLive = Layer.effect(AuthMiddleware)(
   Effect.gen(function* () {
     const config = yield* AppConfig
-    return (effect, { headers }) => {
+    return (effect, { headers, rpc }) => {
       const values = headers as Record<string, string | undefined>
-      const db = requestDbFor(values[REQUEST_ID_HEADER])
-      if (!db) return Effect.fail(new Unavailable({ message: 'No database connection for this request' }))
-      return Effect.flatMap(
-        useDb((d) => sessionPrincipal(d, { cookie: values['cookie'] ?? null, secret: config.secret, baseUrl: config.baseUrl })).pipe(
-          Effect.provideService(RequestDb, db),
-          Effect.mapError(unavailable),
-        ),
-        (principal) => effect.pipe(Effect.provideService(CurrentPrincipal, principal), Effect.provideService(RequestDb, db)),
-      )
+      const requestId = values[REQUEST_ID_HEADER]
+      const db = requestDbFor(requestId)
+      const call = db
+        ? Effect.flatMap(
+            useDb((d) => sessionPrincipal(d, { cookie: values['cookie'] ?? null, secret: config.secret, baseUrl: config.baseUrl })).pipe(
+              Effect.provideService(RequestDb, db),
+              Effect.mapError(unavailable),
+            ),
+            (principal) => effect.pipe(Effect.provideService(CurrentPrincipal, principal), Effect.provideService(RequestDb, db)),
+          )
+        : Effect.fail(new Unavailable({ message: 'No database connection for this request' }))
+      return Effect.tapCause(call, (cause) => logFailure({ requestId, rpc: rpc._tag, cause }))
     }
   }),
 )
