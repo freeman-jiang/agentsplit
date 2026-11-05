@@ -31,6 +31,25 @@ Status: **draft**. Freeman approves this runbook, the maintenance window, and ea
 8. **Smoke checks.** In the browser: sign in with Google, open the Maple group (balances, expenses, a receipt), add and delete a test expense in a synthetic group only, and check the Log. Agents: connect Claude Code through OAuth, list groups, make one write in a synthetic group, and call with an existing API key. Confirm that an existing agent connection keeps working through a token refresh.
 9. **Announce** that AgentSplit is back.
 
+## Rehearsal record
+
+### 2026-11-05, local, all 8 migrations
+
+The source was the nightly backup of 2026-11-05 (`~/backups/agentsplit/2026-11-05/agentsplit.dump`), restored into a local scratch database. The target was an empty local database with migrations 0000 to 0007.
+
+| Step | Time |
+| --- | --- |
+| Restore the dump | 84 ms |
+| Apply the migrations | 154 ms |
+| Import | 355 ms |
+| Verify | 223 ms |
+
+The import wrote 2 groups, 6 participants, 4 memberships, 3 invitations, 48 expenses, 146 activities, 11 receipts and 11 documents. The verifier found the same IDs in every table, the same balances to the cent, and the same expenses field by field and share by share.
+
+Production has no recurring and no ungrouped expenses today. So a second run added synthetic rows to the scratch source: a monthly expense on 31 October with its recurring link, and an ungrouped expense between the first user and an email-only friend. The import wrote 1 recurring link with `anchor_day` 31 and 1 private context with 2 people, and the verifier passed again.
+
+These are local times. On `apps-pg` through the proxy, each statement adds a network round trip, so the import will take longer. The window rehearsal against `apps-pg` measures that before the window.
+
 ## Rollback
 
 - **Before the DNS switch:** turn the old app back on. Nothing changed for users.
