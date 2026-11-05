@@ -1,12 +1,19 @@
 ARG NODE_IMAGE=node:26.12.1-bookworm@sha256:5c4012d11d9857c42713ba511fbc19645cac1706bb710d51d42b0d301dff7f88
+ARG BUN_IMAGE=oven/bun:1.3.13@sha256:87416c977a612a204eb54ab9f3927023c2a3c971f4f345a01da08ea6262ae30e
+FROM ${BUN_IMAGE} AS bun
+
 FROM ${NODE_IMAGE} AS base
+
+# Bun only installs dependencies and runs package scripts. Node runs the app.
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV CHECKPOINT_DISABLE=1
 
 WORKDIR /usr/app
 COPY ./package.json \
-     ./package-lock.json \
+     ./bun.lock \
+     ./bunfig.toml \
      ./next.config.mjs \
      ./prisma.config.ts \
      ./tsconfig.json \
@@ -20,8 +27,8 @@ COPY ./prisma ./prisma
 # whole image build for a reason that has nothing to do with the code. Retry a
 # few times before giving up.
 RUN for i in 1 2 3 4 5; do \
-      npm ci --ignore-scripts --fetch-retries=5 --fetch-timeout=600000 && exit 0; \
-      echo "npm ci failed (attempt $i of 5), retrying in 10s..."; \
+      bun install --frozen-lockfile --ignore-scripts && exit 0; \
+      echo "bun install failed (attempt $i of 5), retrying in 10s..."; \
       sleep 10; \
     done; \
     exit 1
@@ -37,7 +44,7 @@ RUN node node_modules/prisma/build/index.js generate
 # Bucket credentials are supplied only at runtime.
 ARG S3_UPLOAD_ENDPOINT
 COPY scripts/build.env .env
-RUN npm run build
+RUN bun run build
 
 # Next.js copies .env into the standalone output, which would ship the mocked
 # build values (a database URL pointing at `db`, placeholder S3 and OpenAI
@@ -45,7 +52,8 @@ RUN npm run build
 # environment and would win, but a variable the operator *forgot* to set would
 # silently resolve to a build placeholder instead of failing. Drop it.
 RUN rm -f .next/standalone/.env && \
-    npm prune --offline --omit=dev --ignore-scripts --no-audit --no-fund
+    rm -rf node_modules && \
+    bun install --frozen-lockfile --ignore-scripts --production
 
 # Keep the migration CLI and its generated engine from the same reviewed lockfile.
 # The pinned Debian image includes OpenSSL, so no live OS-package install is needed.

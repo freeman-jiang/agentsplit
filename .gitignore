@@ -57,3 +57,10 @@ postgres-data
 
 # Private MCP connection keys
 /.mcp-credentials/
+
+# dev shell
+.direnv/
+.pg/
+
+# local app stack (scripts/app-stack.sh)
+/.stack/
