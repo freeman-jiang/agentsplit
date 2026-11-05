@@ -26,6 +26,10 @@ it('reads JPEG and PNG sizes from the content, and refuses anything else', () =>
 it('derives the storage key and refuses unsafe pointers', () => {
   expect(receiptKey('https://garage.example/agentsplit/receipts/AbC_-123456789012345678.jpg')).toBe('receipts/AbC_-123456789012345678.jpg')
   expect(receiptKey('r2://agentsplit-receipts/receipts/x.png')).toBe('receipts/x.png')
-  for (const bad of ['https://x/receipts/../a.jpg', 'https://x/receipts/a.jpg?x', 'https://x/receipts/a%2e.jpg', 'https://x/receipts/a.jpg#', 'https://x/other/a.gif'])
+  // Production stores three documents under this older key form; they must keep loading.
+  expect(receiptKey('https://agentsplit-receipts.freemanjiang.com/agentsplit-receipts/document-2026-10-01T22:51:14.443Z-oGoSSKO-SUxcez0iFwaHc.png')).toBe(
+    'document-2026-10-01T22:51:14.443Z-oGoSSKO-SUxcez0iFwaHc.png',
+  )
+  for (const bad of ['https://x/b/receipts/../a.jpg', 'https://x/b/receipts/a.jpg?x', 'https://x/b/receipts/a%2e.jpg', 'https://x/b/receipts/a.jpg#', 'https://x/', 'r2://agentsplit-receipts/'])
     expect(receiptKey(bad)).toBeNull()
 })

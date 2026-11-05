@@ -1,6 +1,6 @@
 // Receipt images in R2, behind the membership check. The ledger stores a
 // receipt by URL (the current app's storage URL, or an r2: pointer for new
-// uploads); the object key in R2 is the URL's `receipts/<id>.<ext>` suffix.
+// uploads); the object key in R2 is the URL's part after the storage prefix.
 // Rules from the current app: src/lib/receipt-storage.ts, src/app/api/receipts/route.ts.
 import { sql } from 'drizzle-orm'
 import { receipts } from '../../db/schema/app'
@@ -49,10 +49,17 @@ export function imageInfo(bytes: Uint8Array): ImageInfo | null {
 
 const sized = (info: ImageInfo) => (info.width >= 1 && info.height >= 1 && info.width * info.height <= MAX_PIXELS ? info : null)
 
-/** The R2 key of a stored receipt URL. Refuses keys with `..`, `?`, `#` or `%` (P-RECEIPT-26). */
+/**
+ * The R2 key of a stored receipt URL: the part after the storage prefix, as the
+ * current app's readReceipt takes it. A current-app URL is
+ * `https://<host>/<bucket>/<key>`; a v2 upload is `r2://agentsplit-receipts/<key>`.
+ * Keys keep their original form, such as `receipts/<id>.png` or the older
+ * `document-<time>-<id>.png`. Refuses keys with `..`, `?`, `#` or `%` (P-RECEIPT-26).
+ */
 export function receiptKey(url: string): string | null {
-  if (/\.\.|[?#%]/.test(url)) return null
-  return /(?:^|\/)(receipts\/[A-Za-z0-9_-]+\.(?:jpg|png))$/.exec(url)?.[1] ?? null
+  const key = url.startsWith(NEW_URL_PREFIX) ? url.slice(NEW_URL_PREFIX.length) : /^https?:\/\/[^/]+\/[^/]+\/(.+)$/.exec(url)?.[1]
+  if (!key || /\.\.|[?#%]/.test(key)) return null
+  return key
 }
 
 /** The download address the UI and the API give for a receipt (P-RECEIPT-07). */

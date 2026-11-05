@@ -1,11 +1,19 @@
 # Cutover runbook: from the current app on Coolify to v2 on Workers
 
-Status: **draft**. Freeman approves this runbook, the maintenance window, and each gated step before it runs.
+Status: **ready for Freeman's review** (2026-11-05). Freeman approves this runbook, the maintenance window, and each gated step before it runs.
+
+## Gates before the window
+
+- Receipt uploads through MCP are merged into `v2` and pass on the preview. Freeman held the MCP tools off the preview until then (DECISIONS.md).
+- The nightly backup (dots#56) is live on the dev box, and its alert is applied. The dots thread owns this: `devbox-apply` was blocked by a stale login scope.
+- CI is green on `v2`, and every parity item is covered, changed with a reason, or deferred with Freeman's agreement.
+- Every production step below (preparation steps 2 to 5, and the window) starts with a new verified backup: `agentsplit-backup coolify` with its test restore passing. A failed backup stops the step.
 
 ## Facts this runbook depends on
 
 - `agentsplit.freemanjiang.com` has no DNS record of its own. The wildcard `*.freemanjiang.com` (unproxied A record to Oracle, `192.9.147.79`, in `infra/cloudflare/dns_freemanjiang_com.tf`) serves it. A Worker custom domain for that one hostname takes precedence over the wildcard, and removing it sends traffic back to Oracle.
 - Stored receipt URLs are absolute Garage URLs, such as `https://agentsplit-receipts.freemanjiang.com/<bucket>/<key>.png`. Browsers already read receipts through the authenticated `/api/receipts` endpoint, never from the storage host. v2 keeps the URL strings as identifiers and stores each object in R2 under the same key.
+- Production's 11 receipt URLs use two key forms: `receipts/<id>.png` and an older `document-<time>-<id>.png`. Until 2026-11-05, v2 read only the first form, so the three older documents would have answered 404 after the cutover. `receiptKey` now takes the key after the storage prefix, as the current app does, and step 6 of the window checks every stored URL.
 - The OAuth signing key in `Jwks` is encrypted with the production `BETTER_AUTH_SECRET`. v2 uses the same secret, so issued tokens and refresh tokens keep working.
 - The Google OAuth client keeps its redirect URI, because the domain does not change.
 
@@ -14,7 +22,7 @@ Status: **draft**. Freeman approves this runbook, the maintenance window, and ea
 1. Confirm that every item in PLAN.md's "Done" list except the cutover itself is true: the parity checklist passes, CI is green, and the preview passed browser, agent and CPU checks.
 2. Create the production database and identities: `app-db create agentsplit`. Apply the migrations as `agentsplit_owner`: `scripts/with-apps-pg.sh agentsplit bun db/migrate.ts`.
 3. Create the production Hyperdrive from `app-db url agentsplit`, piped through `jq` into the Cloudflare API, never printed. Caching off.
-4. Deploy the production Worker as `agentsplit` on `workers.dev` only, bound to the production Hyperdrive and the `agentsplit-receipts` bucket.
+4. Deploy the production Worker as `agentsplit` on `workers.dev` only, bound to the production Hyperdrive and the `agentsplit-receipts` bucket. Add an `env.production` block to `v2/wrangler.jsonc` first: `name: agentsplit`, the production Hyperdrive ID, the `agentsplit-receipts` bucket, `BASE_URL: https://agentsplit.freemanjiang.com`, the same cron and `ENABLE_EXPENSE_DOCUMENTS`. Deploy with `wrangler deploy --env production`.
 5. Copy the production secrets from Coolify into the Worker with `wrangler secret put`, piped, never printed: `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_BOOTSTRAP_EMAIL`, `AUTH_BOOTSTRAP_LEGACY_USER_ID`. Production sets no `DEFAULT_CURRENCY_CODE` (checked 2026-11-05), so its default currency is the code default, USD, as in v2.
 6. Rehearse steps 2 to 6 of the window against a fresh copy of the latest nightly backup in a scratch database, and record the timings.
 7. Prepare the OpenTofu change that adds the Worker custom domain `agentsplit.freemanjiang.com`, as a saved plan for Freeman to review. Done: draft PR https://github.com/freeman-jiang/dots/pull/58, whose plan on 2026-11-05 was 1 to add, 0 to change, 0 to destroy. It stays a draft until the window, because `main` must match what is live. In the window, merge it, plan again, read the plan, and apply it.
@@ -25,10 +33,10 @@ Status: **draft**. Freeman approves this runbook, the maintenance window, and ea
 2. **Final backup.** Run `agentsplit-backup coolify` and confirm that its test restore passes.
 3. **Restore locally.** Restore the final dump into a scratch database on the dev box (`agentsplit_cutover_test`).
 4. **Import.** Run `scripts/import-legacy.ts` from the scratch database into the empty production database (through `scripts/with-apps-pg.sh agentsplit`). It runs in one transaction; any problem stops it with the row ID.
-5. **Copy receipts.** Upload every object from the final backup's `receipts.jsonl` to `agentsplit-receipts` under its original key, and compare the count and the byte size of each object. The shared dev Cloudflare token cannot write R2 objects (403, code 10000, checked 2026-11-05), so this one step runs under `sops exec-env secrets/admin.env` with `wrangler r2 object put`, as the rules allow for a single command.
-6. **Verify.** Run `test/legacy/verify-import.ts` from the scratch database against production: the same IDs in every table, every balance per group and currency to the cent, and every expense field by field and share by share. Compare the receipt list with the database rows.
-7. **Switch DNS** (Freeman approves the saved plan). Apply the custom-domain plan, and confirm a clean replan.
-8. **Smoke checks.** In the browser: sign in with Google, open the Macademia group (balances, expenses, a receipt), add and delete a test expense in a synthetic group only, and check the Log. Agents: connect Claude Code through OAuth, list groups, make one write in a synthetic group, and call with an existing API key. Confirm that an existing agent connection keeps working through a token refresh. Freeman chose this check over a Google sign-in on the preview (2026-11-05), so it is the first run of a real Claude Code client against v2: connect, read, write, and keep working more than 5 minutes later, through a refresh (docs/v2/OAUTH-CLAUDE-CODE.md).
+5. **Copy receipts.** Run `bun scripts/copy-receipts.ts <final backup>/receipts.jsonl agentsplit-receipts` from `v2/`. It writes each object under its original key, reads it back, and compares its size; any mismatch stops it. The shared dev Cloudflare token cannot write R2 objects (403, code 10000, checked 2026-11-05), so this one command runs under `sops exec-env ~/projects/dots/secrets/admin.env`, as the rules allow for a single command. Rehearsed on 2026-11-05 against `agentsplit-receipts-preview` with synthetic images, including a `document-<time>-<id>.png` key; the test objects were deleted after.
+6. **Verify.** Run `test/legacy/verify-import.ts` from the scratch database against production, with `RECEIPTS_JSONL=<final backup>/receipts.jsonl`: the same IDs in every table, every balance per group and currency to the cent, every expense field by field and share by share, and every stored receipt URL mapped by v2's key rule to a backed-up object. On the 2026-11-05 backup: 11 receipt URLs, 13 objects, all mapped.
+7. **Switch DNS** (Freeman approves the saved plan). The dots thread merges https://github.com/freeman-jiang/dots/pull/58, plans again, shows Freeman the plan, applies it, and confirms a clean replan.
+8. **Smoke checks.** In the browser: sign in with Google, open the Macademia group (balances, expenses, a receipt), add and delete a test expense in a group Freeman names for it (production has no hard deletes, so a test expense stays in the Log as deleted), and check the Log. Agents: connect Claude Code through OAuth, list groups, make one write in the same group Freeman names, and call with an existing API key. Confirm that an existing agent connection keeps working through a token refresh. Freeman chose this check over a Google sign-in on the preview (2026-11-05), so it is the first run of a real Claude Code client against v2: connect, read, write, and keep working more than 5 minutes later, through a refresh (docs/v2/OAUTH-CLAUDE-CODE.md).
 9. **Announce** that AgentSplit is back.
 
 ## Rehearsal record
