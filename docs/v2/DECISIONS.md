@@ -12,6 +12,7 @@
 - P-EXP-20 (Freeman, 2026-11-05): refetch on every visit, as the current app does, instead of a 30-second cache. A screen shows the data the tab already holds at once and replaces it with the fresh answer when it arrives.
 - MCP group currency (Freeman, 2026-11-05): `create_group` and `update_group` refuse a currency symbol that several currencies use, such as "$", and ask the agent for `currencyCode`. A symbol that only one currency uses still works.
 - MCP on the preview (Freeman, 2026-11-05): hold the MCP tools off the preview until receipt uploads are merged. The preview was rolled back from 5b9dfec8 to d5e6efaf, which serves the first 7 tools. The next preview deploy includes uploads.
+- Production test group (Freeman, 2026-11-05): one persistent group, AgentSplit test, with only Freeman in it, for every production smoke check now and later. Checks never write in a household group.
 - Workers Free CPU (Freeman, 2026-11-05): accept the current cost and cut over on Workers Free. Reads cost about 8 ms of CPU before their rows; pages of 30 expenses sit near 13 ms at p50 (BASELINE.md). After the cutover, watch the Worker's errors and CPU, and serve the hottest reads through plain JSON routes instead of Effect RPC only if errors appear.
 - Payments store category 1 (Payment) on every path (P-BAL-92, approved in group C).
 - Revision snapshots record the expense's receipts, so history shows them (history area question 1).
