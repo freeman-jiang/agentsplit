@@ -1,16 +1,33 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, Outlet, redirect } from '@tanstack/react-router'
-import { ArrowLeftRight, BarChart3, Info, Receipt, Scale, ScrollText, Settings } from 'lucide-react'
+import { ArrowLeftRight, BarChart3, Info, Receipt, Scale, ScrollText, Settings, Users } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '~/client/cn'
 import { money } from '~/client/components/money'
 import { groupQuery, meQuery } from '~/client/queries'
+import { Button } from '~/client/ui/button'
+import { groupRef } from '~/shared/api'
 
 export const Route = createFileRoute('/$group')({
   beforeLoad: async ({ context }) => {
     if (!(await context.queryClient.ensureQueryData(meQuery))) throw redirect({ to: '/sign-in' })
   },
-  loader: ({ context, params }) => context.queryClient.ensureQueryData(groupQuery(params.group)),
+  loader: async ({ context, params, location }) => {
+    const g = await context.queryClient.ensureQueryData(groupQuery(params.group)).catch((error: unknown) => {
+      // Not a member, or no such group: the directory explains (P-GROUP-21, P-GROUP-46).
+      if (typeof error === 'object' && error !== null && '_tag' in error && error._tag === 'Forbidden')
+        throw redirect({ to: '/groups', search: { access: 'denied' }, replace: true })
+      throw error
+    })
+    // An ID, an old slug or another letter case moves to the group's current URL (P-GROUP-105, P-GROUP-106).
+    const canonical = groupRef(g)
+    if (params.group !== canonical) {
+      context.queryClient.setQueryData(groupQuery(canonical).queryKey, g)
+      const rest = location.pathname.split('/').slice(2).join('/')
+      throw redirect({ href: `/${encodeURIComponent(canonical)}/${rest}${location.searchStr}${location.hash ? `#${location.hash}` : ''}`, replace: true })
+    }
+    return g
+  },
   component: GroupLayout,
 })
 
@@ -35,7 +52,19 @@ function GroupLayout() {
   const { data: g } = useSuspenseQuery(groupQuery(group))
   return (
     <div className="mx-auto w-full max-w-6xl px-3 py-6 sm:px-8">
-      <h1 className="mb-3 font-display text-2xl">{g.name}</h1>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h1 className="min-w-0 truncate font-display text-2xl">
+          <Link to="/$group" params={{ group }}>
+            {g.name}
+          </Link>
+        </h1>
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/$group/edit" params={{ group }} hash="members">
+            <Users className="mr-2 h-4 w-4" aria-hidden="true" />
+            People
+          </Link>
+        </Button>
+      </div>
       <nav aria-label="Group" className="mb-4 flex flex-wrap gap-x-2 gap-y-1 border-b sm:gap-x-4">
         {TABS.map(({ to, label, Icon }) => (
           <Link
