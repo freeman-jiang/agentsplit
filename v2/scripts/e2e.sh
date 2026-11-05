@@ -24,7 +24,9 @@ project="agentsplit-v2-e2e-${port}"
 db="agentsplit_e2e_v2_${port}"
 work="$(mktemp -d)"
 server=""
-compose() { docker-compose -p "$project" --project-directory .. -f ../compose.v2.coolify.yaml -f scripts/compose.e2e.yaml "$@"; }
+# The dev shell has docker-compose; CI runners have the docker compose plugin.
+if command -v docker-compose >/dev/null; then compose_cmd=(docker-compose); else compose_cmd=(docker compose); fi
+compose() { "${compose_cmd[@]}" -p "$project" --project-directory .. -f ../compose.v2.coolify.yaml -f scripts/compose.e2e.yaml "$@"; }
 hex() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 cleanup() {
   status=$?
