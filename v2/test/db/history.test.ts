@@ -6,6 +6,7 @@ import { Schema } from 'effect'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { activities, expenses, groups, memberships, participants } from '../../db/schema/app'
+import { user } from '../../db/schema/auth'
 import { makeDb, type Db } from '~/server/db'
 import { getSavedExpense, historicalLedger, listActivities, listSavedExpenses, savedBalances } from '~/server/history'
 import { createExpense, deleteExpense, getExpense, updateExpense, type Principal } from '~/server/ledger'
@@ -14,7 +15,7 @@ import type { ExpenseDraft } from '~/shared/expense-rules'
 import { describeRevision } from '~/shared/history'
 import { minor } from '~/shared/money'
 import { insertImportedExpense, v1GroupSnapshot } from './history-fixtures'
-import { resetTestDatabase } from './setup'
+import { resetTestDatabase, testUsers } from './setup'
 
 let pool: Pool
 const alice: Principal = { userId: 'u-alice', name: 'Alice Account', email: 'a@example.com', source: 'web', agentKeyId: null }
@@ -84,6 +85,7 @@ beforeAll(async () => {
       { id: 'qc', groupId: 'g2', name: 'Cal' },
       { id: 'oa', groupId: 'other', name: 'Other' },
     ])
+    await db.insert(user).values(testUsers([alice, { userId: 'u-other', name: 'Other', email: 'other@example.com' }]))
     await db.insert(memberships).values([
       { userId: alice.userId, groupId: 'g1', role: 'admin', participantId: 'pa' },
       { userId: alice.userId, groupId: 'g2', role: 'admin', participantId: 'qa' },
