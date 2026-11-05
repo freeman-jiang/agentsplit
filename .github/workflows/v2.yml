@@ -43,9 +43,10 @@ jobs:
       - name: Install the current app's dependencies for the differential tests
         working-directory: .
         run: npm ci --ignore-scripts && npx prisma generate
+      # The build also generates the route tree (src/client/routeTree.gen.ts) that the type check needs.
+      - name: Production build
+        run: bunx vite build
       - name: Check types
         run: bun run check-types
       - name: Tests
         run: bun run test
-      - name: Production build
-        run: bunx vite build
