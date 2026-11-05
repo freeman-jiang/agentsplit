@@ -1,6 +1,7 @@
-// An agent's receipt upload against the built Worker on workerd, with its local
-// R2: the PUT body streams into the bucket, and update_expense reads the image
-// header back from it. The database tests cover the refusals.
+// Receipt uploads against the built server and a real Garage: an agent's PUT
+// body streams into the bucket, and update_expense reads the image header back
+// from it; a member's browser upload is stored and served back. The database
+// tests cover the refusals.
 import { expect, test, type APIRequestContext } from '@playwright/test'
 import { addExpense, agentKey, draft, seedHousehold } from './fixtures'
 
@@ -50,6 +51,22 @@ test('an agent uploads a receipt to its target, attaches it, and downloads it wi
   expect(document).toMatchObject({ width: 1, height: 1 })
   // The request fixture has no session cookie: only the agent's key authorizes the download.
   const download = await request.get(document?.downloadUrl ?? '', { headers: { 'x-api-key': key } })
+  expect(download.status()).toBe(200)
+  expect(download.headers()['content-type']).toBe('image/png')
+  expect(Buffer.from(await download.body()).equals(PNG)).toBe(true)
+})
+
+test('a member uploads a receipt from the browser and downloads it (P-RECEIPT-07)', async ({ context, baseURL }) => {
+  const household = await seedHousehold(context, baseURL ?? '')
+  // context.request sends the browser's session cookie.
+  const upload = await context.request.post('/api/receipts', {
+    headers: { origin: baseURL ?? '' },
+    multipart: { groupId: household.groupId, file: { name: 'receipt.png', mimeType: 'image/png', buffer: PNG } },
+  })
+  expect(upload.status()).toBe(200)
+  const stored = (await upload.json()) as { url: string; width: number; height: number }
+  expect(stored).toMatchObject({ width: 1, height: 1 })
+  const download = await context.request.get(`/api/receipts?${new URLSearchParams({ groupId: household.groupId, url: stored.url })}`)
   expect(download.status()).toBe(200)
   expect(download.headers()['content-type']).toBe('image/png')
   expect(Buffer.from(await download.body()).equals(PNG)).toBe(true)
