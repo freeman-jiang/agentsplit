@@ -61,7 +61,7 @@ Downtime: about 4 minutes (17:56:57 to 18:00:48).
 
 The final pre-cutover backup (the current app's schema, taken after the freeze) is `~/backups/agentsplit/2026-11-05.175807/`: the v2 backup job moved it aside when it ran on the same day, so `~/backups/agentsplit/2026-11-05/` now holds the first v2 backup. Keep the pre-cutover backup until Freeman says otherwise.
 
-Follow-up: the nightly backup dumped the old `db` and copied receipts with `node`, which v2's `app` does not have. dots#62 (Freeman approved it on 2026-11-05) makes it dump `db2` and copy receipts with Bun; its first run against production passed (2 groups, 48 expenses, 146 activities, 13 receipt objects).
+Follow-up: the nightly backup dumped the old `db` and copied receipts with `node`, which v2's `app` does not have. dots#62 (Freeman approved it on 2026-11-05) makes it dump `db2` and copy receipts with Bun; its first run against production passed (2 groups, 48 expenses, 146 activities, 13 receipt objects). It is merged as dots `d046b9b` and live: the installed unit ran at 18:38 UTC with `Result=success` (`ok (2|48|146|48, 13 receipt objects)`), and the timer runs nightly between 03:30 and 03:40 PST.
 
 ## Rehearsal record
 
