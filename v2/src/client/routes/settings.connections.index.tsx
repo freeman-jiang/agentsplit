@@ -1,7 +1,6 @@
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import { usePageTitle } from '~/client/components/page-title'
 import { accountQuery } from '~/client/queries/account'
 import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
@@ -12,7 +11,6 @@ export const Route = createFileRoute('/settings/connections/')({
 })
 
 function Connections() {
-  usePageTitle('Connected apps')
   const { data: account } = useSuspenseQuery(accountQuery)
   const queryClient = useQueryClient()
   const [pending, setPending] = useState<string | null>(null)

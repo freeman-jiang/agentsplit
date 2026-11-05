@@ -11,6 +11,8 @@ test('a group opens on its expenses, sorts by date or by last change, and keeps 
   // The group root redirects to the Expenses tab, as in the current app.
   await page.goto(`/${h.slug}`)
   await expect(page).toHaveURL(new RegExp(`/${h.slug}/expenses$`))
+  // Titles name the page and the group, as in the current app (P-GROUP-48).
+  await expect(page).toHaveTitle(/^Expenses · .+ · AgentSplit$/)
   const rows = page.getByTestId('expense-list').getByRole('listitem')
   await expect(rows).toHaveCount(2)
   await expect(rows.nth(0)).toContainText('New lamp')
@@ -32,6 +34,7 @@ test('a group opens on its expenses, sorts by date or by last change, and keeps 
   await page.evaluate(() => Object.assign(window, { __e2eMarker: true }))
   await page.getByRole('link', { name: 'Balances', exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/${h.slug}/balances$`))
+  await expect(page).toHaveTitle(/^Balances · .+ · AgentSplit$/)
   expect(await page.evaluate(() => (window as unknown as { __e2eMarker?: boolean }).__e2eMarker)).toBe(true)
 })
 
@@ -45,4 +48,22 @@ test('a signed-out visitor returns to the page they asked for after sign-in (P-A
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fgroups/)
   await page.goto('/home-xyz/expenses?sort=updated')
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fhome-xyz%2Fexpenses%3Fsort%3Dupdated/)
+})
+
+test('a tab that fails to load shows the group error under the tabs, without the exception text (P-GROUP-53)', async ({ page, context, baseURL }) => {
+  const h = await seedHousehold(context, baseURL ?? '')
+  await page.goto(`/${h.slug}/expenses`)
+  await expect(page.getByRole('navigation', { name: 'Group' })).toBeVisible()
+  await page.route('**/api/rpc', async (route) => {
+    if (route.request().postData()?.includes('"stats.')) await route.fulfill({ status: 500, body: 'secret internal detail' })
+    else await route.continue()
+  })
+  await page.getByRole('link', { name: 'Stats', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Couldn’t load this group' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Group' })).toBeVisible()
+  await expect(page.getByText(/secret internal detail|answered 500/)).toHaveCount(0)
+  // Retry loads again once the server answers.
+  await page.unroute('**/api/rpc')
+  await page.getByRole('button', { name: 'Try again' }).click()
+  await expect(page.getByRole('heading', { name: 'Couldn’t load this group' })).toHaveCount(0)
 })

@@ -1,6 +1,5 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useState } from 'react'
-import { usePageTitle } from '~/client/components/page-title'
 import { authClient } from '~/client/auth-client'
 import { errorMessage } from '~/client/queries/account'
 import { meQuery } from '~/client/queries'
@@ -21,7 +20,6 @@ export const Route = createFileRoute('/sign-in')({
 })
 
 function SignIn() {
-  usePageTitle('Sign in')
   const { next } = Route.useSearch()
   const destination = safeNextPath(next)
   const invitation = destination !== null && isInvitationPath(destination)

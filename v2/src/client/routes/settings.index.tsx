@@ -2,7 +2,6 @@ import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-q
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { CopyButton } from '~/client/components/copy-button'
-import { usePageTitle } from '~/client/components/page-title'
 import { authClient } from '~/client/auth-client'
 import { accountQuery, errorMessage, readTheme, saveTheme, type Theme } from '~/client/queries/account'
 import { rpc } from '~/client/rpc'
@@ -17,7 +16,6 @@ export const Route = createFileRoute('/settings/')({
 })
 
 function Settings() {
-  usePageTitle('Account & agent keys')
   const { data: account } = useSuspenseQuery(accountQuery)
   return (
     <main className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 sm:px-8">
