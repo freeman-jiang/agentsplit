@@ -52,6 +52,10 @@ jobs:
         run: bun run test
       - name: Install Chromium for the e2e suite
         run: bunx playwright install --with-deps chromium
+      # Ubuntu 24 runners block unprivileged user namespaces, which the Chromium sandbox needs.
+      # The tests keep the sandbox on, so allow them on this throwaway runner.
+      - name: Allow the Chromium sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: End-to-end tests against the production build
         env:
           PGHOST: 127.0.0.1
