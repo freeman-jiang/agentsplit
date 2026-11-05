@@ -46,7 +46,7 @@ function EditPayment() {
         mode="edit"
         detail={detail}
         group={g}
-        groupParam={group}
+        target={{ kind: 'group', groupParam: group }}
         onReload={() =>
           void queryClient.invalidateQueries({
             queryKey: expenseDetailQuery(group, expenseId).queryKey,

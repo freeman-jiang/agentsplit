@@ -2,6 +2,7 @@
 // src/app/groups/[groupId]/payments/payment-form.tsx. A payment is an expense
 // of kind 'payment': the sender pays, the recipient is the only share. The
 // server accepts any payment shape (P-BAL-93); this form records the common one.
+// It also records repayments of ungrouped expenses (P-UNGROUP-72).
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useRef, useState } from 'react'
@@ -14,15 +15,14 @@ import { Input } from '~/client/ui/input'
 import { Label } from '~/client/ui/label'
 import { NativeSelect } from '~/client/ui/native-select'
 import { Textarea } from '~/client/ui/textarea'
-import type { ExpenseDetail, Group } from '~/shared/api'
+import type { ExpenseDetail } from '~/shared/api'
 import type { CurrencyCode } from '~/shared/currencies'
 import { validateExpense, type ExpenseDraft } from '~/shared/expense-rules'
 import { DeleteDialog } from './delete-dialog'
-import { CurrencySelect } from './expense-form'
+import { CurrencySelect, leavePage, type FormGroup, type GroupTarget, type PageTarget } from './expense-form'
 import { toInput } from './expense-form-state'
 import { describeWriteError, type WriteFailure } from './write-error'
 
-type GroupData = typeof Group.Type
 type DetailData = typeof ExpenseDetail.Type
 
 /** Today where the person recording the payment is (P-BAL-73). */
@@ -36,10 +36,13 @@ export const isSimplePayment = (detail: DetailData) => detail.expense.kind === '
 
 export type PaymentPrefill = { from?: string; to?: string; amount?: string; currencyCode?: CurrencyCode }
 
+/** A payment saves in its group or private context, which exists already, so it never needs `create`. */
+export type PaymentTarget = GroupTarget | Omit<PageTarget, 'create' | 'privateExpense'>
+
 export function PaymentForm(
-  props: { group: GroupData; groupParam: string } & ({ mode: 'create'; expenseId: string; prefill: PaymentPrefill } | { mode: 'edit'; detail: DetailData; onReload: () => void }),
+  props: { group: FormGroup; target: PaymentTarget } & ({ mode: 'create'; expenseId: string; prefill: PaymentPrefill } | { mode: 'edit'; detail: DetailData; onReload: () => void }),
 ) {
-  const { group, groupParam } = props
+  const { group, target } = props
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const saved = props.mode === 'edit' ? props.detail.expense : null
@@ -53,7 +56,7 @@ export function PaymentForm(
   const [failure, setFailure] = useState<WriteFailure | null>(null)
   const [busy, setBusy] = useState(false)
   const keys = useRef(new Map<string, string>())
-  const { data: balances } = useQuery(balancesQuery(groupParam))
+  const { data: balances } = useQuery(balancesQuery(target.kind === 'group' ? target.groupParam : group.id))
   const suggestion = balances?.currencies.find((c) => c.currency === currency)?.settlements.find((s) => s.from === from && s.to === to)
 
   const submit = async () => {
@@ -90,15 +93,20 @@ export function PaymentForm(
         await rpc((api) =>
           api('expenses.update', { groupId: group.id, expenseId: props.detail.expense.id, expectedRevision: props.detail.expense.revision, idempotencyKey, expense }),
         )
-      await invalidateMoney({ queryClient, group: groupParam })
-      await navigate({ to: '/$group/payments', params: { group: groupParam } })
+      if (target.kind === 'page') return await leavePage({ queryClient, navigate, back: target.back })
+      await invalidateMoney({ queryClient, group: target.groupParam })
+      await navigate({ to: '/$group/payments', params: { group: target.groupParam } })
     } catch (cause) {
       const described = describeWriteError(cause)
       // A create whose ID exists here was saved by an earlier attempt (P-BAL-84).
       if (props.mode === 'create' && described.kind === 'conflict') {
-        await invalidateMoney({ queryClient, group: groupParam })
+        if (target.kind === 'page') {
+          toast.success('This payment was already saved.')
+          return await leavePage({ queryClient, navigate, back: target.back })
+        }
+        await invalidateMoney({ queryClient, group: target.groupParam })
         toast.success('This payment was already saved.')
-        await navigate({ to: '/$group/payments', params: { group: groupParam } })
+        await navigate({ to: '/$group/payments', params: { group: target.groupParam } })
         return
       }
       setFailure(described)
@@ -179,15 +187,20 @@ export function PaymentForm(
               await rpc((api) =>
                 api('expenses.delete', { groupId: group.id, expenseId: props.detail.expense.id, expectedRevision: props.detail.expense.revision, idempotencyKey: crypto.randomUUID() }),
               )
-              await invalidateMoney({ queryClient, group: groupParam })
-              await navigate({ to: '/$group/payments', params: { group: groupParam } })
+              if (target.kind === 'page') return await leavePage({ queryClient, navigate, back: target.back })
+              await invalidateMoney({ queryClient, group: target.groupParam })
+              await navigate({ to: '/$group/payments', params: { group: target.groupParam } })
             }}
           />
         )}
         <Button type="button" variant="ghost" asChild>
-          <Link to="/$group/payments" params={{ group: groupParam }}>
-            Cancel
-          </Link>
+          {target.kind === 'page' ? (
+            <Link {...target.back}>Cancel</Link>
+          ) : (
+            <Link to="/$group/payments" params={{ group: target.groupParam }}>
+              Cancel
+            </Link>
+          )}
         </Button>
       </div>
       {amount && /^\d/.test(amount) && from && to && from !== to && (

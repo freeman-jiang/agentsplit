@@ -28,7 +28,7 @@ export const expenseContextQuery = (expenseId: string) =>
 
 /** After any expense write: every screen that shows expenses or balances reads again. */
 export const invalidateExpenses = (client: QueryClient) =>
-  Promise.all(['feed', 'expense-context', 'expenses', 'group'].map((key) => client.invalidateQueries({ queryKey: [key] })))
+  Promise.all(['feed', 'expense-context', 'expenses', 'expense', 'balances', 'group'].map((key) => client.invalidateQueries({ queryKey: [key] })))
 
 /** The message to show for a failed call: the server's text, or a plain fallback. */
 export function errorMessage(error: unknown): string {

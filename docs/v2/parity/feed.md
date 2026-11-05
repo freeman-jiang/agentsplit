@@ -6,7 +6,10 @@ Test files:
 
 - `ungrouped` is `v2/test/db/ungrouped.test.ts`. It ports the 12 scenarios of `scripts/test-ungrouped-expenses.ts` and adds checks for the database triggers, the invitation renewal, deletion and contact linking.
 - `feed` is `v2/test/db/feed.test.ts`. It covers filters, ordering, the cursor, attribution, current names, the output schemas and the balance rows.
-- `browser` is a manual check on the dev server (port 5183, synthetic data) in the T3 browser on 2026-11-05. No Playwright spec exists yet.
+- `browser` is a manual check on the dev server (port 5183, synthetic data) in the T3 browser on 2026-11-05.
+- `e2e` is `v2/e2e/private-expenses.spec.ts`: "an ungrouped expense uses the full expense form…" (`private form`) and "a private create whose response is lost…" (`lost response`).
+
+The `/expenses` pages use the expenses area's full forms (`components/expense-form.tsx` and `components/payment-form.tsx`) with a `page` target. The compact forms are deleted. A `page` target with `privateExpense: true` copies each place where the current form reads `privateExpense`: the disabled recurrence select, no payment toggle, and the private history hint.
 
 Status values: **Done** (a test or a browser check proves it), **Code** (implemented, but no test or browser check exercised it), **Changed** (a deliberate change from DECISIONS.md or a v2 convention), **Deferred** (another area owns it, with the reason).
 
@@ -86,7 +89,7 @@ The MCP area maps the old tool names onto these fields.
 | P-UNGROUP-01 | Code | `/expenses` redirects to `/sign-in` without a verified session. |
 | P-UNGROUP-02 | Code | "Loading people and groups…" and the server message as an alert |
 | P-UNGROUP-03 | Done | browser: "No group" is the default, followed by named groups sorted by name. ungrouped (no private contexts in `groups`). |
-| P-UNGROUP-04 | Deferred | v2 has no `/$group/expenses/create` route yet, so the button opens `/$group/expenses`. The expenses area should change the target when it adds the create route. |
+| P-UNGROUP-04 | Code | The button opens `/$group/expenses/create`. |
 | P-UNGROUP-05 | Done | browser |
 | P-UNGROUP-06 | Done | browser ("Remove Bob Example", "Remove Dana Guest") |
 | P-UNGROUP-07 | Done | ungrouped (contacts), browser (chosen people are hidden) |
@@ -96,12 +99,12 @@ The MCP area maps the old tool names onto these fields.
 | P-UNGROUP-11 | Done | browser |
 | P-UNGROUP-12 | Done | browser |
 | P-UNGROUP-13 | Done | browser (disabled with one person, enabled with three) |
-| P-UNGROUP-14 | Done | browser |
-| P-UNGROUP-15 | Done | browser: no receipt or extraction controls, a disabled "Repeat" select, no payment toggle. |
-| P-UNGROUP-16 | Code | Cancel links to `/`. |
+| P-UNGROUP-14 | Done | browser, e2e `private form` (the full form opens after "Continue to expense") |
+| P-UNGROUP-15 | Done | e2e `private form`: no receipts, a disabled "Expense Recurrence" select, no payment toggle. v2 has no category or receipt extraction. Changed: the form also hides "Save as default splitting options", because a private expense's people never repeat, so the saved default could never apply. The form also refuses a save where a person neither pays nor shares (the server refuses it too, P-UNGROUP-23 and P-UNGROUP-48). |
+| P-UNGROUP-16 | Code | Cancel links to `/` (the `page` target's `back`). |
 | P-UNGROUP-17 | Done | browser ("Expense saved", one link field, "View expense") |
 | P-UNGROUP-18 | Code | |
-| P-UNGROUP-19 | Code | One expense ID and one idempotency key per form. After a failed save, the page opens the expense if it exists. |
+| P-UNGROUP-19 | Done | e2e `lost response`: the server saves, the browser gets a 500, and the page opens the saved expense. One expense ID per form; the form keeps one idempotency key per draft. |
 | P-UNGROUP-20 | Done | contract pattern `^[A-Za-z0-9_-]{21}$` |
 | P-UNGROUP-21 | Done | contract (2 to 100 people, local ID up to 42 characters, user ID up to 128). The server trims names (1 to 50) and trims and lowercases emails (ungrouped three-person scenario). |
 | P-UNGROUP-22 | Done | ungrouped "forged account IDs…" |
@@ -145,13 +148,13 @@ The MCP area maps the old tool names onto these fields.
 | P-UNGROUP-63 | Deferred | Invitations area (`/invite/<token>` page) |
 | P-UNGROUP-64 | Done | ungrouped (NotFound), mapped to "Expense not found." in the UI. "Loading expense…" is Code. |
 | P-UNGROUP-65 | Done | browser |
-| P-UNGROUP-66 | Code | `/expenses/<id>` opens the compact expense form or the payment editor. Both return to `/` for named groups. |
-| P-UNGROUP-67 | Done | browser |
+| P-UNGROUP-66 | Done | e2e `private form`: `/expenses/<id>` opens the full expense form, with the live share preview, the attribution and the expense log. A payment with one sender and one recipient opens the full payment form; any other payment shape opens the expense form (P-BAL-89). For a named group, both return to `/` and keep the group options. |
+| P-UNGROUP-67 | Done | e2e `private form` (create and edit) |
 | P-UNGROUP-68 | Done | browser |
 | P-UNGROUP-69 | Done | ungrouped (settlements), browser (prefilled `from`, `to`, `amount`, `currencyCode`) |
 | P-UNGROUP-70 | Done | browser ("Bob Example paid Alice Example · $30.00"). 30 per page through `expenses.list` with `kind: 'payment'`. |
 | P-UNGROUP-71 | Done | browser (a new link in a read-only field) |
-| P-UNGROUP-72 | Done | browser (the save returned to the original expense) |
+| P-UNGROUP-72 | Done | e2e `private form`: "Record repayment" opens the full payment form with the suggested amount, and the save returns to the original expense, which then shows "Settled in USD." |
 
 ## Related balance items
 
