@@ -29,3 +29,24 @@ Production serves 404 KB of compressed JS (16 files) for the signed-out pages al
 | Worker CPU time per request | p95 under 10 ms (Workers Free limit) |
 
 The v2 measurements repeat the same screens with the same data shape, and add a measurement against the preview Worker over the real network.
+
+## v2 Worker CPU on Workers Free (preview, 2026-11-05)
+
+Measured with `wrangler tail` on the preview Worker, which has 192 synthetic expenses, signed-in, after warm-up. Each request is tagged with `?op=` so the log attributes it exactly. Values are CPU milliseconds.
+
+| Request | p50 | p90 |
+| --- | --- | --- |
+| `session.me` | 7 | 10 |
+| `groups.list` | 10 | 31 |
+| `groups.get` (group, people, balances) | 9 | 13 |
+| `expenses.list`, 30 rows | 14 | 19 |
+
+What changed the numbers, from the first deploy (75 to 146 ms):
+
+1. One database connection per request instead of two, and the RPC server built once at module scope.
+2. The session check without Better Auth: verify the signed cookie and read the session with one query.
+3. A minified Worker; Better Auth loads only for `/api/auth/*`.
+4. One statement per screen: PostgreSQL returns the group with its people and summed balances, or the expense page with each row's parts, as JSON, with the membership check in the same statement.
+5. Output schemas without per-field pattern checks.
+
+The floor is about 4 ms for connecting and one query, plus about 3 ms for Effect RPC. Each row of a list adds about 0.15 ms. Cold isolates still reach 30 to 50 ms. Freeman chose to stay on Workers Free (2026-11-05), so the next steps are fewer queries per request and a full profile once every screen exists.
