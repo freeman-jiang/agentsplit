@@ -3,6 +3,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { Paperclip, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '~/client/cn'
+import { CategoryIcon } from '~/client/components/category-icon'
 import { groupByDate, weekStartsOn } from '~/client/components/date-groups'
 import { localDate } from '~/client/components/local-date'
 import { expenseRowFigures, type Figure } from '~/client/components/expense-row'
@@ -179,6 +180,9 @@ function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewe
           <div className="text-lg tabular-nums">{Number(day)}</div>
           <span className="sr-only">{year}</span>
         </div>
+        <span className="hidden h-10 w-10 shrink-0 items-center justify-center bg-muted text-primary sm:flex">
+          <CategoryIcon categoryId={e.categoryId} className="h-5 w-5" />
+        </span>
         <div className="min-w-0 flex-1">
           {e.vendor && <div className="truncate text-xs text-muted-foreground">{e.vendor}</div>}
           <div className={cn('flex items-center gap-1.5', e.kind === 'payment' && 'italic')}>
