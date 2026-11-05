@@ -92,9 +92,9 @@ describe('private contexts', () => {
     expect(events.filter((a) => a.activityType === 'CREATE_GROUP').map((a) => (a.snapshot?.['group'] as { currencyCode: string }).currencyCode).sort()).toEqual(['EUR', 'USD'])
   })
 
-  it('tells the client the kind and the expense, and get_group links to the expense page (P-GROUP-47, P-UNGROUP-39)', async () => {
-    expect(await h.withDb((db) => getGroup(db, { principal: web('alice'), group: 'private-dinner' }))).toMatchObject({ kind: 'private', contextExpenseId: 'private-dinner' })
-    expect(await h.withDb((db) => getGroup(db, { principal: web('alice'), group: 'g1' }))).toMatchObject({ kind: 'named', contextExpenseId: null })
+  it('tells the client the expense of a private context, and get_group links to the expense page (P-GROUP-47, P-UNGROUP-39)', async () => {
+    expect(await h.withDb((db) => getGroup(db, { principal: web('alice'), group: 'private-dinner' }))).toMatchObject({ contextExpenseId: 'private-dinner' })
+    expect(await h.withDb((db) => getGroup(db, { principal: web('alice'), group: 'g1' }))).toMatchObject({ contextExpenseId: null })
     const context = await ok(h, { name: 'get_group', args: { groupId: 'private-dinner' }, headers: alice })
     expect(context['links']).toEqual({
       share: `${BASE}/expenses/private-dinner`,

@@ -16,6 +16,7 @@ import {
   previewInvitation,
   updateGroup,
 } from '~/server/groups'
+import { listBalances } from '~/server/expenses'
 import { accountBalances } from '~/server/feed'
 import { listActivities } from '~/server/history'
 import { createExpense, getGroup, requireMember, type Principal } from '~/server/ledger'
@@ -278,7 +279,8 @@ describe('settings', () => {
     await update(alice, g.id, 1, { defaultCurrency: 'EUR' })
     const after = await getGroupBy(alice, g.id)
     expect(after.defaultCurrency).toBe('EUR')
-    expect(after.balances.filter((b) => b.currency === 'USD').map((b) => b.net).sort()).toEqual(['-5.00', '5.00'])
+    const { currencies } = await tx((db) => listBalances(db, { principal: alice, group: g.id }))
+    expect(currencies.find((c) => c.currency === 'USD')?.balances.map((b) => b.net).sort()).toEqual(['-5.00', '5.00'])
   })
 
   it('refuses a group edit without its activity, at the database (P-DB-73)', async () => {

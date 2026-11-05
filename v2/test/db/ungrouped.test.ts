@@ -6,8 +6,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { expenses, groups, invitations, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { makeDb, type Db } from '~/server/db'
+import { listBalances } from '~/server/expenses'
 import { accountBalances, expenseContext, feedOptions, listFeed } from '~/server/feed'
-import { createExpense, deleteExpense, getExpense, getGroup, listExpenses, listGroups, updateExpense, type Principal } from '~/server/ledger'
+import { createExpense, deleteExpense, getExpense, listExpenses, listGroups, updateExpense, type Principal } from '~/server/ledger'
 import { createUngroupedExpense, renewPrivateInvitation, type PrivatePerson } from '~/server/ungrouped'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { randomId } from '~/server/ids'
@@ -226,7 +227,7 @@ describe('ungrouped expenses', () => {
   })
 
   it('repayment settles only the selected expense, preserving household balances', async () => {
-    const before = await tx((db) => getGroup(db, { principal: alice, group: 'house' }))
+    const before = await tx((db) => listBalances(db, { principal: alice, group: 'house' }))
     const owed = await tx((db) => expenseContext(db, { principal: alice, expenseId: privateId }))
     expect(owed.context?.settlements).toEqual([{ currency: 'USD', transfers: [{ from: pBob, to: pAlice, amount: '30.00' }] }])
     await tx((db) =>
@@ -240,7 +241,7 @@ describe('ungrouped expenses', () => {
     )
     const settled = await tx((db) => expenseContext(db, { principal: alice, expenseId: privateId }))
     expect(settled.context?.settlements).toEqual([{ currency: 'USD', transfers: [] }])
-    expect((await tx((db) => getGroup(db, { principal: alice, group: 'house' }))).balances).toEqual(before.balances)
+    expect(await tx((db) => listBalances(db, { principal: alice, group: 'house' }))).toEqual(before)
     await expect(tx((db) => deleteExpense(db, { principal: alice, group: privateId, expenseId: privateId, expectedRevision: 2, idempotencyKey: key() }))).rejects.toMatchObject({
       message: 'Remove this expense’s recorded repayments before deleting the expense.',
     })
