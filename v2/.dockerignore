@@ -1,0 +1,7 @@
+# The build stage copies this folder; keep local state and secrets out.
+node_modules
+dist
+.env*
+test-results
+playwright-report
+.direnv

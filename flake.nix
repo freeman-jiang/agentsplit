@@ -99,6 +99,8 @@
               pkgs.bun
               postgresql
               pkgs.chromium
+              # scripts/e2e.sh runs Garage and the v2 image through the Podman socket.
+              pkgs.docker-compose
               db-start
               db-stop
               db-reset
