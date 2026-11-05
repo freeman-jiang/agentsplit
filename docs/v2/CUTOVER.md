@@ -1,6 +1,6 @@
 # Cutover runbook: from the current app to v2, both on Coolify
 
-Status: **ready for Freeman's review** (2026-11-05). Freeman moved v2 hosting from Cloudflare Workers to Coolify on 2026-11-05 (DECISIONS.md), so this runbook replaces the Workers version. Freeman approves this runbook, the maintenance window, and each gated step before it runs.
+Status: **done** (2026-11-05). Freeman approved the window; v2 is live since 18:00:48 UTC. Freeman moved v2 hosting from Cloudflare Workers to Coolify on 2026-11-05 (DECISIONS.md), so this runbook replaces the Workers version. Freeman approves this runbook, the maintenance window, and each gated step before it runs.
 
 ## Gates before the window
 
@@ -44,6 +44,22 @@ Status: **ready for Freeman's review** (2026-11-05). Freeman moved v2 hosting fr
 ### The production test group
 
 Freeman decided (2026-11-05) to keep one persistent group in production for checks: **AgentSplit test**, with only Freeman in it. Create it in step 6 of the first window through the v2 UI, as Freeman. Every later production check (browser, Claude Code, MCP writes) writes only there, and never in a household group. Production has no hard deletes, so its Log keeps every test expense, marked deleted.
+
+## Cutover record (2026-11-05)
+
+| Step | Time (UTC) | Result |
+| --- | --- | --- |
+| Prepare | 17:56 | Merge commit `a464eb2` built locally. Coolify: Compose file `/compose.v2.coolify.yaml`, post-deployment command cleared (it ran `node`, which the v2 image does not have), `DB2_PASSWORD` and `AGENTSPLIT_MAINTENANCE=1` added. |
+| 1. Freeze | 17:56:57 | The current `app` container stopped. The page answered 502, a write 503. |
+| 2. Final backup | 17:58 | The first run failed: `agentsplit-backup: production containers not found`, because the script runs `node` in the `app` container to copy receipts. A helper container from the old image (`backend` network only, no Traefik labels, `sleep`) gave it a container to run in; it was removed after. Result: `ok (2\|48\|3\|146, 13 receipt objects)`, test restore passed. |
+| 3. Deploy v2 behind maintenance | 17:58:39 | `main` pushed (`a464eb2`), deployed through the API (pushes do not deploy). `db`, `garage` kept their volumes from 2026-09-30; `postgres18-data` new. v2 migrated `db2` (9 migrations) and answered 503 to pages and RPC, 200 to `/api/health`. |
+| 4. Import and verify | 17:59 | Import in 21.9 s. The verifier: the same IDs in every table (48 expenses, 146 activities, 14 sessions, 308 OAuth refresh tokens, 3 API keys, 4 OAuth connections), balances to the cent, every expense field by field, 11 receipt URLs mapped to 13 backed-up objects. |
+| 5. Open v2 | 18:00:48 | Maintenance cleared and deployed. Page and `/api/health` 200; the MCP 401 asks for `agentsplit:read agentsplit:write offline_access`. All 11 stored receipt URLs exist in Garage under v2's key. |
+| 6. Smoke checks | pending | Freeman: Google sign-in, Maple, a receipt, the production test group, Claude Code connect, write and refresh. |
+
+Downtime: about 4 minutes (17:56:57 to 18:00:48).
+
+Follow-up: the nightly backup still dumps the old `db` and copies receipts with `node`, which v2's `app` does not have. The dots thread changes it to dump `db2` and copy receipts with Bun before the 2026-11-06 03:31 PST run.
 
 ## Rehearsal record
 
