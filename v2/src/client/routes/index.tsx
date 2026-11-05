@@ -1,29 +1,10 @@
-import { useSuspenseQuery } from '@tanstack/react-query'
-import { createFileRoute, Link, redirect } from '@tanstack/react-router'
-import { groupsQuery, meQuery } from '../queries'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { meQuery } from '~/client/queries'
 
+// Placeholder until the dashboard is ported (docs/v2/PARITY.md, P-FEED).
 export const Route = createFileRoute('/')({
   beforeLoad: async ({ context }) => {
     if (!(await context.queryClient.ensureQueryData(meQuery))) throw redirect({ to: '/sign-in' })
+    throw redirect({ to: '/groups' })
   },
-  loader: ({ context }) => context.queryClient.ensureQueryData(groupsQuery),
-  component: Groups,
 })
-
-function Groups() {
-  const { data: groups } = useSuspenseQuery(groupsQuery)
-  return (
-    <main>
-      <h1 className="mb-4 text-xl font-semibold">Groups</h1>
-      <ul className="divide-y divide-stone-200 rounded-lg border border-stone-200">
-        {groups.map((g) => (
-          <li key={g.id}>
-            <Link to="/$group" params={{ group: g.slug ?? g.id }} className="block px-4 py-3 hover:bg-stone-50">
-              {g.name}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </main>
-  )
-}
