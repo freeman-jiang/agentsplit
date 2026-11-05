@@ -8,6 +8,7 @@ import pg from 'pg'
 import { createApp } from './app'
 import { assetHandler, loadAssets } from './assets'
 import { startHourly } from './hourly'
+import { maintenanceResponse } from './maintenance'
 import { s3Bucket } from './s3'
 
 /** A required setting. A missing one stops the server at start, with its name. */
@@ -27,6 +28,7 @@ const config = {
   documentsEnabled: /^(true|yes|1|on)$/i.test(optional('ENABLE_EXPENSE_DOCUMENTS') ?? ''),
 }
 const publicOrigin = new URL(config.baseUrl).origin
+const maintenance = /^(true|yes|1|on)$/i.test(optional('AGENTSPLIT_MAINTENANCE') ?? '')
 
 // One pool for the process. Each request takes one connection and returns it
 // when its response is complete, as the Worker did with one connection per request.
@@ -79,16 +81,17 @@ const server = Bun.serve({
   // The largest body is a 5 MiB receipt in its multipart envelope.
   maxRequestBodySize: 8 * 1024 * 1024,
   idleTimeout: 60,
-  fetch: (request) => app.fetch(atPublicOrigin(request)),
+  fetch: (request) => (maintenance && maintenanceResponse(request)) || app.fetch(atPublicOrigin(request)),
   error(error) {
     console.error('Request failed', error)
     return Response.json({ error: 'Internal server error' }, { status: 500, headers: { 'Cache-Control': 'no-store' } })
   },
 })
-console.log(`AgentSplit listening on ${server.url.href} for ${publicOrigin}`)
+console.log(`AgentSplit listening on ${server.url.href} for ${publicOrigin}${maintenance ? ' (maintenance: answering 503)' : ''}`)
 
 // The hourly job, at minute 7 of each hour (the Worker's cron was "7 * * * *").
-const hourly = startHourly({ minute: 7, run: (time) => app.scheduled(time) })
+// It pauses in maintenance, so nothing writes while the cutover imports.
+const hourly = startHourly({ minute: 7, run: (time) => (maintenance ? Promise.resolve() : app.scheduled(time)) })
 
 // Docker sends SIGTERM, then SIGKILL after the stop grace period
 // (compose.v2.coolify.yaml gives 30 seconds). Stop taking requests, let the
