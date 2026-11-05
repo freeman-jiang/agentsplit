@@ -8,9 +8,10 @@ import * as core from '~/shared/api/core'
 import * as expenses from '~/shared/api/expenses'
 import * as feed from '~/shared/api/feed'
 import * as groups from '~/shared/api/groups'
+import * as history from '~/shared/api/history'
 
 it('gives every procedure a unique tag across all areas', () => {
-  const groupsOf = [core.CoreApi, groups.GroupsApi, feed.FeedApi, account.AccountApi, expenses.ExpensesApi]
+  const groupsOf = [core.CoreApi, groups.GroupsApi, feed.FeedApi, account.AccountApi, expenses.ExpensesApi, history.HistoryApi]
   const tags = groupsOf.flatMap((group) => [...group.requests.keys()])
   const duplicates = tags.filter((tag, i) => tags.indexOf(tag) !== i)
   expect(duplicates).toEqual([])

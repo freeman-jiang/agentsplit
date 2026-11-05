@@ -6,11 +6,13 @@ import { CoreApi } from './api/core'
 import { ExpensesApi } from './api/expenses'
 import { FeedApi } from './api/feed'
 import { GroupsApi } from './api/groups'
+import { HistoryApi } from './api/history'
 
 export * from './api/account'
 export * from './api/core'
 export * from './api/expenses'
 export * from './api/feed'
 export * from './api/groups'
+export * from './api/history'
 
-export class AgentSplitApi extends CoreApi.merge(GroupsApi, FeedApi, AccountApi, ExpensesApi) {}
+export class AgentSplitApi extends CoreApi.merge(GroupsApi, FeedApi, AccountApi, ExpensesApi, HistoryApi) {}

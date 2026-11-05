@@ -7,7 +7,9 @@ import { makeDb, registerRequestDb, releaseRequestDb, REQUEST_ID_HEADER, type Db
 import type { Env } from './env'
 import { HandlersLive } from './handlers'
 import { Api, AppConfig, AuthMiddlewareLive } from './rpc'
+import { Forbidden } from '../shared/api'
 import { livenessResponse, readinessResponse, robotsTxt, secured, sitemapXml } from './security'
+import { sessionPrincipal } from './session'
 
 const appEnv = env as unknown as Env
 const config = {
@@ -81,6 +83,25 @@ async function checkDatabase() {
   }
 }
 
+/** CSV and JSON exports, at the current app's URLs: /groups/<id>/expenses/export/<format> and /<slug>/expenses/export/<format>. */
+async function exportGroup(data: { db: ReturnType<typeof makeDb>; cookie: string | null; group: string; format: 'csv' | 'json' }) {
+  let group: string
+  try {
+    group = decodeURIComponent(data.group)
+  } catch {
+    return Response.json({ error: 'Invalid group ID' }, { status: 404 })
+  }
+  const principal = await sessionPrincipal(data.db, { cookie: data.cookie, secret: config.secret, baseUrl: config.baseUrl })
+  if (!principal) return Response.json({ error: 'Sign in required' }, { status: 401 })
+  const { exportCsv, exportJson, exportResponse } = await import('./export')
+  try {
+    return exportResponse(await (data.format === 'json' ? exportJson : exportCsv)(data.db, { principal, group }))
+  } catch (error) {
+    if (error instanceof Forbidden) return Response.json({ error: 'Group access denied' }, { status: 403 })
+    throw error
+  }
+}
+
 async function route(request: Request): Promise<Response> {
   const url = new URL(request.url)
   // The Effect RPC client joins its base URL with a slash, so it posts to /api/rpc/.
@@ -127,6 +148,15 @@ async function route(request: Request): Promise<Response> {
     } finally {
       await client.end().catch(() => {})
     }
+  }
+  const exportRoute = /^\/(?:groups\/)?([^/]+)\/expenses\/export\/(csv|json)$/.exec(url.pathname)
+  if (exportRoute && request.method === 'GET') {
+    const [, group = '', format] = exportRoute
+    // Downloads stay out of shared caches, as in the current app.
+    return withConnection(
+      (client) => exportGroup({ db: makeDb(client), cookie: request.headers.get('cookie'), group, format: format === 'json' ? 'json' : 'csv' }),
+      'private, no-store',
+    )
   }
   // The current app's presigned upload route is gone for good (P-RECEIPT-28).
   if (url.pathname === '/api/s3-upload')
