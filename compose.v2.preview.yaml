@@ -1,0 +1,100 @@
+# The AgentSplit v2 preview on Coolify: synthetic data only (DECISIONS.md,
+# "Coolify preview"). It runs on the same host and Traefik as production, so
+# it declares no Traefik labels of its own: Coolify routes only the preview
+# domain to `app`. Its volumes belong to this resource, separate from
+# production's. It has no `db` service, because the preview imports nothing.
+services:
+  app:
+    build:
+      context: v2
+    expose:
+      - '3000'
+    environment:
+      BASE_URL: ${BASE_URL:?Set BASE_URL}
+      DATABASE_URL: postgresql://postgres:${DB2_PASSWORD:?Set DB2_PASSWORD}@db2:5432/agentsplit
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?Set GOOGLE_CLIENT_SECRET}
+      AUTH_BOOTSTRAP_EMAIL: ${AUTH_BOOTSTRAP_EMAIL:-}
+      ENABLE_EXPENSE_DOCUMENTS: 'true'
+      # Garage's S3 API on the internal network. The app streams every
+      # receipt itself, so no browser or agent talks to storage.
+      S3_UPLOAD_ENDPOINT: http://garage:3900
+      S3_UPLOAD_BUCKET: agentsplit-receipts
+      S3_UPLOAD_REGION: garage
+      S3_UPLOAD_KEY: ${S3_UPLOAD_KEY:?Set S3_UPLOAD_KEY}
+      S3_UPLOAD_SECRET: ${S3_UPLOAD_SECRET:?Set S3_UPLOAD_SECRET}
+    depends_on:
+      db2:
+        condition: service_healthy
+      garage:
+        condition: service_healthy
+    # The image has the same check; this copy also works for images built without Docker's format.
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    # The server finishes open requests and the hourly job within 25 seconds of SIGTERM.
+    stop_grace_period: 30s
+    restart: unless-stopped
+    networks:
+      - coolify
+      - backend
+
+  db2:
+    image: postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+    environment:
+      POSTGRES_DB: agentsplit
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB2_PASSWORD}
+    volumes:
+      # PostgreSQL 18 images keep the data in a version folder under /var/lib/postgresql.
+      - postgres18-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d agentsplit']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # Internal only: no public route, so it cannot clash with production's
+  # agentsplit-s3 router on the same Traefik.
+  garage:
+    image: dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020
+    command: ['/garage', 'server', '--single-node', '--default-bucket']
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?Set GARAGE_RPC_SECRET}
+      GARAGE_DEFAULT_ACCESS_KEY: ${S3_UPLOAD_KEY}
+      GARAGE_DEFAULT_SECRET_KEY: ${S3_UPLOAD_SECRET}
+      GARAGE_DEFAULT_BUCKET: agentsplit-receipts
+    volumes:
+      - ./deploy/garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+    healthcheck:
+      test: ['CMD', '/garage', 'health']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - backend
+volumes:
+  postgres18-data:
+  garage-meta:
+  garage-data:
+
+networks:
+  coolify:
+    external: true
+  backend:
+    internal: true
