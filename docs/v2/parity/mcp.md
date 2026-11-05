@@ -1,6 +1,6 @@
 # Parity record: MCP endpoint, agent authentication and tools
 
-This records the [PARITY.md](../PARITY.md) items of the MCP server (P-MCP) and of all 20 tools (P-TOOL) that this area covers, changes or leaves to another area. The first pass ported the endpoint, the authentication and 7 tools. The second pass ported the other 13 tools and the historical and ungrouped forms of the first 7. The code is in `v2/src/server/mcp/`. The tests are in `v2/test/db/mcp-tools.test.ts` (tools, first pass), `mcp-more-tools.test.ts` (more, second pass), `mcp-auth.test.ts` (auth) and `mcp-oauth.test.ts` (oauth), and they run against a real database.
+This records the [PARITY.md](../PARITY.md) items of the MCP server (P-MCP) and of all 20 tools (P-TOOL) that this area covers, changes or leaves to another area. The first pass ported the endpoint, the authentication and 7 tools. The second pass ported the other 13 tools and the historical and ungrouped forms of the first 7. The third pass ported the receipt uploads. The code is in `v2/src/server/mcp/` and `v2/src/server/receipt-uploads.ts`. The tests are in `v2/test/db/mcp-tools.test.ts` (tools, first pass), `mcp-more-tools.test.ts` (more, second pass), `mcp-uploads.test.ts` (uploads), `mcp-auth.test.ts` (auth) and `mcp-oauth.test.ts` (oauth), and they run against a real database. `v2/e2e/agent-uploads.spec.ts` (e2e) runs the upload flow on the built Worker in workerd with its local R2.
 
 Status words:
 
@@ -13,6 +13,8 @@ Status words:
 
 - `endpoint.ts` serves `/api/mcp` in this order: host and origin, authentication, the rate limit, the scope step-up, the protocol header, then the JSON-RPC call through `createMcpHandler` (stateless, `responseMode: 'json'`). It builds a new `McpServer` per request.
 - `registry.ts` has `defineTool`. Each area writes its tools in `tools/<area>.ts` and adds one line to `tools/index.ts`. Inputs and outputs are Effect schemas. The JSON Schemas come from them once per isolate. Writes run in one SERIALIZABLE transaction, which rechecks OAuth write access. Errors map to the current `{error: {code, message, outcomeUnknown, recovery}}` body.
+- Receipt uploads (third pass). A Worker cannot presign S3 URLs for R2 without R2 S3 credentials, so an upload target is a Worker URL, `<BASE_URL>/api/receipt-uploads/<secret>`, with 256 random bits that work once. `create_expense` and `update_expense` write one `receipt_uploads` row per requested file in the write's transaction: the uploadId, the SHA-256 of the secret, the user, the group, the expense, the final R2 key `receipts/<id>.jpg|png`, the declared type and size, and an expiry 300 seconds later. The PUT claims the row (`pending` to `writing`) in one UPDATE, checks that `Content-Type` and `Content-Length` equal the target's headers, and streams the body into R2. R2 reports the stored size; a short body frees the target again. `update_expense` with `attachUploadIds` locks the rows, checks the owner, the group, the expense, the state and the 24 hours, reads the first 256 KiB from R2 (all of it only when the JPEG frame header comes later), registers the image in `receipts`, deletes the row and adds the document, in one audited revision. The hourly cron deletes rows older than 25 hours and their objects. No JavaScript reads or hashes the body on the PUT.
+- `GET /api/receipts` accepts the agent's API key or OAuth token (`X-API-Key` or `Authorization`), through the MCP `authenticate`, as in the current app. A bad agent credential answers 401 and does not fall back to the cookie.
 - The writes call `createExpense`, `updateExpense`, `deleteExpense` and `getExpense` in `src/server/ledger.ts`. The reads are one SQL statement each in `tools/`, because the current wire shapes (offset pages, names, categories, attribution) need columns that the RPC reads do not return. Each read checks membership in the same statement.
 - Second pass: every tool calls the service that the web RPC uses, and only maps names (`EVENLY`, `isReimbursement`, `currencyCode`) and shapes. The services are `feed.ts` (list_all_expenses, get_expense_options, get_participant_balances), `ungrouped.ts` (ungrouped create_expense, renew_invitation), `account.ts` (update_profile), `groups.ts` (create_group, update_group, manage_group_access), `expenses.ts` (get_balances, get_reference_data), `history.ts` (list_activity, the asOf forms of list_expenses, get_expense and get_balances), `stats.ts`, `export.ts` and `recurring.ts`. Writes go through the same SERIALIZABLE path with the OAuth write recheck.
 - Three tools need one more statement for columns that the service does not return: list_all_expenses (original amount, exchange rate, recurring link, category), list_activity (the live `expense` beside a current entry) and the historical get_expense (attribution up to that revision). Each reads only rows that the service has already checked.
@@ -164,17 +166,17 @@ The Claude Code emulation (oauth "Claude Code flow emulation") follows the repro
 | Item | Status | Evidence or reason |
 | --- | --- | --- |
 | 01, 03, 04 | covered | tools "records the authenticated actor…", "accepts several payers…", "refuses bad list bounds…". Adds `payers`. |
-| 05 | code | `downloadUrl` is built as in the current app; documents arrive with the receipts area. |
+| 05 | covered | uploads "uploads, attaches and downloads a receipt with the same API key": the document has the pointer, the measured width and height, and `downloadUrl`. |
 | 02, 07, 09, 10 | covered | `history.getSavedExpense`; the history block carries the saved snapshot with its saved names; recurring links are null; attribution counts events up to that revision (more "reads a saved revision…"). |
 | 08 | code | A deletion revision returns the prior snapshot, `deleted: true` and `deletedAt` (history area tests prove the service). |
-| 06 | deferred | Receipts area (`/api/receipts`). |
+| 06 | covered | The same test downloads the bytes with the agent's `X-API-Key`, and with another member's `Authorization: Bearer` key; a non-member gets 403 and an unknown key 401. e2e downloads with the key and no cookie. OAuth tokens go through the same `authenticate` as MCP; the DPoP proof must name the receipt URL. |
 
 ### create_expense
 
 | Item | Status | Evidence or reason |
 | --- | --- | --- |
 | 01, 02, 04 to 07, 10, 11, 13, 16, 29 | covered | tools "creates with a stable ID…", "refuses invalid money…", "refuses a group outside…", "records the authenticated actor". |
-| 03 | changed | `paidBy` or the new `payers`, exactly one. |
+| 03 | changed | `paidBy` or the new `payers`, exactly one. `documents` on a group create must name receipts of that group (uploads "keeps or removes receipts…"). |
 | 08 | changed | Same check (ledger `validateExpense`); the message names the field, such as `payers.0: The payer is not in this group`. |
 | 09, 12 | covered | `people` with `groupId` is refused; conversion fields are unknown keys. |
 | 14 | changed (DECISIONS.md B) | A reused ID in another group is CONFLICT too. |
@@ -183,9 +185,11 @@ The Claude Code emulation (oauth "Claude Code flow emulation") follows the repro
 | 18 | deferred | The recurrence rule is saved. Recurring links and the scheduled job belong to the recurring area. |
 | 19, 24, 25 | covered | `createUngroupedExpense`; the result maps labels to `<expenseId>_<label>` participants and returns invitation links (more "creates a private expense with people…"). A retried ID answers CONFLICT. |
 | 20 to 22, 26, 27 | code | The ungrouped service's rules, proven in `ungrouped.test.ts`. |
-| 23 | covered | Upload requests are refused before any write: "Save an ungrouped expense first, then attach its receipts."; recurrence and payments are refused by the service. |
+| 23 | covered | Upload requests are refused before any write: "Save an ungrouped expense first, then attach its receipts."; `documents` get the current "Create the expense first, then attach receipts…" text; recurrence and payments are refused by the service. |
 | 28 | covered | A repayment inside the context is allowed (more "records repayments inside the private context…"); a new purchase there is refused by the service. |
-| 30 to 32 | deferred | Receipts area. Upload requests return `uploads: []` and the current `uploadError` text (tools "returns an upload error…"); `documents` must be empty. |
+| 30 | changed | The same fields: `uploadId`, `filename`, `method: "PUT"`, `url`, `headers` with `Content-Type` and `Content-Length`, `expiresAt` 300 seconds later (uploads "uploads, attaches…"). `url` is a Worker URL with a single-use secret, not a presigned S3 URL. It works for one complete PUT only; a second PUT gets 403 (uploads "refuses a reused or expired upload URL…", e2e). |
+| 31 | changed | The targets are written in the write's transaction, so a failure to write them fails the whole call with a certain outcome, never a half result. With receipts off, the expense is saved and the call answers `uploads: []` and the current `uploadError` text (tools "returns an upload error, not targets, while receipts are off…"). |
+| 32 | covered | A target alone adds no document and no revision (uploads "uploads, attaches…" reads revision 1 after the request and after the PUT). |
 
 ### update_expense
 
@@ -195,7 +199,11 @@ The Claude Code emulation (oauth "Claude Code flow emulation") follows the repro
 | 03 | changed | A missing `expectedRevision` fails schema validation instead of the BAD_REQUEST message. |
 | — | changed | Multiple payers: a changed amount on an expense with several payers needs `payers` again. With one payer, that payer's part follows the amount. |
 | 08 | deferred | The ledger's update keeps `original_*` columns when the amount or currency changes. Fix in `ledger.ts` (expenses area). |
-| 09 to 14 | deferred | Receipts area; `documents` and `attachUploadIds` answer BAD_REQUEST until then. |
+| 09, 10 | covered | `documents` replaces the list: `[]` removes the receipt in a new revision; a receipt of another group answers BAD_REQUEST "Attach only receipts uploaded to this group" (uploads "keeps or removes receipts…"). The ledger keeps a removed receipt in the earlier revision (expenses area tests). With `attachUploadIds`, the new receipts join `documents`, or the saved list when `documents` is omitted, as in the current app. |
+| 11 | covered | Another user's upload for the same expense, and the caller's own upload for another expense, answer FORBIDDEN "This upload does not belong to this user and expense", before any storage read (uploads "refuses another principal's…"). |
+| 12 | covered | An unknown uploadId, an upload without its PUT and an attached uploadId answer BAD_REQUEST "Receipt upload could not be finalized…"; the revision stays (same tests). A stale `expectedRevision` answers CONFLICT before any upload is checked. |
+| 13 | changed | Over 24 hours answers "Upload is too large or expired" (uploads "refuses a stored upload after 24 hours…"). The size is checked at the PUT: `Content-Length` must equal the declared bytes (at most 5 MiB), and R2's stored size must equal it, else 400 "Upload is incomplete". The content must be a JPEG or PNG of its declared type, at most 40 million pixels (`imageInfo`, image tests): a JPEG declared as PNG is refused with "Receipts must be valid JPEG or PNG images". The current app accepted it and used the detected type, but v2 fixes the key and the stored type when it gives the target. |
+| 14 | changed | The PUT writes the final key `receipts/<id>.jpg|png` directly; there is no copy, because the R2 binding has no copy call and a copy streams the bytes through the Worker again. No write URL exists for an attached receipt: the target is spent after its one PUT, and its row is deleted at attach. The pointer is `r2://agentsplit-receipts/receipts/<id>.<ext>`, with the measured width and height, in an audited revision. |
 | 16 | covered | The ledger's private-context rules (more "records repayments inside…": a changed set of people answers BAD_REQUEST). |
 
 ### delete_expense
@@ -326,7 +334,7 @@ The service that owns each behavior is named in the design section above. "code"
 | --- | --- | --- |
 | P-TOOL-REF-01, 02, 04 | covered | more "lists reference data in the current names". |
 | 03 | changed | The same 34 currencies, in code order instead of the current list order. |
-| 05 | changed | `attachments.enabled` is false: MCP cannot attach receipts yet (create_expense and update_expense answer uploadError). The receipts area turns it on with the upload tools. |
+| 05 | covered | `attachments.enabled` is `ENABLE_EXPENSE_DOCUMENTS`, with `image/jpeg`, `image/png` and 5242880 bytes (uploads "reports attachments as enabled…"). |
 
 ### export_group (export.ts)
 
@@ -341,7 +349,7 @@ The service that owns each behavior is named in the design section above. "code"
 
 1. Resolved by the lead: state conflicts (P-TOOL-ACCESS-08, 10, 11, 15, 20, 26, P-TOOL-UPDATEGROUP-07, P-TOOL-DELETEEXP-07) answer CONFLICT again, through `Invalid.reason = 'state'`.
 2. `create_group` and `update_group` refuse a custom currency symbol. An agent that sends only `currency: "$"` gets BAD_REQUEST, because several currencies use that symbol.
-3. `get_reference_data.attachments.enabled` is false until MCP can attach receipts. This differs from the web's flag.
+3. Resolved in the third pass: `get_reference_data.attachments.enabled` follows `ENABLE_EXPENSE_DOCUMENTS`, as the web does.
 
 ## Cost
 
@@ -382,3 +390,20 @@ A new isolate imports the endpoint chunk on its first MCP request. Measured with
 | 20 tools, JSON Schemas built on first use (this pass) | about 84 ms |
 
 `defineTool` now builds a tool's JSON Schemas on first use, and `server.ts` builds the tools/list answer on the first tools/list. A first tools/call builds only that tool's input schema. The first tools/list on an isolate pays the rest, about 26 ms once (the difference above).
+
+## Receipt uploads (third pass)
+
+### Intended differences from the current app
+
+1. `url` is `<BASE_URL>/api/receipt-uploads/<secret>`, not a presigned S3 URL. The agent sends the same PUT with the same two headers and no API key. A second PUT, or a PUT after `expiresAt`, gets 403 `{"error": "This upload URL is not valid, was used, or has expired"}`. Wrong headers get 400 and leave the target usable. With receipts off, the PUT gets 403 "Receipts are disabled".
+2. The bytes go to their final key at once, and there is no staging copy (P-TOOL-UPDATEEXP-14).
+3. The content must match the declared type (P-TOOL-UPDATEEXP-13).
+4. Size and completeness are checked at the PUT, not at attach (P-TOOL-UPDATEEXP-13).
+5. Targets that were never attached are deleted with their objects 25 hours after they were made. The current app left `pending-receipts/` objects in the bucket.
+6. A failure to write the targets fails the whole call (P-TOOL-CREATEEXP-31).
+
+### Open questions
+
+1. Should the PUT route also require the agent's API key? The current contract sends none, so v2 does not. The secret in the URL is the only credential, as with a presigned URL. It can appear in logs that record full URLs (Cloudflare request logs, agent transcripts) for at most 300 seconds, and only until its one PUT.
+2. The final key is fixed by the declared type. An agent that declares the wrong type must request a new target. The alternative is a copy at attach, which costs a second R2 write per receipt.
+3. Workers Free counts CPU per request. The PUT does one SHA-256 of 43 bytes and two short UPDATE statements, and workerd streams the body. Attach reads at most 256 KiB per receipt (all of a JPEG whose frame header comes later, at most 5 MiB). These are predictions, not `wrangler tail` numbers from the preview Worker.
