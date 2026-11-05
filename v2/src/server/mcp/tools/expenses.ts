@@ -16,7 +16,7 @@ import { randomId } from '../../ids'
 import * as ledger from '../../ledger'
 import { attachUploads, prepareUploads, UploadError } from '../../receipt-uploads'
 import { receiptDownloadPath } from '../../receipts'
-import { activitySource, displayName, escapeLike, involves, iso, notBaseline } from '../../sql'
+import { activitySource, displayName, documentsJson, escapeLike, involves, iso, notBaseline } from '../../sql'
 import { createUngroupedExpense } from '../../ungrouped'
 import { PAYMENT_RULES, RECORDING_RULES } from '../instructions'
 import { defineTool, ToolError } from '../registry'
@@ -338,8 +338,7 @@ const expenseSelect = (data: { detail: boolean }) => sql`
     (SELECT count(*)::int FROM expense_documents d WHERE d.expense_id = e.id) AS document_count,
     ${
       data.detail
-        ? sql`coalesce((SELECT json_agg(json_build_object('id', d.id, 'url', d.url, 'width', d.width, 'height', d.height) ORDER BY d.position)
-            FROM expense_documents d WHERE d.expense_id = e.id), '[]') AS documents,
+        ? sql`coalesce(${documentsJson(sql`e`)}, '[]') AS documents,
           (SELECT json_build_object('id', l.id, 'groupId', l.group_id, 'currentFrameExpenseId', l.current_frame_expense_id,
               'nextExpenseCreatedAt', ${iso(sql`l.next_expense_created_at`)}, 'nextExpenseDate', l.next_expense_date::text || 'T00:00:00.000Z')
             FROM recurring_links l WHERE l.current_frame_expense_id = e.id) AS link`

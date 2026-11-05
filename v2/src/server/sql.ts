@@ -22,17 +22,29 @@ export const activitySource = (alias: SQL) => sql`CASE WHEN ${alias}.source = 'm
  */
 export const notBaseline = (alias: SQL) => sql`${alias}.source <> 'baseline' AND (${alias}.expense_revision IS NULL OR ${alias}.expense_revision > 0)`
 
+/** "<vendor> — <title>" of an expense snapshot, as titleWithVendor makes it. */
+const snapshotTitle = (snapshot: SQL) => sql`CASE WHEN coalesce(${snapshot}->'expense'->>'vendor', '') <> ''
+  THEN (${snapshot}->'expense'->>'vendor') || ' — ' || (${snapshot}->'expense'->>'title')
+  ELSE ${snapshot}->'expense'->>'title' END`
+
 /**
  * The text of activity row `alias`. An expense event stores "<vendor> — <title>"
  * (titleWithVendor). v2 rows from before this rule have none, so the text
- * comes from the last saved snapshot at that event (P-EXP-107).
+ * comes from the last saved snapshot at that event (P-EXP-107). That is the
+ * row's own snapshot when it has one, so only a row without one looks back.
  */
-export const activityData = (alias: SQL) => sql`CASE WHEN ${alias}.data IS NULL AND ${alias}.expense_id IS NOT NULL THEN (
-    SELECT CASE WHEN coalesce(s.snapshot->'expense'->>'vendor', '') <> '' THEN (s.snapshot->'expense'->>'vendor') || ' — ' || (s.snapshot->'expense'->>'title')
-      ELSE s.snapshot->'expense'->>'title' END
+export const activityData = (alias: SQL) => sql`CASE WHEN ${alias}.data IS NOT NULL OR ${alias}.expense_id IS NULL THEN ${alias}.data
+  WHEN ${alias}.snapshot IS NOT NULL THEN ${snapshotTitle(sql`${alias}.snapshot`)}
+  ELSE (SELECT ${snapshotTitle(sql`s.snapshot`)}
     FROM activities s WHERE s.group_id = ${alias}.group_id AND s.expense_id = ${alias}.expense_id AND s.sequence <= ${alias}.sequence AND s.snapshot IS NOT NULL
-    ORDER BY s.sequence DESC LIMIT 1)
-  ELSE ${alias}.data END`
+    ORDER BY s.sequence DESC LIMIT 1) END`
+
+/**
+ * The receipts of expense row `expense` as a JSON array, in their saved order,
+ * or NULL when it has none. Each caller decides what to show for none.
+ */
+export const documentsJson = (expense: SQL) => sql`(SELECT json_agg(json_build_object('id', d.id, 'url', d.url, 'width', d.width, 'height', d.height) ORDER BY d.position)
+  FROM expense_documents d WHERE d.expense_id = ${expense}.id)`
 
 /** A timestamp as ISO 8601 text in UTC, with milliseconds. */
 export const iso = (column: SQL) => sql`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
