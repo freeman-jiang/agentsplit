@@ -94,3 +94,16 @@ After folding the API-key queries (the user lookup joins the key lookup, and the
 | `list_expenses`, 20 rows | 13 | 18 |
 
 `list_expenses` is still over the budget at p50. Its read is the next step of the CPU pass.
+
+## `expenses.list` CPU by page size (preview, 2026-11-05)
+
+The same method, web session, 15 requests per size. CPU milliseconds:
+
+| Rows | p50 | p90 |
+| --- | --- | --- |
+| 1 | 8 | 54 |
+| 10 | 10 | 16 |
+| 30 | 13 | 29 |
+| 100 | 18 | 37 |
+
+A request costs about 8 ms before its rows, and each row adds about 0.15 ms. `/api/health` without the database costs 3 ms, so connecting, the session check and Effect RPC take about 5 ms. The fixed part is the larger problem: pages of 30 rows stay near 13 ms at p50 even if the per-row work halves. Reducing the fixed part means a cheaper path than Effect RPC for the hottest reads, or a smaller connection setup. That is a design change, so it waits for Freeman's decision ("Workers Free CPU" in DECISIONS.md).
