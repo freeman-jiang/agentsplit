@@ -21,9 +21,9 @@ Rebuild AgentSplit as v2 on the standard dev-box stack and move production to it
 - Effect, with Effect Schema as the shared contract, and `@effect/rpc`.
 - Drizzle.
 - Better Auth. Keep its OAuth provider, dynamic client registration (DCR), CIMD, and API keys.
-- MCP served by the same Worker, through the same domain services as the UI.
-- One Cloudflare Worker on Workers Free, PostgreSQL on `apps-pg` through Hyperdrive (`app-db`), and receipts in R2.
-- Keep the domain and the `/api/receipts` URL scheme. Change DNS only through `infra/cloudflare` OpenTofu.
+- MCP served by the same server, through the same domain services as the UI.
+- Coolify on the Oracle host, in the same Compose stack as today: the v2 server, a new PostgreSQL 18 service beside the current database, and the existing Garage bucket for receipts. Freeman changed this from a Cloudflare Worker on 2026-11-05, after writes stayed about 3 times over the Workers Free CPU limit (DECISIONS.md).
+- Keep the domain and the `/api/receipts` URL scheme. The domain already routes to Coolify, so the cutover changes no DNS.
 
 ## Invariants
 
@@ -63,7 +63,7 @@ Decisions on the current app's doubtful behavior are in [DECISIONS.md](DECISIONS
 ## Speed
 
 1. Measure the current app's signed-in pages first.
-2. Set budgets for bundle size, requests per screen, and Worker CPU time per route (under the 10 ms Workers Free limit).
+2. Set budgets for bundle size, requests per screen, and server time per route.
 3. Show that v2 meets the budgets and beats the current app.
 
 ## Data safety
