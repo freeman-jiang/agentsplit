@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { expenses, memberships } from '../../db/schema/app'
 import { oauthConsent } from '../../db/schema/auth'
 import { revokeOAuthConnection } from '~/server/auth'
+import { removeExpiredDpopProofs } from '~/server/mcp/oauth'
 import { BASE, callTool, failure, MCP_URL, ok, rpc, startHarness, type Harness } from './mcp-harness'
 
 /** Claude Code's published Client ID Metadata Document, as served on 2026-11-05. */
@@ -287,6 +288,20 @@ describe('DPoP-bound tokens', () => {
     expect((await rpc(h, { method: 'tools/list', headers: fresh })).status).toBe(200)
     const wrongUrl = { authorization: `DPoP ${issued.access_token}`, DPoP: await proof({ url: `${BASE}/elsewhere`, accessToken: issued.access_token }) }
     expect((await rpc(h, { method: 'tools/list', headers: wrongUrl })).status).toBe(401)
+  })
+
+  it('lose their replay rows an hour after the proof expires; other verification rows stay', async () => {
+    const row = (data: { id: string; identifier: string; expiredHours: number }) =>
+      sql`(${data.id}, ${data.identifier}, 'value', now() - make_interval(hours => ${data.expiredHours}), now(), now())`
+    await h.withDb((db) =>
+      db.execute(sql`INSERT INTO verification (id, identifier, value, expires_at, created_at, updated_at) VALUES
+        ${row({ id: 'old-proof', identifier: 'dpop-proof:old', expiredHours: 2 })},
+        ${row({ id: 'recent-proof', identifier: 'dpop-proof:recent', expiredHours: 0 })},
+        ${row({ id: 'old-other', identifier: 'state:old', expiredHours: 2 })}`),
+    )
+    expect(await h.withDb((db) => removeExpiredDpopProofs(db))).toBe(1)
+    const left = await h.withDb((db) => db.execute<{ id: string }>(sql`SELECT id FROM verification WHERE id IN ('old-proof', 'recent-proof', 'old-other') ORDER BY id`))
+    expect(left.rows.map((r) => r.id)).toEqual(['old-other', 'recent-proof'])
   })
 })
 

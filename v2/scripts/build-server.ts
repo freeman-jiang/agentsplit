@@ -11,8 +11,6 @@ const result = await Bun.build({
   entrypoints: ['src/server/server.ts'],
   outdir: 'dist/server',
   target: 'bun',
-  // The lazy imports in app.ts stay separate chunks, so a start parses only what the first requests need.
-  splitting: true,
   minify: true,
   sourcemap: 'linked',
   // pg loads its optional native binding only when asked for it; the server never asks.

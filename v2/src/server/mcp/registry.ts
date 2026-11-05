@@ -161,8 +161,8 @@ type ToolSpec<I extends Schema.Top, O extends Schema.Top> = {
 }
 
 /**
- * The JSON Schemas are built on first use, not at definition: a new isolate
- * whose first request calls one tool builds only that tool's input schema.
+ * The JSON Schemas are built on first use, not at definition, so a server
+ * start builds none of them and a tool call builds only that tool's input schema.
  */
 export function defineTool<I extends Schema.Top & Schema.ConstraintDecoder<unknown>, O extends Schema.Top>(spec: ToolSpec<I, O>): McpTool {
   let input: JsonSchema | undefined

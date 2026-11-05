@@ -104,8 +104,7 @@ export const displayNames = (groupId: SQL) => sql`
 
 /**
  * A group with its participants and balances, in one statement that also
- * checks the caller's membership. One round trip keeps the request within the
- * Workers CPU budget.
+ * checks the caller's membership, so the request makes one round trip.
  */
 export async function getGroup(db: Db, data: { principal: Principal; group: string }) {
   const result = await db.execute<GroupRow>(sql`
@@ -167,9 +166,9 @@ type ListRow = ExpenseRow & { created_key: string; updated_key: string }
 
 /**
  * Expenses with their payers, shares and document count, in one statement.
- * PostgreSQL builds each row's parts as JSON, so the Worker parses one value
- * per row instead of several result sets: this keeps a list request within the
- * Workers CPU budget. Minor units travel as text, never as JSON numbers.
+ * PostgreSQL builds each row's parts as JSON, so the server parses one value
+ * per row instead of several result sets. Minor units travel as text, never as
+ * JSON numbers.
  */
 async function selectExpenses(db: Db, data: { where: SQL; orderBy: SQL; limit?: number; with?: SQL }) {
   const result = await db.execute<ListRow>(sql`
@@ -319,8 +318,8 @@ const documentsOf = sql`coalesce((SELECT json_agg(json_build_object('id', d.id, 
 /**
  * Everything an expense write reads before it changes anything, read in one
  * statement at the start of the transaction. An MCP tool loads it, uses it,
- * and gives it to the ledger write, so no row is read twice. Each SQL
- * statement costs about 1.5 ms of CPU on Workers (docs/v2/BASELINE.md).
+ * and gives it to the ledger write, so no row is read twice and the write
+ * makes fewer round trips.
  */
 export type WriteContext = {
   readonly op: 'create' | 'change'

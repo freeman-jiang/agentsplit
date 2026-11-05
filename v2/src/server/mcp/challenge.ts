@@ -1,6 +1,7 @@
 // OAuth discovery and challenges for the MCP resource. This module is small on
 // purpose: the Worker serves the protected-resource metadata from it without
 // loading Better Auth or the MCP SDK.
+import { jsonError } from '../security'
 import { mcpResource, oauthIssuer, OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
 
 /**
@@ -38,11 +39,6 @@ export function protectedResourceMetadata(request: Request, baseUrl: string): Re
   return new Response(request.method === 'HEAD' ? null : body, { status: 200, headers })
 }
 
-export const noStore = { 'Cache-Control': 'no-store' } as const
-
-/** A JSON error body `{error}`, as the current app answers. */
-export const jsonError = (data: { status: number; message: string; headers?: Record<string, string> }) =>
-  Response.json({ error: data.message }, { status: data.status, headers: { ...noStore, ...data.headers } })
 
 /**
  * The 401 challenge (no or bad credentials) and the 403 step-up challenge

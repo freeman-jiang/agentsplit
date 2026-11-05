@@ -49,9 +49,11 @@ const jwksCacheKey = {}
  * A second insert of the same proof finds the row and fails, across isolates.
  */
 const reservationId = (identifier: string) => sha256Base64url(`reserve:${identifier}`)
+/** The identifier prefix of a DPoP replay row, the same as Better Auth's. */
+const DPOP_PROOF = 'dpop-proof:'
 const replayStore = (db: Db): DpopReplayStore => ({
   reserve: async ({ key, expiresAt }) => {
-    const identifier = `dpop-proof:${key}`
+    const identifier = `${DPOP_PROOF}${key}`
     const result = await db.execute(sql`
       INSERT INTO verification (id, identifier, value, expires_at, created_at, updated_at)
       VALUES (${reservationId(identifier)}, ${identifier}, ${key}, ${expiresAt}, now(), now())
@@ -59,6 +61,17 @@ const replayStore = (db: Db): DpopReplayStore => ({
     return result.rows.length === 1
   },
 })
+
+/**
+ * Deletes the replay rows of DPoP proofs that expired an hour ago or more. A
+ * proof is refused after its expiry by its own iat check, so its row is no
+ * longer needed. The hour covers a clock difference between the server and
+ * the database. Runs from the hourly job; returns the number of rows deleted.
+ */
+export async function removeExpiredDpopProofs(db: Db): Promise<number> {
+  const result = await db.execute(sql`DELETE FROM verification WHERE identifier LIKE ${`${DPOP_PROOF}%`} AND expires_at < now() - interval '1 hour'`)
+  return result.rowCount ?? 0
+}
 
 type GrantRow = {
   connection_user: string | null

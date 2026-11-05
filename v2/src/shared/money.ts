@@ -15,7 +15,7 @@ export type DecimalString = typeof DecimalString.Type
 /**
  * The same brand without the pattern check, for values the server produces with
  * formatMinor. Encoding a response then runs no regular expression per amount,
- * which keeps large lists within the Workers CPU budget. Inputs use DecimalString.
+ * which keeps large lists fast. Inputs use DecimalString.
  */
 export const DecimalOutput = Schema.String.pipe(Schema.brand('DecimalString'))
 
