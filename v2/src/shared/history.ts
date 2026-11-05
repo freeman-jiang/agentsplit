@@ -40,6 +40,11 @@ export type SavedExpense = {
   /** Saved document pointers. v2 snapshots store only the count. */
   readonly documents: ReadonlyArray<{ readonly id: string; readonly url: string }>
   readonly documentCount: number
+  /**
+   * The group as the revision saved it; `currency` is its code when one was
+   * saved. Readers fill it; the RPC contract leaves it out, so clients lack it.
+   */
+  readonly group?: { readonly id: string; readonly name: string; readonly slug: string | null; readonly currency: string } | null
 }
 
 export type SavedGroup = {
@@ -62,6 +67,9 @@ const Person = Schema.Struct({ id: Schema.String, name: Schema.String })
 const V1Expense = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   kind: Schema.Literal('expense'),
+  group: Schema.optional(
+    Schema.Struct({ id: Schema.String, name: Schema.String, slug: Schema.optional(Schema.NullOr(Schema.String)), currency: Schema.String, currencyCode: Schema.NullOr(Schema.String) }),
+  ),
   expense: Schema.Struct({
     id: Schema.String,
     revision: Schema.Number,
@@ -103,6 +111,7 @@ const V1Group = Schema.Struct({
 const V2Expense = Schema.Struct({
   schemaVersion: Schema.Literal(2),
   kind: Schema.Literals(['expense', 'payment']),
+  group: Schema.optional(Schema.Struct({ id: Schema.String, name: Schema.String, slug: Schema.NullOr(Schema.String), currency: Schema.String })),
   expense: Schema.Struct({
     id: Schema.String,
     revision: Schema.Number,
@@ -242,6 +251,7 @@ function fromV1(raw: typeof V1Expense.Type, categories: ReadonlyMap<number, Cate
     conversionRate: e.conversionRate,
     documents: e.documents.map((d) => ({ id: d.id, url: d.url })),
     documentCount: e.documents.length,
+    group: raw.group ? { id: raw.group.id, name: raw.group.name, slug: raw.group.slug ?? null, currency: raw.group.currencyCode ?? raw.group.currency } : null,
   }
 }
 
@@ -274,6 +284,7 @@ function fromV2(raw: typeof V2Expense.Type, categories: ReadonlyMap<number, Cate
     conversionRate: e.conversionRate ?? null,
     documents: [],
     documentCount: e.documentCount,
+    group: raw.group ?? null,
   }
 }
 
