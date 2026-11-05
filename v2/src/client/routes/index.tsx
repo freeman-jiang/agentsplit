@@ -2,6 +2,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { pickSearch } from '~/client/search'
 import { useEffect, useState } from 'react'
+import { LoginButton } from '~/client/components/login-button'
 import { meQuery } from '~/client/queries'
 import { accountBalancesQuery, errorMessage, feedOptionsQuery, feedQuery } from '~/client/queries/feed'
 import { Button } from '~/client/ui/button'
@@ -45,9 +46,7 @@ function Landing() {
           <p className="max-w-lg leading-normal text-muted-foreground sm:text-xl sm:leading-8">
             Keep track of everyday expenses with the people you share them with. In your browser, or with your agent.
           </p>
-          <Button asChild>
-            <Link to="/sign-in">Log In</Link>
-          </Button>
+          <LoginButton label="Log In" selectAccount={false} callbackURL="/" />
         </div>
       </section>
     </main>
