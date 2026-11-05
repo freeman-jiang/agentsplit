@@ -27,6 +27,7 @@
     "react-dom": "19.3.1"
   },
   "devDependencies": {
+    "@better-auth/cli": "1.4.21",
     "@cloudflare/vite-plugin": "1.66.0",
     "@cloudflare/workers-types": "5.20261029.1",
     "@effect/vitest": "4.1.0",
