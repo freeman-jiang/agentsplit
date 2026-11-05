@@ -1,9 +1,10 @@
-// Receipt images in R2, behind the membership check. The ledger stores a
-// receipt by URL (the current app's storage URL, or an r2: pointer for new
-// uploads); the object key in R2 is the URL's part after the storage prefix.
+// Receipt images in the receipts bucket (Garage), behind the membership check.
+// The ledger stores a receipt by URL (the current app's storage URL, or an r2:
+// pointer for new uploads); the object key is the URL's part after the storage prefix.
 // Rules from the current app: src/lib/receipt-storage.ts, src/app/api/receipts/route.ts.
 import { sql } from 'drizzle-orm'
 import { receipts } from '../../db/schema/app'
+import type { Bucket } from './bucket'
 import type { Db } from './db'
 import { randomId } from './ids'
 import { requireMember, type Principal } from './ledger'
@@ -12,7 +13,11 @@ export const MAX_RECEIPT_BYTES = 5 * 1024 * 1024
 /** The multipart envelope may add this much to the image. */
 const ENVELOPE_BYTES = 64 * 1024
 const MAX_PIXELS = 40_000_000
-/** The pointer of a receipt stored in R2 by v2: this prefix and the object key. */
+/**
+ * The pointer of a receipt stored by v2: this prefix and the object key. The
+ * name is from the time v2 stored receipts in R2. The current app's objects
+ * and v2's share one bucket and one key scheme.
+ */
 export const NEW_URL_PREFIX = 'r2://agentsplit-receipts/'
 
 export type ImageInfo = { format: 'jpeg' | 'png'; width: number; height: number }
@@ -51,7 +56,7 @@ export function imageInfo(bytes: Uint8Array): ImageInfo | null {
 const sized = (info: ImageInfo) => (info.width >= 1 && info.height >= 1 && info.width * info.height <= MAX_PIXELS ? info : null)
 
 /**
- * The R2 key of a stored receipt URL: the part after the storage prefix, as the
+ * The object key of a stored receipt URL: the part after the storage prefix, as the
  * current app's readReceipt takes it. A current-app URL is
  * `https://<host>/<bucket>/<key>`; a v2 upload is `r2://agentsplit-receipts/<key>`.
  * Keys keep their original form, such as `receipts/<id>.png` or the older
@@ -98,7 +103,7 @@ export async function receiptReader(db: Db, data: { request: Request; baseUrl: s
  * read, on every request; receipts that only old revisions or deleted expenses
  * refer to stay readable to members (P-RECEIPT-27).
  */
-export async function downloadReceipt(data: { db: Db; bucket: R2Bucket; principal: Principal | null; url: URL }): Promise<Response> {
+export async function downloadReceipt(data: { db: Db; bucket: Bucket; principal: Principal | null; url: URL }): Promise<Response> {
   const groupId = data.url.searchParams.get('groupId')
   const url = data.url.searchParams.get('url')
   if (!groupId || !url) return json(400, 'Receipt reference is required')
@@ -113,9 +118,9 @@ export async function downloadReceipt(data: { db: Db; bucket: R2Bucket; principa
   if (!key || !(await receiptInGroup(data.db, { groupId: member.groupId, url }))) return json(404, 'Receipt not found')
   const object = await data.bucket.get(key).catch(() => null)
   if (!object) return json(404, 'Receipt not found')
-  return new Response(object.body, {
+  return new Response(object.stream(), {
     headers: {
-      'Content-Type': object.httpMetadata?.contentType === 'image/png' ? 'image/png' : 'image/jpeg',
+      'Content-Type': object.contentType === 'image/png' ? 'image/png' : 'image/jpeg',
       'Cache-Control': 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "default-src 'none'; sandbox",
@@ -131,7 +136,7 @@ export async function downloadReceipt(data: { db: Db; bucket: R2Bucket; principa
  */
 export async function uploadReceipt(data: {
   db: Db
-  bucket: R2Bucket
+  bucket: Bucket
   principal: Principal | null
   request: Request
   baseUrl: string
@@ -166,7 +171,7 @@ export async function uploadReceipt(data: {
   const url = `${NEW_URL_PREFIX}${key}`
   const id = randomId()
   try {
-    await data.bucket.put(key, bytes, { httpMetadata: { contentType: info.format === 'jpeg' ? 'image/jpeg' : 'image/png', cacheControl: 'private,no-store' } })
+    await data.bucket.put(key, bytes, { contentType: info.format === 'jpeg' ? 'image/jpeg' : 'image/png' })
     await data.db.insert(receipts).values({ id, groupId: member.groupId, url, createdBy: data.principal.userId })
   } catch (error) {
     await data.bucket.delete(key).catch(() => {})

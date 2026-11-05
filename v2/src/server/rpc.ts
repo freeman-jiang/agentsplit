@@ -5,7 +5,7 @@ import { DatabaseError, REQUEST_ID_HEADER, RequestDb, requestDbFor, transaction,
 import type * as ledger from './ledger'
 import { sessionPrincipal } from './session'
 
-/** Settings from the Worker environment that the handlers need. */
+/** Settings from the server environment that the handlers need. */
 export class AppConfig extends Context.Service<
   AppConfig,
   {

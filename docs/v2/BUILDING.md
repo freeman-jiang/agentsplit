@@ -10,8 +10,12 @@ Run every command inside the dev shell, from `v2/`: `direnv exec .. <command>`.
 | --- | --- |
 | Type check | `bun run check-types` |
 | Unit and database tests | `TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:5437/agentsplit_test_<area> bun run test` |
-| Production build | `bunx vite build` |
-| Dev server | `bunx vite dev --port <port> --strictPort` |
+| Production build (client, server bundle, migrations) | `bun run build` |
+| Bundle budget | `bun scripts/check-bundle.ts` (after the build) |
+| Dev server | `bun run dev:server` with `PORT=<api-port>`, and `API_PORT=<api-port> bunx vite dev --port <port> --strictPort` |
+| End-to-end tests, built server | `./scripts/e2e.sh` |
+| End-to-end tests, the image and the Coolify stack | `./scripts/e2e.sh --compose` |
+| Image | `docker build -t agentsplit-v2 .` |
 | Apply migrations locally | `DATABASE_URL=postgresql://postgres@127.0.0.1:5437/<db> bun db/migrate.ts` |
 | New SQL migration | `bunx drizzle-kit generate --name <name>`, or `--custom` for triggers |
 
@@ -21,7 +25,8 @@ Run every command inside the dev shell, from `v2/`: `direnv exec .. <command>`.
 - Use your own database names, so parallel work does not collide: `agentsplit_test_<area>` for tests (the name must contain `test`) and `agentsplit_dev_<area>` for a dev server.
 - `db-reset <name>` drops and recreates a database whose name contains `test`, `e2e`, `perf` or `dev`.
 - Never touch `agentsplit_dev`, `agentsplit_restore_test` or `agentsplit_import_test`; the lead uses them.
-- A dev server reads its database from the Hyperdrive binding. Point it at your own database with `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgresql://postgres:local@127.0.0.1:5437/agentsplit_dev_<area>`. Put dev-only secrets in `v2/.dev.vars` (it is gitignored): `BETTER_AUTH_SECRET` (a random 64-character hex string), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (any placeholders) and `BASE_URL=http://localhost:<port>`.
+- The dev server is two processes: Vite serves the client and sends the server's paths (`/api/`, `/.well-known/`, the exports) to `bun run dev:server` on `API_PORT`. Bun reads `v2/.env.local` (it is gitignored). Put the dev settings there: `DATABASE_URL=postgresql://postgres@127.0.0.1:5437/agentsplit_dev_<area>`, `PORT=<api-port>`, `BASE_URL=http://localhost:<vite-port>`, `BETTER_AUTH_SECRET` (a random 64-character hex string), `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (any placeholders), and the S3 settings of a local Garage (`S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET`). `scripts/e2e.sh` shows how to start one Garage from the compose file.
+- The end-to-end tests start Garage (and, with `--compose`, the app image and PostgreSQL 18) through `docker-compose` on the Podman socket. Each run uses new test-only secrets and removes its containers and volumes.
 - To sign in on a dev server without Google, insert a `session` row for a synthetic user and set the cookie `better-auth.session_token=<token>.<signature>`, signed with `serializeSignedCookie` from `better-call` and the dev `BETTER_AUTH_SECRET` (see `test/db/session.test.ts`).
 - Use synthetic data only (`scripts/seed-synthetic.ts`, or your own test fixtures). Never copy the production backups.
 
@@ -48,7 +53,9 @@ Each area owns its own files, so areas can be built in parallel:
 - The membership check happens on the server for every read and write: `requireMember`, or a membership CTE in the same statement.
 - The database triggers are the last line of defense. Never disable them, and never write migrations that weaken them.
 
-### Speed (Workers Free: 10 ms CPU per request)
+### Speed
+
+The Workers Free CPU limit no longer applies (DECISIONS.md, "Hosting changes to Coolify"), but the rules stay: they keep the pages fast on one small host.
 
 - One SQL statement per screen read where possible. Let PostgreSQL build nested results as JSON (`json_agg`, `json_build_object`), with minor units as text. See `getGroup` and `selectExpenses` in `src/server/ledger.ts`.
 - Do not call Better Auth on the RPC path. The session is already resolved by the middleware.
@@ -71,4 +78,4 @@ Each area owns its own files, so areas can be built in parallel:
 
 ## What only the lead does
 
-Deploying the preview Worker, anything on `apps-pg`, Cloudflare or GitHub settings, production, and merging branches.
+Deploying, anything on Coolify, the Oracle host or `apps-pg`, Cloudflare or GitHub settings, production, and merging branches.

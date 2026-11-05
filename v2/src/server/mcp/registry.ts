@@ -4,6 +4,7 @@
 // checks access itself (the services do) and never reads arguments as identity.
 import { Result, Schema } from 'effect'
 import { Conflict, Forbidden, Invalid, NotFound } from '../../shared/api'
+import type { Bucket } from '../bucket'
 import type { Db } from '../db'
 import type { McpPrincipal } from './authenticate'
 
@@ -12,7 +13,7 @@ export type ToolContext = {
   readonly principal: McpPrincipal
   readonly baseUrl: string
   /** The receipts bucket, for upload attachment. */
-  readonly bucket: R2Bucket
+  readonly bucket: Bucket
   /** ENABLE_EXPENSE_DOCUMENTS: whether agents may upload receipts. */
   readonly documentsEnabled: boolean
 }

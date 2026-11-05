@@ -3,6 +3,7 @@
 // authentication, the rate limit, the scope step-up, the protocol header, then
 // the JSON-RPC call.
 import { createMcpHandler, isLegacyRequest } from '@modelcontextprotocol/server'
+import type { Bucket } from '../bucket'
 import type { Db } from '../db'
 import { authenticate, type McpPrincipal } from './authenticate'
 import { challenge, jsonError, noStore } from './challenge'
@@ -38,7 +39,7 @@ function hostAllowed(request: Request, baseUrl: string) {
   return host === expected.host && (!origin || origin === expected.origin)
 }
 
-export async function handleMcp(request: Request, data: { db: Db; baseUrl: string; bucket: R2Bucket; documentsEnabled: boolean }): Promise<Response> {
+export async function handleMcp(request: Request, data: { db: Db; baseUrl: string; bucket: Bucket; documentsEnabled: boolean }): Promise<Response> {
   const { db, baseUrl } = data
   if (!baseUrl) return jsonError({ status: 503, message: 'Authentication is not configured' })
   if (!hostAllowed(request, baseUrl)) return jsonError({ status: 403, message: 'Origin or host is not allowed' })
