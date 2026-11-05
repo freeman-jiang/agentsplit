@@ -64,6 +64,13 @@
       "when": 1793890191705,
       "tag": "0008_receipt_uploads",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793903654948,
+      "tag": "0009_database_rules",
+      "breakpoints": true
     }
   ]
 }

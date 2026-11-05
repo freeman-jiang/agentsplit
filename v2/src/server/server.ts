@@ -10,6 +10,7 @@ import { assetHandler, loadAssets } from './assets'
 import { makeDb } from './db'
 import { startHourly } from './hourly'
 import { maintenanceResponse } from './maintenance'
+import { countQueries } from './perf'
 import { s3Bucket } from './s3'
 
 /** A required setting. A missing one stops the server at start, with its name. */
@@ -27,6 +28,8 @@ const config = {
   googleClientSecret: required('GOOGLE_CLIENT_SECRET'),
   bootstrapEmail: optional('AUTH_BOOTSTRAP_EMAIL'),
   documentsEnabled: /^(true|yes|1|on)$/i.test(optional('ENABLE_EXPENSE_DOCUMENTS') ?? ''),
+  // Off in every deployment; only performance runs set it, as in the current app.
+  perfInstrumentation: optional('PERF_INSTRUMENTATION') === '1',
 }
 const publicOrigin = new URL(config.baseUrl).origin
 const maintenance = /^(true|yes|1|on)$/i.test(optional('AGENTSPLIT_MAINTENANCE') ?? '')
@@ -42,6 +45,7 @@ const pool = new pg.Pool({
 })
 // An idle connection that fails (a database restart) is removed from the pool; without a listener it would end the process.
 pool.on('error', (error) => console.error('Idle database connection failed', error))
+if (config.perfInstrumentation) pool.on('connect', countQueries)
 
 // The image sets MIGRATIONS_DIR, so each start applies new migrations before
 // it takes requests, as the current app's container runs prisma migrate deploy.

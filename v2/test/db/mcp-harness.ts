@@ -38,7 +38,7 @@ export async function startHarness() {
   const mcp = (request: Request) => withDb((db) => handleMcp(request, { db, baseUrl: BASE, bucket: r2.bucket, documentsEnabled: documents.enabled }))
   /** The whole request handler of src/server/app.ts, for the plain HTTP routes (exports, receipts). */
   const app = createApp({
-    config: { baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret', documentsEnabled: true, bootstrapEmail: undefined },
+    config: { baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret', documentsEnabled: true, bootstrapEmail: undefined, perfInstrumentation: false },
     connect: () => pool.connect(),
     pool: makeDb(pool),
     bucket: r2.bucket,

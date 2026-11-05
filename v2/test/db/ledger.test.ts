@@ -1,10 +1,11 @@
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { groups, memberships, participants } from '../../db/schema/app'
+import { user } from '../../db/schema/auth'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { makeDb, type Db } from '~/server/db'
 import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense, type Principal } from '~/server/ledger'
-import { resetTestDatabase } from './setup'
+import { resetTestDatabase, testUsers } from './setup'
 
 let pool: Pool
 const alice: Principal = { userId: 'u-alice', name: 'Alice', email: 'a@example.com', source: 'web', agentKeyId: null }
@@ -29,6 +30,7 @@ beforeAll(async () => {
       { id: 'pb', groupId: 'g1', name: 'Bob' },
       { id: 'pc', groupId: 'g1', name: 'Cara' },
     ])
+    await db.insert(user).values(testUsers([alice]))
     await db.insert(memberships).values({ userId: alice.userId, groupId: 'g1', role: 'admin', participantId: 'pa' })
   })
 })
