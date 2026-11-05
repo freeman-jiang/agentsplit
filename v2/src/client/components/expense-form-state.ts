@@ -128,6 +128,15 @@ export function toInput(data: { draft: ExpenseDraft; documents: readonly FormDoc
   }
 }
 
+/** The RPC payload that toInput builds. */
+export type ExpenseInputData = ReturnType<typeof toInput>
+
+/** Whether each person pays or shares: a private expense keeps all its people (P-UNGROUP-48). */
+export function involvesEveryone(state: FormState, order: readonly string[]) {
+  const payers = new Set(payersOf(state, order).map((p) => p.participantId))
+  return order.every((id) => state.selected[id] || payers.has(id))
+}
+
 export type Check = { readonly issues: ReadonlyArray<ExpenseIssue & { participantId?: string }>; readonly preview: ReadonlyMap<string, string> | null }
 
 /**
@@ -172,9 +181,17 @@ const OLD_MODES = { evenly: 'EVENLY', shares: 'BY_SHARES', percentage: 'BY_PERCE
 type Stored = { splitMode: (typeof OLD_MODES)[SplitMode]; paidFor: { participant: string; shares: string }[] | null }
 const storageKey = (groupId: string) => `${groupId}-defaultSplittingOptions-v2`
 
+type SplitDefaults = { splitMode: SplitMode; weights: Record<string, string>; selected: Record<string, boolean> }
+
+const everyoneEvenly = (participants: readonly string[]): SplitDefaults => ({
+  splitMode: 'evenly',
+  weights: Object.fromEntries(participants.map((id) => [id, '1'])),
+  selected: Object.fromEntries(participants.map((id) => [id, true])),
+})
+
 /** The saved default split for a group, or every participant evenly (P-EXP-94, P-EXP-95). */
-export function loadSplitDefaults(data: { groupId: string; participants: readonly string[] }): { splitMode: SplitMode; weights: Record<string, string>; selected: Record<string, boolean> } {
-  const evenly = { splitMode: 'evenly' as const, weights: Object.fromEntries(data.participants.map((id) => [id, '1'])), selected: Object.fromEntries(data.participants.map((id) => [id, true])) }
+export function loadSplitDefaults(data: { groupId: string; participants: readonly string[] }): SplitDefaults {
+  const evenly = everyoneEvenly(data.participants)
   let stored: Stored | null = null
   try {
     stored = JSON.parse(localStorage.getItem(storageKey(data.groupId)) ?? 'null') as Stored | null
@@ -268,9 +285,12 @@ export type Prefill = {
 /** Today as a UTC calendar date, as the current expense form defaults (P-EXP-68). */
 export const utcToday = () => new Date().toISOString().slice(0, 10)
 
-/** A new expense: the saved split defaults, the viewer as payer, and any URL prefill (P-EXP-66, P-EXP-71, P-EXP-96). */
-export function newExpenseState(data: { groupId: string; participants: readonly string[]; viewer: string | null; defaultCurrency: CurrencyCode; prefill: Prefill }): FormState {
-  const defaults = loadSplitDefaults({ groupId: data.groupId, participants: data.participants })
+/**
+ * A new expense: the saved split defaults, the viewer as payer, and any URL prefill (P-EXP-66, P-EXP-71, P-EXP-96).
+ * A new private expense has no group (`groupId: null`), so it starts with everyone, evenly.
+ */
+export function newExpenseState(data: { groupId: string | null; participants: readonly string[]; viewer: string | null; defaultCurrency: CurrencyCode; prefill: Prefill }): FormState {
+  const defaults = data.groupId === null ? everyoneEvenly(data.participants) : loadSplitDefaults({ groupId: data.groupId, participants: data.participants })
   const { prefill } = data
   return {
     kind: 'expense',
