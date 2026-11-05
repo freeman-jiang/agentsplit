@@ -24,10 +24,12 @@ test('a group opens on its expenses, sorts by date or by last change, and keeps 
   await expect(rows.nth(0)).toContainText('Old groceries (edited)')
 
   // The rail covers the whole group: 31.00 + 10.00 split three ways, nets sum to zero.
-  const rail = page.getByRole('complementary', { name: 'Balances' })
+  const rail = page.getByRole('complementary', { name: 'Group balances' })
   await expect(rail).toContainText('Alice Example')
-  const nets = await rail.locator('li span.tabular-nums').allInnerTexts()
-  const cents = nets.map((n) => Math.round(Number(n.replace(/[$,]/g, '')) * 100))
+  const people = rail.getByTestId('summary-participant').filter({ visible: true })
+  await expect(people).toHaveCount(3)
+  const nets = await people.locator('.tabular-nums').allInnerTexts()
+  const cents = nets.map((n) => (n.startsWith('owes') ? -1 : 1) * Math.round(Number(n.replace(/[^\d.]/g, '') || '0') * 100))
   expect(cents.reduce((a, b) => a + b, 0)).toBe(0)
 
   // Switching tabs is a client-side navigation: the document is not loaded again.
@@ -36,6 +38,49 @@ test('a group opens on its expenses, sorts by date or by last change, and keeps 
   await expect(page).toHaveURL(new RegExp(`/${h.slug}/balances$`))
   await expect(page).toHaveTitle(/^Balances · .+ · AgentSplit$/)
   expect(await page.evaluate(() => (window as unknown as { __e2eMarker?: boolean }).__e2eMarker)).toBe(true)
+})
+
+test('the rail tells the viewer what they owe, and refreshes to "Settled up" (P-BAL-53..56, P-BAL-58, P-BAL-62, P-BAL-63)', async ({ page, context, baseURL }) => {
+  const h = await seedHousehold(context, baseURL ?? '')
+  const bob = h.people[1]
+  await page.goto(`/${h.slug}/expenses`)
+  const rail = page.getByRole('complementary', { name: 'Group balances' })
+  await expect(rail).toContainText('No outstanding balances.')
+
+  // Bob pays 30.00 for all three: Alice, the viewer, owes 10.00.
+  await addExpense(h, `${h.groupId}-bob`, draft(h, { title: 'Groceries', amount: '30.00', date: '2026-11-01', payer: 1 }))
+  await rail.getByRole('button', { name: 'Refresh balances' }).click()
+  await expect(rail).toContainText('You owe · USD')
+  await expect(rail.getByTestId('summary-personal-net').filter({ visible: true })).toHaveText('$10.00')
+  const person = (name: string) => rail.getByTestId('summary-participant').filter({ hasText: name, visible: true })
+  await expect(person('Alice Example')).toContainText('Alice Example (you)')
+  await expect(person('Bob Example')).toContainText('gets back $20.00')
+  await expect(person('Cara Example')).toContainText('owes $10.00')
+  const payments = rail.getByTestId('summary-payment').filter({ visible: true })
+  await expect(payments.filter({ hasText: 'You → Bob Example' })).toContainText('$10.00')
+  await expect(payments.filter({ hasText: 'Cara Example → Bob Example' })).toContainText('$10.00')
+
+  // Alice pays 10.00 for Bob alone, so she is settled up; Cara still owes Bob.
+  await addExpense(h, `${h.groupId}-alice`, { ...draft(h, { title: 'Lamp', amount: '10.00', date: '2026-11-02' }), shares: [{ participantId: bob?.id ?? '', weight: '1' }] })
+  await rail.getByRole('button', { name: 'Refresh balances' }).click()
+  await expect(rail).toContainText('Settled up · USD')
+  await expect(person('Alice Example')).toContainText('Settled up')
+  await expect(payments).toHaveCount(1)
+  await expect(payments).toContainText('Cara Example → Bob Example')
+
+  // A failed load stays in the rail, without the exception text.
+  await page.route('**/api/rpc', async (route) => {
+    if (route.request().postData()?.includes('"balances.list"')) await route.fulfill({ status: 500, body: 'secret internal detail' })
+    else await route.continue()
+  })
+  await rail.getByRole('button', { name: 'Refresh balances' }).click()
+  await expect(rail.getByRole('alert')).toHaveText('Could not load balances. Try refreshing.')
+  await expect(page.getByRole('heading', { name: 'Expenses' })).toBeVisible()
+  await page.unroute('**/api/rpc')
+
+  // The rail ends with a link to the Balances tab.
+  await rail.getByRole('link', { name: 'Balance details' }).click()
+  await expect(page).toHaveURL(new RegExp(`/${h.slug}/balances$`))
 })
 
 test('a signed-out visitor is sent to sign-in', async ({ page }) => {
