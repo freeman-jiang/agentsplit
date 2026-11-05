@@ -118,6 +118,8 @@ describe('ledger', () => {
 
   it('refuses non-members', async () => {
     await expect(tx((db) => getGroup(db, { principal: mallory, group: 'g1' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => listExpenses(db, { principal: mallory, group: 'g1', filter: {}, cursor: null, limit: 10 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => listExpenses(db, { principal: mallory, group: 'home', filter: { search: 'nothing matches this' }, cursor: null, limit: 10 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
     await expect(
       tx((db) => createExpense(db, { principal: mallory, group: 'g1', expenseId: 'e3', idempotencyKey: 'key-m-0001', expense: draft() })),
     ).rejects.toMatchObject({ _tag: 'Forbidden' })

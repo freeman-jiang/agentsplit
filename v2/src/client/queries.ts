@@ -15,6 +15,6 @@ export const expensesQuery = (group: string, filter: ExpenseFilter) =>
   infiniteQueryOptions({
     queryKey: ['expenses', group, filter],
     initialPageParam: null as string | null,
-    queryFn: ({ pageParam }) => rpc((api) => api('expenses.list', { groupId: group, filter, cursor: pageParam, limit: 50 })),
+    queryFn: ({ pageParam }) => rpc((api) => api('expenses.list', { groupId: group, filter, cursor: pageParam, limit: 30 })),
     getNextPageParam: (page) => page.nextCursor,
   })

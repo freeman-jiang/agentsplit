@@ -2,7 +2,7 @@
 // domain services, so these schemas also describe agent writes.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
-import { CurrencyCodeSchema, DecimalString } from './money'
+import { CurrencyCodeSchema, DecimalOutput, DecimalString } from './money'
 import { SplitModeSchema } from './split'
 
 // ---------- errors ----------
@@ -30,6 +30,8 @@ const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))
 const IdempotencyKey = Schema.String.check(Schema.isMinLength(8), Schema.isMaxLength(128))
 /** A calendar date, YYYY-MM-DD. */
 export const CalendarDate = Schema.String.check(Schema.isPattern(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/))
+/** A calendar date the server produces from a DATE column; not checked again on encode. */
+const CalendarDateOutput = Schema.String
 const Timestamp = Schema.String // ISO 8601, UTC
 
 export const Me = Schema.Struct({
@@ -53,9 +55,9 @@ export const GroupSummary = Schema.Struct({
 export const Balance = Schema.Struct({
   participantId: Schema.String,
   currency: CurrencyCodeSchema,
-  paid: DecimalString,
-  owed: DecimalString,
-  net: DecimalString,
+  paid: DecimalOutput,
+  owed: DecimalOutput,
+  net: DecimalOutput,
 })
 
 export const Group = Schema.Struct({
@@ -67,8 +69,9 @@ export const Group = Schema.Struct({
   balances: Schema.Array(Balance),
 })
 
-export const Part = Schema.Struct({ participantId: Schema.String, amount: DecimalString })
-export const SharePart = Schema.Struct({ participantId: Schema.String, amount: DecimalString, weight: Schema.String })
+export const Part = Schema.Struct({ participantId: Schema.String, amount: DecimalOutput })
+export const SharePart = Schema.Struct({ participantId: Schema.String, amount: DecimalOutput, weight: Schema.String })
+const PartInput = Schema.Struct({ participantId: Id, amount: DecimalString })
 
 export const Expense = Schema.Struct({
   id: Schema.String,
@@ -79,9 +82,9 @@ export const Expense = Schema.Struct({
   vendor: Schema.NullOr(Schema.String),
   notes: Schema.String,
   categoryId: Schema.Number,
-  expenseDate: CalendarDate,
+  expenseDate: CalendarDateOutput,
   currency: CurrencyCodeSchema,
-  amount: DecimalString,
+  amount: DecimalOutput,
   splitMode: SplitModeSchema,
   payers: Schema.Array(Part),
   shares: Schema.Array(SharePart),
@@ -122,7 +125,7 @@ export const ExpenseInput = Schema.Struct({
   currency: CurrencyCodeSchema,
   amount: DecimalString,
   /** Who paid, and how much each; amounts sum to `amount`. */
-  payers: Schema.Array(Part).check(Schema.isMinLength(1)),
+  payers: Schema.Array(PartInput).check(Schema.isMinLength(1)),
   splitMode: SplitModeSchema,
   /** Who shares the cost, with each person's weight: a share count, a percentage, or an exact amount. */
   shares: Schema.Array(Schema.Struct({ participantId: Id, weight: Schema.String })).check(Schema.isMinLength(1)),

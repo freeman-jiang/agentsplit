@@ -65,29 +65,29 @@ export async function listGroups(db: Db, principal: Principal) {
     .then((rows) => rows.map((r) => ({ ...r, defaultCurrency: r.defaultCurrency as CurrencyCode })))
 }
 
-/**
- * Balances over every live expense of one group, per currency. PostgreSQL sums
- * the payments and shares per person; computeBalances then checks that each
- * currency nets to zero, so a corrupt ledger still fails loudly.
- */
-export async function groupBalances(db: Db, groupId: string) {
-  const result = await db.execute<{ currency: string; participant_id: string; paid: string; owed: string }>(sql`
-    SELECT e.currency, parts.participant_id, sum(parts.paid)::text AS paid, sum(parts.owed)::text AS owed
-    FROM expenses e
-    JOIN (
-      SELECT expense_id, participant_id, amount AS paid, 0::bigint AS owed FROM expense_payers WHERE group_id = ${groupId}
-      UNION ALL
-      SELECT expense_id, participant_id, 0::bigint, amount FROM expense_shares WHERE group_id = ${groupId}
-    ) parts ON parts.expense_id = e.id
-    WHERE e.group_id = ${groupId} AND e.deleted_at IS NULL
-    GROUP BY e.currency, parts.participant_id
-  `)
-  const entries = result.rows.map((r) => ({
-    currency: r.currency as CurrencyCode,
-    payers: new Map([[r.participant_id, minor(BigInt(r.paid))]]),
-    shares: new Map([[r.participant_id, minor(BigInt(r.owed))]]),
-  }))
-  const balances = computeBalances(entries)
+type GroupRow = {
+  id: string
+  slug: string | null
+  name: string
+  default_currency: string
+  information: string
+  revision: number
+  role: 'admin' | 'member'
+  participant_id: string | null
+  active: boolean
+  participants: { id: string; name: string }[]
+  sums: { currency: string; participantId: string; paid: string; owed: string }[]
+}
+
+/** Per-person sums to balances, with the zero-sum check of computeBalances. */
+function toBalances(sums: GroupRow['sums']) {
+  const balances = computeBalances(
+    sums.map((r) => ({
+      currency: r.currency as CurrencyCode,
+      payers: new Map([[r.participantId, minor(BigInt(r.paid))]]),
+      shares: new Map([[r.participantId, minor(BigInt(r.owed))]]),
+    })),
+  )
   return [...balances].flatMap(([currency, byPerson]) =>
     [...byPerson].map(([participantId, b]) => ({
       participantId,
@@ -99,25 +99,49 @@ export async function groupBalances(db: Db, groupId: string) {
   )
 }
 
+/**
+ * A group with its participants and balances, in one statement that also
+ * checks the caller's membership. One round trip keeps the request within the
+ * Workers CPU budget.
+ */
 export async function getGroup(db: Db, data: { principal: Principal; group: string }) {
-  const membership = await requireMember(db, data)
-  const [group] = await db.select().from(groups).where(eq(groups.id, membership.groupId))
-  if (!group) throw new NotFound({ entity: 'group', id: data.group })
-  const [people, balances] = await Promise.all([
-    db.select({ id: participants.id, name: participants.name }).from(participants).where(eq(participants.groupId, group.id)).orderBy(asc(participants.name), asc(participants.id)),
-    groupBalances(db, group.id),
-  ])
+  const result = await db.execute<GroupRow>(sql`
+    WITH g AS (
+      SELECT g.id, g.slug, g.name, g.default_currency, g.information, g.revision, m.role, m.participant_id, m.active
+      FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
+      WHERE g.id = ${data.group} OR g.slug = ${data.group}
+      LIMIT 1
+    )
+    SELECT g.*,
+      coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id)
+        FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
+      coalesce((SELECT json_agg(json_build_object('currency', s.currency, 'participantId', s.participant_id, 'paid', s.paid::text, 'owed', s.owed::text))
+        FROM (
+          SELECT e.currency, parts.participant_id, sum(parts.paid) AS paid, sum(parts.owed) AS owed
+          FROM expenses e
+          JOIN (
+            SELECT expense_id, participant_id, amount AS paid, 0::bigint AS owed FROM expense_payers WHERE group_id = g.id
+            UNION ALL
+            SELECT expense_id, participant_id, 0::bigint, amount FROM expense_shares WHERE group_id = g.id
+          ) parts ON parts.expense_id = e.id
+          WHERE e.group_id = g.id AND e.deleted_at IS NULL
+          GROUP BY e.currency, parts.participant_id
+        ) s), '[]') AS sums
+    FROM g
+  `)
+  const [g] = result.rows
+  if (!g?.active) throw new Forbidden({ message: 'Group access denied' })
   return {
-    id: group.id,
-    slug: group.slug,
-    name: group.name,
-    defaultCurrency: group.defaultCurrency as CurrencyCode,
-    role: membership.role,
-    participantId: membership.participantId,
-    information: group.information,
-    revision: group.revision,
-    participants: people,
-    balances,
+    id: g.id,
+    slug: g.slug,
+    name: g.name,
+    defaultCurrency: g.default_currency as CurrencyCode,
+    role: g.role,
+    participantId: g.participant_id,
+    information: g.information,
+    revision: g.revision,
+    participants: g.participants,
+    balances: toBalances(g.sums),
   }
 }
 
@@ -174,8 +198,9 @@ type ExpenseRow = {
  * per row instead of several result sets: this keeps a list request within the
  * Workers CPU budget. Minor units travel as text, never as JSON numbers.
  */
-async function selectExpenses(db: Db, data: { where: SQL; orderBy: SQL; limit?: number }) {
+async function selectExpenses(db: Db, data: { where: SQL; orderBy: SQL; limit?: number; with?: SQL }) {
   const result = await db.execute<ExpenseRow>(sql`
+    ${data.with ?? sql``}
     SELECT e.id, e.group_id, e.revision, e.kind, e.title, e.vendor, e.notes, e.category_id,
       e.expense_date::text AS expense_date, e.currency, e.amount::text AS amount, e.split_mode, e.recurrence,
       to_char(e.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at,
@@ -234,10 +259,14 @@ export async function listExpenses(
   db: Db,
   data: { principal: Principal; group: string; filter: ExpenseFilter; cursor: string | null; limit: number },
 ) {
-  const { groupId } = await requireMember(db, data)
   const f = data.filter
   const limit = Math.min(Math.max(Math.trunc(data.limit) || 50, 1), 200)
-  const where: SQL[] = [sql`e.group_id = ${groupId}`, sql`e.deleted_at IS NULL`]
+  // The membership check is part of the statement: rows come only from a group the caller belongs to.
+  const member = sql`WITH g AS (
+    SELECT g.id FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId} AND m.active
+    WHERE g.id = ${data.group} OR g.slug = ${data.group} LIMIT 1
+  )`
+  const where: SQL[] = [sql`e.group_id = (SELECT id FROM g)`, sql`e.deleted_at IS NULL`]
   if (f.search?.trim()) {
     const term = `%${f.search.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`
     where.push(sql`(e.title ILIKE ${term} OR e.vendor ILIKE ${term} OR e.notes ILIKE ${term})`)
@@ -264,7 +293,10 @@ export async function listExpenses(
     where: sql.join(where, sql` AND `),
     orderBy: byUpdated ? sql`e.updated_at DESC, e.id DESC` : sql`e.expense_date DESC, e.created_at DESC, e.id DESC`,
     limit: limit + 1,
+    with: member,
   })
+  // No rows: an empty page, or not a member. Only then is the separate check needed.
+  if (rows.length === 0) await requireMember(db, data)
   const page = rows.slice(0, limit)
   const last = page.at(-1)
   return {
