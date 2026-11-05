@@ -95,7 +95,7 @@ test('a signed-out visitor returns to the page they asked for after sign-in (P-A
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fhome-xyz%2Fexpenses%3Fsort%3Dupdated/)
 })
 
-test('a tab that fails to load shows the group error under the tabs, without the exception text (P-GROUP-53)', async ({ page, context, baseURL }) => {
+test('a tab that fails to load shows the group error under the tabs, with a reference and without the exception text (P-GROUP-53, P-PWA-36)', async ({ page, context, baseURL }) => {
   const h = await seedHousehold(context, baseURL ?? '')
   await page.goto(`/${h.slug}/expenses`)
   await expect(page.getByRole('navigation', { name: 'Group' })).toBeVisible()
@@ -103,8 +103,14 @@ test('a tab that fails to load shows the group error under the tabs, without the
     if (route.request().postData()?.includes('"stats.')) await route.fulfill({ status: 500, body: 'secret internal detail' })
     else await route.continue()
   })
+  const logged: string[] = []
+  page.on('console', (message) => void (message.type() === 'error' && logged.push(message.text())))
   await page.getByRole('link', { name: 'Stats', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Couldn’t load this group' })).toBeVisible()
+  // A short reference to quote, which the console line with the error repeats (P-PWA-36).
+  const reference = (await page.getByTestId('error-reference').innerText()).replace('Reference: ', '')
+  expect(reference).toMatch(/^[0-9a-f]{8}$/)
+  expect(logged.some((line) => line.includes(`Error reference ${reference}`))).toBe(true)
   await expect(page.getByRole('navigation', { name: 'Group' })).toBeVisible()
   await expect(page.getByText(/secret internal detail|answered 500/)).toHaveCount(0)
   // Retry loads again once the server answers.
