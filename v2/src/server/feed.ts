@@ -9,7 +9,7 @@ import type { CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/money'
 import type { Db } from './db'
 import type { Principal } from './ledger'
-import { actorName } from './sql'
+import { expenseColumns, iso, toExpense, type ExpenseRow } from './sql'
 
 export type FeedFilter = {
   readonly scope?: 'all' | 'grouped' | 'ungrouped'
@@ -34,7 +34,6 @@ type AttributionRow = {
   mine: string | null
 }
 
-const iso = (column: SQL) => sql`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
 
 /**
  * Who added and last edited expense `e`, from its create and update events.
@@ -70,69 +69,6 @@ const toAttribution = (a: AttributionRow) => ({
 /** A participant's display name: the bound verified account's current name, else the stored name. */
 const displayName = sql`coalesce((SELECT u.name FROM memberships bm JOIN "user" u ON u.id = bm.user_id AND u.email_verified
   WHERE bm.group_id = p.group_id AND bm.participant_id = p.id), p.name)`
-
-// The same columns and JSON parts as selectExpenses in ledger.ts, so a feed row
-// and a group expense have one shape. Minor units travel as text.
-const expenseColumns = sql`e.id, e.group_id, e.revision, e.kind, e.title, e.vendor, e.notes, e.category_id,
-  e.expense_date::text AS expense_date, e.currency, e.amount::text AS amount, e.split_mode, e.recurrence,
-  ${iso(sql`e.created_at`)} AS created_at, ${iso(sql`e.updated_at`)} AS updated_at,
-  coalesce((SELECT json_agg(json_build_object('participantId', p.participant_id, 'amount', p.amount::text) ORDER BY p.participant_id)
-    FROM expense_payers p WHERE p.expense_id = e.id), '[]') AS payers,
-  coalesce((SELECT json_agg(json_build_object('participantId', s.participant_id, 'amount', s.amount::text, 'weight', s.weight) ORDER BY s.participant_id)
-    FROM expense_shares s WHERE s.expense_id = e.id), '[]') AS shares,
-  (SELECT count(*)::int FROM expense_documents d WHERE d.expense_id = e.id) AS document_count,
-  (SELECT ${actorName} FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = 1) AS added_by,
-  (SELECT ${actorName} FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = e.revision AND e.revision > 1 AND a.type = 'update_expense') AS edited_by`
-
-type ExpenseRow = {
-  id: string
-  group_id: string
-  revision: number
-  kind: 'expense' | 'payment'
-  title: string
-  vendor: string | null
-  notes: string
-  category_id: number
-  expense_date: string
-  currency: string
-  amount: string
-  split_mode: 'evenly' | 'shares' | 'percentage' | 'amount'
-  recurrence: 'none' | 'daily' | 'weekly' | 'monthly'
-  created_at: string
-  updated_at: string
-  payers: { participantId: string; amount: string }[]
-  shares: { participantId: string; amount: string; weight: string }[]
-  document_count: number
-  added_by: string | null
-  edited_by: string | null
-}
-
-function toExpense(e: ExpenseRow) {
-  const currency = e.currency as CurrencyCode
-  const money = (amount: string) => formatMinor({ amount: minor(BigInt(amount)), currency })
-  return {
-    id: e.id,
-    groupId: e.group_id,
-    revision: e.revision,
-    kind: e.kind,
-    title: e.title,
-    vendor: e.vendor,
-    notes: e.notes,
-    categoryId: e.category_id,
-    expenseDate: e.expense_date,
-    currency,
-    amount: money(e.amount),
-    splitMode: e.split_mode,
-    payers: e.payers.map((p) => ({ participantId: p.participantId, amount: money(p.amount) })),
-    shares: e.shares.map((s) => ({ participantId: s.participantId, amount: money(s.amount), weight: s.weight })),
-    recurrence: e.recurrence,
-    createdAt: e.created_at,
-    updatedAt: e.updated_at,
-    documentCount: e.document_count,
-    addedBy: e.added_by,
-    editedBy: e.edited_by,
-  }
-}
 
 // ---------- feed ----------
 

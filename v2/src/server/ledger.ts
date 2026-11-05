@@ -20,7 +20,7 @@ import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../sha
 import { formatMinor, minor, type Minor } from '../shared/money'
 import type { Db } from './db'
 import { randomId } from './ids'
-import { actorName } from './sql'
+import { expenseColumns, toExpense, type ExpenseRow } from './sql'
 import { stopRecurrence, syncRecurrence } from './recurring'
 import { assertPrivateWrite } from './ungrouped'
 
@@ -185,30 +185,7 @@ const decodeCursor = (text: string): Cursor => {
   throw new Invalid({ message: 'Invalid cursor', field: 'cursor' })
 }
 
-type ExpenseRow = {
-  id: string
-  group_id: string
-  revision: number
-  kind: 'expense' | 'payment'
-  title: string
-  vendor: string | null
-  notes: string
-  category_id: number
-  expense_date: string
-  currency: string
-  amount: string
-  split_mode: 'evenly' | 'shares' | 'percentage' | 'amount'
-  recurrence: 'none' | 'daily' | 'weekly' | 'monthly'
-  created_at: string
-  updated_at: string
-  created_key: string
-  updated_key: string
-  payers: { participantId: string; amount: string }[]
-  shares: { participantId: string; amount: string; weight: string }[]
-  document_count: number
-  added_by: string | null
-  edited_by: string | null
-}
+type ListRow = ExpenseRow & { created_key: string; updated_key: string }
 
 /** The name shown for an activity's author; recurring copies made by the scheduled job have none. */
 
@@ -219,55 +196,19 @@ type ExpenseRow = {
  * Workers CPU budget. Minor units travel as text, never as JSON numbers.
  */
 async function selectExpenses(db: Db, data: { where: SQL; orderBy: SQL; limit?: number; with?: SQL }) {
-  const result = await db.execute<ExpenseRow>(sql`
+  const result = await db.execute<ListRow>(sql`
     ${data.with ?? sql``}
-    SELECT e.id, e.group_id, e.revision, e.kind, e.title, e.vendor, e.notes, e.category_id,
-      e.expense_date::text AS expense_date, e.currency, e.amount::text AS amount, e.split_mode, e.recurrence,
-      to_char(e.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at,
-      to_char(e.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at,
-      e.created_at::text AS created_key, e.updated_at::text AS updated_key,
-      coalesce((SELECT json_agg(json_build_object('participantId', p.participant_id, 'amount', p.amount::text) ORDER BY p.participant_id)
-        FROM expense_payers p WHERE p.expense_id = e.id), '[]') AS payers,
-      coalesce((SELECT json_agg(json_build_object('participantId', s.participant_id, 'amount', s.amount::text, 'weight', s.weight) ORDER BY s.participant_id)
-        FROM expense_shares s WHERE s.expense_id = e.id), '[]') AS shares,
-      (SELECT count(*)::int FROM expense_documents d WHERE d.expense_id = e.id) AS document_count,
-      (SELECT ${actorName} FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = 1) AS added_by,
-      (SELECT ${actorName} FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = e.revision AND e.revision > 1 AND a.type = 'update_expense') AS edited_by
+    SELECT ${expenseColumns}, e.created_at::text AS created_key, e.updated_at::text AS updated_key
     FROM expenses e
     WHERE ${data.where}
     ORDER BY ${data.orderBy}
     ${data.limit === undefined ? sql`` : sql`LIMIT ${data.limit}`}
   `)
-  return result.rows.map((e) => {
-    const currency = e.currency as CurrencyCode
-    const money = (amount: string) => formatMinor({ amount: minor(BigInt(amount)), currency })
-    return {
-      expense: {
-        id: e.id,
-        groupId: e.group_id,
-        revision: e.revision,
-        kind: e.kind,
-        title: e.title,
-        vendor: e.vendor,
-        notes: e.notes,
-        categoryId: e.category_id,
-        expenseDate: e.expense_date,
-        currency,
-        amount: money(e.amount),
-        splitMode: e.split_mode,
-        payers: e.payers.map((p) => ({ participantId: p.participantId, amount: money(p.amount) })),
-        shares: e.shares.map((s) => ({ participantId: s.participantId, amount: money(s.amount), weight: s.weight })),
-        recurrence: e.recurrence,
-        createdAt: e.created_at,
-        updatedAt: e.updated_at,
-        documentCount: e.document_count,
-        addedBy: e.added_by,
-        editedBy: e.edited_by,
-      },
-      /** Exact PostgreSQL timestamps (microseconds) for cursors. */
-      keys: { created: e.created_key, updated: e.updated_key },
-    }
-  })
+  return result.rows.map((e) => ({
+    expense: toExpense(e),
+    /** Exact PostgreSQL timestamps (microseconds) for cursors. */
+    keys: { created: e.created_key, updated: e.updated_key },
+  }))
 }
 
 export async function loadExpenses(db: Db, ids: string[]) {
