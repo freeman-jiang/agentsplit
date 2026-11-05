@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agentsplit-preview",
+  "main": "src/server/worker.ts",
+  "compatibility_date": "2026-10-29",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/.well-known/*"]
+  },
+  "observability": { "enabled": true },
+  "vars": { "BASE_URL": "https://agentsplit-preview.freemanjiang.workers.dev" },
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "REPLACE_WITH_PREVIEW_HYPERDRIVE_ID", "localConnectionString": "postgresql://postgres@127.0.0.1:5437/agentsplit_dev" }],
+  "r2_buckets": [{ "binding": "RECEIPTS", "bucket_name": "agentsplit-receipts-preview" }]
+}
