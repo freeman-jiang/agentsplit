@@ -5,7 +5,8 @@ import { RpcSerialization, RpcServer } from 'effect/rpc'
 import pg from 'pg'
 import { makeDb, registerRequestDb, releaseRequestDb, REQUEST_ID_HEADER } from './db'
 import type { Env } from './env'
-import { Api, AppConfig, AuthMiddlewareLive, HandlersLive } from './rpc'
+import { HandlersLive } from './handlers'
+import { Api, AppConfig, AuthMiddlewareLive } from './rpc'
 
 const appEnv = env as unknown as Env
 const config = {
