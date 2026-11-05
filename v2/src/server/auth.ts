@@ -1,4 +1,5 @@
 import type { OAuthProviderExtension } from '@better-auth/oauth-provider'
+import { fetchClientMetadataResource } from '@better-auth/cimd/node'
 import { betterAuth } from 'better-auth'
 import { createAuthMiddleware } from 'better-auth/api'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
@@ -59,23 +60,14 @@ function connectionClaims(db: Db): OAuthProviderExtension {
 
 export { revokeOAuthConnection } from './account'
 
-const SPECIAL_USE_V4 = [
-  /^0\./, /^10\./, /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, /^127\./, /^169\.254\./, /^172\.(1[6-9]|2\d|3[01])\./,
-  /^192\.0\.[02]\./, /^192\.88\.99\./, /^192\.168\./, /^198\.(1[89])\./, /^198\.51\.100\./, /^203\.0\.113\./, /^(22[4-9]|2[3-5]\d)\./,
-]
-
 /**
- * CIMD metadata fetch for Workers. A Worker's fetch reaches only the public
- * internet, so loopback and private networks are out of reach. This adds the
- * remaining rules: HTTPS only, no IP literals in special-use ranges, no
- * redirects, and limits on time and size.
+ * CIMD metadata fetch. A container can reach the private networks around it
+ * (the database, the bucket), so Better Auth's Node fetcher checks that every
+ * DNS answer is a public address and pins the connection to it, as in the
+ * current app. This adds the remaining rules: no redirects, and limits on time and size.
  */
-export const workerCimdFetch: ClientMetadataResourceFetch = async (input) => {
-  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
-  const host = url.hostname.replace(/^\[|\]$/g, '')
-  if (url.protocol !== 'https:' || host === 'localhost' || host.includes(':') || SPECIAL_USE_V4.some((r) => r.test(host)))
-    throw new Error('Client metadata must be on a public HTTPS host')
-  const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(5_000), headers: { accept: 'application/json' } })
+export const cimdFetch: ClientMetadataResourceFetch = async (input, init) => {
+  const response = await fetchClientMetadataResource(input, { ...init, signal: AbortSignal.timeout(5_000), headers: { accept: 'application/json' } })
   if (response.status >= 300 && response.status < 400) throw new Error('Client metadata redirects are not followed')
   const body = await response.arrayBuffer()
   if (body.byteLength > 64 * 1024) throw new Error('Client metadata is too large')
@@ -143,7 +135,7 @@ export function createAuth(config: AuthConfig) {
     },
     plugins: authPlugins({
       baseUrl: config.baseUrl,
-      fetchClientMetadataResource: workerCimdFetch,
+      fetchClientMetadataResource: cimdFetch,
       extensions: [connectionClaims(config.db)],
     }),
   })

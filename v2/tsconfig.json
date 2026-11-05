@@ -10,7 +10,7 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "types": [
-      "@cloudflare/workers-types",
+      "bun",
       "vite/client"
     ],
     "strict": true,

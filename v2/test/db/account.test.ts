@@ -1,7 +1,6 @@
 // The account area against a real database: profile, API keys through Better
 // Auth, connected apps, consent clients, the owner bootstrap, and the
 // security rules that sign-in and the Worker rely on.
-import { readFileSync } from 'node:fs'
 import { serializeSignedCookie } from 'better-call'
 import { and, eq } from 'drizzle-orm'
 import type { Pool, PoolClient } from 'pg'
@@ -342,9 +341,7 @@ describe('OAuth discovery', () => {
 })
 
 describe('security headers and readiness', () => {
-  it('keeps public/_headers and the Worker CSP the same, with no inline or eval scripts', () => {
-    const headers = readFileSync(new URL('../../public/_headers', import.meta.url), 'utf8')
-    expect(headers).toContain(`Content-Security-Policy: ${CONTENT_SECURITY_POLICY}\n`)
+  it('allows no inline or eval scripts', () => {
     const scripts = CONTENT_SECURITY_POLICY.split('; ').find((d) => d.startsWith('script-src'))
     expect(scripts).toBe("script-src 'self'")
   })
