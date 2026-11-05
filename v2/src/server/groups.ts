@@ -27,6 +27,7 @@ import { formatMinor, minor } from '../shared/money'
 import type { Db } from './db'
 import { randomId } from './ids'
 import { actor, displayNames, idempotent, requireMember, type Principal } from './ledger'
+import { iso } from './sql'
 
 type AccessInput = typeof AccessRequest.Type
 type CreateInput = typeof GroupCreateInput.Type
@@ -75,7 +76,7 @@ export async function listDirectory(db: Db, data: { principal: Principal; offset
     )
     SELECT
       coalesce((SELECT json_agg(json_build_object('id', id, 'slug', slug, 'name', name, 'participantCount', participant_count,
-        'createdAt', to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) ORDER BY created_at DESC, id DESC) FROM page), '[]') AS groups,
+        'createdAt', ${iso(sql`created_at`)}) ORDER BY created_at DESC, id DESC) FROM page), '[]') AS groups,
       coalesce((SELECT json_agg(json_build_object('currency', currency, 'net', net::text) ORDER BY currency) FROM nets), '[]') AS totals,
       (SELECT count(*)::int FROM mine WHERE participant_id IS NULL) AS unbound
   `)
@@ -148,7 +149,7 @@ export async function getGroupDetails(db: Db, data: { principal: Principal; grou
         FROM memberships m JOIN "user" u ON u.id = m.user_id
         WHERE m.group_id = g.id AND m.active AND m.participant_id IS NULL), '[]') AS unbound,
       coalesce((SELECT json_agg(json_build_object('id', id, 'email', email, 'participantId', participant_id, 'participantName', participant_name,
-          'expiresAt', to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) ORDER BY expires_at, id)
+          'expiresAt', ${iso(sql`expires_at`)}) ORDER BY expires_at, id)
         FROM pending), '[]') AS invitations
     FROM g
   `)

@@ -11,6 +11,7 @@ import { preferredPayer, type SplitMode } from '../shared/split'
 import type { Db } from './db'
 import { publicData, type ActivityType } from './history'
 import type { Principal } from './ledger'
+import { iso } from './sql'
 
 type ExpenseRow = {
   id: string
@@ -69,7 +70,7 @@ async function load(db: Db, data: { principal: Principal; group: string; activit
     SELECT g.active, g.id, g.name, g.slug, g.information, g.default_currency,
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id) FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
       coalesce((SELECT json_agg(json_build_object(
-          'id', e.id, 'createdAt', to_char(e.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'expenseDate', e.expense_date::text,
+          'id', e.id, 'createdAt', ${iso(sql`e.created_at`)}, 'expenseDate', e.expense_date::text,
           'title', e.title, 'vendor', e.vendor, 'grouping', c.grouping, 'categoryName', c.name, 'kind', e.kind,
           'currency', e.currency, 'amount', e.amount::text, 'originalAmount', e.original_amount::text,
           'originalCurrency', e.original_currency, 'conversionRate', e.conversion_rate, 'splitMode', e.split_mode,
@@ -83,7 +84,7 @@ async function load(db: Db, data: { principal: Principal; group: string; activit
       ${
         data.activities
           ? sql`coalesce((SELECT json_agg(json_build_object(
-              'id', a.id, 'time', to_char(a.time AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'type', a.type,
+              'id', a.id, 'time', ${iso(sql`a.time`)}, 'type', a.type,
               'participantId', a.participant_id, 'expenseId', a.expense_id, 'data', a.data, 'expenseRevision', a.expense_revision,
               'snapshot', a.snapshot, 'source', a.source, 'actorName', a.actor_name
             ) ORDER BY a.sequence) FROM activities a WHERE a.group_id = g.id), '[]')`

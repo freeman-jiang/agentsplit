@@ -4,7 +4,7 @@
 // which checks membership, validates, records history and checks revisions.
 // Multiple payers are new: `payers` beside the current single `paidBy`.
 import { Schema } from 'effect'
-import { sql } from 'drizzle-orm'
+import { sql, type SQL } from 'drizzle-orm'
 import { Conflict, Forbidden, NotFound } from '../../../shared/api'
 import type { ExpenseDraft } from '../../../shared/expense-rules'
 import type { SavedExpense } from '../../../shared/history'
@@ -15,6 +15,7 @@ import * as history from '../../history'
 import { randomId } from '../../ids'
 import * as ledger from '../../ledger'
 import { attachUploads, prepareUploads, UploadError } from '../../receipt-uploads'
+import { displayName, escapeLike, involves, iso } from '../../sql'
 import { createUngroupedExpense } from '../../ungrouped'
 import { PAYMENT_RULES, RECORDING_RULES } from '../instructions'
 import { defineTool, ToolError } from '../registry'
@@ -26,7 +27,6 @@ import {
   Decimal,
   HistoryFields,
   Id,
-  isoSql,
   minorOf,
   MODE_NAMES,
   MODES,
@@ -35,7 +35,6 @@ import {
   NonNegativeInt,
   NullableString,
   origin,
-  participantNameSql,
   RecordedTime,
   RecurrenceInput,
   type Rule,
@@ -307,18 +306,22 @@ type Row = {
   link: { id: string; groupId: string; currentFrameExpenseId: string; nextExpenseCreatedAt: string | null; nextExpenseDate: string } | null
 }
 
+/** The display name of the participant of payer or share row `part`. */
+const partName = (part: SQL) =>
+  displayName({ group: sql`${part}.group_id`, participant: sql`${part}.participant_id`, name: sql`(SELECT np.name FROM participants np WHERE np.id = ${part}.participant_id)` })
+
 /** One statement: expenses with their people, names, category, audit events and documents. */
 const expenseSelect = (data: { detail: boolean }) => sql`
   SELECT e.id, e.group_id, e.revision, e.kind, e.title, e.vendor, e.notes, e.category_id,
     (SELECT json_build_object('id', c.id, 'name', c.name, 'grouping', c.grouping) FROM categories c WHERE c.id = e.category_id) AS category,
     e.expense_date::text AS expense_date, e.currency, e.amount::text AS amount,
     e.original_amount::text AS original_amount, e.original_currency, e.conversion_rate, e.split_mode, e.recurrence,
-    ${isoSql(sql`e.created_at`)} AS created_at, ${isoSql(sql`e.deleted_at`)} AS deleted_at,
-    coalesce((SELECT json_agg(json_build_object('id', p.participant_id, 'name', ${participantNameSql(sql`p.participant_id`)}, 'amount', p.amount::text) ORDER BY p.participant_id)
+    ${iso(sql`e.created_at`)} AS created_at, ${iso(sql`e.deleted_at`)} AS deleted_at,
+    coalesce((SELECT json_agg(json_build_object('id', p.participant_id, 'name', ${partName(sql`p`)}, 'amount', p.amount::text) ORDER BY p.participant_id)
       FROM expense_payers p WHERE p.expense_id = e.id), '[]') AS payers,
-    coalesce((SELECT json_agg(json_build_object('id', s.participant_id, 'name', ${participantNameSql(sql`s.participant_id`)}, 'weight', s.weight) ORDER BY s.participant_id)
+    coalesce((SELECT json_agg(json_build_object('id', s.participant_id, 'name', ${partName(sql`s`)}, 'weight', s.weight) ORDER BY s.participant_id)
       FROM expense_shares s WHERE s.expense_id = e.id), '[]') AS shares,
-    coalesce((SELECT json_agg(json_build_object('type', a.type, 'time', ${isoSql(sql`a.time`)}, 'userId', a.actor_user_id, 'actorName', a.actor_name, 'source', a.source,
+    coalesce((SELECT json_agg(json_build_object('type', a.type, 'time', ${iso(sql`a.time`)}, 'userId', a.actor_user_id, 'actorName', a.actor_name, 'source', a.source,
         'currentName', (SELECT u.name FROM "user" u WHERE u.id = a.actor_user_id AND u.email_verified)) ORDER BY a.sequence)
       FROM activities a WHERE a.expense_id = e.id AND a.group_id = e.group_id AND a.type IN ('create_expense', 'update_expense') AND a.source <> 'baseline'), '[]') AS events,
     (SELECT count(*)::int FROM expense_documents d WHERE d.expense_id = e.id) AS document_count,
@@ -327,7 +330,7 @@ const expenseSelect = (data: { detail: boolean }) => sql`
         ? sql`coalesce((SELECT json_agg(json_build_object('id', d.id, 'url', d.url, 'width', d.width, 'height', d.height) ORDER BY d.id)
             FROM expense_documents d WHERE d.expense_id = e.id), '[]') AS documents,
           (SELECT json_build_object('id', l.id, 'groupId', l.group_id, 'currentFrameExpenseId', l.current_frame_expense_id,
-              'nextExpenseCreatedAt', ${isoSql(sql`l.next_expense_created_at`)}, 'nextExpenseDate', l.next_expense_date::text || 'T00:00:00.000Z')
+              'nextExpenseCreatedAt', ${iso(sql`l.next_expense_created_at`)}, 'nextExpenseDate', l.next_expense_date::text || 'T00:00:00.000Z')
             FROM recurring_links l WHERE l.current_frame_expense_id = e.id) AS link`
         : sql`NULL AS documents, NULL AS link`
     }
@@ -433,15 +436,13 @@ const savedSummary = (e: SavedExpense): typeof ExpenseSummary.Encoded => ({
 /** Authors of an expense up to and including one recorded event, from the audit log. */
 async function attributionThrough(db: Db, data: { groupId: string; expenseId: string; activityId: string; viewer: string }) {
   const result = await db.execute<{ events: Event[] }>(sql`
-    SELECT coalesce(json_agg(json_build_object('type', a.type, 'time', ${isoSql(sql`a.time`)}, 'userId', a.actor_user_id, 'actorName', a.actor_name, 'source', a.source,
+    SELECT coalesce(json_agg(json_build_object('type', a.type, 'time', ${iso(sql`a.time`)}, 'userId', a.actor_user_id, 'actorName', a.actor_name, 'source', a.source,
         'currentName', (SELECT u.name FROM "user" u WHERE u.id = a.actor_user_id AND u.email_verified)) ORDER BY a.sequence), '[]') AS events
     FROM activities a
     WHERE a.expense_id = ${data.expenseId} AND a.group_id = ${data.groupId} AND a.type IN ('create_expense', 'update_expense') AND a.source <> 'baseline'
       AND a.sequence <= (SELECT b.sequence FROM activities b WHERE b.id = ${data.activityId})`)
   return attribution(result.rows[0]?.events ?? [], data.viewer)
 }
-
-const escapeLike = (text: string) => `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
 
 export const listExpenses = defineTool({
   name: 'list_expenses',
@@ -504,9 +505,7 @@ export const listExpenses = defineTool({
     if (input.from) where.push(sql`e.expense_date >= ${input.from}::date`)
     if (input.to) where.push(sql`e.expense_date <= ${input.to}::date`)
     if (input.paidById) where.push(sql`EXISTS (SELECT 1 FROM expense_payers p WHERE p.expense_id = e.id AND p.participant_id = ${input.paidById})`)
-    if (input.participantId)
-      where.push(sql`(EXISTS (SELECT 1 FROM expense_payers p WHERE p.expense_id = e.id AND p.participant_id = ${input.participantId})
-        OR EXISTS (SELECT 1 FROM expense_shares s WHERE s.expense_id = e.id AND s.participant_id = ${input.participantId}))`)
+    if (input.participantId) where.push(involves(sql`${input.participantId}`))
     const result = await db.execute<Row>(sql`${expenseSelect({ detail: false })}
       WHERE ${sql.join(where, sql` AND `)}
       ORDER BY e.expense_date DESC, e.created_at DESC, e.id DESC

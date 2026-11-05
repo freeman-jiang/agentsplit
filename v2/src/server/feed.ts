@@ -1,15 +1,15 @@
 // The dashboard: the feed across every group and private context the caller can
 // see, the account-wide balance, and the expense page. Each read is one
-// statement with the membership check inside it, so a request stays within the
-// Workers CPU budget and a row the caller cannot see is never read.
+// statement with the membership check inside it, so a request makes one round
+// trip and a row the caller cannot see is never read.
 import { sql, type SQL } from 'drizzle-orm'
 import { Forbidden, Invalid, NotFound } from '../shared/api'
-import { computeBalances, suggestSettlements } from '../shared/balances'
+import { suggestSettlements } from '../shared/balances'
 import type { CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/money'
 import type { Db } from './db'
 import type { Principal } from './ledger'
-import { expenseColumns, iso, toExpense, type ExpenseRow } from './sql'
+import { balancesOf, balanceSums, displayName as displayNameOf, escapeLike, expenseColumns, involves, iso, toExpense, type BalanceSum, type ExpenseRow } from './sql'
 
 export type FeedFilter = {
   readonly scope?: 'all' | 'grouped' | 'ungrouped'
@@ -66,9 +66,8 @@ const toAttribution = (a: AttributionRow) => ({
   updatedBy: a.updated?.actor ?? null,
 })
 
-/** A participant's display name: the bound verified account's current name, else the stored name. */
-const displayName = sql`coalesce((SELECT u.name FROM memberships bm JOIN "user" u ON u.id = bm.user_id AND u.email_verified
-  WHERE bm.group_id = p.group_id AND bm.participant_id = p.id), p.name)`
+/** The display name of participant row `p`. */
+const displayName = displayNameOf({ group: sql`p.group_id`, participant: sql`p.id`, name: sql`p.name` })
 
 // ---------- feed ----------
 
@@ -83,10 +82,6 @@ type FeedRow = ExpenseRow & {
   people: { id: string; name: string }[]
   attribution: AttributionRow
 }
-
-/** Is expense `e` paid for or shared by participant `who`? */
-const involves = (who: SQL) => sql`(EXISTS (SELECT 1 FROM expense_payers ip WHERE ip.expense_id = e.id AND ip.participant_id = ${who})
-  OR EXISTS (SELECT 1 FROM expense_shares iss WHERE iss.expense_id = e.id AND iss.participant_id = ${who}))`
 
 /**
  * Newest expense date first, then creation time, then ID. Filters run in SQL
@@ -104,7 +99,7 @@ export async function listFeed(db: Db, data: { principal: Principal; filter: Fee
   if (f.groupId) where.push(sql`(g.id = ${f.groupId} OR g.slug = ${f.groupId})`)
   const search = f.search?.trim()
   if (search) {
-    const term = `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+    const term = escapeLike(search)
     where.push(sql`(e.title ILIKE ${term} OR e.vendor ILIKE ${term})`)
   }
   if (f.currency) where.push(sql`e.currency = ${f.currency}`)
@@ -277,7 +272,7 @@ type ContextRow = ExpenseRow & {
   participants: { id: string; name: string }[]
   context_expense_id: string | null
   context_expense_title: string | null
-  sums: { currency: string; participantId: string; paid: string; owed: string }[] | null
+  sums: BalanceSum[] | null
   invitations: { id: string; email: string; participantId: string; participantName: string; expiresAt: string }[] | null
   attribution: AttributionRow
 }
@@ -295,18 +290,7 @@ export async function expenseContext(db: Db, data: { principal: Principal; expen
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${displayName}) ORDER BY p.name, p.id)
         FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
       pc.expense_id AS context_expense_id, ce.title AS context_expense_title,
-      CASE WHEN pc.group_id IS NOT NULL THEN coalesce((SELECT json_agg(json_build_object('currency', s.currency, 'participantId', s.participant_id, 'paid', s.paid::text, 'owed', s.owed::text))
-        FROM (
-          SELECT x.currency, parts.participant_id, sum(parts.paid) AS paid, sum(parts.owed) AS owed
-          FROM expenses x
-          JOIN (
-            SELECT expense_id, participant_id, amount AS paid, 0::bigint AS owed FROM expense_payers WHERE group_id = g.id
-            UNION ALL
-            SELECT expense_id, participant_id, 0::bigint, amount FROM expense_shares WHERE group_id = g.id
-          ) parts ON parts.expense_id = x.id
-          WHERE x.group_id = g.id AND x.deleted_at IS NULL
-          GROUP BY x.currency, parts.participant_id
-        ) s), '[]') END AS sums,
+      CASE WHEN pc.group_id IS NOT NULL THEN ${balanceSums({ group: sql`g.id` })} END AS sums,
       CASE WHEN pc.group_id IS NOT NULL AND m.role = 'admin' THEN coalesce((
         SELECT json_agg(json_build_object('id', i.id, 'email', i.email, 'participantId', i.participant_id,
           'participantName', coalesce(i.participant_name, ip.name), 'expiresAt', ${iso(sql`i.expires_at`)}) ORDER BY i.created_at, i.id)
@@ -343,14 +327,7 @@ export async function expenseContext(db: Db, data: { principal: Principal; expen
 
 /** Suggested repayments per currency, from per-person sums; the zero-sum check runs in computeBalances. */
 function settlements(sums: NonNullable<ContextRow['sums']>) {
-  const balances = computeBalances(
-    sums.map((s) => ({
-      currency: s.currency as CurrencyCode,
-      payers: new Map([[s.participantId, minor(BigInt(s.paid))]]),
-      shares: new Map([[s.participantId, minor(BigInt(s.owed))]]),
-    })),
-  )
-  return [...balances].map(([currency, byPerson]) => ({
+  return [...balancesOf(sums)].map(([currency, byPerson]) => ({
     currency,
     transfers: suggestSettlements(byPerson).map((t) => ({ from: t.from, to: t.to, amount: formatMinor({ amount: t.amount, currency }) })),
   }))

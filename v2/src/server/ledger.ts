@@ -12,13 +12,12 @@ import {
   memberships,
 } from '../../db/schema/app'
 import { Conflict, Forbidden, Invalid, NotFound } from '../shared/api'
-import { computeBalances } from '../shared/balances'
 import type { CurrencyCode } from '../shared/currencies'
 import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../shared/expense-rules'
-import { formatMinor, minor, type Minor } from '../shared/money'
+import { formatMinor, type Minor } from '../shared/money'
 import type { Db } from './db'
 import { randomId } from './ids'
-import { expenseColumns, toExpense, type ExpenseRow } from './sql'
+import { balancesOf, balanceSums, displayName, escapeLike, expenseColumns, involves, toExpense, type BalanceSum, type ExpenseRow } from './sql'
 import { stopRecurrence, syncRecurrence, type LinkState } from './recurring'
 import { assertPrivateWrite, privateContextOf, type PrivateContext } from './ungrouped'
 
@@ -78,19 +77,12 @@ type GroupRow = {
   participant_id: string | null
   active: boolean
   participants: { id: string; name: string }[]
-  sums: { currency: string; participantId: string; paid: string; owed: string }[]
+  sums: BalanceSum[]
 }
 
 /** Per-person sums to balances, with the zero-sum check of computeBalances. */
 function toBalances(sums: GroupRow['sums']) {
-  const balances = computeBalances(
-    sums.map((r) => ({
-      currency: r.currency as CurrencyCode,
-      payers: new Map([[r.participantId, minor(BigInt(r.paid))]]),
-      shares: new Map([[r.participantId, minor(BigInt(r.owed))]]),
-    })),
-  )
-  return [...balances].flatMap(([currency, byPerson]) =>
+  return [...balancesOf(sums)].flatMap(([currency, byPerson]) =>
     [...byPerson].map(([participantId, b]) => ({
       participantId,
       currency,
@@ -107,10 +99,7 @@ function toBalances(sums: GroupRow['sums']) {
  * current app (P-GROUP-55).
  */
 export const displayNames = (groupId: SQL) => sql`
-  SELECT p.id, coalesce(
-    (SELECT u.name FROM memberships m JOIN "user" u ON u.id = m.user_id AND u.email_verified
-      WHERE m.group_id = p.group_id AND m.participant_id = p.id),
-    p.name) AS name
+  SELECT p.id, ${displayName({ group: sql`p.group_id`, participant: sql`p.id`, name: sql`p.name` })} AS name
   FROM participants p WHERE p.group_id = ${groupId}`
 
 /**
@@ -129,18 +118,7 @@ export async function getGroup(db: Db, data: { principal: Principal; group: stri
     SELECT g.*,
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id)
         FROM (${displayNames(sql`g.id`)}) p), '[]') AS participants,
-      coalesce((SELECT json_agg(json_build_object('currency', s.currency, 'participantId', s.participant_id, 'paid', s.paid::text, 'owed', s.owed::text))
-        FROM (
-          SELECT e.currency, parts.participant_id, sum(parts.paid) AS paid, sum(parts.owed) AS owed
-          FROM expenses e
-          JOIN (
-            SELECT expense_id, participant_id, amount AS paid, 0::bigint AS owed FROM expense_payers WHERE group_id = g.id
-            UNION ALL
-            SELECT expense_id, participant_id, 0::bigint, amount FROM expense_shares WHERE group_id = g.id
-          ) parts ON parts.expense_id = e.id
-          WHERE e.group_id = g.id AND e.deleted_at IS NULL
-          GROUP BY e.currency, parts.participant_id
-        ) s), '[]') AS sums
+      ${balanceSums({ group: sql`g.id` })} AS sums
     FROM g
   `)
   const [g] = result.rows
@@ -231,7 +209,7 @@ export async function listExpenses(
   )`
   const where: SQL[] = [sql`e.group_id = (SELECT id FROM g)`, sql`e.deleted_at IS NULL`]
   if (f.search?.trim()) {
-    const term = `%${f.search.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+    const term = escapeLike(f.search.trim())
     where.push(sql`(e.title ILIKE ${term} OR e.vendor ILIKE ${term} OR e.notes ILIKE ${term})`)
   }
   if (f.currency) where.push(sql`e.currency = ${f.currency}`)
@@ -240,9 +218,7 @@ export async function listExpenses(
   if (f.from) where.push(sql`e.expense_date >= ${f.from}::date`)
   if (f.to) where.push(sql`e.expense_date <= ${f.to}::date`)
   if (f.payerId) where.push(sql`EXISTS (SELECT 1 FROM expense_payers p WHERE p.expense_id = e.id AND p.participant_id = ${f.payerId})`)
-  if (f.participantId)
-    where.push(sql`(EXISTS (SELECT 1 FROM expense_shares s WHERE s.expense_id = e.id AND s.participant_id = ${f.participantId})
-      OR EXISTS (SELECT 1 FROM expense_payers p WHERE p.expense_id = e.id AND p.participant_id = ${f.participantId}))`)
+  if (f.participantId) where.push(involves(sql`${f.participantId}`))
   const byUpdated = f.sort === 'updated'
   if (data.cursor) {
     const c = decodeCursor(data.cursor)
