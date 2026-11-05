@@ -50,6 +50,13 @@
       "when": 1793874445518,
       "tag": "0006_recurring_anchor",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793875365918,
+      "tag": "0007_mcp_rate_limit",
+      "breakpoints": true
     }
   ]
 }
