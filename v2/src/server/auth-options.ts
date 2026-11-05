@@ -6,10 +6,10 @@ import { cimd } from '@better-auth/cimd'
 import { mcp } from '@better-auth/mcp'
 import type { OAuthProviderExtension } from '@better-auth/oauth-provider'
 import { jwt } from 'better-auth/plugins/jwt'
+import { OAUTH_SCOPES } from '../shared/api/account'
 
-export const OAUTH_READ_SCOPE = 'agentsplit:read'
-export const OAUTH_WRITE_SCOPE = 'agentsplit:write'
-export const OAUTH_SCOPES = ['openid', 'profile', 'email', 'offline_access', OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE]
+// The consent page needs the scopes too, so they live in the shared contract.
+export { OAUTH_READ_SCOPE, OAUTH_SCOPES, OAUTH_WRITE_SCOPE } from '../shared/api/account'
 export const OAUTH_CONNECTION_CLAIM = 'https://agentsplit.app/connection'
 
 export const mcpResource = (baseUrl: string) => new URL('/api/mcp', baseUrl).href
@@ -39,10 +39,10 @@ export function authPlugins(config: {
     jwt({ jwt: { issuer: oauthIssuer(config.baseUrl) } }),
     mcp({
       resource,
-      resources: [{ identifier: resource, name: 'AgentSplit', allowedScopes: OAUTH_SCOPES }],
+      resources: [{ identifier: resource, name: 'AgentSplit', allowedScopes: [...OAUTH_SCOPES] }],
       loginPage: '/sign-in',
       consentPage: '/settings/connections/consent',
-      scopes: OAUTH_SCOPES,
+      scopes: [...OAUTH_SCOPES],
       grantTypes: ['authorization_code', 'refresh_token'],
       accessTokenExpiresIn: 300,
       refreshTokenExpiresIn: 60 * 60 * 24 * 30,

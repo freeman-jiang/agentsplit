@@ -1,6 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Outlet } from '@tanstack/react-router'
+import { requireSignedIn } from '~/client/queries/account'
 
-// Placeholder until this screen is ported (docs/v2/PARITY.md).
+// Every settings screen, including OAuth consent, needs a signed-in web user.
 export const Route = createFileRoute('/settings')({
-  component: () => <main className="mx-auto w-full max-w-5xl px-4 py-8">Not ported yet</main>,
+  beforeLoad: ({ context, location }) => requireSignedIn({ queryClient: context.queryClient, location }),
+  component: Outlet,
 })
