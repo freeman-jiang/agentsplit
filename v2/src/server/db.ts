@@ -53,12 +53,20 @@ const sqlState = (error: unknown): string | undefined => {
 }
 const retryable = (cause: unknown) => RETRYABLE.has(sqlState(cause) ?? '')
 
+/** Runs `work` in one SERIALIZABLE transaction on `db`, retried up to 4 times on serialization failures. */
+export async function serializable<A>(db: Db, work: (tx: Db) => Promise<A>): Promise<A> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await db.transaction(work, { isolationLevel: 'serializable' })
+    } catch (error) {
+      if (attempt >= 4 || !retryable(error)) throw error
+    }
+  }
+}
+
 /** Runs `work` in one SERIALIZABLE transaction on this request's connection, retried on serialization failures. */
 export const transaction = <A>(work: (db: Db) => Promise<A>): Effect.Effect<A, DatabaseError | DomainError, RequestDb> =>
   Effect.gen(function* () {
     const db = yield* RequestDb
-    return yield* Effect.tryPromise({ try: () => db.transaction(work, { isolationLevel: 'serializable' }), catch: (cause) => cause }).pipe(
-      Effect.retry({ times: 4, while: retryable }),
-      Effect.mapError(errorOf),
-    )
+    return yield* Effect.tryPromise({ try: () => serializable(db, work), catch: errorOf })
   })

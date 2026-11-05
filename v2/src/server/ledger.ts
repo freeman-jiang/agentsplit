@@ -598,7 +598,7 @@ export async function createExpense(
 }
 
 /** The expense to change: NotFound when it is missing or deleted, Conflict on a stale revision. */
-function currentExpense(context: WriteContext, expectedRevision: number) {
+export function currentExpense(context: WriteContext, expectedRevision: number) {
   const { expense } = context
   if (!expense || expense.deleted) throw new NotFound({ entity: 'expense', id: context.expenseId })
   if (expense.value.revision !== expectedRevision) throw new Conflict({ entity: 'expense', id: context.expenseId, currentRevision: expense.value.revision })
