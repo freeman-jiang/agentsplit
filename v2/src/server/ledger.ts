@@ -486,7 +486,7 @@ function requireCategory(context: WriteContext, categoryId: number) {
 /**
  * Writes the expense row (`row`, its INSERT or UPDATE) with its payers and
  * shares in one statement. Parts of people who left the expense are deleted;
- * the others are inserted or updated in place. Each sub-statement changes
+ * the others are inserted, or updated in place when they changed. Each sub-statement changes
  * different rows, and deferred triggers check the sums at commit.
  */
 async function writeExpense(tx: Db, data: { expenseId: string; groupId: string; expense: ResolvedExpense; row: SQL }) {
@@ -498,7 +498,12 @@ async function writeExpense(tx: Db, data: { expenseId: string; groupId: string; 
     upsert: tx
       .insert(table)
       .values(rows.map((r) => ({ expenseId: data.expenseId, groupId: data.groupId, ...r })))
-      .onConflictDoUpdate({ target: [table.expenseId, table.participantId], set: { amount: sql`excluded.amount`, weight: sql`excluded.weight` } })
+      .onConflictDoUpdate({
+        target: [table.expenseId, table.participantId],
+        set: { amount: sql`excluded.amount`, weight: sql`excluded.weight` },
+        // An unchanged part is not written again.
+        setWhere: sql`(excluded.amount, excluded.weight) IS DISTINCT FROM (${table.amount}, ${table.weight})`,
+      })
       .getSQL(),
   })
   const payers = parts(expensePayers, data.expense.payers.map((p) => ({ participantId: p.participantId, amount: p.amount, weight: '1' })))
