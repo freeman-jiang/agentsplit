@@ -211,10 +211,11 @@ function GroupCard({ group, starred, archived, marks }: { group: Group; starred:
       {/* The whole card opens the group; the name stays a real link for keyboards and new tabs. */}
       <div
         className="w-full cursor-pointer rounded-lg border bg-card px-4 py-3 shadow-sm hover:bg-secondary/60"
-        onClick={() => navigate({ to: '/$group/expenses', params })}
+        onClick={() => navigate({ to: '/$group', params })}
       >
         <div className="flex justify-between gap-2">
-          <Link to="/$group/expenses" params={params} className="min-w-0 flex-1 truncate" onClick={(e) => e.stopPropagation()}>
+          {/* As in the current app, the card opens the group's own URL: /<slug>, or /groups/<id>, which opens its expenses. */}
+          <Link to="/$group" params={params} className="min-w-0 flex-1 truncate" onClick={(e) => e.stopPropagation()}>
             {group.name}
           </Link>
           <span className="flex shrink-0">

@@ -8,3 +8,6 @@ export function randomId(size = 21): string {
   for (const byte of bytes) id += ALPHABET[byte & 63]
   return id
 }
+
+/** The response header with the ID of an RPC request. The server logs failed calls with it, and the error page shows it. */
+export const REQUEST_ID_RESPONSE_HEADER = 'X-Request-Id'

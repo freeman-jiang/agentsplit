@@ -9,6 +9,7 @@ import { createAuth, type Auth } from './auth'
 import type { Bucket } from './bucket'
 import { makeDb, registerRequestDb, releaseRequestDb, REQUEST_ID_HEADER, type Db } from './db'
 import { exportCsv, exportJson, exportResponse } from './export'
+import { groupRedirect, idPathOf } from './group-urls'
 import { HandlersLive } from './handlers'
 import { withPerfCounters } from './perf'
 import { METADATA_PATHS, protectedResourceMetadata } from './mcp/challenge'
@@ -21,6 +22,7 @@ import { handleAuthRoute } from './oauth-routes'
 import { materializeDue } from './recurring'
 import { Api, AppConfig, AuthMiddlewareLive } from './rpc'
 import { Forbidden } from '../shared/api'
+import { REQUEST_ID_RESPONSE_HEADER } from '../shared/ids'
 import { GROUP_DENIED, jsonError, livenessResponse, readinessResponse, robotsTxt, sameOrigin, secured, sitemapXml } from './security'
 import { sessionPrincipal } from './session'
 
@@ -154,7 +156,7 @@ export function createApp(platform: Platform) {
       const headers = new Headers(request.headers)
       headers.set(REQUEST_ID_HEADER, id)
       const rpcRequest = new Request(url, { method: request.method, headers, body: request.body })
-      return withConnection(async (client) => {
+      const response = await withConnection(async (client) => {
         registerRequestDb(id, makeDb(client))
         try {
           return await rpcHandler(rpcRequest)
@@ -162,6 +164,9 @@ export function createApp(platform: Platform) {
           releaseRequestDb(id)
         }
       }, 'private, no-store')
+      // The error page shows this ID, and the server logs each failed call with it (AuthMiddlewareLive).
+      response.headers.set(REQUEST_ID_RESPONSE_HEADER, id)
+      return response
     }
     if (url.pathname === '/api/mcp')
       return withConnection((client) => handleMcp(request, { db: makeDb(client), baseUrl: config.baseUrl, bucket, documentsEnabled: config.documentsEnabled }))
@@ -205,6 +210,12 @@ export function createApp(platform: Platform) {
     // The current app's presigned upload route is gone for good (P-RECEIPT-28).
     if (url.pathname === '/api/s3-upload') return jsonError({ status: 410, message: 'Use the authenticated receipt upload flow' })
     if (url.pathname.startsWith('/api/')) return jsonError({ status: 404, message: 'Not found' })
+    // The current app's group URLs: /groups/<id>/… moves to the group's slug (src/server/group-urls.ts).
+    const idPath = request.method === 'GET' || request.method === 'HEAD' ? idPathOf(url.pathname) : null
+    if (idPath) {
+      const moved = await withClient((client) => groupRedirect(makeDb(client), { path: idPath, search: url.search }))
+      if (moved) return moved
+    }
     return platform.assets(request)
   }
 
