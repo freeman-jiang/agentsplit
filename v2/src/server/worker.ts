@@ -124,7 +124,16 @@ async function route(request: Request): Promise<Response> {
       }
     }, 'private, no-store')
   }
-  // OAuth discovery: Better Auth serves the protected-resource and authorization-server metadata.
+  // The MCP endpoint and its auth load only for this route.
+  if (url.pathname === '/api/mcp')
+    return withConnection(async (client) => (await import('./mcp/endpoint')).handleMcp(request, { db: makeDb(client), baseUrl: config.baseUrl }))
+  // The Worker serves the protected-resource metadata itself: Better Auth's MCP plugin drops
+  // offline_access from it, which left Claude Code without refresh tokens (OAUTH-CLAUDE-CODE.md).
+  if (url.pathname.startsWith('/.well-known/oauth-protected-resource')) {
+    const mcp = await import('./mcp/challenge')
+    if (mcp.METADATA_PATHS.has(url.pathname)) return mcp.protectedResourceMetadata(request, config.baseUrl)
+  }
+  // OAuth discovery: Better Auth serves the authorization-server metadata.
   if (url.pathname.startsWith('/api/auth/') || url.pathname.startsWith('/.well-known/')) return authHandler(request)
   if (url.pathname === '/api/health' || url.pathname === '/api/health/readiness') return readinessResponse(checkDatabase)
   if (url.pathname === '/api/health/liveness') return livenessResponse()
