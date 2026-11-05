@@ -17,7 +17,7 @@ Status: **draft**. Freeman approves this runbook, the maintenance window, and ea
 4. Deploy the production Worker as `agentsplit` on `workers.dev` only, bound to the production Hyperdrive and the `agentsplit-receipts` bucket.
 5. Copy the production secrets from Coolify into the Worker with `wrangler secret put`, piped, never printed: `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_BOOTSTRAP_EMAIL`, `AUTH_BOOTSTRAP_LEGACY_USER_ID`. Production sets no `DEFAULT_CURRENCY_CODE` (checked 2026-11-05), so its default currency is the code default, USD, as in v2.
 6. Rehearse steps 2 to 6 of the window against a fresh copy of the latest nightly backup in a scratch database, and record the timings.
-7. Prepare the OpenTofu change that adds the Worker custom domain `agentsplit.freemanjiang.com`, as a saved plan for Freeman to review.
+7. Prepare the OpenTofu change that adds the Worker custom domain `agentsplit.freemanjiang.com`, as a saved plan for Freeman to review. Done: draft PR https://github.com/freeman-jiang/dots/pull/58, whose plan on 2026-11-05 was 1 to add, 0 to change, 0 to destroy. It stays a draft until the window, because `main` must match what is live. In the window, merge it, plan again, read the plan, and apply it.
 
 ## The window (Freeman approves the start)
 
@@ -28,7 +28,7 @@ Status: **draft**. Freeman approves this runbook, the maintenance window, and ea
 5. **Copy receipts.** Upload every object from the final backup's `receipts.jsonl` to `agentsplit-receipts` under its original key, and compare the count and the byte size of each object. The shared dev Cloudflare token cannot write R2 objects (403, code 10000, checked 2026-11-05), so this one step runs under `sops exec-env secrets/admin.env` with `wrangler r2 object put`, as the rules allow for a single command.
 6. **Verify.** Run `test/legacy/verify-import.ts` from the scratch database against production: the same IDs in every table, every balance per group and currency to the cent, and every expense field by field and share by share. Compare the receipt list with the database rows.
 7. **Switch DNS** (Freeman approves the saved plan). Apply the custom-domain plan, and confirm a clean replan.
-8. **Smoke checks.** In the browser: sign in with Google, open the Macademia group (balances, expenses, a receipt), add and delete a test expense in a synthetic group only, and check the Log. Agents: connect Claude Code through OAuth, list groups, make one write in a synthetic group, and call with an existing API key. Confirm that an existing agent connection keeps working through a token refresh.
+8. **Smoke checks.** In the browser: sign in with Google, open the Macademia group (balances, expenses, a receipt), add and delete a test expense in a synthetic group only, and check the Log. Agents: connect Claude Code through OAuth, list groups, make one write in a synthetic group, and call with an existing API key. Confirm that an existing agent connection keeps working through a token refresh. Freeman chose this check over a Google sign-in on the preview (2026-11-05), so it is the first run of a real Claude Code client against v2: connect, read, write, and keep working more than 5 minutes later, through a refresh (docs/v2/OAUTH-CLAUDE-CODE.md).
 9. **Announce** that AgentSplit is back.
 
 ## Rehearsal record
