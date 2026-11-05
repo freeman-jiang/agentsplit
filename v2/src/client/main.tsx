@@ -32,7 +32,6 @@ declare module '@tanstack/react-router' {
 // Better Auth refreshes the session's expiry here; RPC calls only read the session.
 void fetch('/api/auth/get-session', { credentials: 'same-origin' }).catch(() => {})
 void registerServiceWorker().catch((error: unknown) => console.error('Service worker registration failed', error))
-addAppleSplashImages({ icon: '/logo-with-text.png', color: '#526044' })
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Missing #root')
@@ -43,3 +42,10 @@ createRoot(root).render(
     </QueryClientProvider>
   </StrictMode>,
 )
+
+// The startup images are for the next launch from the home screen, so they wait
+// until the browser is idle after the first render. Not every browser has
+// requestIdleCallback.
+const splash = () => addAppleSplashImages({ icon: '/logo-with-text.png', color: '#526044' })
+if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(splash)
+else window.setTimeout(splash, 0)
