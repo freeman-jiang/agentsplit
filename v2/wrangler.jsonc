@@ -10,6 +10,6 @@
   },
   "observability": { "enabled": true },
   "vars": { "BASE_URL": "https://agentsplit-preview.freemanjiang.workers.dev" },
-  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "REPLACE_WITH_PREVIEW_HYPERDRIVE_ID", "localConnectionString": "postgresql://postgres@127.0.0.1:5437/agentsplit_dev" }],
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "REPLACE_WITH_PREVIEW_HYPERDRIVE_ID", "localConnectionString": "postgresql://postgres:local-trust-auth@127.0.0.1:5437/agentsplit_dev" }],
   "r2_buckets": [{ "binding": "RECEIPTS", "bucket_name": "agentsplit-receipts-preview" }]
 }

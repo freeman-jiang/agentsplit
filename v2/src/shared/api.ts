@@ -20,7 +20,7 @@ export class Invalid extends Schema.TaggedError<Invalid>()('Invalid', { message:
 /** The server could not complete the request; the outcome of a write is unknown, so read before retrying. */
 export class Unavailable extends Schema.TaggedError<Unavailable>()('Unavailable', { message: Schema.String }) {}
 
-const ReadError = Schema.Union([Unauthorized, Forbidden, NotFound, Unavailable])
+const ReadError = Schema.Union([Unauthorized, Forbidden, NotFound, Invalid, Unavailable])
 const WriteError = Schema.Union([Unauthorized, Forbidden, NotFound, Conflict, Invalid, Unavailable])
 
 // ---------- shapes ----------
