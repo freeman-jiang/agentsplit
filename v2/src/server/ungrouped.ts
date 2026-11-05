@@ -4,7 +4,7 @@
 // Ported from the current app's src/lib/ungrouped-expenses.ts and
 // src/lib/ungrouped-access.ts; the database triggers in
 // db/migrations/0003_private_contexts.sql enforce the same rules.
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, isNull, sql, type SQL } from 'drizzle-orm'
 import { activities, expenses, groups, invitations, memberships, participants, privateContexts, privatePeople } from '../../db/schema/app'
 import { Conflict, Forbidden, Invalid, Unauthorized } from '../shared/api'
 import type { ExpenseDraft } from '../shared/expense-rules'
@@ -53,7 +53,8 @@ export async function createUngroupedExpense(
     principal: Principal
     baseUrl: string
     expenseId: string
-    idempotencyKey: string
+    /** null for a caller that never retries with the same key. */
+    idempotencyKey: string | null
     people: readonly PrivatePerson[]
     expense: ExpenseDraft
   },
@@ -203,19 +204,26 @@ export async function renewPrivateInvitation(tx: Db, data: { principal: Principa
 
 type PrivateWrite = { readonly op: 'create' | 'update'; readonly draft: ExpenseDraft } | { readonly op: 'delete' }
 
+/** The facts of a private context that its write rules need. */
+export type PrivateContext = { expense_id: string; people: string[]; original_live: boolean; live_payments: number }
+
+/**
+ * The private context of group `groupId` as one JSON value, or null for a
+ * named group. The expense write context (ledger.ts) reads it in the same
+ * statement as the membership and the expense.
+ */
+export const privateContextOf = (groupId: SQL) => sql`(
+  SELECT json_build_object('expense_id', pc.expense_id,
+    'people', coalesce((SELECT json_agg(pp.participant_id) FROM private_people pp WHERE pp.group_id = pc.group_id), '[]'),
+    'original_live', EXISTS (SELECT 1 FROM expenses o WHERE o.id = pc.expense_id AND o.deleted_at IS NULL),
+    'live_payments', (SELECT count(*)::int FROM expenses x WHERE x.group_id = pc.group_id AND x.id <> pc.expense_id AND x.deleted_at IS NULL))
+  FROM private_contexts pc WHERE pc.group_id = ${groupId})`
+
 /**
  * The write rules inside a private context, checked by every expense write
  * (ledger.ts) before it changes anything. A named group passes unchanged.
  */
-export async function assertPrivateWrite(tx: Db, data: { groupId: string; expenseId: string } & PrivateWrite) {
-  const result = await tx.execute<{ expense_id: string; people: string[]; original_live: boolean; live_payments: number }>(sql`
-    SELECT pc.expense_id,
-      coalesce((SELECT array_agg(pp.participant_id) FROM private_people pp WHERE pp.group_id = pc.group_id), '{}') AS people,
-      EXISTS (SELECT 1 FROM expenses o WHERE o.id = pc.expense_id AND o.deleted_at IS NULL) AS original_live,
-      (SELECT count(*)::int FROM expenses x WHERE x.group_id = pc.group_id AND x.id <> pc.expense_id AND x.deleted_at IS NULL) AS live_payments
-    FROM private_contexts pc WHERE pc.group_id = ${data.groupId}
-  `)
-  const context = result.rows[0]
+export function assertPrivateWrite(context: PrivateContext | null, data: { expenseId: string } & PrivateWrite) {
   if (!context) return
   const original = data.expenseId === context.expense_id
   if (data.op === 'delete') {
