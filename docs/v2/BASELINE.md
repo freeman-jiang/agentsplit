@@ -69,3 +69,18 @@ Same method as above (`wrangler tail`, `?op=` tags, after warm-up, 192 synthetic
 | `expenses.list`, 30 rows | 14 | 29 |
 
 Several reads are a few milliseconds over the 10 ms budget at p50. A final CPU pass follows once every area is merged.
+
+## v2 MCP endpoint CPU (preview, 2026-11-05)
+
+Same method, with an API key for the synthetic account. Each row stops at a later phase, so the differences show what each phase costs. CPU milliseconds:
+
+| Request | p50 | p90 |
+| --- | --- | --- |
+| `/api/health`, no database | 3 | 4 |
+| `/api/mcp` without credentials (401, the MCP module loads) | 4 | 5 |
+| `ping`: connect, API key, rate limit, SDK | 12 | 19 |
+| `tools/list` | 13 | 15 |
+| `list_groups` | 17 | 22 |
+| `list_expenses`, 20 rows | 21 | 43 |
+
+All 69 requests answered `ok`, but 31 used more than 10 ms. Authentication makes five queries before a tool runs: the key lookup, two key updates, the user lookup and the MCP rate-limit upsert. Locally each phase takes under 1 ms once the JIT is warm, so the Workers cost comes from cold module and JIT work and from each query's pg and Drizzle work. The final CPU pass starts by folding those queries into fewer statements.
