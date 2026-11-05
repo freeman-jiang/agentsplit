@@ -2,7 +2,7 @@
 // about 1.5 ms of CPU in pg and Drizzle, so a change that adds statements
 // to a write makes it slower (docs/v2/BASELINE.md, "Write CPU"). The ceilings
 // are the counts after the statement reduction; raise one only on purpose.
-import { Layer, Scheduler } from 'effect'
+import { Layer } from 'effect'
 import { HttpRouter } from 'effect/http'
 import { RpcSerialization, RpcServer } from 'effect/rpc'
 import pg from 'pg'
@@ -36,7 +36,7 @@ async function statements(work: () => Promise<unknown>): Promise<string[]> {
   return sent
 }
 
-/** The Worker's RPC handler (src/server/worker.ts), without the Workers runtime. */
+/** The server's RPC handler (src/server/app.ts), without the HTTP server. */
 const rpcHandler = HttpRouter.toWebHandler(
   RpcServer.layerHttp({ group: Api, path: '/api/rpc', protocol: 'http' }).pipe(
     Layer.provide(HandlersLive),
@@ -45,13 +45,12 @@ const rpcHandler = HttpRouter.toWebHandler(
     Layer.provide(
       Layer.succeed(AppConfig, { baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret', documentsEnabled: true }),
     ),
-    Layer.provideMerge(Layer.succeed(Scheduler.Scheduler, new Scheduler.MixedScheduler('sync'))),
   ),
 ).handler
 
 type Exit = { _tag: 'Exit'; exit: { _tag: 'Success'; value: unknown } | { _tag: 'Failure'; cause: unknown } }
 
-/** One web RPC call on one connection, as the Worker serves it. */
+/** One web RPC call on one connection, as the server serves it. */
 async function webRpc(data: { tag: string; payload: object }) {
   const id = crypto.randomUUID()
   const response = await h.withDb(async (db) => {

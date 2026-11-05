@@ -24,7 +24,7 @@ const errorOf = (cause: unknown): DatabaseError | DomainError =>
   isDomainError(cause) ? cause : new DatabaseError({ message: cause instanceof Error ? cause.message : String(cause) })
 
 /**
- * This request's database connection. The Worker opens one connection per
+ * This request's database connection. The server takes one pooled connection per
  * request and registers it under a random ID that only it can set (the
  * x-agentsplit-request header); the RPC middleware provides it to handlers.
  */

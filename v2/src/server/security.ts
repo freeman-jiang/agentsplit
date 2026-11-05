@@ -1,6 +1,4 @@
-// Security headers for every Worker response. public/_headers sets the same
-// headers on the static files and the SPA page, which the asset server sends
-// without running the Worker. Keep the two lists the same.
+// Security headers for every response, the static files and the SPA page included.
 
 /**
  * No inline or eval scripts: the SPA is one module bundle, and the theme and

@@ -2,6 +2,7 @@
 // credentials and responses of concurrent callers never mix.
 import { McpServer, type StandardSchemaWithJSON, type Tool } from '@modelcontextprotocol/server'
 import { Result } from 'effect'
+import type { Bucket } from '../bucket'
 import type { Db } from '../db'
 import { assertOAuthWrite, type McpPrincipal } from './authenticate'
 import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
@@ -82,7 +83,7 @@ async function serializable<A>(db: Db, work: (tx: Db) => Promise<A>): Promise<A>
   }
 }
 
-export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: string; bucket: R2Bucket; documentsEnabled: boolean }): McpServer {
+export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: string; bucket: Bucket; documentsEnabled: boolean }): McpServer {
   const server = new McpServer(SERVER_INFO, { instructions: INSTRUCTIONS })
   for (const tool of MCP_TOOLS) {
     const schemas = SCHEMAS.get(tool.name)

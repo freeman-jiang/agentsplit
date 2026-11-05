@@ -8,7 +8,7 @@ import { createAuth } from '~/server/auth'
 import { makeDb, type Db } from '~/server/db'
 import { handleMcp } from '~/server/mcp/endpoint'
 import { createUngroupedExpense } from '~/server/ungrouped'
-import { fakeBucket } from './fake-r2'
+import { fakeBucket } from './fake-bucket'
 import { resetTestDatabase } from './setup'
 
 export const BASE = 'http://localhost'
@@ -20,7 +20,7 @@ export type Harness = Awaited<ReturnType<typeof startHarness>>
 
 export async function startHarness() {
   const pool: Pool = await resetTestDatabase()
-  /** Runs work on one pooled connection, as the Worker does per request. */
+  /** Runs work on one pooled connection, as the server does per request. */
   const withDb = async <A>(work: (db: Db) => Promise<A>): Promise<A> => {
     const client = await pool.connect()
     try {
@@ -29,7 +29,7 @@ export async function startHarness() {
       client.release()
     }
   }
-  /** The receipts bucket of the in-process Worker. */
+  /** The in-memory receipts bucket. */
   const r2 = fakeBucket()
   /** ENABLE_EXPENSE_DOCUMENTS of the in-process Worker. */
   const documents = { enabled: true }
