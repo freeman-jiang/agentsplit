@@ -18,7 +18,7 @@ import { titleWithVendor } from '../shared/history'
 import { formatMinor, type Minor } from '../shared/money'
 import type { Db } from './db'
 import { randomId, sha256Hex } from './ids'
-import { displayName, escapeLike, expenseColumns, involves, toExpense, type ExpenseRow } from './sql'
+import { displayName, documentsJson, escapeLike, expenseColumns, involves, toExpense, type ExpenseRow } from './sql'
 import { stopRecurrence, syncRecurrence, type LinkState } from './recurring'
 import { assertPrivateWrite, privateContextOf, type PrivateContext } from './ungrouped'
 
@@ -297,8 +297,7 @@ export async function expenseDocumentsOf(tx: Db, expenseId: string): Promise<Sto
 }
 
 /** The receipts of expense row `e` as JSON, in the order of expenseDocumentsOf. */
-const documentsOf = sql`coalesce((SELECT json_agg(json_build_object('id', d.id, 'url', d.url, 'width', d.width, 'height', d.height) ORDER BY d.position)
-  FROM expense_documents d WHERE d.expense_id = e.id), '[]')`
+const documentsOf = sql`coalesce(${documentsJson(sql`e`)}, '[]')`
 
 // ---------- write context ----------
 

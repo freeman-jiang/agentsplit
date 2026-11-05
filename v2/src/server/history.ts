@@ -165,7 +165,7 @@ export async function listActivities(db: Db, data: { principal: Principal; group
           'id', p.id, 'time', ${iso(sql`p.time`)}, 'type', p.type, 'participantId', p.participant_id,
           'expenseId', p.expense_id, 'expenseRevision', p.expense_revision, 'data', ${activityData(sql`p`)}, 'source', ${activitySource(sql`p`)},
           'actorName', coalesce(p.actor_name, who.name), 'actorUserId', p.actor_user_id, 'agentKeyId', p.agent_key_id, 'verified', p.actor_user_id IS NOT NULL,
-          'agent', p.agent_key_id IS NOT NULL OR p.source IN ('agent', 'mcp'),
+          'agent', p.agent_key_id IS NOT NULL OR ${activitySource(sql`p`)} = 'agent',
           'snapshot', p.snapshot, 'previous', prev.snapshot,
           'live', ${historical ? sql`NULL` : sql`(SELECT json_build_object('kind', e.kind) FROM expenses e WHERE e.id = p.expense_id AND e.group_id = p.group_id AND e.deleted_at IS NULL)`}
         ) ORDER BY p.sequence ${order})
