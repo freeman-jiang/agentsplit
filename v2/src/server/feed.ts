@@ -9,7 +9,7 @@ import type { CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/money'
 import type { Db } from './db'
 import type { Principal } from './ledger'
-import { balancesOf, balanceSums, displayName as displayNameOf, escapeLike, expenseColumns, involves, iso, toExpense, type BalanceSum, type ExpenseRow } from './sql'
+import { activitySource, balancesOf, balanceSums, displayName as displayNameOf, escapeLike, expenseColumns, involves, iso, notBaseline, toExpense, type BalanceSum, type ExpenseRow } from './sql'
 
 export type FeedFilter = {
   readonly scope?: 'all' | 'grouped' | 'ungrouped'
@@ -44,18 +44,17 @@ const attributionSql = (viewer: string) => {
   const actor = sql`CASE WHEN a.actor_user_id IS NOT NULL OR a.source = 'system' THEN json_build_object(
       'userId', a.actor_user_id,
       'name', coalesce(u.name, a.actor_name, CASE WHEN a.source = 'system' THEN 'Automatic recurrence' ELSE 'Member' END),
-      'source', a.source) END`
+      'source', ${activitySource(sql`a`)}) END`
   const event = (type: 'create_expense' | 'update_expense', order: SQL) => sql`(
     SELECT json_build_object('time', ${iso(sql`a.time`)}, 'actor', ${actor})
     FROM activities a LEFT JOIN "user" u ON u.id = a.actor_user_id AND u.email_verified
-    WHERE a.expense_id = e.id AND a.type = ${type} AND a.source <> 'baseline' AND (a.expense_revision IS NULL OR a.expense_revision > 0)
+    WHERE a.expense_id = e.id AND a.type = ${type} AND ${notBaseline(sql`a`)}
     ORDER BY a.sequence ${order} LIMIT 1)`
   return sql`json_build_object(
     'created', ${event('create_expense', sql`ASC`)},
     'updated', ${event('update_expense', sql`DESC`)},
     'mine', (SELECT ${iso(sql`max(a.time)`)} FROM activities a
-      WHERE a.expense_id = e.id AND a.type = 'update_expense' AND a.source <> 'baseline'
-        AND (a.expense_revision IS NULL OR a.expense_revision > 0) AND a.actor_user_id = ${viewer}))`
+      WHERE a.expense_id = e.id AND a.type = 'update_expense' AND ${notBaseline(sql`a`)} AND a.actor_user_id = ${viewer}))`
 }
 
 const toAttribution = (a: AttributionRow) => ({

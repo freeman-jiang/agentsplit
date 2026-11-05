@@ -8,6 +8,32 @@ import { formatMinor, minor } from '../shared/minor'
 /** The name to show for the author of an activity row `a`. */
 export const actorName = sql.raw(`CASE WHEN a.source = 'system' AND a.actor_name IS NULL THEN 'Automatic recurrence' ELSE a.actor_name END`)
 
+/**
+ * The source of activity row `alias` as it is shown and exported. Agent writes
+ * are `agent`, as in the current app and the imported history. Rows that v2
+ * wrote before this rule have `mcp`, and activities are permanent, so the
+ * readers rename them (DECISIONS.md, parity audit, P-DB-79).
+ */
+export const activitySource = (alias: SQL) => sql`CASE WHEN ${alias}.source = 'mcp' THEN 'agent' ELSE ${alias}.source END`
+
+/**
+ * Is activity row `alias` a real create or edit? A baseline is not: the
+ * current app stores it with source `baseline`, v2 with revision 0 (P-HIST-09).
+ */
+export const notBaseline = (alias: SQL) => sql`${alias}.source <> 'baseline' AND (${alias}.expense_revision IS NULL OR ${alias}.expense_revision > 0)`
+
+/**
+ * The text of activity row `alias`. An expense event stores "<vendor> — <title>"
+ * (titleWithVendor). v2 rows from before this rule have none, so the text
+ * comes from the last saved snapshot at that event (P-EXP-107).
+ */
+export const activityData = (alias: SQL) => sql`CASE WHEN ${alias}.data IS NULL AND ${alias}.expense_id IS NOT NULL THEN (
+    SELECT CASE WHEN coalesce(s.snapshot->'expense'->>'vendor', '') <> '' THEN (s.snapshot->'expense'->>'vendor') || ' — ' || (s.snapshot->'expense'->>'title')
+      ELSE s.snapshot->'expense'->>'title' END
+    FROM activities s WHERE s.group_id = ${alias}.group_id AND s.expense_id = ${alias}.expense_id AND s.sequence <= ${alias}.sequence AND s.snapshot IS NOT NULL
+    ORDER BY s.sequence DESC LIMIT 1)
+  ELSE ${alias}.data END`
+
 /** A timestamp as ISO 8601 text in UTC, with milliseconds. */
 export const iso = (column: SQL) => sql`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
 

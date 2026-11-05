@@ -96,8 +96,12 @@ const isJoseError = (error: unknown) =>
 
 const isScopeToken =(s: string) => /^[\x21\x23-\x5b\x5d-\x7e]+$/.test(s)
 
-/** Verifies the request's OAuth access token, then the live connection, account, client and consent. */
-export async function verifyOAuthRequest(db: Db, data: { request: Request; baseUrl: string }): Promise<OAuthResult> {
+/**
+ * Verifies the request's OAuth access token, then the live connection, account,
+ * client and consent. `dpop: false` leaves the DPoP proof to a later check of
+ * the same request (Better Auth's UserInfo).
+ */
+export async function verifyOAuthRequest(db: Db, data: { request: Request; baseUrl: string; dpop?: boolean }): Promise<OAuthResult> {
   const { request, baseUrl } = data
   const authorization = parseAccessTokenAuthorization(request.headers.get('authorization'))
   if (!authorization?.token || authorization.scheme === 'Unknown') return { kind: 'invalid' }
@@ -108,14 +112,15 @@ export async function verifyOAuthRequest(db: Db, data: { request: Request; baseU
       jwksCacheKey,
       verifyOptions: { issuer: oauthIssuer(baseUrl), audience: mcpResource(baseUrl), requiredClaims: ['azp'] },
     })
-    await enforceDpopBinding({
-      payload: claims,
-      authorization,
-      proofJwt: request.headers.get('dpop'),
-      method: request.method,
-      url: request.url,
-      replayStore: replayStore(db),
-    })
+    if (data.dpop !== false)
+      await enforceDpopBinding({
+        payload: claims,
+        authorization,
+        proofJwt: request.headers.get('dpop'),
+        method: request.method,
+        url: request.url,
+        replayStore: replayStore(db),
+      })
   } catch (error) {
     // A bad, expired or unbound token is a 401. Anything else (the database) is an outage.
     if (isDpopBindingError(error) || isJoseError(error)) return { kind: 'invalid' }

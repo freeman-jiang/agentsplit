@@ -16,7 +16,7 @@ import { randomId } from '../../ids'
 import * as ledger from '../../ledger'
 import { attachUploads, prepareUploads, UploadError } from '../../receipt-uploads'
 import { receiptDownloadPath } from '../../receipts'
-import { displayName, escapeLike, involves, iso } from '../../sql'
+import { activitySource, displayName, escapeLike, involves, iso, notBaseline } from '../../sql'
 import { createUngroupedExpense } from '../../ungrouped'
 import { PAYMENT_RULES, RECORDING_RULES } from '../instructions'
 import { defineTool, ToolError } from '../registry'
@@ -258,11 +258,23 @@ const ExpenseWrite = {
 type Event = { type: 'create_expense' | 'update_expense'; time: string; userId: string | null; actorName: string | null; source: string; currentName: string | null }
 type Attribution = typeof Attribution.Type
 
+/**
+ * The create and update events of one expense for attribution, oldest first,
+ * without baselines. `through` keeps the events up to one recorded event; the
+ * names are then the ones recorded at the time, not the accounts' current
+ * names, as in the current app (P-FEED-40).
+ */
+const attributionEvents = (data: { groupId: SQL; expenseId: SQL; through?: SQL }) => sql`
+  coalesce((SELECT json_agg(json_build_object('type', a.type, 'time', ${iso(sql`a.time`)}, 'userId', a.actor_user_id, 'actorName', a.actor_name, 'source', ${activitySource(sql`a`)},
+      'currentName', ${data.through === undefined ? sql`(SELECT u.name FROM "user" u WHERE u.id = a.actor_user_id AND u.email_verified)` : sql`NULL`}) ORDER BY a.sequence)
+    FROM activities a WHERE a.expense_id = ${data.expenseId} AND a.group_id = ${data.groupId} AND a.type IN ('create_expense', 'update_expense') AND ${notBaseline(sql`a`)}
+      ${data.through === undefined ? sql`` : sql`AND a.sequence <= (SELECT b.sequence FROM activities b WHERE b.id = ${data.through})`}), '[]')`
+
 /** The current app's expenseAttributions: authors from the audit log, never from the payer. */
 function attribution(events: readonly Event[], viewerUserId: string): Attribution {
   const row: { -readonly [K in keyof Attribution]: Attribution[K] } = { createdBy: null, updatedBy: null }
   for (const event of events) {
-    const source = event.source === 'mcp' ? 'agent' : event.source
+    const { source } = event
     const actor =
       event.userId || source === 'system'
         ? { userId: event.userId, name: event.currentName ?? event.actorName ?? (source === 'system' ? 'Automatic recurrence' : 'Member'), source }
@@ -322,9 +334,7 @@ const expenseSelect = (data: { detail: boolean }) => sql`
       FROM expense_payers p WHERE p.expense_id = e.id), '[]') AS payers,
     coalesce((SELECT json_agg(json_build_object('id', s.participant_id, 'name', ${partName(sql`s`)}, 'weight', s.weight) ORDER BY s.participant_id)
       FROM expense_shares s WHERE s.expense_id = e.id), '[]') AS shares,
-    coalesce((SELECT json_agg(json_build_object('type', a.type, 'time', ${iso(sql`a.time`)}, 'userId', a.actor_user_id, 'actorName', a.actor_name, 'source', a.source,
-        'currentName', (SELECT u.name FROM "user" u WHERE u.id = a.actor_user_id AND u.email_verified)) ORDER BY a.sequence)
-      FROM activities a WHERE a.expense_id = e.id AND a.group_id = e.group_id AND a.type IN ('create_expense', 'update_expense') AND a.source <> 'baseline'), '[]') AS events,
+    ${attributionEvents({ groupId: sql`e.group_id`, expenseId: sql`e.id` })} AS events,
     (SELECT count(*)::int FROM expense_documents d WHERE d.expense_id = e.id) AS document_count,
     ${
       data.detail
@@ -435,12 +445,9 @@ const savedSummary = (e: SavedExpense): typeof ExpenseSummary.Encoded => ({
 
 /** Authors of an expense up to and including one recorded event, from the audit log. */
 async function attributionThrough(db: Db, data: { groupId: string; expenseId: string; activityId: string; viewer: string }) {
-  const result = await db.execute<{ events: Event[] }>(sql`
-    SELECT coalesce(json_agg(json_build_object('type', a.type, 'time', ${iso(sql`a.time`)}, 'userId', a.actor_user_id, 'actorName', a.actor_name, 'source', a.source,
-        'currentName', (SELECT u.name FROM "user" u WHERE u.id = a.actor_user_id AND u.email_verified)) ORDER BY a.sequence), '[]') AS events
-    FROM activities a
-    WHERE a.expense_id = ${data.expenseId} AND a.group_id = ${data.groupId} AND a.type IN ('create_expense', 'update_expense') AND a.source <> 'baseline'
-      AND a.sequence <= (SELECT b.sequence FROM activities b WHERE b.id = ${data.activityId})`)
+  const result = await db.execute<{ events: Event[] }>(
+    sql`SELECT ${attributionEvents({ groupId: sql`${data.groupId}`, expenseId: sql`${data.expenseId}`, through: sql`${data.activityId}` })} AS events`,
+  )
   return attribution(result.rows[0]?.events ?? [], data.viewer)
 }
 

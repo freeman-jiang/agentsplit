@@ -75,6 +75,10 @@ export const Balance = Schema.Struct({
 
 export const Group = Schema.Struct({
   ...GroupSummary.fields,
+  /** A private context is the hidden group of one ungrouped expense; its pages are at /expenses/<contextExpenseId> (P-GROUP-47). */
+  kind: Schema.Literals(['named', 'private']),
+  /** The expense of a private context; null for a named group. */
+  contextExpenseId: Schema.NullOr(Schema.String),
   information: Schema.String,
   revision: Schema.Number,
   participants: Schema.Array(Participant),

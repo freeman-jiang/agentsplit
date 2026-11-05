@@ -14,6 +14,7 @@ import {
 import { Conflict, Forbidden, Invalid, NotFound } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../shared/expense-rules'
+import { titleWithVendor } from '../shared/history'
 import { formatMinor, type Minor } from '../shared/money'
 import type { Db } from './db'
 import { randomId, sha256Hex } from './ids'
@@ -25,7 +26,8 @@ export type Principal = {
   readonly userId: string
   readonly name: string
   readonly email: string
-  readonly source: 'web' | 'mcp'
+  /** The activity source: `agent` for an API key or OAuth connection, as in the current app (P-DB-79). */
+  readonly source: 'web' | 'agent'
   /** The API key or OAuth connection an agent used; null on the web. */
   readonly agentKeyId: string | null
 }
@@ -68,6 +70,8 @@ export async function listGroups(db: Db, principal: Principal) {
 
 type GroupRow = {
   id: string
+  kind: 'named' | 'private'
+  context_expense_id: string | null
   slug: string | null
   name: string
   default_currency: string
@@ -109,7 +113,8 @@ export const displayNames = (groupId: SQL) => sql`
 export async function getGroup(db: Db, data: { principal: Principal; group: string }) {
   const result = await db.execute<GroupRow>(sql`
     WITH g AS (
-      SELECT g.id, g.slug, g.name, g.default_currency, g.information, g.revision, m.role, m.participant_id, m.active
+      SELECT g.id, g.kind, g.slug, g.name, g.default_currency, g.information, g.revision, m.role, m.participant_id, m.active,
+        (SELECT pc.expense_id FROM private_contexts pc WHERE pc.group_id = g.id) AS context_expense_id
       FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
       WHERE g.id = agentsplit_group_id(${data.group})
       LIMIT 1
@@ -124,6 +129,8 @@ export async function getGroup(db: Db, data: { principal: Principal; group: stri
   if (!g?.active) throw new Forbidden({ message: 'Group access denied' })
   return {
     id: g.id,
+    kind: g.kind,
+    contextExpenseId: g.context_expense_id,
     slug: g.slug,
     name: g.name,
     defaultCurrency: g.default_currency as CurrencyCode,
@@ -590,6 +597,7 @@ export async function createExpense(
       type: 'create_expense',
       expenseId: data.expenseId,
       expenseRevision: 1,
+      data: titleWithVendor(stored.expense),
       snapshot: snapshot({ group: context.group, expense: stored.expense, names: namesOf(context), documents: stored.documents }),
       ...actor(data.principal),
     })
@@ -617,6 +625,7 @@ async function ensureBaseline(tx: Db, data: { context: WriteContext; principal: 
       type: 'update_expense',
       expenseId: data.context.expenseId,
       expenseRevision: 0,
+      data: titleWithVendor(expense.value),
       snapshot: snapshot({ group: data.context.group, expense: expense.value, names: namesOf(data.context), documents: expense.documents }),
       ...actor(data.principal),
     })
@@ -680,6 +689,7 @@ export async function updateExpense(
       type: 'update_expense',
       expenseId: data.expenseId,
       expenseRevision: revision + 1,
+      data: titleWithVendor(stored.expense),
       snapshot: snapshot({ group: context.group, expense: stored.expense, names: namesOf(context), documents: stored.documents }),
       ...actor(data.principal),
     })
@@ -702,13 +712,23 @@ export async function deleteExpense(
   const { groupId } = context.membership
   const request = { op: 'delete', groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision }
   return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request, previous: context.previous }, async () => {
-    const revision = currentExpense(context, data.expectedRevision).value.revision
+    const current = currentExpense(context, data.expectedRevision).value
+    const { revision } = current
     assertPrivateWrite(context.privateContext, { expenseId: data.expenseId, op: 'delete' })
     await ensureBaseline(tx, { context, principal: data.principal })
     await tx.update(expenses).set({ deletedAt: new Date(), revision: revision + 1 }).where(eq(expenses.id, data.expenseId))
     // Deleting the newest occurrence of a series stops it.
     if (context.link && !context.link.actedOn) await stopRecurrence(tx, { expenseId: data.expenseId })
-    await tx.insert(activities).values({ id: randomId(), groupId, type: 'delete_expense', expenseId: data.expenseId, expenseRevision: revision + 1, ...actor(data.principal) })
+    await tx.insert(activities).values({
+      id: randomId(),
+      groupId,
+      type: 'delete_expense',
+      expenseId: data.expenseId,
+      expenseRevision: revision + 1,
+      // The deleted expense's text, as the current app stores it.
+      data: titleWithVendor(current),
+      ...actor(data.principal),
+    })
     return { revision: revision + 1 }
   })
 }

@@ -11,7 +11,7 @@ import { MODE_NAMES, preferredPayer, RULE_NAMES, type SplitMode } from '../share
 import type { Db } from './db'
 import { publicData, type ActivityType } from './history'
 import type { Principal } from './ledger'
-import { iso } from './sql'
+import { activityData, activitySource, iso } from './sql'
 
 type ExpenseRow = {
   id: string
@@ -85,8 +85,8 @@ async function load(db: Db, data: { principal: Principal; group: string; activit
         data.activities
           ? sql`coalesce((SELECT json_agg(json_build_object(
               'id', a.id, 'time', ${iso(sql`a.time`)}, 'type', a.type,
-              'participantId', a.participant_id, 'expenseId', a.expense_id, 'data', a.data, 'expenseRevision', a.expense_revision,
-              'snapshot', a.snapshot, 'source', a.source, 'actorName', a.actor_name
+              'participantId', a.participant_id, 'expenseId', a.expense_id, 'data', ${activityData(sql`a`)}, 'expenseRevision', a.expense_revision,
+              'snapshot', a.snapshot, 'source', ${activitySource(sql`a`)}, 'actorName', a.actor_name
             ) ORDER BY a.sequence) FROM activities a WHERE a.group_id = g.id), '[]')`
           : sql`NULL`
       } AS activities
