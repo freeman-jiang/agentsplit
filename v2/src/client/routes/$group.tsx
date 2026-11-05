@@ -62,7 +62,10 @@ function GroupPage() {
             type="search"
             placeholder="Search expenses"
             defaultValue={search.q ?? ''}
-            onChange={(e) => navigate({ search: (s) => ({ ...s, q: e.target.value || undefined }), replace: true })}
+            onChange={(e) => {
+              const value = e.target.value
+              navigate({ search: ({ q: _q, ...rest }) => (value ? { ...rest, q: value } : rest), replace: true })
+            }}
             className="min-w-48 flex-1 rounded-lg border border-stone-200 px-3 py-1.5 text-sm"
           />
         </div>
