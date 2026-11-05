@@ -317,7 +317,7 @@ export const listActivity = defineTool({
           expenseRevision: a.expenseRevision,
           snapshot: snapshotOf({ state: a.snapshot, groupId }),
           previousSnapshot: snapshotOf({ state: a.previousSnapshot, groupId }),
-          source: a.source === 'mcp' ? 'agent' : a.source,
+          source: a.source,
           actorName: a.actorName,
           actorUserId: a.actor?.userId ?? null,
           // Key and connection IDs of other people stay private (DECISIONS.md group B, P-EXPORT-14).

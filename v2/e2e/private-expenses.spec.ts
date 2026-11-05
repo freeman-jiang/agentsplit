@@ -78,3 +78,19 @@ test('a private create whose response is lost opens the saved expense instead of
   await expect(page.getByRole('heading', { name: 'Edit expense' })).toBeVisible()
   await expect(page.getByLabel('Description')).toHaveValue('Concert tickets')
 })
+
+test('the ID of a private context opens its expense, not a group page (P-UNGROUP-39, P-GROUP-47, P-HIST-63)', async ({ page, context, baseURL }) => {
+  await seedHousehold(context, baseURL ?? '')
+  await startPrivateExpense(page)
+  await page.getByRole('button', { name: 'Create' }).click()
+  await page.getByRole('link', { name: 'View expense' }).click()
+  await expect(page).toHaveURL(/\/expenses\/[A-Za-z0-9_-]{21}$/)
+  const expenseUrl = page.url()
+  const id = new URL(expenseUrl).pathname.split('/').at(-1) ?? ''
+  for (const path of [`/${id}`, `/${id}/activity`, `/groups/${id}/edit`]) {
+    await page.goto(path)
+    await expect(page).toHaveURL(expenseUrl)
+    await expect(page.getByRole('heading', { name: 'Edit expense' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Group' })).toHaveCount(0)
+  }
+})

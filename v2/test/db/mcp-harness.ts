@@ -4,9 +4,11 @@ import { serializeSignedCookie } from 'better-call'
 import type { Pool } from 'pg'
 import { groups, memberships, participants } from '../../db/schema/app'
 import { session, user } from '../../db/schema/auth'
+import { createApp } from '~/server/app'
 import { createAuth } from '~/server/auth'
 import { makeDb, type Db } from '~/server/db'
 import { handleMcp } from '~/server/mcp/endpoint'
+import { handleAuthRoute } from '~/server/oauth-routes'
 import { createUngroupedExpense } from '~/server/ungrouped'
 import { fakeBucket } from './fake-bucket'
 import { resetTestDatabase } from './setup'
@@ -34,8 +36,20 @@ export async function startHarness() {
   /** ENABLE_EXPENSE_DOCUMENTS of the in-process Worker. */
   const documents = { enabled: true }
   const mcp = (request: Request) => withDb((db) => handleMcp(request, { db, baseUrl: BASE, bucket: r2.bucket, documentsEnabled: documents.enabled }))
+  /** The whole request handler of src/server/app.ts, for the plain HTTP routes (exports, receipts). */
+  const app = createApp({
+    config: { baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret', documentsEnabled: true, bootstrapEmail: undefined },
+    connect: () => pool.connect(),
+    pool: makeDb(pool),
+    bucket: r2.bucket,
+    assets: async () => new Response('SPA page'),
+  })
+  /** Better Auth behind the server's OAuth route checks, as src/server/app.ts sends /api/auth/* requests. */
   const auth = (request: Request) =>
-    withDb((db) => createAuth({ db, baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret' }).handler(request))
+    withDb((db) => {
+      const instance = createAuth({ db, baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret' })
+      return handleAuthRoute({ db, request, baseUrl: BASE, secret: SECRET, handle: (r) => instance.handler(r) })
+    })
   const authApi = <A>(work: (api: ReturnType<typeof createAuth>['api']) => Promise<A>) =>
     withDb((db) => work(createAuth({ db, baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret' }).api))
 
@@ -97,7 +111,7 @@ export async function startHarness() {
     return result.groupId
   }
 
-  return { pool, withDb, r2, documents, mcp, auth, authApi, account, apiKey, group, privateContext, close: () => pool.end() }
+  return { pool, withDb, r2, documents, mcp, app, auth, authApi, account, apiKey, group, privateContext, close: () => pool.end() }
 }
 
 let nextId = 1

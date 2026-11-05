@@ -6,6 +6,7 @@ import { Result, Schema } from 'effect'
 import { Conflict, Forbidden, Invalid, NotFound } from '../../shared/api'
 import type { Bucket } from '../bucket'
 import type { Db } from '../db'
+import { GROUP_DENIED } from '../security'
 import type { McpPrincipal } from './authenticate'
 
 export type ToolContext = {
@@ -53,8 +54,6 @@ export class ToolError extends Error {
 
 const INTERNAL_MESSAGE = 'Unable to complete this operation. Check the arguments; for an uncertain write, read its record before retrying.'
 
-/** The current app's access-denial text, now with a certain outcome (DECISIONS.md, P-MCP-41). */
-export const ACCESS_DENIED = 'This connection cannot access the requested group'
 
 /** The current app's texts for what a service did not find, by NotFound entity. */
 const NOT_FOUND: Readonly<Record<string, string>> = {
@@ -66,7 +65,8 @@ const NOT_FOUND: Readonly<Record<string, string>> = {
 
 /**
  * The error result body `{error: {code, message, outcomeUnknown, recovery}}`.
- * Only an unexpected failure of a write leaves its outcome unknown.
+ * Only an unexpected failure of a write leaves its outcome unknown. An access
+ * denial has a certain outcome (DECISIONS.md, P-MCP-41).
  */
 export function errorBody(data: { error: unknown; kind: 'read' | 'write' }) {
   const { error } = data
@@ -74,7 +74,7 @@ export function errorBody(data: { error: unknown; kind: 'read' | 'write' }) {
     error instanceof ToolError
       ? [error.code, error.message]
       : error instanceof Forbidden
-        ? ['FORBIDDEN', error.message === 'Group access denied' ? ACCESS_DENIED : error.message]
+        ? ['FORBIDDEN', error.message === 'Group access denied' ? GROUP_DENIED : error.message]
         : error instanceof NotFound
           ? ['NOT_FOUND', NOT_FOUND[error.entity] ?? 'Group not found.']
           : error instanceof Conflict

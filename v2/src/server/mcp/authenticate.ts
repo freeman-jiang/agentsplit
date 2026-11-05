@@ -6,6 +6,7 @@ import type { Db } from '../db'
 import type { Principal } from '../ledger'
 import { verifyApiKey } from './api-key'
 import { jsonError, noStore } from '../security'
+import { sessionPrincipal } from '../session'
 import { challenge } from './challenge'
 import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
 import { verifyOAuthRequest } from './oauth'
@@ -61,7 +62,7 @@ async function oauth(db: Db, data: { request: Request; baseUrl: string }): Promi
       userId: result.userId,
       name: result.name,
       email: result.email,
-      source: 'mcp',
+      source: 'agent',
       agentKeyId: `oauth:${result.connectionId}`,
       scopes: result.scopes,
       oauthConnectionId: result.connectionId,
@@ -95,10 +96,25 @@ export async function authenticate(db: Db, data: { request: Request; baseUrl: st
     const account = verified.owner
     if (!account?.verified) return { response: challenge({ baseUrl }) }
     return {
-      principal: { userId: account.id, name: account.name, email: account.email, source: 'mcp', agentKeyId: verified.key.id, scopes: null, oauthConnectionId: null },
+      principal: { userId: account.id, name: account.name, email: account.email, source: 'agent', agentKeyId: verified.key.id, scopes: null, oauthConnectionId: null },
     }
   } catch (error) {
     console.error('MCP authentication failed', error)
     return { response: unavailable() }
   }
+}
+
+/**
+ * The caller of a read that agents also make over plain HTTP (receipts and
+ * exports). An `X-API-Key` or `Authorization` header takes the MCP path and
+ * the session cookie is then ignored, as in the current app (P-AUTH-45,
+ * P-AUTH-47). A failed agent credential gives the MCP endpoint's answer.
+ */
+export async function httpReader(
+  db: Db,
+  data: { request: Request; baseUrl: string; secret: string },
+): Promise<{ readonly principal: Principal | null } | { readonly response: Response }> {
+  const headers = data.request.headers
+  if (headers.has('x-api-key') || headers.has('authorization')) return authenticate(db, { request: data.request, baseUrl: data.baseUrl })
+  return { principal: await sessionPrincipal(db, { cookie: headers.get('cookie'), secret: data.secret, baseUrl: data.baseUrl }) }
 }

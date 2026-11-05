@@ -79,10 +79,6 @@ type Extra = {
   category: { id: number; name: string; grouping: string } | null
 }
 
-type Actor = { userId: string | null; name: string; source: string } | null
-/** The current app names an agent's writes `agent`; v2 stores `mcp`. */
-const actor = (a: Actor): Actor => (a && a.source === 'mcp' ? { ...a, source: 'agent' } : a)
-
 export const listAllExpenses = defineTool({
   name: 'list_all_expenses',
   kind: 'read',
@@ -167,7 +163,7 @@ export const listAllExpenses = defineTool({
           contextExpenseId: e.contextExpenseId,
           contextExpenseTitle: e.contextExpenseTitle,
           participantId: e.participantId,
-          attribution: { ...e.attribution, createdBy: actor(e.attribution.createdBy), updatedBy: actor(e.attribution.updatedBy) },
+          attribution: e.attribution,
           paidBy: person(payerId),
           payers: e.payers.map((p) => ({ participant: person(p.participantId), amount: p.amount })),
           // An amount split stores minor units; the current app shows them as amounts.
