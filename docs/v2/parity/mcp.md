@@ -246,7 +246,7 @@ The service that owns each behavior is named in the design section above. "code"
 | Item | Status | Evidence or reason |
 | --- | --- | --- |
 | P-TOOL-CREATEGROUP-01, 03, 05, 09, 10 | covered | more "creates a group with the creator as admin…". The creator is the first participant. |
-| 02 | changed | The same fields. v2 has registered currencies only (P-GROUP-23): `currencyCode`, else a `currency` that is a code or the symbol of exactly one currency, gives the group currency. Anything else answers BAD_REQUEST. Names are trimmed, as the RPC contract requires. |
+| 02 | changed | The same fields. v2 has registered currencies only (P-GROUP-23): `currencyCode`, else a `currency` that is a code or the symbol of exactly one currency, gives the group currency. Anything else answers BAD_REQUEST. Freeman confirmed this on 2026-11-05 (DECISIONS.md). Names are trimmed, as the RPC contract requires. |
 | 04 | covered | A reused groupId answers CONFLICT with the current message (same test). |
 | 06, 08 | code | `groups.test.ts`. The group starts at revision 1 (same test). |
 | 07 | code | An unverified account cannot reach a tool (P-MCP-52). |
