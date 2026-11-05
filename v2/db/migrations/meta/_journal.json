@@ -22,6 +22,13 @@
       "when": 1793868400912,
       "tag": "0002_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793872726556,
+      "tag": "0003_recurring_anchor",
+      "breakpoints": true
     }
   ]
 }
