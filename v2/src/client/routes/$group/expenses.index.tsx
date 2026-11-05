@@ -8,6 +8,7 @@ import { expenseRowFigures, type Figure } from '~/client/components/expense-row'
 import { money } from '~/client/components/money'
 import { expensesQuery, groupQuery } from '~/client/queries'
 import { Button } from '~/client/ui/button'
+import { ExportMenu } from '~/client/components/history/export-menu'
 import { Input } from '~/client/ui/input'
 import { Skeleton } from '~/client/ui/skeleton'
 import type { Expense } from '~/shared/api'
@@ -123,6 +124,8 @@ function ExpensesTab() {
             </button>
           )}
         </div>
+        {/* CSV and JSON exports of the whole group, as in the current app (P-EXPORT-01). */}
+        <ExportMenu group={group} />
       </div>
       {rows.length === 0 ? (
         q ? (

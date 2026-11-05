@@ -225,7 +225,8 @@ async function groupSnapshot(tx: Db, groupId: string) {
       name: group.name,
       slug: group.slug,
       information: group.information,
-      defaultCurrency: group.defaultCurrency,
+      // The field name the history reader expects (V2GroupSnapshot in src/shared/history.ts).
+      currency: group.defaultCurrency,
       revision: group.revision,
       participants: people.rows,
     },
