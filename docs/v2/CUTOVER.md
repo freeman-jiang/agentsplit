@@ -7,7 +7,7 @@ Status: **draft for Coolify** (2026-11-05). Freeman moved v2 hosting from Cloudf
 - Met 2026-11-05: receipt uploads through MCP are merged into `v2` (5b0f4f4).
 - Met 2026-11-05: the nightly backup (dots#56) is live on the dev box. `agentsplit-backup.timer` is enabled, with its first run on 2026-11-06 at 03:31 PST, and the alert "AgentSplit backup failed" is applied. Agents have root on the box through `devbox-root` (dots#60).
 - The v2 server runs on Coolify's Compose build: branch `t3/v2-coolify` (in progress) adds the server, the Garage S3 client, `v2/Dockerfile` and `compose.v2.coolify.yaml`, and passes e2e against that stack locally. It is merged into `v2`.
-- A Coolify preview of v2 (a separate application from branch `v2`, synthetic data, its own Postgres and Garage) passes the browser, agent, receipt and upload checks. Freeman approves creating it, because it is a new resource on the production host.
+- A Coolify preview of v2 (a separate application from branch `v2`, synthetic data, its own Postgres and Garage) passes the browser, agent, receipt and upload checks. Freeman approved creating it on 2026-11-05.
 - CI is green on `v2`, and every parity item is covered, changed with a reason, or deferred with Freeman's agreement.
 - Every production step below starts with a new verified backup: `agentsplit-backup coolify` with its test restore passing. A failed backup stops the step.
 
