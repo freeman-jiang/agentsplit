@@ -1,17 +1,17 @@
+import { requireSignedIn } from '~/client/queries/account'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, Outlet, redirect } from '@tanstack/react-router'
 import { ArrowLeftRight, BarChart3, Info, Receipt, Scale, ScrollText, Settings, Users } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '~/client/cn'
 import { money } from '~/client/components/money'
-import { groupQuery, meQuery } from '~/client/queries'
+import { groupQuery } from '~/client/queries'
 import { Button } from '~/client/ui/button'
 import { groupRef } from '~/shared/groups'
 
 export const Route = createFileRoute('/$group')({
-  beforeLoad: async ({ context }) => {
-    if (!(await context.queryClient.ensureQueryData(meQuery))) throw redirect({ to: '/sign-in' })
-  },
+  // A signed-out visitor returns here after sign-in (P-AUTH-49).
+  beforeLoad: ({ context, location }) => requireSignedIn({ queryClient: context.queryClient, location }),
   loader: async ({ context, params, location }) => {
     const g = await context.queryClient.ensureQueryData(groupQuery(params.group)).catch((error: unknown) => {
       // Not a member, or no such group: the directory explains (P-GROUP-21, P-GROUP-46).

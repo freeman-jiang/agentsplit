@@ -1,10 +1,10 @@
+import { requireSignedIn } from '~/client/queries/account'
 import { useSuspenseQuery } from '@tanstack/react-query'
-import { createFileRoute, Link, redirect, useNavigate, useRouter } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate, useRouter } from '@tanstack/react-router'
 import { Calendar, Loader2, MoreHorizontal, Star, Users } from 'lucide-react'
 import { useSyncExternalStore } from 'react'
 import { cn } from '~/client/cn'
 import { money } from '~/client/components/money'
-import { meQuery } from '~/client/queries'
 import { directoryQuery } from '~/client/queries/groups'
 import { Alert, AlertDescription } from '~/client/ui/alert'
 import { Button } from '~/client/ui/button'
@@ -26,9 +26,8 @@ const parseSearch = (raw: Record<string, unknown>): Search => {
 
 export const Route = createFileRoute('/groups/')({
   validateSearch: parseSearch,
-  beforeLoad: async ({ context }) => {
-    if (!(await context.queryClient.ensureQueryData(meQuery))) throw redirect({ to: '/sign-in' })
-  },
+  // A signed-out visitor returns here after sign-in (P-AUTH-49).
+  beforeLoad: ({ context, location }) => requireSignedIn({ queryClient: context.queryClient, location }),
   loaderDeps: ({ search }) => ({ offset: search.offset ?? 0 }),
   loader: ({ context, deps }) => context.queryClient.ensureQueryData(directoryQuery(deps.offset)),
   pendingComponent: () => (
