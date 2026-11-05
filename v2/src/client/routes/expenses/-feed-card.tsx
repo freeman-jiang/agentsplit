@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { Paperclip, Users } from 'lucide-react'
 import { cn } from '~/client/cn'
+import { CategoryIcon } from '~/client/components/category-icon'
 import { money } from '~/client/components/money'
 import { Badge } from '~/client/ui/badge'
 import type { Attribution, FeedItem } from '~/shared/api'
@@ -65,13 +66,16 @@ export function FeedCard({ expense }: { expense: Item }) {
       params={{ expenseId: expense.id }}
       data-testid="expense-card"
       data-expense-id={expense.id}
-      className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 gap-y-3 border-b px-3 py-4 transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring sm:grid-cols-[2rem_minmax(0,1fr)_minmax(7rem,auto)_minmax(7rem,auto)] sm:items-center sm:gap-x-4"
+      className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 gap-y-3 border-b px-3 py-4 transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring sm:grid-cols-[2rem_2.5rem_minmax(0,1fr)_minmax(7rem,auto)_minmax(7rem,auto)] sm:items-center sm:gap-x-4"
     >
       <time dateTime={expense.expenseDate} className="row-span-2 text-center text-muted-foreground sm:row-span-1">
         <span className="block text-[10px] uppercase tracking-wide">{month.format(date)}</span>
         <span className="block text-xl leading-tight tabular-nums">{date.getUTCDate()}</span>
         <span className="sr-only">{date.getUTCFullYear()}</span>
       </time>
+      <span className="hidden h-10 w-10 items-center justify-center bg-muted text-primary sm:flex">
+        <CategoryIcon categoryId={expense.categoryId} className="h-5 w-5" />
+      </span>
       <div className="min-w-0">
         {expense.group ? (
           <Badge
