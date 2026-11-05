@@ -59,3 +59,19 @@ describe('hourly job', () => {
     expect(nextRun(new Date('2026-11-05T23:59:59Z'), 7).toISOString()).toBe('2026-11-06T00:07:00.000Z')
   })
 })
+
+describe('maintenance', () => {
+  // The cutover relies on this: users and agents get 503, Coolify's health check passes.
+  it('answers 503 to pages, API calls and MCP, but lets the health check through', async () => {
+    const { maintenanceResponse } = await import('~/server/maintenance')
+    expect(maintenanceResponse(new Request('https://a.example/api/health'))).toBeNull()
+    const page = maintenanceResponse(new Request('https://a.example/maple', { headers: { accept: 'text/html,*/*' } }))
+    expect(page?.status).toBe(503)
+    expect(page?.headers.get('content-type')).toContain('text/html')
+    for (const path of ['/api/rpc', '/api/mcp', '/api/receipt-uploads/x']) {
+      const response = maintenanceResponse(new Request(`https://a.example${path}`, { method: 'POST', headers: { accept: 'application/json' } }))
+      expect(response?.status).toBe(503)
+      expect(response?.headers.get('retry-after')).toBe('300')
+    }
+  })
+})
