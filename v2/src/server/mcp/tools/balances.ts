@@ -150,7 +150,7 @@ export const processRecurringExpenses = defineTool({
   destructive: false,
   idempotent: true,
   description:
-    'Explicitly materialize due recurring expenses only in the specified group, using the server clock. Returns created expense IDs. Reads never generate recurring entries; a scheduled job also creates them daily, and repeated processing does not duplicate frames.',
+    'Explicitly materialize due recurring expenses only in the specified group, using the server clock. Returns created expense IDs. Reads never generate recurring entries; a scheduled job also creates them every hour, and repeated processing does not duplicate frames.',
   input: Schema.Struct({ groupId: ShortId }),
   strict: [''],
   output: Schema.Struct({ createdExpenseIds: Schema.Array(Id) }),
