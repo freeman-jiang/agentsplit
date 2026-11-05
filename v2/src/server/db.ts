@@ -45,7 +45,13 @@ export const useDb = <A>(work: (db: Db) => Promise<A>): Effect.Effect<A, Databas
 
 /** Writes that conflict with a concurrent write (serialization failure or deadlock) are retried. */
 const RETRYABLE = new Set(['40001', '40P01'])
-const retryable = (cause: unknown) => typeof cause === 'object' && cause !== null && RETRYABLE.has(String((cause as { code?: unknown }).code))
+const sqlState = (error: unknown): string | undefined => {
+  if (typeof error !== 'object' || error === null) return undefined
+  const { code, cause } = error as { code?: unknown; cause?: unknown }
+  // Drizzle wraps the driver's error, so the SQLSTATE is on its cause.
+  return typeof code === 'string' ? code : sqlState(cause)
+}
+const retryable = (cause: unknown) => RETRYABLE.has(sqlState(cause) ?? '')
 
 /** Runs `work` in one SERIALIZABLE transaction on this request's connection, retried on serialization failures. */
 export const transaction = <A>(work: (db: Db) => Promise<A>): Effect.Effect<A, DatabaseError | DomainError, RequestDb> =>
