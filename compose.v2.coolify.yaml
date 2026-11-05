@@ -21,6 +21,8 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?Set GOOGLE_CLIENT_SECRET}
       AUTH_BOOTSTRAP_EMAIL: ${AUTH_BOOTSTRAP_EMAIL:-}
       ENABLE_EXPENSE_DOCUMENTS: 'true'
+      # The cutover's freeze: 503 for everything but /api/health (docs/v2/CUTOVER.md).
+      AGENTSPLIT_MAINTENANCE: ${AGENTSPLIT_MAINTENANCE:-}
       # Garage's S3 API on the internal network. The app streams every
       # receipt itself, so no browser or agent talks to storage.
       S3_UPLOAD_ENDPOINT: http://agentsplit-garage:3900
