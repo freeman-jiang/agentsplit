@@ -14,6 +14,7 @@ import {
 import { sql } from 'drizzle-orm'
 import type { JWTPayload } from 'jose'
 import type { Db } from '../db'
+import { sha256Base64url } from '../ids'
 import { mcpResource, OAUTH_CONNECTION_CLAIM, OAUTH_READ_SCOPE, oauthIssuer } from './constants'
 
 export type OAuthResult =
@@ -47,18 +48,13 @@ const jwksCacheKey = {}
  * a verification row whose ID is base64url(sha256("reserve:dpop-proof:" + key)).
  * A second insert of the same proof finds the row and fails, across isolates.
  */
-async function reservationId(identifier: string) {
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`reserve:${identifier}`)))
-  let binary = ''
-  for (const byte of digest) binary += String.fromCharCode(byte)
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
+const reservationId = (identifier: string) => sha256Base64url(`reserve:${identifier}`)
 const replayStore = (db: Db): DpopReplayStore => ({
   reserve: async ({ key, expiresAt }) => {
     const identifier = `dpop-proof:${key}`
     const result = await db.execute(sql`
       INSERT INTO verification (id, identifier, value, expires_at, created_at, updated_at)
-      VALUES (${await reservationId(identifier)}, ${identifier}, ${key}, ${expiresAt}, now(), now())
+      VALUES (${reservationId(identifier)}, ${identifier}, ${key}, ${expiresAt}, now(), now())
       ON CONFLICT (id) DO NOTHING RETURNING id`)
     return result.rows.length === 1
   },

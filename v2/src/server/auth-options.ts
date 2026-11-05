@@ -7,6 +7,7 @@ import { mcp } from '@better-auth/mcp'
 import type { OAuthProviderExtension } from '@better-auth/oauth-provider'
 import { jwt } from 'better-auth/plugins/jwt'
 import { OAUTH_SCOPES } from '../shared/api/account'
+import { sha256Base64url } from './ids'
 
 // The consent page needs the scopes too, so they live in the shared contract.
 export { OAUTH_READ_SCOPE, OAUTH_SCOPES, OAUTH_WRITE_SCOPE } from '../shared/api/account'
@@ -16,12 +17,7 @@ export const mcpResource = (baseUrl: string) => new URL('/api/mcp', baseUrl).hre
 export const oauthIssuer = (baseUrl: string) => new URL('/api/auth', baseUrl).href
 
 /** The stored form of every OAuth token: base64url(sha256(token)), as in the current app. */
-export async function hashOAuthToken(token: string): Promise<string> {
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)))
-  let binary = ''
-  for (const byte of digest) binary += String.fromCharCode(byte)
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
+export const hashOAuthToken = (token: string) => sha256Base64url(token)
 
 export type ClientMetadataResourceFetch = Parameters<typeof cimd>[0]['fetchClientMetadataResource']
 

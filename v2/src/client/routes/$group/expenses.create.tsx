@@ -5,7 +5,8 @@ import { ExpenseForm } from '~/client/components/expense-form'
 import { newExpenseState, type Prefill } from '~/client/components/expense-form-state'
 import { groupQuery } from '~/client/queries'
 import { referenceQuery } from '~/client/queries/expenses'
-import { randomExpenseId, searchText } from '~/client/components/ids'
+import { searchText } from '~/client/components/ids'
+import { randomId } from '~/shared/ids'
 import { currencyParam, numberParam, pickSearch } from '~/client/search'
 
 // The current app's prefill parameters (P-EXP-96).
@@ -38,7 +39,7 @@ function CreateExpense() {
   const { data: g } = useSuspenseQuery(groupQuery(group))
   const { data: reference } = useSuspenseQuery(referenceQuery)
   // Minted once per visit, so a retried create cannot make a second expense (P-EXP-38).
-  const [expenseId] = useState(randomExpenseId)
+  const [expenseId] = useState(() => randomId())
   const [initial] = useState(() =>
     newExpenseState({ groupId: g.id, participants: g.participants.map((p) => p.id), viewer: g.participantId, defaultCurrency: g.defaultCurrency, prefill: prefillOf(search) }),
   )

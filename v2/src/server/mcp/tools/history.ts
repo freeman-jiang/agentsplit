@@ -342,10 +342,8 @@ export const exportGroup = defineTool({
   strict: [''],
   output: Schema.Struct({ filename: Schema.String, contentType: Schema.String, content: Schema.String }),
   run: async ({ db, principal }, input) => {
-    const format = input.format ?? 'json'
     // The same file as the export.group RPC.
-    const file = await (format === 'json' ? exports.exportJson : exports.exportCsv)(db, { principal, group: input.groupId })
-    return { filename: `agentsplit-${file.groupId}.${format}`, contentType: format === 'json' ? 'application/json' : 'text/csv', content: file.content }
+    return exports.exportFile(db, { principal, group: input.groupId, format: input.format ?? 'json' })
   },
 })
 

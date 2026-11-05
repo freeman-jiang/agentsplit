@@ -7,6 +7,7 @@
 import { and, eq, gt, isNull, lt, lte, sql } from 'drizzle-orm'
 import { apikey, user } from '../../../db/schema/auth'
 import type { Db } from '../db'
+import { sha256Base64url } from '../ids'
 
 type KeyRow = typeof apikey.$inferSelect
 
@@ -19,12 +20,7 @@ export type ApiKeyResult =
   | { readonly valid: false; readonly code: 'RATE_LIMITED'; readonly tryAgainInMs: number }
 
 /** Better Auth's defaultKeyHasher: base64url(sha256(key)) without padding. */
-export async function hashApiKey(key: string): Promise<string> {
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key)))
-  let binary = ''
-  for (const byte of digest) binary += String.fromCharCode(byte)
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
+export const hashApiKey = (key: string) => sha256Base64url(key)
 
 const byId = (id: string) => eq(apikey.id, id)
 
@@ -102,7 +98,7 @@ export async function verifyApiKey(db: Db, rawKey: string): Promise<ApiKeyResult
     .select({ key: apikey, owner: { id: user.id, name: user.name, email: user.email, verified: user.emailVerified } })
     .from(apikey)
     .leftJoin(user, eq(user.id, apikey.referenceId))
-    .where(eq(apikey.key, await hashApiKey(rawKey)))
+    .where(eq(apikey.key, hashApiKey(rawKey)))
     .limit(1)
   if (!found) return { valid: false, code: 'INVALID_API_KEY' }
   const { key, owner } = found

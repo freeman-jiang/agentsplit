@@ -1,7 +1,8 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
-import { randomExpenseId, searchText } from '~/client/components/ids'
+import { searchText } from '~/client/components/ids'
+import { randomId } from '~/shared/ids'
 import { PaymentForm } from '~/client/components/payment-form'
 import { groupQuery } from '~/client/queries'
 import { balancesQuery } from '~/client/queries/expenses'
@@ -28,6 +29,6 @@ function CreatePayment() {
   const { group } = Route.useParams()
   const search = Route.useSearch()
   const { data: g } = useSuspenseQuery(groupQuery(group))
-  const [expenseId] = useState(randomExpenseId)
+  const [expenseId] = useState(() => randomId())
   return <PaymentForm mode="create" expenseId={expenseId} prefill={{ ...optional({ from: searchText(search.from), to: searchText(search.to), amount: searchText(search.amount) }), ...(search.currencyCode ? { currencyCode: search.currencyCode } : {}) }} group={g} target={{ kind: 'group', groupParam: group }} />
 }

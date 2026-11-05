@@ -5,6 +5,13 @@ import { minor, sumMinor, type Minor } from './minor'
 export const SPLIT_MODES = ['evenly', 'shares', 'percentage', 'amount'] as const
 export type SplitMode = (typeof SPLIT_MODES)[number]
 
+/**
+ * The current app's names of the split modes and the recurrence rules. Its
+ * MCP tools, its exports and its saved form defaults use them.
+ */
+export const MODE_NAMES = { evenly: 'EVENLY', shares: 'BY_SHARES', percentage: 'BY_PERCENTAGE', amount: 'BY_AMOUNT' } as const satisfies Record<SplitMode, string>
+export const RULE_NAMES = { none: 'NONE', daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY' } as const
+
 /** A weight is an exact non-negative decimal: a share count, a percentage, or an amount. */
 export type Weight = { readonly units: bigint; readonly scale: number }
 
