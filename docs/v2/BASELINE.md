@@ -107,3 +107,16 @@ The same method, web session, 15 requests per size. CPU milliseconds:
 | 100 | 18 | 37 |
 
 A request costs about 8 ms before its rows, and each row adds about 0.15 ms. `/api/health` without the database costs 3 ms, so connecting, the session check and Effect RPC take about 5 ms. The fixed part is the larger problem: pages of 30 rows stay near 13 ms at p50 even if the per-row work halves. Reducing the fixed part means a cheaper path than Effect RPC for the hottest reads, or a smaller connection setup. Freeman decided to accept this and watch the error rate after the cutover ("Workers Free CPU" in DECISIONS.md).
+
+## Write CPU (preview, 2026-11-05)
+
+Measured after the MCP upload merge, `wrangler tail`, warm isolates, synthetic data. CPU milliseconds:
+
+| Request | n | p50 | p90 |
+| --- | --- | --- | --- |
+| MCP `update_expense`, notes only | 9 | 40 | 75 |
+| MCP `update_expense`, request one upload target | 8 | 25 | 91 |
+| Upload `PUT /api/receipt-uploads/<secret>` | 8 | 6 | 9 |
+| MCP `update_expense`, attach one upload | 8 | 56 | 133 |
+
+Every request answered `ok`. One MCP expense write makes 24 (create) to 27 (update) SQL statements: 3 for authentication, then, in one SERIALIZABLE transaction, membership, the idempotency check, two private-context checks, participants, category, the expense row, delete and insert of payers and shares, documents, the recurring link, a second read of the expense and the group for the activity snapshot, the activity and the idempotency row. At about 1.5 ms of CPU per statement on Workers, the statements are most of the cost. Writes are far rarer than reads in a household ledger, but they are 4 to 13 times the 10 ms budget.
