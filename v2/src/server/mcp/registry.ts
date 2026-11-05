@@ -11,6 +11,10 @@ export type ToolContext = {
   readonly db: Db
   readonly principal: McpPrincipal
   readonly baseUrl: string
+  /** The receipts bucket, for upload attachment. */
+  readonly bucket: R2Bucket
+  /** ENABLE_EXPENSE_DOCUMENTS: whether agents may upload receipts. */
+  readonly documentsEnabled: boolean
 }
 
 export type JsonSchema = { readonly [key: string]: JsonValue }

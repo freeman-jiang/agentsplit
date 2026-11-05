@@ -12,7 +12,8 @@ export const MAX_RECEIPT_BYTES = 5 * 1024 * 1024
 /** The multipart envelope may add this much to the image. */
 const ENVELOPE_BYTES = 64 * 1024
 const MAX_PIXELS = 40_000_000
-const NEW_URL_PREFIX = 'r2://agentsplit-receipts/'
+/** The pointer of a receipt stored in R2 by v2: this prefix and the object key. */
+export const NEW_URL_PREFIX = 'r2://agentsplit-receipts/'
 
 export type ImageInfo = { format: 'jpeg' | 'png'; width: number; height: number }
 
@@ -67,6 +68,22 @@ async function receiptInGroup(db: Db, data: { groupId: string; url: string }) {
       OR EXISTS (SELECT 1 FROM expense_documents d JOIN expenses e ON e.id = d.expense_id WHERE e.group_id = ${data.groupId} AND d.url = ${data.url}) AS found
   `)
   return result.rows[0]?.found === true
+}
+
+/**
+ * The reader of GET /api/receipts: an agent's API key or OAuth token, as for
+ * MCP (P-RECEIPT-22, P-TOOL-GETEXP-06), else the web session. A request
+ * with a bad agent credential does not fall back to the cookie.
+ */
+export async function receiptReader(db: Db, data: { request: Request; baseUrl: string; secret: string }): Promise<Principal | null> {
+  const headers = data.request.headers
+  if (headers.has('x-api-key') || headers.has('authorization')) {
+    const { authenticate } = await import('./mcp/authenticate')
+    const result = await authenticate(db, { request: data.request, baseUrl: data.baseUrl })
+    return 'principal' in result ? result.principal : null
+  }
+  const { sessionPrincipal } = await import('./session')
+  return sessionPrincipal(db, { cookie: headers.get('cookie'), secret: data.secret, baseUrl: data.baseUrl })
 }
 
 /**
