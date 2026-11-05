@@ -2,7 +2,9 @@
 // merged into one group. Each area defines its procedures in src/shared/api/.
 // MCP tools call the same domain services, so these schemas also describe agent writes.
 import { CoreApi } from './api/core'
+import { ExpensesApi } from './api/expenses'
 
 export * from './api/core'
+export * from './api/expenses'
 
-export class AgentSplitApi extends CoreApi.merge() {}
+export class AgentSplitApi extends CoreApi.merge(ExpensesApi) {}

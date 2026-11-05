@@ -8,7 +8,14 @@ import { sessionPrincipal } from './session'
 /** Settings from the Worker environment that the handlers need. */
 export class AppConfig extends Context.Service<
   AppConfig,
-  { readonly baseUrl: string; readonly secret: string; readonly googleClientId: string; readonly googleClientSecret: string }
+  {
+    readonly baseUrl: string
+    readonly secret: string
+    readonly googleClientId: string
+    readonly googleClientSecret: string
+    /** Receipts on expenses (the current app's ENABLE_EXPENSE_DOCUMENTS). */
+    readonly documentsEnabled: boolean
+  }
 >()('agentsplit/AppConfig') {}
 
 /** The signed-in caller, or null. Resolved once per request by AuthMiddleware. */

@@ -92,6 +92,9 @@ export const Expense = Schema.Struct({
   createdAt: Timestamp,
   updatedAt: Timestamp,
   documentCount: Schema.Number,
+  /** Who recorded revision 1, and who made the latest edit; null when history does not say. */
+  addedBy: Schema.NullOr(Schema.String),
+  editedBy: Schema.NullOr(Schema.String),
 })
 
 export const ExpenseSort = Schema.Literals(['date', 'updated'])
@@ -114,6 +117,14 @@ export const ExpensePage = Schema.Struct({
   nextCursor: Schema.NullOr(Schema.String),
 })
 
+/** A receipt attached to an expense. The URL must name a receipt uploaded to the same group. */
+export const DocumentInput = Schema.Struct({
+  id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2000)),
+  width: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+  height: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+})
+
 /** What a client sends to create or replace an expense. Amounts are exact decimal strings. */
 export const ExpenseInput = Schema.Struct({
   kind: Schema.Literals(['expense', 'payment']),
@@ -130,6 +141,8 @@ export const ExpenseInput = Schema.Struct({
   /** Who shares the cost, with each person's weight: a share count, a percentage, or an exact amount. */
   shares: Schema.Array(Schema.Struct({ participantId: Id, weight: Schema.String })).check(Schema.isMinLength(1)),
   recurrence: Schema.Literals(['none', 'daily', 'weekly', 'monthly']),
+  /** The full list of receipts. Omitted on an update: keep the saved receipts. */
+  documents: Schema.optionalKey(Schema.Array(DocumentInput).check(Schema.isMaxLength(100))),
 })
 
 // ---------- procedures ----------

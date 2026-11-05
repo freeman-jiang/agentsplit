@@ -9,4 +9,6 @@ export interface Env {
   readonly GOOGLE_CLIENT_SECRET: string
   /** The verified email that may claim the groups created before accounts existed. */
   readonly AUTH_BOOTSTRAP_EMAIL?: string
+  /** "true", "yes", "1" or "on" shows receipts on expenses, as in the current app. */
+  readonly ENABLE_EXPENSE_DOCUMENTS?: string
 }
