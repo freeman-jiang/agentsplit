@@ -11,7 +11,7 @@ import type { ExpenseDraft } from '../shared/expense-rules'
 import type { V2GroupSnapshot } from '../shared/history'
 import type { Db } from './db'
 import { contacts } from './feed'
-import { invitationTokenHash, newInvitationToken } from './groups'
+import { groupSnapshotOf, invitationTokenHash, newInvitationToken } from './groups'
 import { randomId } from './ids'
 import { actor, createExpense, requireMember, type Principal } from './ledger'
 
@@ -105,11 +105,10 @@ export async function createUngroupedExpense(
     groupId,
     type: 'create_group',
     data: 'Private expense',
-    snapshot: {
-      schemaVersion: 2,
-      kind: 'group',
-      group: { id: groupId, name: group.name, slug: null, currency: group.defaultCurrency, information: '', revision: group.revision, participants: stored.map((p) => ({ id: p.id, name: p.name })) },
-    } satisfies typeof V2GroupSnapshot.Encoded,
+    snapshot: groupSnapshotOf({
+      group: { ...group, information: '' },
+      participants: stored.map((p) => ({ id: p.id, name: p.name })),
+    }) satisfies typeof V2GroupSnapshot.Encoded,
     ...actor(data.principal),
   })
   const toStored = new Map(stored.map((p) => [p.localId, p.id]))

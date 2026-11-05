@@ -9,6 +9,7 @@ import { Id, IdempotencyKey, ReadError, WriteError } from './core'
 // ---------- rules shared by the form and the server ----------
 
 import { INVITATION_TOKEN } from '../groups'
+import { GROUP_ID } from '../ids'
 
 export * from '../groups'
 
@@ -145,7 +146,7 @@ export class GroupsApi extends RpcGroup.make(
   Rpc.make('groups.create', {
     payload: {
       /** Optional caller-chosen ID, 21 URL-safe characters. */
-      groupId: Schema.NullOr(Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{21}$/))),
+      groupId: Schema.NullOr(Schema.String.check(Schema.isPattern(GROUP_ID))),
       idempotencyKey: IdempotencyKey,
       group: GroupCreateInput,
     },

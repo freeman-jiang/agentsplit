@@ -3,7 +3,7 @@
 // statement with the membership check inside it, so a request makes one round
 // trip and a row the caller cannot see is never read.
 import { sql, type SQL } from 'drizzle-orm'
-import { Forbidden, Invalid, NotFound } from '../shared/api'
+import { groupAccessDenied, Invalid, NotFound } from '../shared/api'
 import { suggestSettlements } from '../shared/balances'
 import type { CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/money'
@@ -202,7 +202,7 @@ export async function accountBalances(db: Db, data: { principal: Principal; scop
     ) AS result
   `)
   const row = result.rows[0]?.result ?? { rows: [], unbound: [], denied: [], foreign: [] }
-  if (row.denied.length) throw new Forbidden({ message: 'Group access denied' })
+  if (row.denied.length) throw groupAccessDenied()
   if (row.foreign.length) throw new Invalid({ message: 'Participant does not belong to this group.', field: 'participantId' })
   const totals = new Map<CurrencyCode, bigint>()
   const balances = row.rows.map((r) => {

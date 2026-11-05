@@ -5,9 +5,10 @@
 // Multiple payers are new: `payers` beside the current single `paidBy`.
 import { Schema } from 'effect'
 import { sql, type SQL } from 'drizzle-orm'
-import { Conflict, Forbidden, NotFound } from '../../../shared/api'
+import { Conflict, groupAccessDenied, NotFound } from '../../../shared/api'
 import type { ExpenseDraft } from '../../../shared/expense-rules'
 import type { SavedExpense } from '../../../shared/history'
+import { GROUP_ID } from '../../../shared/ids'
 import { formatMinor, minor } from '../../../shared/money'
 import { preferredPayer, type SplitMode } from '../../../shared/split'
 import type { Db } from '../../db'
@@ -274,10 +275,9 @@ const attributionEvents = (data: { groupId: SQL; expenseId: SQL; through?: SQL }
 function attribution(events: readonly Event[], viewerUserId: string): Attribution {
   const row: { -readonly [K in keyof Attribution]: Attribution[K] } = { createdBy: null, updatedBy: null }
   for (const event of events) {
-    const { source } = event
     const actor =
-      event.userId || source === 'system'
-        ? { userId: event.userId, name: event.currentName ?? event.actorName ?? (source === 'system' ? 'Automatic recurrence' : 'Member'), source }
+      event.userId || event.source === 'system'
+        ? { userId: event.userId, name: event.currentName ?? event.actorName ?? (event.source === 'system' ? 'Automatic recurrence' : 'Member'), source: event.source }
         : null
     if (event.type === 'create_expense') {
       row.createdBy ??= actor
@@ -412,7 +412,7 @@ const memberOf = (data: { userId: string; groupId: string }) =>
 
 async function requireAccess(db: Db, data: { userId: string; groupId: string }) {
   const result = await db.execute<{ ok: boolean }>(sql`SELECT ${memberOf(data)} AS ok`)
-  if (!result.rows[0]?.ok) throw new Forbidden({ message: 'Group access denied' })
+  if (!result.rows[0]?.ok) throw groupAccessDenied()
 }
 
 // ---------- historical reads: saved revisions, never the live rows ----------
@@ -672,7 +672,7 @@ export const createExpense = defineTool({
     people: optional(People),
     expense: ExpenseCreateInput,
     uploads: optional(Uploads),
-    expenseId: optional(Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{21}$/))),
+    expenseId: optional(Schema.String.check(Schema.isPattern(GROUP_ID))),
   }),
   strict: ['', 'expense', 'uploads[]'],
   output: Schema.Struct({
@@ -730,7 +730,7 @@ export const updateExpense = defineTool({
     changes: optional(ExpenseChanges.annotate({ default: {} })),
     expectedRevision: NonNegativeInt,
     uploads: optional(Uploads),
-    attachUploadIds: optional(Schema.Array(Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{21}$/))).check(Schema.isMaxLength(10))),
+    attachUploadIds: optional(Schema.Array(Schema.String.check(Schema.isPattern(GROUP_ID))).check(Schema.isMaxLength(10))),
   }),
   strict: ['', 'changes', 'uploads[]'],
   output: Schema.Struct(ExpenseWrite),

@@ -4,6 +4,7 @@
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
+import { GROUP_ID } from '../ids'
 import { CalendarDate, Expense, ExpenseInput, Id, IdempotencyKey, Participant, ReadError, WriteError } from './core'
 
 // ---------- feed ----------
@@ -173,7 +174,7 @@ export class FeedApi extends RpcGroup.make(
   Rpc.make('expenses.context', { payload: { expenseId: Id }, success: ExpenseContext, error: ReadError }),
   Rpc.make('expenses.createUngrouped', {
     payload: {
-      expenseId: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{21}$/)),
+      expenseId: Schema.String.check(Schema.isPattern(GROUP_ID)),
       idempotencyKey: IdempotencyKey,
       people: Schema.Array(PrivatePerson).check(Schema.isMinLength(2), Schema.isMaxLength(100)),
       /** Payers and shares name people by their local IDs. */

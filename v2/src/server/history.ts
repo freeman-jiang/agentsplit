@@ -4,7 +4,7 @@
 // expense state to a historical answer. Stored snapshots are read as stored,
 // in either format (src/shared/history.ts).
 import { sql, type SQL } from 'drizzle-orm'
-import { Forbidden, Invalid, NotFound } from '../shared/api'
+import { groupAccessDenied, Invalid, NotFound } from '../shared/api'
 import { computeBalances } from '../shared/balances'
 import type { CurrencyCode } from '../shared/currencies'
 import { readSnapshot, savedEntry, type Category, type SavedExpense, type SavedState } from '../shared/history'
@@ -72,7 +72,7 @@ const withinBoundary = (selection: Boundary, alias: SQL) =>
 type Head = { active: boolean | null; boundary_id: string | null; boundary_time: string | null; group_created: string; categories: Record<string, [string, string]> | null }
 
 function requireAccess<T extends { active: boolean | null }>(row: T | undefined): T {
-  if (!row?.active) throw new Forbidden({ message: 'Group access denied' })
+  if (!row?.active) throw groupAccessDenied()
   return row
 }
 
