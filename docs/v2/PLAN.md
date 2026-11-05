@@ -58,6 +58,8 @@ Add property tests that prove conservation.
   - Include the payer in paidFor with their share, unless the payer paid only for other people.
   - Put the full calculation in notes, so that a person can recalculate every number. Keep the title short.
 
+Decisions on the current app's doubtful behavior are in [DECISIONS.md](DECISIONS.md). v2 is English only.
+
 ## Speed
 
 1. Measure the current app's signed-in pages first.
