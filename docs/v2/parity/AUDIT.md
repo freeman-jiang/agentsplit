@@ -55,14 +55,16 @@ Of the 167 changed items, a decision approves 105 and no decision approves 62. T
 
 Each gap is an item that v2 does not implement, or implements only in part. The list starts with the gaps that people see most.
 
+Branch `t3/v2-client-gaps` closes gaps 1, 4, 5 and 6 after the audit. Appendix A and Appendix B show the new status and the tests. The counts above are from the audit.
+
 ### People in the browser
 
-1. **P-BAL-53, P-BAL-54, P-BAL-55, P-BAL-56, P-BAL-58, P-BAL-62, P-BAL-63.** The group balance rail shows only names and signed net amounts. It has no "You are owed", "You owe" or "Settled up" line, no "Group net balances" heading, no "gets back" or "owes" text, no "(you)", no suggested payments, no "Refresh balances" button, no "Balance details" link and other empty and error texts. Evidence: `v2/src/client/routes/$group.tsx:97-125` (`NetList`, `BalanceRail`). expenses.md line 108 gives the rail to the lead, and lead.md does not track it.
+1. **P-BAL-53, P-BAL-54, P-BAL-55, P-BAL-56, P-BAL-58, P-BAL-62, P-BAL-63.** The group balance rail shows only names and signed net amounts. It has no "You are owed", "You owe" or "Settled up" line, no "Group net balances" heading, no "gets back" or "owes" text, no "(you)", no suggested payments, no "Refresh balances" button, no "Balance details" link and other empty and error texts. Evidence: `v2/src/client/routes/$group.tsx:97-125` (`NetList`, `BalanceRail`). expenses.md line 108 gives the rail to the lead, and lead.md does not track it. **Closed:** the rail is a port of the current app's `group-balance-summary.tsx` (`v2/src/client/routes/$group.tsx` `BalanceRail`); e2e `group-expenses.spec.ts` "the rail tells the viewer what they owe, and refreshes to "Settled up" (P-BAL-53..56, P-BAL-58, P-BAL-62, P-BAL-63)".
 2. **P-UNGROUP-39, P-GROUP-47, P-HIST-63.** The ID of a private expense context opens the full group shell (tabs, Settings, Log) instead of `/expenses/<expenseId>`. MCP `get_group` gives `/groups/<contextId>` as the share link, so a person who follows it sees the wrong page. Evidence: `$group.tsx:12-30` and `getGroup` (`v2/src/server/ledger.ts:109`) never read `groups.kind`. The `Group` contract has no `kind` (`v2/src/shared/api/core.ts`).
 3. **P-HIST-03.** The Log and MCP `list_activity` fail on a private expense context. The private-context `create_group` snapshot has `defaultCurrency` and no `currency`, so the history reader throws `UnreadableSnapshot` for the whole page. Activities are permanent, so every private expense created since the cutover has this row. The fix must go in the reader. Evidence: Writer: `v2/src/server/ungrouped.ts:93,107`. Reader: `v2/src/shared/history.ts:142-153,311` and `v2/src/server/history.ts:198`. No test decodes this snapshot. The named-group writer is correct (`groups.ts:225`).
-4. **P-EXP-22.** Expense cards show no category icon on wide screens. Evidence: No category icon component in `v2/src/client`. expenses.md line 48 defers it, with no owner.
-5. **P-PWA-04.** iOS shows no splash image when the app opens from the home screen. It shows the background color. Evidence: `v2/index.html` has `apple-touch-icon` only. account.md line 73 defers it as low value. No decision approves the drop.
-6. **P-PWA-36.** The error page shows no error reference for the user to quote. The rest of the item is done and tested. Evidence: `v2/src/client/components/error-state.tsx:10-30`; e2e `group-expenses.spec.ts` "a tab that fails to load…".
+4. **P-EXP-22.** Expense cards show no category icon on wide screens. Evidence: No category icon component in `v2/src/client`. expenses.md line 48 defers it, with no owner. **Closed:** `v2/src/client/components/category-icon.tsx` maps the fixed category IDs to the current app's icons, on group and dashboard cards from 640 px. Checked in the browser.
+5. **P-PWA-04.** iOS shows no splash image when the app opens from the home screen. It shows the background color. Evidence: `v2/index.html` has `apple-touch-icon` only. account.md line 73 defers it as low value. No decision approves the drop. **Closed:** `addAppleSplashImages` in `v2/src/client/pwa.ts` ports the current app's script. Checked in the browser with `navigator.standalone` set: two links, portrait and landscape.
+6. **P-PWA-36.** The error page shows no error reference for the user to quote. The rest of the item is done and tested. Evidence: `v2/src/client/components/error-state.tsx:10-30`; e2e `group-expenses.spec.ts` "a tab that fails to load…". **Closed:** the page shows "Reference: <8 hex digits>" and logs the same reference with the error to the console. The server returns no request ID, so the client makes the reference. e2e `group-expenses.spec.ts` "a tab that fails to load shows the group error under the tabs, with a reference and without the exception text (P-GROUP-53, P-PWA-36)".
 
 ### Agents and scripts
 
@@ -387,7 +389,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-EXP-19 | covered | expenses.md:45 | — | — |
 | P-EXP-20 | changed (approved: DECISIONS.md P-EXP-20 bullet. The code now refetches on every visit (`main.tsx:12`), so v2 matches the current app) | expenses.md:46 | — | — |
 | P-EXP-21 | covered | expenses.md:47 | — | — |
-| P-EXP-22 | deferred | expenses.md:48 | — | gap |
+| P-EXP-22 | covered | AUDIT.md gap 4 | expenses.md:48 | browser check |
 | P-EXP-23 | covered | expenses.md:47 | — | — |
 | P-EXP-24 | covered | expenses.md:47 | — | — |
 | P-EXP-25 | covered | expenses.md:47 | — | — |
@@ -662,17 +664,17 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-BAL-50 | covered | expenses.md:106 | — | — |
 | P-BAL-51 | covered | expenses.md:107 | — | — |
 | P-BAL-52 | deferred (other area) | expenses.md:108 | — | tested |
-| P-BAL-53 | deferred (other area) | expenses.md:108 | — | gap |
-| P-BAL-54 | deferred (other area) | expenses.md:108 | — | gap |
-| P-BAL-55 | deferred (other area) | expenses.md:108 | — | gap |
-| P-BAL-56 | deferred (other area) | expenses.md:108 | — | gap |
+| P-BAL-53 | covered | AUDIT.md gap 1 | expenses.md:108 | tested |
+| P-BAL-54 | covered | AUDIT.md gap 1 | expenses.md:108 | browser check |
+| P-BAL-55 | covered | AUDIT.md gap 1 | expenses.md:108 | tested |
+| P-BAL-56 | covered | AUDIT.md gap 1 | expenses.md:108 | tested |
 | P-BAL-57 | deferred (other area) | expenses.md:108 | — | untested |
-| P-BAL-58 | deferred (other area) | expenses.md:108 | — | gap |
+| P-BAL-58 | covered | AUDIT.md gap 1 | expenses.md:108 | tested |
 | P-BAL-59 | deferred (other area) | expenses.md:108 | — | untested |
-| P-BAL-60 | deferred (other area) | expenses.md:108 | — | untested |
+| P-BAL-60 | covered | AUDIT.md gap 1 | expenses.md:108 | browser check |
 | P-BAL-61 | deferred (other area) | expenses.md:108 | — | untested |
-| P-BAL-62 | deferred (other area) | expenses.md:108 | — | gap |
-| P-BAL-63 | deferred (other area) | expenses.md:108 | — | gap |
+| P-BAL-62 | covered | AUDIT.md gap 1 | expenses.md:108 | tested |
+| P-BAL-63 | covered | AUDIT.md gap 1 | expenses.md:108 | tested |
 | P-BAL-64 | deferred (other area) | expenses.md:108 | — | approved-change |
 | P-BAL-65 | covered | expenses.md:109 | — | — |
 | P-BAL-66 | covered | expenses.md:109 | — | — |
@@ -1167,7 +1169,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-PWA-01 | covered | account.md:71 | — | — |
 | P-PWA-02 | covered | account.md:71 | — | — |
 | P-PWA-03 | covered | account.md:72 | — | — |
-| P-PWA-04 | deferred | account.md:73 | — | gap |
+| P-PWA-04 | covered | AUDIT.md gap 5 | account.md:73 | browser check |
 | P-PWA-05 | covered | account.md:74 | — | — |
 | P-PWA-06 | covered | account.md:74 | — | — |
 | P-PWA-07 | covered | account.md:74 | — | — |
@@ -1199,7 +1201,7 @@ Status is the record status after the rules in Method. Record is the winning rec
 | P-PWA-33 | covered | account.md:84 | — | — |
 | P-PWA-34 | covered | account.md:85 | — | — |
 | P-PWA-35 | covered | account.md:86 | — | — |
-| P-PWA-36 | deferred (other area) | account.md:87 | — | gap |
+| P-PWA-36 | covered | AUDIT.md gap 6 | account.md:87 | tested |
 | P-PWA-37 | changed (no decision) | account.md:88 | — | — |
 | P-PWA-38 | changed (no decision) | account.md:88 | — | — |
 | P-PWA-39 | changed (no decision) | account.md:88 | — | — |
@@ -1840,7 +1842,7 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-GROUP-51 | tested | $group.tsx:72-82 `activeProps`; $group/index.tsx:4; e2e/group-expenses.spec.ts "a group opens on its expenses, sorts by date or by last change, and keeps the rail" | e2e checks the default Expenses tab and a tab click under the slug path; the active style is not asserted. |
 | P-GROUP-52 | tested | $group.tsx:84-97 grid with `aside` rail; e2e/group-expenses.spec.ts "a group opens on its expenses, sorts by date or by last change, and keeps the rail" | The expense editor routes are children of `/$group`, so they share the layout. |
 | P-GROUP-77 | tested | MCP get_group: v2/src/server/mcp/tools/groups.ts:154-166; test/db/mcp-tools.test.ts "reads a group with access, names, members, reserved IDs, expense participants and links" | RPC `groups.details` has no links, but the UI builds its own export URLs; the agent-facing procedure has context kind, access, participants and share/CSV/JSON links. |
-| P-EXP-22 | gap | v2/src/client/routes/$group/expenses.index.tsx, v2/src/client/routes/expenses/-feed-card.tsx: no category icon; no CategoryIcon component in v2/src | Person in the browser: wide-screen expense cards show no category icon. No decision covers it. |
+| P-EXP-22 | browser check | v2/src/client/components/category-icon.tsx; v2/src/client/routes/$group/expenses.index.tsx, v2/src/client/routes/expenses/-feed-card.tsx | Closed after the audit. The map is keyed by the category IDs of db/migrations/0002_categories.sql, with the current app's icons. The icons are in their own 4.1 KB lazy chunk, not up front. |
 | P-EXP-47 | tested | v2/e2e/expense-edit-export.spec.ts "an expense opens from the list without a page load and shows its log"; v2/src/client/routes/$group/expenses.$expenseId.edit.tsx:50 | ExpenseLog renders under the editor; record says deferred, but the history merge did it. |
 | P-EXP-105 | tested | v2/test/db/mcp-tools.test.ts "edits only the given fields, checks the revision, and skips no-op revisions" (omitted vendor stays 'Nopa'; vendor: null clears) | The `vendor: ''` case is not asserted; v2/src/shared/expense-rules.ts:92 turns '' into null. |
 | P-EXP-107 | gap | Web: v2/src/client/routes/$group/activity.tsx:71-75 uses titleWithVendor (untested). MCP: v2/src/server/ledger.ts:587-595,677-685 write no `data`, so list_activity `data` is null (v2/src/server/mcp/tools/history.ts:316) | Agent over MCP: v2 expense events have data=null where the old app stored "<vendor> — <title>". The web Log matches but no test asserts it. |
@@ -1872,18 +1874,18 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-BAL-36 | tested | v2/test/db/mcp-more-tools.test.ts "sums account balances per currency…" (bobView with participantId pb) | \| |
 | P-BAL-37 | tested | v2/test/db/mcp-more-tools.test.ts "sums account balances per currency…" ('Participant does not belong to this group.'); v2/src/server/feed.ts:206-207 | An unknown group gives FORBIDDEN in v2. The old NOT_FOUND was unreachable too: src/trpc/init.ts:91 refuses it with FORBIDDEN first. |
 | P-BAL-42 | tested | v2/test/db/mcp-more-tools.test.ts "sums account balances per currency…" (g2 → FORBIDDEN) | \| |
-| P-BAL-52 | tested | v2/e2e/group-expenses.spec.ts "a group opens on its expenses, sorts by date or by last change, and keeps the rail"; v2/src/client/routes/$group.tsx:82-91 | Layout covers every tab and the editor. Label is "Balances", not "Group balances"; only the Expenses tab is asserted. |
-| P-BAL-53 | gap | v2/src/client/routes/$group.tsx:103-125 | Person in the browser: no "You are owed / You owe / Settled up · CODE" line and no personal amount. |
-| P-BAL-54 | gap | v2/src/client/routes/$group.tsx:103-125 | Person in the browser: no "Group net balances · CODE" heading for a viewer without a participant. |
-| P-BAL-55 | gap | v2/src/client/routes/$group.tsx:107-113 | Partial. The rail lists names with signed, coloured nets, but no "gets back / owes / Settled up" words and no "(you)" marker. |
-| P-BAL-56 | gap | v2/src/client/routes/$group.tsx:118-125 | Person in the browser: the rail has no "Suggested payments" and no "You" substitution. |
+| P-BAL-52 | tested | v2/e2e/group-expenses.spec.ts "a group opens on its expenses, sorts by date or by last change, and keeps the rail"; v2/src/client/routes/$group.tsx:84-89,116 | Layout covers every tab and the editor. The label is "Group balances", as in the current app; only the Expenses tab is asserted. |
+| P-BAL-53 | tested | v2/e2e/group-expenses.spec.ts "the rail tells the viewer what they owe, and refreshes to "Settled up" (P-BAL-53..56, P-BAL-58, P-BAL-62, P-BAL-63)" ("You owe · USD", $10.00, then "Settled up · USD"); v2/src/client/routes/$group.tsx:145-156 | Closed after the audit. |
+| P-BAL-54 | browser check | v2/src/client/routes/$group.tsx:149 | Closed after the audit. Checked in the browser for a member without a participant ("Group net balances · EUR"); no committed test. |
+| P-BAL-55 | tested | v2/e2e/group-expenses.spec.ts "the rail tells the viewer what they owe, and refreshes to "Settled up" (P-BAL-53..56, P-BAL-58, P-BAL-62, P-BAL-63)" ("Alice Example (you)", "gets back $20.00", "owes $10.00", "Settled up"); v2/src/client/routes/$group.tsx:187-207 | Closed after the audit. |
+| P-BAL-56 | tested | v2/e2e/group-expenses.spec.ts "the rail tells the viewer what they owe, and refreshes to "Settled up" (P-BAL-53..56, P-BAL-58, P-BAL-62, P-BAL-63)" ("You → Bob Example", "Cara Example → Bob Example"); v2/src/client/routes/$group.tsx:211-224 | Closed after the audit. The rail reads `balances.list`, as the Balances tab does. |
 | P-BAL-57 | untested | v2/src/client/queries/expenses.ts:37-44 (invalidateMoney invalidates ['group', g]) | The e2e seeds through the API before the page loads, so no test watches the rail change. |
-| P-BAL-58 | gap | v2/src/client/main.tsx:12 (staleTime 0, default focus refetch); v2/src/client/routes/$group.tsx:118-125 | Refetch on mount and focus comes from Query defaults. Person in the browser: no "Refresh balances" button or spinner. |
+| P-BAL-58 | tested | v2/e2e/group-expenses.spec.ts "the rail tells the viewer what they owe, and refreshes to "Settled up" (P-BAL-53..56, P-BAL-58, P-BAL-62, P-BAL-63)" (clicks "Refresh balances"); v2/src/client/routes/$group.tsx:119-127 | Closed after the audit. `refetchOnMount: 'always'` and `refetchOnWindowFocus`, as in the current app; the icon spins while it fetches. |
 | P-BAL-59 | untested | v2/src/client/routes/$group.tsx:97-100 (rail reads unfiltered groupQuery) | No test searches and then reads the rail. |
-| P-BAL-60 | untested | v2/src/client/routes/$group.tsx:83-85,127-141 | Collapsed and opens on click, but it is a button, not a <details>, and the closed state shows no per-currency summary. |
+| P-BAL-60 | browser check | v2/src/client/routes/$group.tsx:161-170 | Closed after the audit: each currency is a closed <details> below 768 px, with the summary in the closed state. Checked in the browser at 390 px (no horizontal overflow); no committed test. |
 | P-BAL-61 | untested | v2/src/client/routes/$group.tsx:54,82 | No overflow test at 390 px or 1024 px. |
-| P-BAL-62 | gap | v2/src/client/routes/$group.tsx:105 | Person in the browser: empty text is "No balances yet."; a failed load goes to the group error page, not "Could not load balances. Try refreshing." |
-| P-BAL-63 | gap | v2/src/client/routes/$group.tsx:118-125 | Person in the browser: no "Balance details" link in the rail (the Balances tab link stays in the nav). |
+| P-BAL-62 | tested | v2/e2e/group-expenses.spec.ts "the rail tells the viewer what they owe, and refreshes to "Settled up" (P-BAL-53..56, P-BAL-58, P-BAL-62, P-BAL-63)" ("No outstanding balances.", and "Could not load balances. Try refreshing." when `balances.list` fails); v2/src/client/routes/$group.tsx:133-141 | Closed after the audit. A failed load stays in the rail. |
+| P-BAL-63 | tested | v2/e2e/group-expenses.spec.ts "the rail tells the viewer what they owe, and refreshes to "Settled up" (P-BAL-53..56, P-BAL-58, P-BAL-62, P-BAL-63)" (follows "Balance details" to the Balances tab); v2/src/client/routes/$group.tsx:180-182 | Closed after the audit. |
 | P-BAL-64 | approved-change | DECISIONS.md group F: "Decision: option 2, English only." | Every v2 screen is English, so the QUESTION is settled. |
 | P-BAL-90 | untested | v2/src/client/routes/$group/payments.$expenseId.edit.tsx:56 | ExpenseLog renders under the payment editor; no e2e opens a payment edit page. |
 | P-BAL-102 | tested | v2/test/db/groups.test.ts "lists named groups newest first, with counts and the caller net per currency (P-GROUP-04, -05, -06, -11, P-BAL-102)"; v2/src/client/routes/groups.index.tsx:262-297 | Server sum asserted; the card UI is not. |
@@ -1942,14 +1944,14 @@ One row for each missing, deferred or open item. Evidence names the v2 file and 
 | P-SETTINGS-14 | untested | sql.ts:28 joins `"user"` only `AND bu.email_verified` | No test binds an unverified account to a participant and checks the name. |
 | P-EXPORT-02 | not-applicable | src/lib/analytics/config.ts:9-11 returns `{ providers: [] }` always (P-PWA-44); v2 has no analytics client (grep finds none) | The current app's export event never leaves the browser, so nobody can observe its absence. No decision covers dropping the analytics layer. |
 | P-EXPORT-05 | gap | v2/src/server/app.ts:116-124 `exportGroup` calls only `sessionPrincipal`; app.ts:188 passes only the cookie | An agent that GETs `/<group>/expenses/export/csv` with `X-API-Key` gets 401 "Sign in required". Agents over MCP can use `export_group` (content inline), so only direct-HTTP scripts notice. |
-| P-PWA-04 | gap | v2/index.html has `apple-touch-icon` only; no splash links and no splash script in v2/src/client or v2/public | iOS home-screen launches show only the background color. A person on iOS notices; the record calls it low value, but no decision approves dropping it. |
+| P-PWA-04 | browser check | v2/src/client/pwa.ts `addAppleSplashImages`; v2/src/client/main.tsx | Closed after the audit. The same algorithm, icon and color as the current app, with the same two media queries. It runs only where `navigator.standalone` exists (iOS), so other browsers skip the canvas work. |
 | P-PWA-21 | unapproved-change | v2/src/client/routes/groups.$.tsx:5-10 (client redirect); v2/src/server/assets.ts:102 serves the SPA page with `no-cache` | No server 307 and no `Cache-Control: private, no-store`; a non-JS client gets 200 HTML. groups.md P-GROUP-100 records "Changed" but DECISIONS.md has no entry. Browser users see the same end URL. |
 | P-PWA-22 | untested | v2/src/server/assets.ts:88 answers non-GET/HEAD with 405, never a redirect | No test for a POST to `/groups/<id>`. |
 | P-PWA-23 | unapproved-change | v2/src/client/routes/$group/index.tsx:4 redirects `/<slug>` to `/<slug>/expenses`; e2e/group-expenses.spec.ts "a group opens on its expenses…" asserts the new URL | The current proxy rewrites `/<slug>` without a URL change (src/proxy.ts:38). `/<slug>/<rest>` matches. The e2e comment "as in the current app" is wrong. Cosmetic for a person. |
 | P-PWA-24 | tested | test/db/groups.test.ts "does not grant access through a slug (P-GROUP-103, P-ACCESS-09)"; e2e/group-expenses.spec.ts "a signed-out visitor returns to the page they asked for after sign-in (P-AUTH-49)" | The non-member client redirect (P-AUTH-50) has no e2e. |
 | P-PWA-25 | unapproved-change | app.ts:403 answers unknown `/api/*` with JSON 404 (matches); assets.ts:103 serves the SPA page for any other missing path, dotted or `/_next/`, and `/$group` then treats it as a group ref | A missing `/foo.png` gets 200 HTML and a group lookup instead of a 404. groups.md P-GROUP-102 calls this "Not applicable", which is wrong for dotted paths. Nobody visible except broken-asset debugging. |
 | P-PWA-26 | unapproved-change | `/$group` catches every unmatched top-level path ($group.tsx:12-21) | A non-slug path such as `/foo` sends a signed-in person to `/groups?access=denied` (signed-out: `/sign-in?next=/foo`) instead of a 404 page. No decision covers it. A person typing a wrong URL notices. |
-| P-PWA-36 | gap | v2/src/client/components/error-state.tsx:10-30 (router `defaultErrorComponent`, main.tsx:20); e2e/group-expenses.spec.ts "a tab that fails to load shows the group error under the tabs, without the exception text (P-GROUP-53)" | Title, generic message and "Try again" exist and the exception text is hidden (tested). No error reference is shown: v2 has no digest or request ID for the user to quote. English-only title is approved (F). |
+| P-PWA-36 | tested | v2/src/client/components/error-state.tsx; e2e/group-expenses.spec.ts "a tab that fails to load shows the group error under the tabs, with a reference and without the exception text (P-GROUP-53, P-PWA-36)" | Closed after the audit. The reference is made in the client and logged with the error, because the server returns no request ID. Only the browser console has the match, not the server logs. English-only title is approved (F). |
 | P-PWA-49 | gap | No `server-timing`, `x-perf-db-queries` or `PERF_INSTRUMENTATION` anywhere in v2/src | v2 never emits the perf headers, so the "only when enabled" half holds, but the instrumentation is not ported. Internal; nobody visible. |
 | P-MCP-102 | untested | v2/src/server/auth-options.ts:35 `jwt()` plugin; v2/src/server/app.ts:160 routes /api/auth/* to Better Auth | No v2 test fetches /api/auth/jwks or checks for private fields. Better Auth's jwt plugin `getJwks` serves public keys; mcp/oauth.ts:33 rebuilds the same set from the jwks table. |
 | P-MCP-105 | untested | @better-auth/mcp 1.7.14 dist/index.mjs:170 `refreshTokenReuseInterval = 30` default; v2/src/server/auth-options.ts:36-51 does not override it | No v2 test repeats a refresh. Provider replay logic: oauth-provider authorize-*.mjs:1899-1925. |
