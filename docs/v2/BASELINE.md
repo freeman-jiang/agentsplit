@@ -54,3 +54,18 @@ The floor is about 4 ms for connecting and one query, plus about 3 ms for Effect
 ## v2 client bundle (2026-11-05)
 
 The JavaScript every page loads up front is 124.9 KB gzip (budget 150 KB): the entry chunk (93.4 KB, mostly React DOM) and the router and query chunk (30.9 KB). Effect does not ship to the browser; the client calls the Effect RPC endpoint with a small fetch client. Before that change the shell was about 180 KB, of which 85 KB was Effect's client runtime. CI enforces the budget with `scripts/check-bundle.ts`.
+
+## v2 Worker CPU after the groups, feed and account merges (preview, 2026-11-05)
+
+Same method as above (`wrangler tail`, `?op=` tags, after warm-up, 192 synthetic expenses). CPU milliseconds:
+
+| Request | p50 | p90 |
+| --- | --- | --- |
+| `feed.list`, 30 rows | 13 | 20 |
+| `feed.balances` | 10 | 16 |
+| `groups.directory` | 9 | 14 |
+| `groups.details` | 12 | 19 |
+| `groups.get` | 10 | 17 |
+| `expenses.list`, 30 rows | 14 | 29 |
+
+Several reads are a few milliseconds over the 10 ms budget at p50. A final CPU pass follows once every area is merged.
