@@ -1,0 +1,394 @@
+// The dashboard: the feed across every group and private context the caller can
+// see, the account-wide balance, and the expense page. Each read is one
+// statement with the membership check inside it, so a request stays within the
+// Workers CPU budget and a row the caller cannot see is never read.
+import { sql, type SQL } from 'drizzle-orm'
+import { Invalid, NotFound } from '../shared/api'
+import { computeBalances, suggestSettlements } from '../shared/balances'
+import type { CurrencyCode } from '../shared/currencies'
+import { formatMinor, minor } from '../shared/money'
+import type { Db } from './db'
+import type { Principal } from './ledger'
+
+export type FeedFilter = {
+  readonly scope?: 'all' | 'grouped' | 'ungrouped'
+  readonly groupId?: string
+  readonly search?: string
+  readonly involvingMe?: boolean
+  readonly personUserId?: string
+  readonly payerUserId?: string
+  readonly currency?: CurrencyCode
+  readonly categoryId?: number
+  readonly kind?: 'expense' | 'payment'
+  readonly from?: string
+  readonly to?: string
+}
+
+export type FeedCursor = { readonly date: string; readonly createdAt: string; readonly id: string }
+
+type Actor = { userId: string | null; name: string; source: string }
+type AttributionRow = {
+  created: { time: string; actor: Actor | null } | null
+  updated: { time: string; actor: Actor | null } | null
+  mine: string | null
+}
+
+const iso = (column: SQL) => sql`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
+
+/**
+ * Who added and last edited expense `e`, from its create and update events.
+ * Baselines (revision 0, or the legacy 'baseline' source) are not edits, and
+ * the payer is never used. Live names are the accounts' current names.
+ */
+const attributionSql = (viewer: string) => {
+  const actor = sql`CASE WHEN a.actor_user_id IS NOT NULL OR a.source = 'system' THEN json_build_object(
+      'userId', a.actor_user_id,
+      'name', coalesce(u.name, a.actor_name, CASE WHEN a.source = 'system' THEN 'Automatic recurrence' ELSE 'Member' END),
+      'source', a.source) END`
+  const event = (type: 'create_expense' | 'update_expense', order: SQL) => sql`(
+    SELECT json_build_object('time', ${iso(sql`a.time`)}, 'actor', ${actor})
+    FROM activities a LEFT JOIN "user" u ON u.id = a.actor_user_id AND u.email_verified
+    WHERE a.expense_id = e.id AND a.type = ${type} AND a.source <> 'baseline' AND (a.expense_revision IS NULL OR a.expense_revision > 0)
+    ORDER BY a.sequence ${order} LIMIT 1)`
+  return sql`json_build_object(
+    'created', ${event('create_expense', sql`ASC`)},
+    'updated', ${event('update_expense', sql`DESC`)},
+    'mine', (SELECT ${iso(sql`max(a.time)`)} FROM activities a
+      WHERE a.expense_id = e.id AND a.type = 'update_expense' AND a.source <> 'baseline'
+        AND (a.expense_revision IS NULL OR a.expense_revision > 0) AND a.actor_user_id = ${viewer}))`
+}
+
+const toAttribution = (a: AttributionRow) => ({
+  createdAt: a.created?.time ?? null,
+  updatedAt: a.updated?.time ?? null,
+  lastEditedByYouAt: a.mine,
+  createdBy: a.created?.actor ?? null,
+  updatedBy: a.updated?.actor ?? null,
+})
+
+/** A participant's display name: the bound verified account's current name, else the stored name. */
+const displayName = sql`coalesce((SELECT u.name FROM memberships bm JOIN "user" u ON u.id = bm.user_id AND u.email_verified
+  WHERE bm.group_id = p.group_id AND bm.participant_id = p.id), p.name)`
+
+// The same columns and JSON parts as selectExpenses in ledger.ts, so a feed row
+// and a group expense have one shape. Minor units travel as text.
+const expenseColumns = sql`e.id, e.group_id, e.revision, e.kind, e.title, e.vendor, e.notes, e.category_id,
+  e.expense_date::text AS expense_date, e.currency, e.amount::text AS amount, e.split_mode, e.recurrence,
+  ${iso(sql`e.created_at`)} AS created_at, ${iso(sql`e.updated_at`)} AS updated_at,
+  coalesce((SELECT json_agg(json_build_object('participantId', p.participant_id, 'amount', p.amount::text) ORDER BY p.participant_id)
+    FROM expense_payers p WHERE p.expense_id = e.id), '[]') AS payers,
+  coalesce((SELECT json_agg(json_build_object('participantId', s.participant_id, 'amount', s.amount::text, 'weight', s.weight) ORDER BY s.participant_id)
+    FROM expense_shares s WHERE s.expense_id = e.id), '[]') AS shares,
+  (SELECT count(*)::int FROM expense_documents d WHERE d.expense_id = e.id) AS document_count`
+
+type ExpenseRow = {
+  id: string
+  group_id: string
+  revision: number
+  kind: 'expense' | 'payment'
+  title: string
+  vendor: string | null
+  notes: string
+  category_id: number
+  expense_date: string
+  currency: string
+  amount: string
+  split_mode: 'evenly' | 'shares' | 'percentage' | 'amount'
+  recurrence: 'none' | 'daily' | 'weekly' | 'monthly'
+  created_at: string
+  updated_at: string
+  payers: { participantId: string; amount: string }[]
+  shares: { participantId: string; amount: string; weight: string }[]
+  document_count: number
+}
+
+function toExpense(e: ExpenseRow) {
+  const currency = e.currency as CurrencyCode
+  const money = (amount: string) => formatMinor({ amount: minor(BigInt(amount)), currency })
+  return {
+    id: e.id,
+    groupId: e.group_id,
+    revision: e.revision,
+    kind: e.kind,
+    title: e.title,
+    vendor: e.vendor,
+    notes: e.notes,
+    categoryId: e.category_id,
+    expenseDate: e.expense_date,
+    currency,
+    amount: money(e.amount),
+    splitMode: e.split_mode,
+    payers: e.payers.map((p) => ({ participantId: p.participantId, amount: money(p.amount) })),
+    shares: e.shares.map((s) => ({ participantId: s.participantId, amount: money(s.amount), weight: s.weight })),
+    recurrence: e.recurrence,
+    createdAt: e.created_at,
+    updatedAt: e.updated_at,
+    documentCount: e.document_count,
+  }
+}
+
+// ---------- feed ----------
+
+type FeedRow = ExpenseRow & {
+  group_kind: 'named' | 'private'
+  group_name: string
+  group_slug: string | null
+  context_expense_id: string | null
+  context_expense_title: string | null
+  viewer_participant_id: string | null
+  cursor_created: string
+  people: { id: string; name: string }[]
+  attribution: AttributionRow
+}
+
+/** Is expense `e` paid for or shared by participant `who`? */
+const involves = (who: SQL) => sql`(EXISTS (SELECT 1 FROM expense_payers ip WHERE ip.expense_id = e.id AND ip.participant_id = ${who})
+  OR EXISTS (SELECT 1 FROM expense_shares iss WHERE iss.expense_id = e.id AND iss.participant_id = ${who}))`
+
+/**
+ * Newest expense date first, then creation time, then ID. Filters run in SQL
+ * before the limit, and the cursor is the last row's exact key, so a new
+ * expense at the head never shifts later pages.
+ */
+export async function listFeed(db: Db, data: { principal: Principal; filter: FeedFilter; cursor: FeedCursor | null; limit: number }) {
+  const f = data.filter
+  if (f.from && f.to && f.from > f.to) throw new Invalid({ message: 'The start date must be on or before the end date.', field: 'to' })
+  const limit = Math.min(Math.max(Math.trunc(data.limit) || 30, 1), 100)
+  const where: SQL[] = [sql`e.deleted_at IS NULL`]
+  if (f.scope === 'grouped') where.push(sql`g.kind = 'named'`)
+  if (f.scope === 'ungrouped') where.push(sql`g.kind = 'private'`)
+  // Any group or context the caller belongs to, private ones included (DECISIONS.md, P-FEED-18).
+  if (f.groupId) where.push(sql`(g.id = ${f.groupId} OR g.slug = ${f.groupId})`)
+  const search = f.search?.trim()
+  if (search) {
+    const term = `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+    where.push(sql`(e.title ILIKE ${term} OR e.vendor ILIKE ${term})`)
+  }
+  if (f.currency) where.push(sql`e.currency = ${f.currency}`)
+  if (f.categoryId !== undefined) where.push(sql`e.category_id = ${f.categoryId}`)
+  if (f.kind) where.push(sql`e.kind = ${f.kind}`)
+  if (f.from) where.push(sql`e.expense_date >= ${f.from}::date`)
+  if (f.to) where.push(sql`e.expense_date <= ${f.to}::date`)
+  // One default for the UI and for agents (DECISIONS.md, P-FEED-19).
+  if (f.involvingMe ?? true) where.push(sql`m.participant_id IS NOT NULL AND ${involves(sql`m.participant_id`)}`)
+  if (f.personUserId)
+    where.push(sql`EXISTS (SELECT 1 FROM memberships pm WHERE pm.user_id = ${f.personUserId} AND pm.group_id = e.group_id
+      AND pm.participant_id IS NOT NULL AND ${involves(sql`pm.participant_id`)})`)
+  if (f.payerUserId)
+    where.push(sql`EXISTS (SELECT 1 FROM expense_payers pp JOIN memberships pm ON pm.group_id = pp.group_id AND pm.participant_id = pp.participant_id
+      WHERE pp.expense_id = e.id AND pm.user_id = ${f.payerUserId})`)
+  if (data.cursor)
+    where.push(sql`(e.expense_date, e.created_at, e.id) < (${data.cursor.date}::date, ${data.cursor.createdAt}::timestamptz, ${data.cursor.id})`)
+
+  const result = await db.execute<FeedRow>(sql`
+    SELECT ${expenseColumns},
+      g.kind AS group_kind, g.name AS group_name, g.slug AS group_slug,
+      pc.expense_id AS context_expense_id, ce.title AS context_expense_title,
+      m.participant_id AS viewer_participant_id,
+      to_char(e.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_created,
+      coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${displayName}) ORDER BY p.id) FROM participants p
+        WHERE p.id IN (SELECT participant_id FROM expense_payers WHERE expense_id = e.id
+          UNION SELECT participant_id FROM expense_shares WHERE expense_id = e.id)), '[]') AS people,
+      ${attributionSql(data.principal.userId)} AS attribution
+    FROM expenses e
+    JOIN memberships m ON m.group_id = e.group_id AND m.user_id = ${data.principal.userId} AND m.active
+    JOIN groups g ON g.id = e.group_id
+    LEFT JOIN private_contexts pc ON pc.group_id = g.id
+    LEFT JOIN expenses ce ON ce.id = pc.expense_id
+    WHERE ${sql.join(where, sql` AND `)}
+    ORDER BY e.expense_date DESC, e.created_at DESC, e.id DESC
+    LIMIT ${limit + 1}
+  `)
+  const page = result.rows.slice(0, limit)
+  const last = page.at(-1)
+  return {
+    expenses: page.map((r) => ({
+      ...toExpense(r),
+      people: r.people,
+      group: r.group_kind === 'named' ? { id: r.group_id, name: r.group_name, slug: r.group_slug } : null,
+      contextExpenseId: r.context_expense_id,
+      contextExpenseTitle: r.context_expense_title,
+      participantId: r.viewer_participant_id,
+      attribution: toAttribution(r.attribution),
+    })),
+    nextCursor: result.rows.length > limit && last ? { date: last.expense_date, createdAt: last.cursor_created, id: last.id } : null,
+  }
+}
+
+// ---------- account balance ----------
+
+type BalancesRow = {
+  rows: { groupId: string; groupName: string; kind: 'named' | 'private'; currency: string; participantId: string; participantName: string; amount: string }[]
+  unbound: string[]
+}
+
+/**
+ * The caller's own balance in every named group and private context with
+ * active access, per currency, and the totals per currency. Groups without a
+ * linked participant are listed instead of counted. It only reads: due
+ * recurring expenses are created by the scheduled job, never here.
+ */
+export async function accountBalances(db: Db, data: { principal: Principal }) {
+  const result = await db.execute<{ result: BalancesRow }>(sql`
+    WITH m AS (SELECT group_id, participant_id FROM memberships WHERE user_id = ${data.principal.userId} AND active),
+    nets AS (
+      SELECT e.group_id, e.currency, m.participant_id,
+        sum(coalesce((SELECT sum(p.amount) FROM expense_payers p WHERE p.expense_id = e.id AND p.participant_id = m.participant_id), 0)
+          - coalesce((SELECT sum(s.amount) FROM expense_shares s WHERE s.expense_id = e.id AND s.participant_id = m.participant_id), 0)) AS net
+      FROM m JOIN expenses e ON e.group_id = m.group_id AND e.deleted_at IS NULL
+      WHERE m.participant_id IS NOT NULL
+      GROUP BY e.group_id, e.currency, m.participant_id
+    )
+    SELECT json_build_object(
+      'rows', coalesce((SELECT json_agg(json_build_object('groupId', g.id, 'groupName', g.name, 'kind', g.kind, 'currency', n.currency,
+          'participantId', p.id, 'participantName', ${displayName}, 'amount', n.net::text) ORDER BY g.name, g.id, n.currency)
+        FROM nets n JOIN groups g ON g.id = n.group_id JOIN participants p ON p.id = n.participant_id), '[]'),
+      'unbound', coalesce((SELECT json_agg(group_id) FROM m WHERE participant_id IS NULL), '[]')
+    ) AS result
+  `)
+  const row = result.rows[0]?.result ?? { rows: [], unbound: [] }
+  const totals = new Map<CurrencyCode, bigint>()
+  const balances = row.rows.map((r) => {
+    const currency = r.currency as CurrencyCode
+    const amount = BigInt(r.amount)
+    totals.set(currency, (totals.get(currency) ?? 0n) + amount)
+    return { ...r, currency, amount: formatMinor({ amount: minor(amount), currency }) }
+  })
+  return {
+    balances,
+    totals: [...totals]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([currency, amount]) => ({ currency, amount: formatMinor({ amount: minor(amount), currency }) })),
+    unboundGroupIds: [...row.unbound].sort(),
+  }
+}
+
+// ---------- options ----------
+
+/**
+ * The caller and the verified accounts with a linked participant in any group
+ * or context the caller can see. Nobody else is discoverable.
+ */
+const contactsSql = (userId: string) => sql`
+  SELECT u.id, u.name, u.email FROM "user" u
+  WHERE u.email_verified AND (u.id = ${userId} OR u.id IN (
+    SELECT pm.user_id FROM memberships pm
+    WHERE pm.active AND pm.participant_id IS NOT NULL
+      AND pm.group_id IN (SELECT group_id FROM memberships WHERE user_id = ${userId} AND active)))`
+
+export async function contacts(db: Db, data: { userId: string }) {
+  const result = await db.execute<{ id: string; name: string; email: string }>(contactsSql(data.userId))
+  return result.rows
+}
+
+type OptionsRow = {
+  groups: { id: string; name: string; slug: string | null }[]
+  people: { id: string; name: string; email: string }[]
+  categories: { id: number; grouping: string; name: string }[]
+}
+
+export async function feedOptions(db: Db, data: { principal: Principal }) {
+  const me = data.principal.userId
+  const result = await db.execute<{ result: OptionsRow }>(sql`
+    SELECT json_build_object(
+      'groups', coalesce((SELECT json_agg(json_build_object('id', g.id, 'name', g.name, 'slug', g.slug) ORDER BY g.name, g.id)
+        FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${me} AND m.active WHERE g.kind = 'named'), '[]'),
+      'people', coalesce((SELECT json_agg(json_build_object('id', c.id, 'name', c.name, 'email', c.email) ORDER BY c.name, c.id)
+        FROM (${contactsSql(me)}) c), '[]'),
+      'categories', coalesce((SELECT json_agg(json_build_object('id', c.id, 'grouping', c.grouping, 'name', c.name) ORDER BY c.id)
+        FROM categories c), '[]')
+    ) AS result
+  `)
+  const row = result.rows[0]?.result ?? { groups: [], people: [], categories: [] }
+  return { userId: me, ...row }
+}
+
+// ---------- expense page ----------
+
+type ContextRow = ExpenseRow & {
+  role: 'admin' | 'member'
+  viewer_participant_id: string | null
+  g_name: string
+  g_slug: string | null
+  g_kind: 'named' | 'private'
+  participants: { id: string; name: string }[]
+  context_expense_id: string | null
+  context_expense_title: string | null
+  sums: { currency: string; participantId: string; paid: string; owed: string }[] | null
+  invitations: { id: string; email: string; participantId: string; participantName: string; expiresAt: string }[] | null
+  attribution: AttributionRow
+}
+
+/**
+ * The expense page for any live expense the caller can see: the expense, its
+ * group or private context with current names and, for a private context,
+ * the repayments that settle it and (for its creator) its pending invitations.
+ * Missing, deleted and inaccessible expenses look the same.
+ */
+export async function expenseContext(db: Db, data: { principal: Principal; expenseId: string }) {
+  const result = await db.execute<ContextRow>(sql`
+    SELECT ${expenseColumns},
+      m.role, m.participant_id AS viewer_participant_id, g.name AS g_name, g.slug AS g_slug, g.kind AS g_kind,
+      coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${displayName}) ORDER BY p.name, p.id)
+        FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
+      pc.expense_id AS context_expense_id, ce.title AS context_expense_title,
+      CASE WHEN pc.group_id IS NOT NULL THEN coalesce((SELECT json_agg(json_build_object('currency', s.currency, 'participantId', s.participant_id, 'paid', s.paid::text, 'owed', s.owed::text))
+        FROM (
+          SELECT x.currency, parts.participant_id, sum(parts.paid) AS paid, sum(parts.owed) AS owed
+          FROM expenses x
+          JOIN (
+            SELECT expense_id, participant_id, amount AS paid, 0::bigint AS owed FROM expense_payers WHERE group_id = g.id
+            UNION ALL
+            SELECT expense_id, participant_id, 0::bigint, amount FROM expense_shares WHERE group_id = g.id
+          ) parts ON parts.expense_id = x.id
+          WHERE x.group_id = g.id AND x.deleted_at IS NULL
+          GROUP BY x.currency, parts.participant_id
+        ) s), '[]') END AS sums,
+      CASE WHEN pc.group_id IS NOT NULL AND m.role = 'admin' THEN coalesce((
+        SELECT json_agg(json_build_object('id', i.id, 'email', i.email, 'participantId', i.participant_id,
+          'participantName', coalesce(i.participant_name, ip.name), 'expiresAt', ${iso(sql`i.expires_at`)}) ORDER BY i.created_at, i.id)
+        FROM invitations i JOIN participants ip ON ip.id = i.participant_id
+        WHERE i.group_id = g.id AND i.accepted_at IS NULL AND i.revoked_at IS NULL), '[]') END AS invitations,
+      ${attributionSql(data.principal.userId)} AS attribution
+    FROM expenses e
+    JOIN memberships m ON m.group_id = e.group_id AND m.user_id = ${data.principal.userId} AND m.active
+    JOIN groups g ON g.id = e.group_id
+    LEFT JOIN private_contexts pc ON pc.group_id = g.id
+    LEFT JOIN expenses ce ON ce.id = pc.expense_id
+    WHERE e.id = ${data.expenseId} AND e.deleted_at IS NULL
+  `)
+  const r = result.rows[0]
+  if (!r) throw new NotFound({ entity: 'expense', id: data.expenseId })
+  return {
+    expense: toExpense(r),
+    attribution: toAttribution(r.attribution),
+    group: { id: r.group_id, name: r.g_name, slug: r.g_slug, kind: r.g_kind },
+    role: r.role,
+    participantId: r.viewer_participant_id,
+    participants: r.participants,
+    context:
+      r.context_expense_id === null
+        ? null
+        : {
+            expenseId: r.context_expense_id,
+            title: r.context_expense_title ?? '',
+            settlements: settlements(r.sums ?? []),
+            invitations: r.invitations ?? [],
+          },
+  }
+}
+
+/** Suggested repayments per currency, from per-person sums; the zero-sum check runs in computeBalances. */
+function settlements(sums: NonNullable<ContextRow['sums']>) {
+  const balances = computeBalances(
+    sums.map((s) => ({
+      currency: s.currency as CurrencyCode,
+      payers: new Map([[s.participantId, minor(BigInt(s.paid))]]),
+      shares: new Map([[s.participantId, minor(BigInt(s.owed))]]),
+    })),
+  )
+  return [...balances].map(([currency, byPerson]) => ({
+    currency,
+    transfers: suggestSettlements(byPerson).map((t) => ({ from: t.from, to: t.to, amount: formatMinor({ amount: t.amount, currency }) })),
+  }))
+}
