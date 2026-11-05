@@ -67,7 +67,7 @@ export const v1GroupSnapshot = (g: { id: string; name: string; slug: string | nu
 })
 
 /**
- * An imported expense: its v1 history rows, then the current row, as the
+ * An imported expense: the current row, then its v1 history rows, as the
  * importer writes them. `current` holds the live parts in minor units.
  */
 export async function insertImportedExpense(
@@ -85,20 +85,6 @@ export async function insertImportedExpense(
 ) {
   const last = data.revisions.at(-1)?.snapshot
   if (!last) throw new Error('At least one revision')
-  for (const r of data.revisions)
-    await tx.insert(activities).values({
-      id: randomId(),
-      groupId: last.groupId,
-      time: new Date(r.time),
-      type: r.type,
-      expenseId: last.id,
-      expenseRevision: r.snapshot.revision,
-      data: r.snapshot.title,
-      snapshot: v1Snapshot(r.snapshot),
-      source: r.source ?? 'web',
-      actorName: r.actorName ?? null,
-      actorUserId: r.actorUserId ?? null,
-    })
   await tx.insert(expenses).values({
     id: last.id,
     groupId: last.groupId,
@@ -114,6 +100,20 @@ export async function insertImportedExpense(
     splitMode: data.current.splitMode,
     createdAt: new Date(last.createdAt),
   })
+  for (const r of data.revisions)
+    await tx.insert(activities).values({
+      id: randomId(),
+      groupId: last.groupId,
+      time: new Date(r.time),
+      type: r.type,
+      expenseId: last.id,
+      expenseRevision: r.snapshot.revision,
+      data: r.snapshot.title,
+      snapshot: v1Snapshot(r.snapshot),
+      source: r.source ?? 'web',
+      actorName: r.actorName ?? null,
+      actorUserId: r.actorUserId ?? null,
+    })
   await tx.insert(expensePayers).values(data.current.payers.map((p) => ({ expenseId: last.id, groupId: last.groupId, participantId: p.participantId, amount: minor(p.amount) })))
   await tx.insert(expenseShares).values(data.current.shares.map((s) => ({ expenseId: last.id, groupId: last.groupId, participantId: s.participantId, amount: minor(s.amount), weight: s.weight })))
 }

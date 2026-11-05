@@ -4,6 +4,7 @@ import { eq, sql } from 'drizzle-orm'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { activities, expenses, groups, memberships, participants, receipts, recurringLinks } from '../../db/schema/app'
+import { user } from '../../db/schema/auth'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { makeDb, type Db } from '~/server/db'
 import { getExpenseContext, getExpenseDetail, listBalances, listCategories } from '~/server/expenses'
@@ -11,7 +12,7 @@ import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense, ty
 import { downloadReceipt, uploadReceipt } from '~/server/receipts'
 import { fakeBucket } from './fake-bucket'
 import { listRecurring, materializeDue, processGroup } from '~/server/recurring'
-import { resetTestDatabase } from './setup'
+import { resetTestDatabase, testUsers } from './setup'
 
 let pool: Pool
 const alice: Principal = { userId: 'u-alice', name: 'Alice', email: 'a@example.com', source: 'web', agentKeyId: null }
@@ -42,6 +43,7 @@ beforeAll(async () => {
       { id: 'pc', groupId: 'g1', name: 'Cara' },
       { id: 'pm', groupId: 'g2', name: 'Mallory' },
     ])
+    await db.insert(user).values(testUsers([alice, bob, mallory]))
     await db.insert(memberships).values([
       { userId: alice.userId, groupId: 'g1', role: 'admin', participantId: 'pa' },
       { userId: bob.userId, groupId: 'g1', role: 'member', participantId: 'pb' },

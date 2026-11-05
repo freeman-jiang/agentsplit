@@ -3,13 +3,14 @@ import { sql } from 'drizzle-orm'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { activities, groups, memberships, participants } from '../../db/schema/app'
+import { user } from '../../db/schema/auth'
 import { makeDb, type Db } from '~/server/db'
 import { contentDisposition, exportCsv, exportJson } from '~/server/export'
 import { createExpense, deleteExpense, type Principal } from '~/server/ledger'
 import { statsExpenses, statsOverview } from '~/server/stats'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { insertImportedExpense } from './history-fixtures'
-import { resetTestDatabase } from './setup'
+import { resetTestDatabase, testUsers } from './setup'
 
 let pool: Pool
 const alice: Principal = { userId: 'u-alice', name: 'Alice', email: 'a@example.com', source: 'web', agentKeyId: null }
@@ -59,6 +60,7 @@ beforeAll(async () => {
       { id: 'pb', groupId: 'g1', name: 'Bob' },
       { id: 'pc', groupId: 'g1', name: '=Cara' },
     ])
+    await db.insert(user).values(testUsers([alice, unbound]))
     await db.insert(memberships).values([
       { userId: alice.userId, groupId: 'g1', role: 'admin', participantId: 'pa' },
       { userId: unbound.userId, groupId: 'g1', role: 'member', participantId: null },

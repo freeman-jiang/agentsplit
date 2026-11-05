@@ -19,6 +19,7 @@ import {
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core'
+import { oauthClient, user } from './auth'
 
 const now = () => timestamp({ withTimezone: true, mode: 'date' }).notNull().defaultNow()
 const money = () => bigint({ mode: 'bigint' }).notNull()
@@ -69,7 +70,9 @@ export const participants = pgTable(
 export const memberships = pgTable(
   'memberships',
   {
-    userId: text().notNull(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: 'restrict' }),
     groupId: text()
       .notNull()
       .references(() => groups.id, { onDelete: 'restrict' }),
@@ -82,6 +85,7 @@ export const memberships = pgTable(
   (t) => [
     primaryKey({ columns: [t.userId, t.groupId] }),
     unique('memberships_group_participant').on(t.groupId, t.participantId),
+    check('memberships_role', sql`${t.role} IN ('admin', 'member')`),
     foreignKey({ columns: [t.participantId, t.groupId], foreignColumns: [participants.id, participants.groupId] }).onDelete(
       'restrict',
     ),
@@ -160,10 +164,14 @@ export const expenses = pgTable(
       'expenses_conversion_complete',
       sql`(${t.originalAmount} IS NULL) = (${t.originalCurrency} IS NULL) AND (${t.originalCurrency} IS NULL) = (${t.conversionRate} IS NULL)`,
     ),
+    check('expenses_split_mode', sql`${t.splitMode} IN ('evenly', 'shares', 'percentage', 'amount')`),
+    check('expenses_recurrence', sql`${t.recurrence} IN ('none', 'daily', 'weekly', 'monthly')`),
     unique('expenses_id_group').on(t.id, t.groupId),
     index('expenses_group_date').on(t.groupId, t.deletedAt, t.expenseDate.desc(), t.createdAt.desc(), t.id.desc()),
     index('expenses_group_updated').on(t.groupId, t.deletedAt, t.updatedAt.desc(), t.id.desc()),
     index('expenses_feed').on(t.expenseDate.desc(), t.createdAt.desc(), t.id.desc()),
+    // Balances and expense lists for one currency (P-DB-49).
+    index('expenses_group_currency').on(t.groupId, t.currency, t.deletedAt),
   ],
 )
 
@@ -222,6 +230,19 @@ export const activities = pgTable(
     unique('activities_expense_revision').on(t.expenseId, t.expenseRevision),
     unique('activities_group_revision').on(t.groupId, t.groupRevision),
     check('activities_snapshot_revision', sql`${t.expenseRevision} IS NULL OR (${t.expenseId} IS NOT NULL AND ${t.expenseRevision} >= 0)`),
+    check(
+      'activities_type',
+      sql`${t.type} IN ('create_group', 'join_group', 'leave_group', 'update_group', 'create_expense', 'update_expense', 'delete_expense')`,
+    ),
+    // An activity refers only to an expense and a participant of its own group.
+    foreignKey({ name: 'activities_expense_fk', columns: [t.expenseId, t.groupId], foreignColumns: [expenses.id, expenses.groupId] }).onDelete(
+      'restrict',
+    ),
+    foreignKey({
+      name: 'activities_participant_fk',
+      columns: [t.participantId, t.groupId],
+      foreignColumns: [participants.id, participants.groupId],
+    }).onDelete('restrict'),
     index().on(t.groupId, t.time.desc(), t.id.desc()),
     index().on(t.groupId, t.sequence.desc()),
   ],
@@ -274,6 +295,12 @@ export const recurringLinks = pgTable(
   (t) => [
     index().on(t.groupId, t.nextExpenseCreatedAt, t.nextExpenseDate.desc()),
     check('recurring_links_anchor_day', sql`${t.anchorDay} BETWEEN 1 AND 31`),
+    // The link's group is the group of its current expense.
+    foreignKey({
+      name: 'recurring_links_expense_group_fk',
+      columns: [t.currentFrameExpenseId, t.groupId],
+      foreignColumns: [expenses.id, expenses.groupId],
+    }).onDelete('restrict'),
   ],
 )
 
@@ -325,8 +352,13 @@ export const oauthConnections = pgTable(
     id: text().primaryKey(),
     /** base64url(sha256(authorization code)), stable across refresh-token rotation. */
     authorizationCodeId: text().notNull().unique(),
-    userId: text().notNull(),
-    clientId: text().notNull(),
+    // A connection ends with its user or its client, as Better Auth's own token rows do.
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    clientId: text()
+      .notNull()
+      .references(() => oauthClient.clientId, { onDelete: 'cascade' }),
     scopes: text().array().notNull(),
     createdAt: now(),
     // Nullable: set when the user revokes the connection.
