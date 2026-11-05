@@ -121,6 +121,15 @@ Measured after the MCP upload merge, `wrangler tail`, warm isolates, synthetic d
 
 Every request answered `ok`. One MCP expense write makes 24 (create) to 27 (update) SQL statements: 3 for authentication, then, in one SERIALIZABLE transaction, membership, the idempotency check, two private-context checks, participants, category, the expense row, delete and insert of payers and shares, documents, the recurring link, a second read of the expense and the group for the activity snapshot, the activity and the idempotency row. At about 1.5 ms of CPU per statement on Workers, the statements are most of the cost. Writes are far rarer than reads in a household ledger, but they are 4 to 13 times the 10 ms budget.
 
+After the statement reduction (branch `t3/v2-write-statements`), each write reads the membership, the group, the expense with its parts and receipts, the participants, the categories, the private context and the recurring link in one statement, and writes the expense row with its payers and shares in one statement. MCP writes send no idempotency key, so they skip its lookup and row. Statements per request, counted by `test/db/write-statements.test.ts`, which fails when a count goes above these:
+
+| Request | Before | After |
+| --- | --- | --- |
+| MCP `create_expense` | 24 | 9 |
+| MCP `update_expense`, notes only | 27 | 9 |
+| Web `expenses.update` | 22 | 8 |
+
+
 ### After removing duplicate statements (branch `t3/v2-write-statements`, 2026-11-05)
 
 The branch cuts an MCP create from 24 to 9 statements and an MCP update from 27 to 9, with identical outputs. On the preview, warm, 20 notes-only updates: **33 ms p50, 44 ms p90** (40 and 75 before). Removing 18 statements saved about 7 ms, so the statements were not most of the cost. The rest is fixed work per request: the MCP SDK, Effect, JSON and crypto. A write cannot reach 10 ms on Workers Free without a deep rewrite.
