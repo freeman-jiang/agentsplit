@@ -4,6 +4,8 @@ import { and, asc, eq, isNull, or, sql, type SQL } from 'drizzle-orm'
 import { Result } from 'effect'
 import {
   activities,
+  categories,
+  expenseDocuments,
   expensePayers,
   expenses,
   expenseShares,
@@ -19,6 +21,7 @@ import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../sha
 import { formatMinor, minor, type Minor } from '../shared/money'
 import type { Db } from './db'
 import { randomId } from './ids'
+import { stopRecurrence, syncRecurrence } from './recurring'
 
 export type Principal = {
   readonly userId: string
@@ -190,7 +193,12 @@ type ExpenseRow = {
   payers: { participantId: string; amount: string }[]
   shares: { participantId: string; amount: string; weight: string }[]
   document_count: number
+  added_by: string | null
+  edited_by: string | null
 }
+
+/** The name shown for an activity's author; recurring copies made by the scheduled job have none. */
+const actorName = sql.raw(`CASE WHEN a.source = 'system' AND a.actor_name IS NULL THEN 'Automatic recurrence' ELSE a.actor_name END`)
 
 /**
  * Expenses with their payers, shares and document count, in one statement.
@@ -210,7 +218,9 @@ async function selectExpenses(db: Db, data: { where: SQL; orderBy: SQL; limit?: 
         FROM expense_payers p WHERE p.expense_id = e.id), '[]') AS payers,
       coalesce((SELECT json_agg(json_build_object('participantId', s.participant_id, 'amount', s.amount::text, 'weight', s.weight) ORDER BY s.participant_id)
         FROM expense_shares s WHERE s.expense_id = e.id), '[]') AS shares,
-      (SELECT count(*)::int FROM expense_documents d WHERE d.expense_id = e.id) AS document_count
+      (SELECT count(*)::int FROM expense_documents d WHERE d.expense_id = e.id) AS document_count,
+      (SELECT ${actorName} FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = 1) AS added_by,
+      (SELECT ${actorName} FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = e.revision AND e.revision > 1 AND a.type = 'update_expense') AS edited_by
     FROM expenses e
     WHERE ${data.where}
     ORDER BY ${data.orderBy}
@@ -239,6 +249,8 @@ async function selectExpenses(db: Db, data: { where: SQL; orderBy: SQL; limit?: 
         createdAt: e.created_at,
         updatedAt: e.updated_at,
         documentCount: e.document_count,
+        addedBy: e.added_by,
+        editedBy: e.edited_by,
       },
       /** Exact PostgreSQL timestamps (microseconds) for cursors. */
       keys: { created: e.created_key, updated: e.updated_key },
@@ -246,7 +258,7 @@ async function selectExpenses(db: Db, data: { where: SQL; orderBy: SQL; limit?: 
   })
 }
 
-async function loadExpenses(db: Db, ids: string[]) {
+export async function loadExpenses(db: Db, ids: string[]) {
   if (ids.length === 0) return []
   const rows = await selectExpenses(db, { where: sql`e.id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`, orderBy: sql`e.id` })
   const byId = new Map(rows.map((r) => [r.expense.id, r.expense]))
@@ -353,15 +365,61 @@ function resolve(draft: ExpenseDraft, people: { id: string }[]): ResolvedExpense
   return result.success
 }
 
-/** The v2 history snapshot of one expense revision. Legacy snapshots keep schemaVersion 1. */
-function snapshot(data: { group: { id: string; name: string; slug: string | null; defaultCurrency: string }; expense: ApiExpense; names: Map<string, string> }) {
+export type StoredDocument = { id: string; url: string; width: number; height: number }
+
+export async function expenseDocumentsOf(tx: Db, expenseId: string): Promise<StoredDocument[]> {
+  return tx
+    .select({ id: expenseDocuments.id, url: expenseDocuments.url, width: expenseDocuments.width, height: expenseDocuments.height })
+    .from(expenseDocuments)
+    .where(eq(expenseDocuments.expenseId, expenseId))
+    .orderBy(asc(expenseDocuments.id))
+}
+
+/**
+ * The v2 history snapshot of one expense revision, with its receipt pointers,
+ * so that a receipt removed later stays in the earlier revision. Legacy snapshots keep schemaVersion 1.
+ */
+export function snapshot(data: {
+  group: { id: string; name: string; slug: string | null; defaultCurrency: string }
+  expense: ApiExpense
+  names: Map<string, string>
+  documents: readonly StoredDocument[]
+}) {
   const named = <T extends { participantId: string }>(list: readonly T[]) => list.map((p) => ({ ...p, name: data.names.get(p.participantId) ?? '' }))
+  // Attribution comes from the activities themselves; it is not part of the revision.
+  const { addedBy: _addedBy, editedBy: _editedBy, ...expense } = data.expense
   return {
     schemaVersion: 2,
     kind: data.expense.kind,
     group: { id: data.group.id, name: data.group.name, slug: data.group.slug, currency: data.group.defaultCurrency },
-    expense: { ...data.expense, payers: named(data.expense.payers), shares: named(data.expense.shares) },
+    expense: { ...expense, payers: named(data.expense.payers), shares: named(data.expense.shares), documents: data.documents },
   }
+}
+
+/**
+ * Replaces an expense's receipts. Every URL must be a receipt uploaded to this
+ * group, as in the current app; a document keeps its ID only if it already
+ * belongs to this expense, so a client cannot collide with another expense's row.
+ */
+async function writeDocuments(tx: Db, data: { groupId: string; expenseId: string; documents: readonly StoredDocument[] }) {
+  const urls = [...new Set(data.documents.map((d) => d.url))]
+  if (urls.length) {
+    const registered = await tx.execute<{ url: string }>(
+      sql`SELECT url FROM receipts WHERE group_id = ${data.groupId} AND url IN (${sql.join(urls.map((u) => sql`${u}`), sql`, `)})`,
+    )
+    if (registered.rows.length !== urls.length) throw new Invalid({ message: 'Attach only receipts uploaded to this group', field: 'documents' })
+  }
+  const own = new Set((await expenseDocumentsOf(tx, data.expenseId)).map((d) => d.id))
+  await tx.delete(expenseDocuments).where(eq(expenseDocuments.expenseId, data.expenseId))
+  if (data.documents.length)
+    await tx.insert(expenseDocuments).values(
+      data.documents.map((d) => ({ id: own.has(d.id) ? d.id : randomId(), expenseId: data.expenseId, url: d.url, width: d.width, height: d.height })),
+    )
+}
+
+async function requireCategory(tx: Db, categoryId: number) {
+  const [row] = await tx.select({ id: categories.id }).from(categories).where(eq(categories.id, categoryId))
+  if (!row) throw new Invalid({ message: 'categoryId: Unknown category', field: 'categoryId' })
 }
 
 async function writeParts(tx: Db, data: { expenseId: string; groupId: string; expense: ResolvedExpense }) {
@@ -371,7 +429,7 @@ async function writeParts(tx: Db, data: { expenseId: string; groupId: string; ex
   await tx.insert(expenseShares).values(data.expense.shares.map((s) => ({ expenseId: data.expenseId, groupId: data.groupId, participantId: s.participantId, amount: s.amount, weight: s.weight })))
 }
 
-const actor = (principal: Principal) => ({
+export const actor = (principal: Principal) => ({
   source: principal.source,
   actorName: principal.name,
   actorUserId: principal.userId,
@@ -391,18 +449,48 @@ const columns = (e: ResolvedExpense) => ({
   recurrence: e.recurrence,
 })
 
+/** True when an update would store exactly what is saved. */
+function unchanged(data: { before: ApiExpense; after: ResolvedExpense; documentsBefore: readonly StoredDocument[]; documentsAfter: readonly StoredDocument[] | undefined }) {
+  const { before, after } = data
+  const money = (amount: Minor) => formatMinor({ amount, currency: after.currency })
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+  const byId = <T extends { participantId: string }>(list: readonly T[]) => [...list].sort((a, b) => (a.participantId < b.participantId ? -1 : 1))
+  const docs = (list: readonly StoredDocument[]) => list.map((d) => [d.url, d.width, d.height]).sort()
+  return (
+    same(
+      [before.kind, before.title, before.vendor, before.notes, before.categoryId, before.expenseDate, before.currency, before.amount, before.splitMode, before.recurrence],
+      [after.kind, after.title, after.vendor, after.notes, after.categoryId, after.expenseDate, after.currency, money(after.amount), after.splitMode, after.recurrence],
+    ) &&
+    same(byId(before.payers), byId(after.payers.map((p) => ({ participantId: p.participantId, amount: money(p.amount) })))) &&
+    same(byId(before.shares), byId(after.shares.map((s) => ({ participantId: s.participantId, amount: money(s.amount), weight: s.weight })))) &&
+    (data.documentsAfter === undefined || same(docs(data.documentsBefore), docs(data.documentsAfter)))
+  )
+}
+
 export async function createExpense(
   tx: Db,
-  data: { principal: Principal; group: string; expenseId: string; idempotencyKey: string; expense: ExpenseDraft },
+  data: {
+    principal: Principal
+    group: string
+    expenseId: string
+    idempotencyKey: string
+    expense: ExpenseDraft
+    documents?: readonly StoredDocument[]
+  },
 ): Promise<ApiExpense> {
   const { groupId } = await requireMember(tx, data)
-  return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request: { op: 'create', groupId, expenseId: data.expenseId, expense: data.expense } }, async () => {
-    const [existing] = await tx.select({ groupId: expenses.groupId }).from(expenses).where(eq(expenses.id, data.expenseId))
-    if (existing) throw new Invalid({ message: 'An expense with this ID already exists; choose another ID', field: 'expenseId' })
+  const documents = data.documents ?? []
+  return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request: { op: 'create', groupId, expenseId: data.expenseId, expense: data.expense, documents } }, async () => {
+    const [existing] = await tx.select({ groupId: expenses.groupId, revision: expenses.revision }).from(expenses).where(eq(expenses.id, data.expenseId))
+    // Another group's expense does not reveal its revision.
+    if (existing) throw new Conflict({ entity: 'expense', id: data.expenseId, currentRevision: existing.groupId === groupId ? existing.revision : 0 })
     const people = await groupParticipants(tx, groupId)
     const expense = resolve(data.expense, people)
+    await requireCategory(tx, expense.categoryId)
     await tx.insert(expenses).values({ id: data.expenseId, groupId, revision: 1, ...columns(expense) })
     await writeParts(tx, { expenseId: data.expenseId, groupId, expense })
+    await writeDocuments(tx, { groupId, expenseId: data.expenseId, documents })
+    await syncRecurrence(tx, { groupId, expenseId: data.expenseId, rule: expense.recurrence, expenseDate: expense.expenseDate, previous: null })
     const [stored] = await loadExpenses(tx, [data.expenseId])
     const [group] = await tx.select().from(groups).where(eq(groups.id, groupId))
     if (!stored || !group) throw new NotFound({ entity: 'expense', id: data.expenseId })
@@ -412,7 +500,7 @@ export async function createExpense(
       type: 'create_expense',
       expenseId: data.expenseId,
       expenseRevision: 1,
-      snapshot: snapshot({ group, expense: stored, names: new Map(people.map((p) => [p.id, p.name])) }),
+      snapshot: snapshot({ group, expense: stored, names: new Map(people.map((p) => [p.id, p.name])), documents: await expenseDocumentsOf(tx, data.expenseId) }),
       ...actor(data.principal),
     })
     return stored
@@ -439,22 +527,54 @@ async function ensureBaseline(tx: Db, data: { groupId: string; expenseId: string
   const people = await groupParticipants(tx, data.groupId)
   await tx
     .insert(activities)
-    .values({ id: randomId(), groupId: data.groupId, type: 'update_expense', expenseId: data.expenseId, expenseRevision: 0, snapshot: snapshot({ group, expense: stored, names: new Map(people.map((p) => [p.id, p.name])) }), ...actor(data.principal) })
+    .values({
+      id: randomId(),
+      groupId: data.groupId,
+      type: 'update_expense',
+      expenseId: data.expenseId,
+      expenseRevision: 0,
+      snapshot: snapshot({ group, expense: stored, names: new Map(people.map((p) => [p.id, p.name])), documents: await expenseDocumentsOf(tx, data.expenseId) }),
+      ...actor(data.principal),
+    })
     .onConflictDoNothing()
 }
 
 export async function updateExpense(
   tx: Db,
-  data: { principal: Principal; group: string; expenseId: string; expectedRevision: number; idempotencyKey: string; expense: ExpenseDraft },
+  data: {
+    principal: Principal
+    group: string
+    expenseId: string
+    expectedRevision: number
+    idempotencyKey: string
+    expense: ExpenseDraft
+    /** The full list of receipts; omitted keeps the saved ones. */
+    documents?: readonly StoredDocument[]
+  },
 ): Promise<ApiExpense> {
   const { groupId } = await requireMember(tx, data)
-  return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request: { op: 'update', groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision, expense: data.expense } }, async () => {
+  const request = { op: 'update', groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision, expense: data.expense, documents: data.documents ?? null }
+  return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request }, async () => {
     const revision = await currentRevision(tx, { groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision })
     const people = await groupParticipants(tx, groupId)
     const expense = resolve(data.expense, people)
+    await requireCategory(tx, expense.categoryId)
+    const [before] = await loadExpenses(tx, [data.expenseId])
+    const savedDocuments = await expenseDocumentsOf(tx, data.expenseId)
+    if (!before) throw new NotFound({ entity: 'expense', id: data.expenseId })
+    // An edit that changes nothing adds no revision, as in the current app.
+    if (unchanged({ before, after: expense, documentsBefore: savedDocuments, documentsAfter: data.documents })) return before
     await ensureBaseline(tx, { groupId, expenseId: data.expenseId, revision, principal: data.principal })
     await tx.update(expenses).set({ ...columns(expense), revision: revision + 1 }).where(eq(expenses.id, data.expenseId))
     await writeParts(tx, { expenseId: data.expenseId, groupId, expense })
+    if (data.documents) await writeDocuments(tx, { groupId, expenseId: data.expenseId, documents: data.documents })
+    await syncRecurrence(tx, {
+      groupId,
+      expenseId: data.expenseId,
+      rule: expense.recurrence,
+      expenseDate: expense.expenseDate,
+      previous: { rule: before.recurrence, expenseDate: before.expenseDate },
+    })
     const [stored] = await loadExpenses(tx, [data.expenseId])
     const [group] = await tx.select().from(groups).where(eq(groups.id, groupId))
     if (!stored || !group) throw new NotFound({ entity: 'expense', id: data.expenseId })
@@ -464,7 +584,7 @@ export async function updateExpense(
       type: 'update_expense',
       expenseId: data.expenseId,
       expenseRevision: revision + 1,
-      snapshot: snapshot({ group, expense: stored, names: new Map(people.map((p) => [p.id, p.name])) }),
+      snapshot: snapshot({ group, expense: stored, names: new Map(people.map((p) => [p.id, p.name])), documents: await expenseDocumentsOf(tx, data.expenseId) }),
       ...actor(data.principal),
     })
     return stored
@@ -480,6 +600,8 @@ export async function deleteExpense(
     const revision = await currentRevision(tx, { groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision })
     await ensureBaseline(tx, { groupId, expenseId: data.expenseId, revision, principal: data.principal })
     await tx.update(expenses).set({ deletedAt: new Date(), revision: revision + 1 }).where(eq(expenses.id, data.expenseId))
+    // Deleting the newest occurrence of a series stops it.
+    await stopRecurrence(tx, { expenseId: data.expenseId })
     await tx.insert(activities).values({ id: randomId(), groupId, type: 'delete_expense', expenseId: data.expenseId, expenseRevision: revision + 1, ...actor(data.principal) })
     return { revision: revision + 1 }
   })

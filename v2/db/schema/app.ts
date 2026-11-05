@@ -14,6 +14,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   unique,
@@ -251,8 +252,13 @@ export const recurringLinks = pgTable(
     // Nullable: set once the next expense in the series has been created.
     nextExpenseCreatedAt: timestamp({ withTimezone: true, mode: 'date' }),
     nextExpenseDate: date({ mode: 'string' }).notNull(),
+    /** The series' day of the month. Monthly dates keep it after a shorter month (Jan 31, Feb 28, Mar 31). */
+    anchorDay: smallint().notNull(),
   },
-  (t) => [index().on(t.groupId, t.nextExpenseCreatedAt, t.nextExpenseDate.desc())],
+  (t) => [
+    index().on(t.groupId, t.nextExpenseCreatedAt, t.nextExpenseDate.desc()),
+    check('recurring_links_anchor_day', sql`${t.anchorDay} BETWEEN 1 AND 31`),
+  ],
 )
 
 /** A private context holds exactly one ungrouped expense with a fixed set of people. */
