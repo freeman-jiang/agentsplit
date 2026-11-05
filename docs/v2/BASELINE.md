@@ -50,3 +50,7 @@ What changed the numbers, from the first deploy (75 to 146 ms):
 5. Output schemas without per-field pattern checks.
 
 The floor is about 4 ms for connecting and one query, plus about 3 ms for Effect RPC. Each row of a list adds about 0.15 ms. Cold isolates still reach 30 to 50 ms. Freeman chose to stay on Workers Free (2026-11-05), so the next steps are fewer queries per request and a full profile once every screen exists.
+
+## v2 client bundle (2026-11-05)
+
+The JavaScript every page loads up front is 124.9 KB gzip (budget 150 KB): the entry chunk (93.4 KB, mostly React DOM) and the router and query chunk (30.9 KB). Effect does not ship to the browser; the client calls the Effect RPC endpoint with a small fetch client. Before that change the shell was about 180 KB, of which 85 KB was Effect's client runtime. CI enforces the budget with `scripts/check-bundle.ts`.
