@@ -43,7 +43,7 @@ export const jsonError = (data: { status: number; message: string; headers?: Rec
   Response.json({ error: data.message }, { status: data.status, headers: { ...noStore, ...data.headers } })
 
 /** Is the request from the app's own origin? The session cookie alone must not authorize a cross-site write. */
-export const sameOrigin = (request: Request, baseUrl: string) => request.headers.get('origin') === new URL(baseUrl).origin
+export const sameOrigin = (data: { request: Request; baseUrl: string }) => data.request.headers.get('origin') === new URL(data.baseUrl).origin
 
 const TEXT = { 'Cache-Control': 'no-cache' }
 

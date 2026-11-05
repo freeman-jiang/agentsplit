@@ -4,12 +4,14 @@
 // Rules from the current app: src/lib/receipt-storage.ts, src/app/api/receipts/route.ts.
 import { sql } from 'drizzle-orm'
 import { receipts } from '../../db/schema/app'
-import { Forbidden, NotFound } from '../shared/api'
+import { Forbidden } from '../shared/api'
 import type { Bucket } from './bucket'
 import type { Db } from './db'
 import { randomId } from './ids'
 import { requireMember, type Principal } from './ledger'
+import { authenticate } from './mcp/authenticate'
 import { jsonError, sameOrigin } from './security'
+import { sessionPrincipal } from './session'
 
 export const MAX_RECEIPT_BYTES = 5 * 1024 * 1024
 /** The multipart envelope may add this much to the image. */
@@ -62,23 +64,29 @@ const sized = (info: ImageInfo) => (info.width >= 1 && info.height >= 1 && info.
  * current app's readReceipt takes it. A current-app URL is
  * `https://<host>/<bucket>/<key>`; a v2 upload is `r2://agentsplit-receipts/<key>`.
  * Keys keep their original form, such as `receipts/<id>.png` or the older
- * `document-<time>-<id>.png`. Refuses keys with `..`, `?`, `#` or `%` (P-RECEIPT-26).
+ * `document-<time>-<id>.png`. Refuses keys with `..`, `?`, `#`, `%` (P-RECEIPT-26) or a NUL
+ * byte, which PostgreSQL text cannot hold.
  */
 export function receiptKey(url: string): string | null {
   const key = url.startsWith(NEW_URL_PREFIX) ? url.slice(NEW_URL_PREFIX.length) : /^https?:\/\/[^/]+\/[^/]+\/(.+)$/.exec(url)?.[1]
-  if (!key || /\.\.|[?#%]/.test(key)) return null
+  if (!key || /\.\.|[?#%\0]/.test(key)) return null
   return key
 }
 
 /** The download address the UI and the API give for a receipt (P-RECEIPT-07). */
 export const receiptDownloadPath = (data: { groupId: string; url: string }) => `/api/receipts?${new URLSearchParams({ groupId: data.groupId, url: data.url })}`
 
-/** The caller's membership of the group, or null when access is denied. Any other failure is thrown. */
+/**
+ * The caller's membership of the group, or null when access is denied. A NUL
+ * byte cannot name a group, and PostgreSQL text cannot hold it, so it is denied
+ * before the query. Any other failure is thrown.
+ */
 async function memberOrNull(db: Db, data: { principal: Principal; group: string }) {
+  if (data.group.includes('\0')) return null
   try {
     return await requireMember(db, data)
   } catch (error) {
-    if (error instanceof Forbidden || error instanceof NotFound) return null
+    if (error instanceof Forbidden) return null
     throw error
   }
 }
@@ -100,11 +108,9 @@ async function receiptInGroup(db: Db, data: { groupId: string; url: string }) {
 export async function receiptReader(db: Db, data: { request: Request; baseUrl: string; secret: string }): Promise<Principal | null> {
   const headers = data.request.headers
   if (headers.has('x-api-key') || headers.has('authorization')) {
-    const { authenticate } = await import('./mcp/authenticate')
     const result = await authenticate(db, { request: data.request, baseUrl: data.baseUrl })
     return 'principal' in result ? result.principal : null
   }
-  const { sessionPrincipal } = await import('./session')
   return sessionPrincipal(db, { cookie: headers.get('cookie'), secret: data.secret, baseUrl: data.baseUrl })
 }
 
@@ -148,7 +154,7 @@ export async function uploadReceipt(data: {
   baseUrl: string
   enabled: boolean
 }): Promise<Response> {
-  if (!sameOrigin(data.request, data.baseUrl)) return jsonError({ status: 403, message: 'Origin not allowed' })
+  if (!sameOrigin({ request: data.request, baseUrl: data.baseUrl })) return jsonError({ status: 403, message: 'Origin not allowed' })
   if (!data.principal) return jsonError({ status: 401, message: 'Authentication required' })
   if (!data.enabled) return jsonError({ status: 403, message: 'Receipts are disabled' })
   // Cap the body before parsing it.

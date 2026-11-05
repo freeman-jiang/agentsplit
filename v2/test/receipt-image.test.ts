@@ -30,6 +30,6 @@ it('derives the storage key and refuses unsafe pointers', () => {
   expect(receiptKey('https://agentsplit-receipts.freemanjiang.com/agentsplit-receipts/document-2026-10-01T22:51:14.443Z-oGoSSKO-SUxcez0iFwaHc.png')).toBe(
     'document-2026-10-01T22:51:14.443Z-oGoSSKO-SUxcez0iFwaHc.png',
   )
-  for (const bad of ['https://x/b/receipts/../a.jpg', 'https://x/b/receipts/a.jpg?x', 'https://x/b/receipts/a%2e.jpg', 'https://x/b/receipts/a.jpg#', 'https://x/', 'r2://agentsplit-receipts/'])
+  for (const bad of ['https://x/b/receipts/../a.jpg', 'https://x/b/receipts/a.jpg?x', 'https://x/b/receipts/a%2e.jpg', 'https://x/b/receipts/a.jpg#', 'https://x/', 'r2://agentsplit-receipts/', 'r2://agentsplit-receipts/receipts/a\0.png'])
     expect(receiptKey(bad)).toBeNull()
 })

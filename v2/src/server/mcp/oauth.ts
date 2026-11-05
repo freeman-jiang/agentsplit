@@ -69,7 +69,10 @@ const replayStore = (db: Db): DpopReplayStore => ({
  * the database. Runs from the hourly job; returns the number of rows deleted.
  */
 export async function removeExpiredDpopProofs(db: Db): Promise<number> {
-  const result = await db.execute(sql`DELETE FROM verification WHERE identifier LIKE ${`${DPOP_PROOF}%`} AND expires_at < now() - interval '1 hour'`)
+  // A range on the prefix ("dpop-proof:" up to "dpop-proof;"), which the identifier index serves; LIKE cannot under the default collation.
+  const result = await db.execute(
+    sql`DELETE FROM verification WHERE identifier >= ${DPOP_PROOF} AND identifier < ${`${DPOP_PROOF.slice(0, -1)};`} AND expires_at < now() - interval '1 hour'`,
+  )
   return result.rowCount ?? 0
 }
 

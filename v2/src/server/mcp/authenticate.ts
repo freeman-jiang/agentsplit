@@ -8,6 +8,7 @@ import { verifyApiKey } from './api-key'
 import { jsonError, noStore } from '../security'
 import { challenge } from './challenge'
 import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
+import { verifyOAuthRequest } from './oauth'
 
 /** The ledger principal, plus the OAuth connection and its scope ceiling. API keys have neither. */
 export type McpPrincipal = Principal & { readonly scopes: readonly string[] | null; readonly oauthConnectionId: string | null }
@@ -52,8 +53,6 @@ export async function assertOAuthWrite(tx: Db, principal: McpPrincipal) {
 const unavailable = () => jsonError({ status: 503, message: 'Authentication is temporarily unavailable' })
 
 async function oauth(db: Db, data: { request: Request; baseUrl: string }): Promise<Authentication> {
-  // Loaded only for OAuth requests, so API-key requests never parse Better Auth's OAuth code.
-  const { verifyOAuthRequest } = await import('./oauth')
   const result = await verifyOAuthRequest(db, data)
   if (result.kind === 'invalid') return { response: challenge({ baseUrl: data.baseUrl }) }
   if (result.kind === 'no-read') return { response: challenge({ baseUrl: data.baseUrl, status: 403, message: 'Read permission is no longer granted' }) }

@@ -1,6 +1,5 @@
-// OAuth discovery and challenges for the MCP resource. This module is small on
-// purpose: the Worker serves the protected-resource metadata from it without
-// loading Better Auth or the MCP SDK.
+// OAuth discovery and challenges for the MCP resource: the protected-resource
+// metadata and the 401 and 403 WWW-Authenticate challenges.
 import { jsonError } from '../security'
 import { mcpResource, oauthIssuer, OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
 
@@ -38,7 +37,6 @@ export function protectedResourceMetadata(request: Request, baseUrl: string): Re
   const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=15, stale-while-revalidate=15, stale-if-error=86400' }
   return new Response(request.method === 'HEAD' ? null : body, { status: 200, headers })
 }
-
 
 /**
  * The 401 challenge (no or bad credentials) and the 403 step-up challenge
