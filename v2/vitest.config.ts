@@ -10,5 +10,5 @@ export default defineConfig({
       '~/': fileURLToPath(new URL('./src/', import.meta.url)),
     },
   },
-  test: { include: ['src/**/*.test.ts', 'test/**/*.test.ts'] },
+  test: { include: ['src/**/*.test.ts', 'test/**/*.test.ts'], fileParallelism: false },
 })
