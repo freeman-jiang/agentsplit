@@ -12,9 +12,9 @@ export const accountQuery = queryOptions({ queryKey: ['account'], queryFn: () =>
 export const consentClientQuery = (clientId: string) =>
   queryOptions({ queryKey: ['consent-client', clientId], queryFn: () => rpc((api) => api('account.consentClient', { clientId })) })
 
-/** Sends a signed-out visitor to /sign-in, keeping the requested page. */
+/** Sends a signed-out visitor to /sign-in, keeping the requested page as the address bar shows it. */
 export async function requireSignedIn(data: { queryClient: QueryClient; location: ParsedLocation }) {
-  if (!(await data.queryClient.ensureQueryData(meQuery))) throw redirect({ to: '/sign-in', search: { next: data.location.href } })
+  if (!(await data.queryClient.ensureQueryData(meQuery))) throw redirect({ to: '/sign-in', search: { next: data.location.publicHref } })
 }
 
 export type Theme = 'system' | 'light' | 'dark'

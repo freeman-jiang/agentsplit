@@ -9,6 +9,7 @@ import { createAuth, type Auth } from './auth'
 import type { Bucket } from './bucket'
 import { makeDb, registerRequestDb, releaseRequestDb, REQUEST_ID_HEADER, type Db } from './db'
 import { exportCsv, exportJson, exportResponse } from './export'
+import { groupRedirect, idPathOf } from './group-urls'
 import { HandlersLive } from './handlers'
 import { withPerfCounters } from './perf'
 import { METADATA_PATHS, protectedResourceMetadata } from './mcp/challenge'
@@ -205,6 +206,12 @@ export function createApp(platform: Platform) {
     // The current app's presigned upload route is gone for good (P-RECEIPT-28).
     if (url.pathname === '/api/s3-upload') return jsonError({ status: 410, message: 'Use the authenticated receipt upload flow' })
     if (url.pathname.startsWith('/api/')) return jsonError({ status: 404, message: 'Not found' })
+    // The current app's group URLs: /groups/<id>/… moves to the group's slug (src/server/group-urls.ts).
+    const idPath = request.method === 'GET' || request.method === 'HEAD' ? idPathOf(url.pathname) : null
+    if (idPath) {
+      const moved = await withClient((client) => groupRedirect(makeDb(client), { path: idPath, search: url.search }))
+      if (moved) return moved
+    }
     return platform.assets(request)
   }
 
