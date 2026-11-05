@@ -9,6 +9,9 @@
 - Group F, translations: **English only.** v2 does not port the locale files.
 - Hosting: **stay on Workers Free** and keep each request within the CPU budget.
 - P-FEED-19 (lead, under the approval of group C): "involving me" defaults to true in the UI and in the API, so agents see what people see. The MCP tool description states the default.
+- **Pending Freeman's review**, P-EXP-20: lists stay cached for 30 seconds and refetch after every write, instead of refetching on every visit. This makes screens open instantly from the cache, but another person's change can take up to 30 seconds to appear.
+- Payments store category 1 (Payment) on every path (P-BAL-92, approved in group C).
+- Revision snapshots record the expense's receipts, so history shows them (history area question 1).
 - Retries of a private-expense create or an invitation renewal return Conflict or `url: null` instead of a stored result, because the response holds a secret link that is never stored. An agent renews the invitation to get a new link.
 
 ## A. Decided by PLAN.md (no further approval needed)
