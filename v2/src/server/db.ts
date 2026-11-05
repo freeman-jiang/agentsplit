@@ -3,6 +3,7 @@ import { Context, Effect, Layer, Schema } from 'effect'
 import pg from 'pg'
 import * as app from '../../db/schema/app'
 import * as auth from '../../db/schema/auth'
+import { Conflict, Forbidden, Invalid, NotFound } from '../shared/api'
 
 export const schema = { ...app, ...auth }
 export type Db = NodePgDatabase<typeof schema>
@@ -21,13 +22,19 @@ export class Database extends Context.Service<
   Database,
   {
     /** Runs `work` on one connection. */
-    readonly use: <A>(work: (db: Db) => Promise<A>) => Effect.Effect<A, DatabaseError>
+    readonly use: <A>(work: (db: Db) => Promise<A>) => Effect.Effect<A, DatabaseError | DomainError>
     /** Runs `work` in one SERIALIZABLE transaction, retried on serialization failures. */
-    readonly transaction: <A>(work: (db: Db) => Promise<A>) => Effect.Effect<A, DatabaseError>
+    readonly transaction: <A>(work: (db: Db) => Promise<A>) => Effect.Effect<A, DatabaseError | DomainError>
   }
 >()('agentsplit/Database') {}
 
-const errorOf = (cause: unknown) => new DatabaseError({ message: cause instanceof Error ? cause.message : String(cause) })
+/** Errors the domain code throws on purpose. They pass through unchanged; anything else is a DatabaseError. */
+export type DomainError = Forbidden | NotFound | Conflict | Invalid
+const isDomainError = (cause: unknown): cause is DomainError =>
+  cause instanceof Forbidden || cause instanceof NotFound || cause instanceof Conflict || cause instanceof Invalid
+
+const errorOf = (cause: unknown): DatabaseError | DomainError =>
+  isDomainError(cause) ? cause : new DatabaseError({ message: cause instanceof Error ? cause.message : String(cause) })
 
 /** One connection per call. Hyperdrive pools the real connections, so connecting is cheap. */
 export function databaseLayer(connectionString: () => string) {
@@ -53,7 +60,7 @@ export function databaseLayer(connectionString: () => string) {
         }),
       ),
     )
-  const transaction = <A>(work: (db: Db) => Promise<A>): Effect.Effect<A, DatabaseError> =>
+  const transaction = <A>(work: (db: Db) => Promise<A>): Effect.Effect<A, DatabaseError | DomainError> =>
     attempt(work).pipe(
       Effect.retry({
         times: 4,
