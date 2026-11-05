@@ -59,7 +59,9 @@ Freeman decided (2026-11-05) to keep one persistent group in production for chec
 
 Downtime: about 4 minutes (17:56:57 to 18:00:48).
 
-Follow-up: the nightly backup still dumps the old `db` and copies receipts with `node`, which v2's `app` does not have. The dots thread changes it to dump `db2` and copy receipts with Bun before the 2026-11-06 03:31 PST run.
+The final pre-cutover backup (the current app's schema, taken after the freeze) is `~/backups/agentsplit/2026-11-05.175807/`: the v2 backup job moved it aside when it ran on the same day, so `~/backups/agentsplit/2026-11-05/` now holds the first v2 backup. Keep the pre-cutover backup until Freeman says otherwise.
+
+Follow-up: the nightly backup dumped the old `db` and copied receipts with `node`, which v2's `app` does not have. dots#62 (Freeman approved it on 2026-11-05) makes it dump `db2` and copy receipts with Bun; its first run against production passed (2 groups, 48 expenses, 146 activities, 13 receipt objects).
 
 ## Rehearsal record
 
