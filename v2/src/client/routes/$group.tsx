@@ -1,12 +1,14 @@
 import { requireSignedIn } from '~/client/queries/account'
-import { useSuspenseQuery } from '@tanstack/react-query'
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, Outlet, redirect } from '@tanstack/react-router'
-import { ArrowLeftRight, BarChart3, Info, Receipt, Scale, ScrollText, Settings, Users } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowLeftRight, BarChart3, ChevronDown, Info, Receipt, RefreshCw, Scale, ScrollText, Settings, Users } from 'lucide-react'
 import { cn } from '~/client/cn'
 import { money } from '~/client/components/money'
 import { groupQuery } from '~/client/queries'
+import { balancesQuery } from '~/client/queries/expenses'
 import { Button } from '~/client/ui/button'
+import { Skeleton } from '~/client/ui/skeleton'
+import type { CurrencyBalances } from '~/shared/api'
 import { groupRef } from '~/shared/groups'
 
 export const Route = createFileRoute('/$group')({
@@ -80,63 +82,147 @@ function GroupLayout() {
         ))}
       </nav>
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_16rem]">
-        <div className="md:hidden">
-          <BalanceSummary group={group} />
-        </div>
-        <div className="min-w-0">
+        <BalanceRail group={group} />
+        <div className="min-w-0 md:col-start-1 md:row-start-1">
           <Outlet />
         </div>
-        <aside className="hidden h-fit md:sticky md:top-24 md:block" aria-label="Balances">
-          <BalanceRail group={group} />
-        </aside>
       </div>
     </div>
   )
 }
 
-function useNets(group: string) {
-  const { data: g } = useSuspenseQuery(groupQuery(group))
-  const names = new Map(g.participants.map((p) => [p.id, p.name]))
-  return g.balances.map((b) => ({ ...b, name: names.get(b.participantId) ?? 'Unknown' }))
+type Entry = typeof CurrencyBalances.Type
+type Person = { readonly id: string; readonly name: string }
+
+const isZero = (amount: string) => !/[1-9]/.test(amount)
+const abs = (amount: string) => (amount.startsWith('-') ? amount.slice(1) : amount)
+
+function netLabel(amount: string, personal = false) {
+  if (isZero(amount)) return 'Settled up'
+  if (amount.startsWith('-')) return personal ? 'You owe' : 'owes'
+  return personal ? 'You are owed' : 'gets back'
 }
 
-function NetList({ group }: { group: string }) {
-  const nets = useNets(group)
-  if (nets.length === 0) return <p className="text-sm text-muted-foreground">No balances yet.</p>
-  return (
-    <ul className="space-y-1 text-sm">
-      {nets.map((b) => (
-        <li key={`${b.participantId}-${b.currency}`} className="flex justify-between gap-2">
-          <span className="truncate">{b.name}</span>
-          <span className={cn('tabular-nums', b.net.startsWith('-') ? 'text-destructive' : 'text-primary')}>{money(b.net, b.currency)}</span>
-        </li>
-      ))}
-    </ul>
-  )
+function amountClass(amount: string) {
+  if (isZero(amount)) return 'text-muted-foreground'
+  return amount.startsWith('-') ? 'text-red-700 dark:text-red-400' : 'text-green-700 dark:text-green-400'
 }
 
+/**
+ * The net balances of the whole group, ported from the current app's
+ * group-balance-summary.tsx. It reads its own balances query, so a failed load
+ * stays in the rail. On narrow screens each currency is a closed <details>.
+ */
 function BalanceRail({ group }: { group: string }) {
+  const { data: g } = useSuspenseQuery(groupQuery(group))
+  // As in the current app: fresh balances on mount and on window focus (P-BAL-58).
+  const { data, isPending, isError, isFetching, refetch } = useQuery({ ...balancesQuery(group), refetchOnMount: 'always', refetchOnWindowFocus: true })
+  const participantId = g.participantId
   return (
-    <section className="border bg-card p-4">
-      <h2 className="mb-2 font-medium">Balances</h2>
-      <NetList group={group} />
-    </section>
-  )
-}
-
-function BalanceSummary({ group }: { group: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <section className="border bg-card">
-      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium">
-        Balances
-        <span aria-hidden="true">{open ? '−' : '+'}</span>
-      </button>
-      {open && (
-        <div className="px-4 pb-3">
-          <NetList group={group} />
+    <aside
+      aria-label="Group balances"
+      data-testid="group-balance-summary"
+      className="z-20 h-fit self-start border bg-card p-4 md:sticky md:top-24 md:col-start-2 md:row-start-1 md:max-h-[calc(100dvh-7rem)] md:overflow-y-auto"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold">Group balances</h2>
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => void refetch()} disabled={isFetching} aria-label="Refresh balances">
+          <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} aria-hidden="true" />
+        </Button>
+      </div>
+      <p className="mb-4 text-xs text-muted-foreground">Net across all group expenses</p>
+      {isError ? (
+        <p role="alert" className="text-sm">
+          Could not load balances. Try refreshing.
+        </p>
+      ) : isPending ? (
+        <Skeleton className="h-12 w-full" />
+      ) : data.currencies.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No outstanding balances.</p>
+      ) : (
+        <div className="space-y-5">
+          {data.currencies.map((entry) => {
+            const ownTotal = participantId === null ? null : (entry.balances.find((b) => b.participantId === participantId)?.net ?? '0')
+            const summary = (
+              <div className="min-w-0">
+                <div className="text-xs text-muted-foreground">
+                  {ownTotal === null ? 'Group net balances' : netLabel(ownTotal, true)} · {entry.currency}
+                </div>
+                {ownTotal !== null && (
+                  <div className={cn('mt-1 text-xl font-semibold tabular-nums', amountClass(ownTotal))} data-testid="summary-personal-net">
+                    {money(abs(ownTotal), entry.currency)}
+                  </div>
+                )}
+              </div>
+            )
+            const details = <BalanceDetails entry={entry} participants={g.participants} participantId={participantId} />
+            return (
+              <section key={entry.currency} aria-label={`${entry.currency} balances`}>
+                <details className="group md:hidden">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                    {summary}
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      Details
+                      <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden="true" />
+                    </span>
+                  </summary>
+                  <div className="mt-4 max-h-[55dvh] overflow-y-auto">{details}</div>
+                </details>
+                <div className="hidden space-y-4 md:block">
+                  {summary}
+                  {details}
+                </div>
+              </section>
+            )
+          })}
         </div>
       )}
-    </section>
+      <Link to="/$group/balances" params={{ group }} className="mt-4 inline-block text-xs underline underline-offset-4">
+        Balance details
+      </Link>
+    </aside>
+  )
+}
+
+function BalanceDetails(props: { entry: Entry; participants: ReadonlyArray<Person>; participantId: string | null }) {
+  const { entry, participants, participantId } = props
+  const currency = entry.currency
+  const nets = new Map(entry.balances.map((b) => [b.participantId, b.net]))
+  const personName = (id: string) => (id === participantId ? 'You' : (participants.find((p) => p.id === id)?.name ?? 'Unknown participant'))
+  return (
+    <div className="space-y-4">
+      <ul className="space-y-3" aria-label={`${currency} participant balances`}>
+        {participants.map((person) => {
+          const total = nets.get(person.id) ?? '0'
+          return (
+            <li key={person.id} className="space-y-0.5" data-testid="summary-participant" data-participant={person.name}>
+              <div className="text-sm font-medium break-words">
+                {person.name}
+                {person.id === participantId && <span className="font-normal text-muted-foreground"> (you)</span>}
+              </div>
+              <div className={cn('text-sm tabular-nums', amountClass(total))}>
+                {netLabel(total)}
+                {!isZero(total) && <> {money(abs(total), currency)}</>}
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+      {entry.settlements.length > 0 && (
+        <div className="border-t pt-4">
+          <h3 className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Suggested payments</h3>
+          <ul className="space-y-3 text-sm">
+            {entry.settlements.map((payment) => (
+              <li key={`${payment.from}-${payment.to}`} data-testid="summary-payment">
+                <span className="block break-words">
+                  {personName(payment.from)} → {personName(payment.to)}
+                </span>
+                <strong className="tabular-nums">{money(payment.amount, currency)}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }
