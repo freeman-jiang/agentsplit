@@ -232,7 +232,7 @@ async function groupSnapshot(tx: Db, groupId: string) {
 
 export async function createGroup(
   tx: Db,
-  data: { principal: Principal; groupId: string | null; idempotencyKey: string; group: CreateInput },
+  data: { principal: Principal; groupId: string | null; idempotencyKey: string | null; group: CreateInput },
 ): Promise<{ id: string; slug: string | null; revision: number }> {
   return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request: { op: 'create_group', groupId: data.groupId, group: data.group } }, async () => {
     const groupId = data.groupId ?? randomId()
@@ -284,7 +284,7 @@ async function lockGroup(tx: Db, groupId: string) {
  */
 export async function updateGroup(
   tx: Db,
-  data: { principal: Principal; group: string; expectedRevision: number; idempotencyKey: string; changes: ChangesInput },
+  data: { principal: Principal; group: string; expectedRevision: number; idempotencyKey: string | null; changes: ChangesInput },
 ): Promise<{ id: string; slug: string | null; revision: number }> {
   const { groupId, role } = await requireMember(tx, data)
   if (role !== 'admin') throw new Forbidden({ message: 'Only group admins can edit group settings' })
@@ -400,7 +400,7 @@ async function invitationFromUrl(tx: Db, data: { shareUrl: string; baseUrl: stri
  */
 export async function changeAccess(
   tx: Db,
-  data: { principal: Principal; baseUrl: string; idempotencyKey: string; request: AccessInput },
+  data: { principal: Principal; baseUrl: string; idempotencyKey: string | null; request: AccessInput },
 ): Promise<AccessResult> {
   let url: string | null = null
   const result = await idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request: { op: 'access', ...data.request } }, async () => {

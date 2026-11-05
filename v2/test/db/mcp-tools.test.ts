@@ -462,6 +462,33 @@ describe('expense writes and reads', () => {
     expect((await failure(h, { name: 'get_group', args: { groupId: 'g1' }, headers: bob })).code).toBe('FORBIDDEN')
     await h.withDb((db) => db.update(memberships).set({ active: true }).where(eq(memberships.userId, 'bob')))
   })
+
+  it('retries a write after a serialization failure, as the RPC path does', async () => {
+    await h.group({ id: 'g-retry', people: ['ta'], members: [['alice', 'ta', 'admin']] })
+    // The first insert of this expense fails as a concurrent SERIALIZABLE write would. A sequence is not rolled back, so only the first attempt fails.
+    await h.withDb((db) =>
+      db.execute(sql`
+        CREATE SEQUENCE retry_attempts;
+        CREATE FUNCTION fail_first_attempt() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF nextval('retry_attempts') = 1 THEN RAISE EXCEPTION 'could not serialize access' USING ERRCODE = 'serialization_failure'; END IF;
+          RETURN NEW;
+        END $$;
+        CREATE TRIGGER fail_first_attempt BEFORE INSERT ON expenses FOR EACH ROW WHEN (NEW.id = 'r00000000000000000001') EXECUTE FUNCTION fail_first_attempt();`),
+    )
+    try {
+      const created = await checked('create_expense', {
+        groupId: 'g-retry',
+        expenseId: 'r00000000000000000001',
+        expense: expense({ paidBy: 'ta', paidFor: [{ participant: 'ta', shares: '1' }] }),
+      })
+      expect(created).toMatchObject({ groupId: 'g-retry', expenseId: 'r00000000000000000001', revision: 1 })
+      const attempts = await h.withDb((db) => db.execute<{ n: string }>(sql`SELECT last_value::text AS n FROM retry_attempts`))
+      expect(attempts.rows[0]?.n).toBe('2')
+    } finally {
+      await h.withDb((db) => db.execute(sql`DROP TRIGGER fail_first_attempt ON expenses; DROP FUNCTION fail_first_attempt(); DROP SEQUENCE retry_attempts;`))
+    }
+  })
 })
 
 describe('API keys on the endpoint', () => {

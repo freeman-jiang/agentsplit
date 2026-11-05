@@ -15,6 +15,7 @@ import * as history from '../../history'
 import { randomId } from '../../ids'
 import * as ledger from '../../ledger'
 import { attachUploads, prepareUploads, UploadError } from '../../receipt-uploads'
+import { receiptDownloadPath } from '../../receipts'
 import { displayName, escapeLike, involves, iso } from '../../sql'
 import { createUngroupedExpense } from '../../ungrouped'
 import { PAYMENT_RULES, RECORDING_RULES } from '../instructions'
@@ -374,7 +375,6 @@ const summary = (row: Row, viewer: string): typeof ExpenseSummary.Encoded => {
 
 const detail = (row: Row, data: { viewer: string; baseUrl: string }): typeof ExpenseDetail.Encoded => {
   const payer = mainPayer(row)
-  const receipts = `${origin(data.baseUrl)}/api/receipts`
   return {
     ...common(row),
     groupId: row.group_id,
@@ -392,7 +392,7 @@ const detail = (row: Row, data: { viewer: string; baseUrl: string }): typeof Exp
     documents: (row.documents ?? []).map((d) => ({
       ...d,
       expenseId: row.id,
-      downloadUrl: `${receipts}?${new URLSearchParams({ groupId: row.group_id, url: d.url })}`,
+      downloadUrl: `${origin(data.baseUrl)}${receiptDownloadPath({ groupId: row.group_id, url: d.url })}`,
     })),
     recurringExpenseLink: row.link,
   }
@@ -535,7 +535,6 @@ async function savedDetail(db: Db, data: { principal: ledger.Principal; baseUrl:
   })
   const e = saved.expense
   const payer = savedPayer(e)
-  const receipts = `${origin(data.baseUrl)}/api/receipts`
   const expense: typeof ExpenseDetail.Encoded = {
     ...historicalCommon(e),
     groupId: input.groupId,
@@ -554,7 +553,7 @@ async function savedDetail(db: Db, data: { principal: ledger.Principal; baseUrl:
       id: d.id,
       url: d.url,
       expenseId: e.id,
-      downloadUrl: `${receipts}?${new URLSearchParams({ groupId: input.groupId, url: d.url })}`,
+      downloadUrl: `${origin(data.baseUrl)}${receiptDownloadPath({ groupId: input.groupId, url: d.url })}`,
     })),
     recurringExpenseLink: null,
   }
@@ -733,10 +732,9 @@ export const updateExpense = defineTool({
     const changes = input.changes ?? {}
     // One read for the tool and the ledger write. Each call is new, so it sends no idempotency key.
     const context = await ledger.loadWriteContext(db, { principal, group: input.groupId, expenseId: input.expenseId, op: 'change', idempotencyKey: null })
-    if (!context.expense || context.expense.deleted) throw new NotFound({ entity: 'expense', id: input.expenseId })
-    const current = context.expense.value
     // A stale revision conflicts before any upload is checked, so a failed call changes nothing.
-    if (current.revision !== input.expectedRevision) throw new ToolError('CONFLICT', 'The record changed. Read its current revision and retry your intended changes.')
+    const stored = ledger.currentExpense(context, input.expectedRevision)
+    const current = stored.value
     const attached = await attachUploads(db, {
       principal,
       groupId: current.groupId,
@@ -751,7 +749,7 @@ export const updateExpense = defineTool({
     // No change, no revision, as in the current app.
     if (Object.keys(changes).length > 0 || attached.length > 0) {
       // documents replaces the saved list; attached receipts join it, or the saved list when documents is omitted.
-      const documents = attached.length ? [...(changes.documents ?? context.expense.documents), ...attached] : changes.documents
+      const documents = attached.length ? [...(changes.documents ?? stored.documents), ...attached] : changes.documents
       saved = await ledger.updateExpense(db, {
         principal,
         group: input.groupId,

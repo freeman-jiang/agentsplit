@@ -3,7 +3,7 @@
 import { McpServer, type StandardSchemaWithJSON, type Tool } from '@modelcontextprotocol/server'
 import { Result } from 'effect'
 import type { Bucket } from '../bucket'
-import type { Db } from '../db'
+import { serializable, type Db } from '../db'
 import { assertOAuthWrite, type McpPrincipal } from './authenticate'
 import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
 import { INSTRUCTIONS } from './instructions'
@@ -69,19 +69,6 @@ const outputOf = (tool: McpTool): StandardSchemaWithJSON => ({
 })
 
 const SCHEMAS = new Map(MCP_TOOLS.map((tool) => [tool.name, { input: inputOf(tool), output: outputOf(tool) }]))
-
-/** Serialization failures and deadlocks retry, as the RPC path's transaction helper does. */
-const RETRYABLE = new Set(['40001', '40P01'])
-async function serializable<A>(db: Db, work: (tx: Db) => Promise<A>): Promise<A> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await db.transaction(work, { isolationLevel: 'serializable' })
-    } catch (error) {
-      const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : ''
-      if (attempt >= 4 || !RETRYABLE.has(code)) throw error
-    }
-  }
-}
 
 export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: string; bucket: Bucket; documentsEnabled: boolean }): McpServer {
   const server = new McpServer(SERVER_INFO, { instructions: INSTRUCTIONS })

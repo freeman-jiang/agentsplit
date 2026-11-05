@@ -6,11 +6,10 @@
 import { Result, Schema } from 'effect'
 import { sql } from 'drizzle-orm'
 import { CURRENCIES, type CurrencyCode } from '../../../shared/currencies'
-import { Forbidden, Invalid, NotFound } from '../../../shared/api'
+import { Forbidden, NotFound } from '../../../shared/api'
 import { AccessRequest, GroupChanges, GroupCreateInput } from '../../../shared/api/groups'
 import type { Db } from '../../db'
 import * as groups from '../../groups'
-import { randomId } from '../../ids'
 import { displayName, iso } from '../../sql'
 import { renewPrivateInvitation } from '../../ungrouped'
 import { defineTool, ToolError } from '../registry'
@@ -252,10 +251,9 @@ export const createGroup = defineTool({
       defaultCurrency: currencyOf({ currency: g.currency, currencyCode: g.currencyCode }),
       participants: g.participants.map((p) => p.name.trim()),
     })
-    const created = await groups.createGroup(db, { principal, groupId: input.groupId ?? null, idempotencyKey: `mcp:${randomId()}`, group }).catch((error: unknown) => {
-      // A reused ID is an uncertain earlier create: read it before retrying (P-TOOL-CREATEGROUP-04).
-      throw error instanceof Invalid && error.field === 'groupId' ? new ToolError('CONFLICT', error.message) : error
-    })
+    // Each call is new, so it sends no idempotency key. A reused groupId is an
+    // Invalid state error, which errorBody answers as CONFLICT (P-TOOL-CREATEGROUP-04).
+    const created = await groups.createGroup(db, { principal, groupId: input.groupId ?? null, idempotencyKey: null, group })
     return readGroup(db, created.id)
   },
 })
@@ -294,7 +292,7 @@ export const updateGroup = defineTool({
         ? {}
         : { participants: c.participants.map((p) => ({ ...(p.id === undefined ? {} : { id: p.id }), name: p.name.trim() })) }),
     })
-    const updated = await groups.updateGroup(db, { principal, group: input.groupId, expectedRevision: input.expectedRevision, idempotencyKey: `mcp:${randomId()}`, changes })
+    const updated = await groups.updateGroup(db, { principal, group: input.groupId, expectedRevision: input.expectedRevision, idempotencyKey: null, changes })
     return readGroup(db, updated.id)
   },
 })
@@ -367,7 +365,7 @@ export const manageGroupAccess = defineTool({
       action: input.action,
       ...Object.fromEntries(REQUIRED[input.action].map((name) => [name, field(name)])),
     })
-    const result = await groups.changeAccess(db, { principal, baseUrl, idempotencyKey: `mcp:${randomId()}`, request }).catch((error: unknown) => {
+    const result = await groups.changeAccess(db, { principal, baseUrl, idempotencyKey: null, request }).catch((error: unknown) => {
       throw error instanceof NotFound ? notFound(error) : error
     })
     const i = result.invitation
