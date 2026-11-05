@@ -11,7 +11,8 @@ import { Button } from '~/client/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/client/ui/dropdown-menu'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
-import { groupRef, type AccessRequest, type GroupChanges, type GroupDetails } from '~/shared/api'
+import type { AccessRequest, GroupChanges, GroupDetails } from '~/shared/api'
+import { groupRef } from '~/shared/groups'
 
 export const Route = createFileRoute('/$group/edit')({
   loader: ({ context, params }) => context.queryClient.ensureQueryData(groupDetailsQuery(params.group)),

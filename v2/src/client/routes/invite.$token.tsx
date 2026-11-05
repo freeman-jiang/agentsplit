@@ -6,7 +6,7 @@ import { errorMessage, invitationQuery, newIdempotencyKey, refreshGroups } from 
 import { rpc } from '~/client/rpc'
 import { Alert, AlertDescription } from '~/client/ui/alert'
 import { Button } from '~/client/ui/button'
-import { INVITATION_TOKEN } from '~/shared/api'
+import { INVITATION_TOKEN } from '~/shared/groups'
 
 const signInFor = (token: string) => `/sign-in?next=${encodeURIComponent(`/invite/${token}`)}`
 
