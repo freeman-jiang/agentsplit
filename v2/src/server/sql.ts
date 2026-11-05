@@ -1,6 +1,7 @@
-// SQL fragments shared by ledger.ts and feed.ts. A separate module, because the
+// SQL fragments shared by the server's reads and the MCP tools. A separate module, because the
 // ledger and the feed import each other indirectly (ledger → ungrouped → feed).
 import { sql, type SQL } from 'drizzle-orm'
+import { computeBalances } from '../shared/balances'
 import type { CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/minor'
 
@@ -10,10 +11,58 @@ export const actorName = sql.raw(`CASE WHEN a.source = 'system' AND a.actor_name
 /** A timestamp as ISO 8601 text in UTC, with milliseconds. */
 export const iso = (column: SQL) => sql`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
 
+/** A LIKE pattern that matches `text` anywhere, with its \, % and _ taken literally. */
+export const escapeLike = (text: string) => `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+
+/** Is expense `e` paid for or shared by participant `who`? */
+export const involves = (who: SQL) => sql`(EXISTS (SELECT 1 FROM expense_payers ip WHERE ip.expense_id = e.id AND ip.participant_id = ${who})
+  OR EXISTS (SELECT 1 FROM expense_shares iss WHERE iss.expense_id = e.id AND iss.participant_id = ${who}))`
+
+/**
+ * The name to show for a participant: the bound, verified account's current
+ * name, else `name`, the participant's own name, as in the current app
+ * (P-GROUP-55). The group filter lets the (group_id, participant_id) unique
+ * index find the membership.
+ */
+export const displayName = (data: { group: SQL; participant: SQL; name: SQL }) => sql`coalesce(
+  (SELECT bu.name FROM memberships bm JOIN "user" bu ON bu.id = bm.user_id AND bu.email_verified
+    WHERE bm.group_id = ${data.group} AND bm.participant_id = ${data.participant}),
+  ${data.name})`
+
+export type BalanceSum = { currency: string; participantId: string; paid: string; owed: string }
+
+/**
+ * Each participant's paid and owed sums per currency over the live expenses
+ * of group `group`, as a JSON array of BalanceSum. Minor units travel as text.
+ * `where` adds a condition on the expense row `x`.
+ */
+export const balanceSums = (data: { group: SQL; where?: SQL }) => sql`coalesce((SELECT json_agg(json_build_object('currency', s.currency, 'participantId', s.participant_id, 'paid', s.paid::text, 'owed', s.owed::text))
+  FROM (
+    SELECT x.currency, parts.participant_id, sum(parts.paid) AS paid, sum(parts.owed) AS owed
+    FROM expenses x
+    JOIN (
+      SELECT expense_id, participant_id, amount AS paid, 0::bigint AS owed FROM expense_payers WHERE group_id = ${data.group}
+      UNION ALL
+      SELECT expense_id, participant_id, 0::bigint, amount FROM expense_shares WHERE group_id = ${data.group}
+    ) parts ON parts.expense_id = x.id
+    WHERE x.group_id = ${data.group} AND x.deleted_at IS NULL ${data.where ? sql`AND ${data.where}` : sql``}
+    GROUP BY x.currency, parts.participant_id
+  ) s), '[]')`
+
+/** Balances per currency and person from balanceSums, with the zero-sum check of computeBalances. */
+export const balancesOf = (sums: readonly BalanceSum[]) =>
+  computeBalances(
+    sums.map((s) => ({
+      currency: s.currency as CurrencyCode,
+      payers: new Map([[s.participantId, minor(BigInt(s.paid))]]),
+      shares: new Map([[s.participantId, minor(BigInt(s.owed))]]),
+    })),
+  )
+
 /**
  * An expense row `e` with its payers, shares, document count and authors, for
  * the group lists (ledger.ts) and the feed (feed.ts), so both have one shape.
- * PostgreSQL builds each row's parts as JSON, so the Worker parses one value
+ * PostgreSQL builds each row's parts as JSON, so the server parses one value
  * per row instead of several result sets. Minor units travel as text.
  */
 export const expenseColumns = sql`e.id, e.group_id, e.revision, e.kind, e.title, e.vendor, e.notes, e.category_id,

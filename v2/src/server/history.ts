@@ -11,11 +11,11 @@ import { readSnapshot, savedEntry, type Category, type SavedExpense, type SavedS
 import { formatMinor } from '../shared/money'
 import type { Db } from './db'
 import type { Principal } from './ledger'
+import { iso } from './sql'
 
 export type ActivityType = 'create_group' | 'join_group' | 'leave_group' | 'update_group' | 'create_expense' | 'update_expense' | 'delete_expense'
 export type Boundary = { readonly asOf?: string; readonly atActivityId?: string }
 
-const ISO = (column: SQL) => sql`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
 /**
  * Recording times as the API shows them, in whole milliseconds. Times are
  * stored in microseconds, so an event's own returned time, given back as
@@ -159,10 +159,10 @@ export async function listActivities(db: Db, data: { principal: Principal; group
       ORDER BY a.sequence ${order} OFFSET ${cursor} LIMIT ${limit + 1}
     )
     SELECT g.active, g.created_at::text AS group_created,
-      (SELECT id FROM b) AS boundary_id, (SELECT ${ISO(sql`time`)} FROM b) AS boundary_time,
+      (SELECT id FROM b) AS boundary_id, (SELECT ${iso(sql`time`)} FROM b) AS boundary_time,
       coalesce((
         SELECT json_agg(json_build_object(
-          'id', p.id, 'time', ${ISO(sql`p.time`)}, 'type', p.type, 'participantId', p.participant_id,
+          'id', p.id, 'time', ${iso(sql`p.time`)}, 'type', p.type, 'participantId', p.participant_id,
           'expenseId', p.expense_id, 'expenseRevision', p.expense_revision, 'data', p.data, 'source', p.source,
           'actorName', coalesce(p.actor_name, who.name), 'actorUserId', p.actor_user_id, 'agentKeyId', p.agent_key_id, 'verified', p.actor_user_id IS NOT NULL,
           'agent', p.agent_key_id IS NOT NULL OR p.source IN ('agent', 'mcp'),
@@ -227,8 +227,8 @@ export async function getSavedExpense(db: Db, data: { principal: Principal; grou
       ORDER BY a.sequence DESC LIMIT 1
     )
     SELECT g.active, g.created_at::text AS group_created,
-      (SELECT id FROM b) AS boundary_id, (SELECT ${ISO(sql`time`)} FROM b) AS boundary_time,
-      (SELECT json_build_object('id', ev.id, 'time', ${ISO(sql`ev.time`)}, 'type', ev.type, 'revision', ev.expense_revision, 'snapshot', ev.snapshot,
+      (SELECT id FROM b) AS boundary_id, (SELECT ${iso(sql`time`)} FROM b) AS boundary_time,
+      (SELECT json_build_object('id', ev.id, 'time', ${iso(sql`ev.time`)}, 'type', ev.type, 'revision', ev.expense_revision, 'snapshot', ev.snapshot,
         'saved', (SELECT s.snapshot FROM activities s WHERE s.group_id = ev.group_id AND s.expense_id = ev.expense_id
           AND s.expense_revision IS NOT NULL AND s.sequence < ev.sequence AND s.snapshot IS NOT NULL ORDER BY s.sequence DESC LIMIT 1))
         FROM ev) AS event,
@@ -274,7 +274,7 @@ export async function historicalLedger(db: Db, data: { principal: Principal; gro
     ),
     at_time AS (SELECT coalesce(${data.asOf ?? null}::timestamptz, (SELECT time FROM b), now()) AS t)
     SELECT g.active, g.created_at::text AS group_created, ${ms(sql`g.created_at`)} > (SELECT t FROM at_time) AS before_group,
-      (SELECT id FROM b) AS boundary_id, (SELECT ${ISO(sql`time`)} FROM b) AS boundary_time,
+      (SELECT id FROM b) AS boundary_id, (SELECT ${iso(sql`time`)} FROM b) AS boundary_time,
       coalesce((SELECT json_agg(json_build_object('id', l.id, 'expenseId', l.expense_id, 'type', l.type, 'snapshot', l.snapshot) ORDER BY l.expense_id)
         FROM latest l WHERE l.type <> 'delete_expense'), '[]') AS saved,
       coalesce((SELECT json_agg(e.id ORDER BY e.id) FROM expenses e

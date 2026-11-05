@@ -11,9 +11,10 @@ import { AccessRequest, GroupChanges, GroupCreateInput } from '../../../shared/a
 import type { Db } from '../../db'
 import * as groups from '../../groups'
 import { randomId } from '../../ids'
+import { displayName, iso } from '../../sql'
 import { renewPrivateInvitation } from '../../ungrouped'
 import { defineTool, ToolError } from '../registry'
-import { DateTime, Id, isCurrencyCode, isoSql, NonNegativeInt, NullableString, origin, participantNameSql } from './shared'
+import { DateTime, Id, isCurrencyCode, NonNegativeInt, NullableString, origin } from './shared'
 
 const MAX_GROUPS = 100
 
@@ -51,7 +52,7 @@ const groupFields = (g: GroupRow) => ({
   createdAt: g.created_at,
 })
 
-const groupColumns = sql`g.id, g.name, g.slug, g.information, g.revision, g.default_currency, ${isoSql(sql`g.created_at`)} AS created_at`
+const groupColumns = sql`g.id, g.name, g.slug, g.information, g.revision, g.default_currency, ${iso(sql`g.created_at`)} AS created_at`
 
 export const listGroups = defineTool({
   name: 'list_groups',
@@ -133,12 +134,12 @@ export const getGroup = defineTool({
       WITH m AS (SELECT role, participant_id FROM memberships WHERE user_id = ${principal.userId} AND group_id = ${groupId} AND active)
       SELECT ${groupColumns}, m.role, m.participant_id,
         (SELECT pc.expense_id FROM private_contexts pc WHERE pc.group_id = g.id) AS context_expense_id,
-        coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${participantNameSql(sql`p.id`)}, 'groupId', p.group_id) ORDER BY p.created_at, p.id)
+        coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${displayName({ group: sql`p.group_id`, participant: sql`p.id`, name: sql`p.name` })}, 'groupId', p.group_id) ORDER BY p.created_at, p.id)
           FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
         coalesce((SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'role', mb.role, 'participantId', mb.participant_id) ORDER BY mb.created_at, u.id)
           FROM memberships mb JOIN "user" u ON u.id = mb.user_id WHERE mb.group_id = g.id AND mb.active), '[]') AS members,
         CASE WHEN m.role = 'admin' THEN coalesce((
-          SELECT json_agg(json_build_object('id', i.id, 'email', i.email, 'expiresAt', ${isoSql(sql`i.expires_at`)}, 'participantId', i.participant_id, 'participantName', i.participant_name) ORDER BY i.created_at, i.id)
+          SELECT json_agg(json_build_object('id', i.id, 'email', i.email, 'expiresAt', ${iso(sql`i.expires_at`)}, 'participantId', i.participant_id, 'participantName', i.participant_name) ORDER BY i.created_at, i.id)
           FROM invitations i WHERE i.group_id = g.id AND i.accepted_at IS NULL AND i.revoked_at IS NULL
             AND (g.kind = 'private' OR i.expires_at > now())), '[]') ELSE '[]' END AS invitations,
         coalesce((SELECT array_agg(p.id ORDER BY p.id) FROM participants p WHERE p.group_id = g.id
@@ -176,7 +177,7 @@ const GroupWritten = Schema.Struct({ groupId: Id, group: Schema.Struct({ ...Grou
 async function readGroup(db: Db, groupId: string): Promise<typeof GroupWritten.Encoded> {
   const result = await db.execute<GroupRow & { participants: { id: string; name: string; groupId: string }[] }>(sql`
     SELECT ${groupColumns},
-      coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${participantNameSql(sql`p.id`)}, 'groupId', p.group_id) ORDER BY p.created_at, p.id)
+      coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${displayName({ group: sql`p.group_id`, participant: sql`p.id`, name: sql`p.name` })}, 'groupId', p.group_id) ORDER BY p.created_at, p.id)
         FROM participants p WHERE p.group_id = g.id), '[]') AS participants
     FROM groups g WHERE g.id = ${groupId}`)
   const g = result.rows[0]

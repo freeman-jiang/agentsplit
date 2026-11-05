@@ -7,14 +7,13 @@ import * as authSchema from '../../db/schema/auth'
 import { Forbidden, Invalid, NotFound, PROFILE_NAME_MAX } from '../shared/api'
 import type { Db } from './db'
 import type { Principal } from './ledger'
+import { iso } from './sql'
 
 type AccountRow = {
   profile: { id: string; name: string; email: string; emailVerified: boolean }
   apiKeys: { id: string; name: string | null; start: string | null; createdAt: string }[]
   connections: { clientId: string; name: string; canWrite: boolean }[]
 }
-
-const iso = (column: string) => sql.raw(`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`)
 
 /**
  * The settings screens in one statement. Connected apps are the clients with
@@ -26,7 +25,7 @@ export async function getAccount(db: Db, data: { principal: Principal }): Promis
     SELECT json_build_object(
       'profile', json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'emailVerified', u.email_verified),
       'apiKeys', COALESCE((
-        SELECT json_agg(json_build_object('id', k.id, 'name', k.name, 'start', k.start, 'createdAt', ${iso('k.created_at')})
+        SELECT json_agg(json_build_object('id', k.id, 'name', k.name, 'start', k.start, 'createdAt', ${iso(sql`k.created_at`)})
           ORDER BY k.created_at DESC, k.id)
         FROM apikey k WHERE k.reference_id = u.id
       ), '[]'::json),

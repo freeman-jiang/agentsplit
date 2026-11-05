@@ -4,12 +4,13 @@
 import { asc, sql } from 'drizzle-orm'
 import { categories } from '../../db/schema/app'
 import { NotFound } from '../shared/api'
-import { computeBalances, suggestSettlements } from '../shared/balances'
+import { suggestSettlements } from '../shared/balances'
 import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/money'
 import type { Db } from './db'
 import { expenseDocumentsOf, loadExpenses, requireMember, type Principal } from './ledger'
 import { MAX_RECEIPT_BYTES, receiptDownloadPath } from './receipts'
+import { balancesOf, balanceSums, iso, type BalanceSum } from './sql'
 
 /** Every category, ordered by ID (P-EXP-102: the current app has no order). */
 export async function listCategories(db: Db) {
@@ -25,8 +26,6 @@ type DetailRow = {
   next_date: string | null
 }
 
-const iso = (column: string) => sql.raw(`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`)
-
 /**
  * One live expense with its receipts, its attribution lines and its open
  * recurrence, for the edit screen (P-EXP-45, P-EXP-46).
@@ -37,11 +36,11 @@ export async function getExpenseDetail(db: Db, data: { principal: Principal; gro
   if (!expense || expense.groupId !== groupId) throw new NotFound({ entity: 'expense', id: data.expenseId })
   const result = await db.execute<DetailRow & { deleted: boolean }>(sql`
     SELECT e.deleted_at IS NOT NULL AS deleted,
-      (SELECT ${iso('a.time')} FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = 1) AS added_at,
+      (SELECT ${iso(sql`a.time`)} FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = 1) AS added_at,
       ${sql.raw('(SELECT CASE WHEN a.source = \'system\' AND a.actor_name IS NULL THEN \'Automatic recurrence\' ELSE a.actor_name END FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = 1)')} AS added_by,
-      (SELECT ${iso('a.time')} FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = e.revision AND e.revision > 1 AND a.type = 'update_expense') AS edited_at,
+      (SELECT ${iso(sql`a.time`)} FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = e.revision AND e.revision > 1 AND a.type = 'update_expense') AS edited_at,
       (SELECT a.actor_name FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = e.revision AND e.revision > 1 AND a.type = 'update_expense') AS edited_by,
-      (SELECT ${iso('max(a.time)')} FROM activities a WHERE a.expense_id = e.id AND a.actor_user_id = ${data.principal.userId}) AS my_last_edit,
+      (SELECT ${iso(sql`max(a.time)`)} FROM activities a WHERE a.expense_id = e.id AND a.actor_user_id = ${data.principal.userId}) AS my_last_edit,
       (SELECT l.next_expense_date::text FROM recurring_links l WHERE l.current_frame_expense_id = e.id AND l.next_expense_created_at IS NULL) AS next_date
     FROM expenses e WHERE e.id = ${data.expenseId}
   `)
@@ -78,36 +77,19 @@ export async function getExpenseContext(db: Db, data: { principal: Principal; ex
  * they have no part in it (P-BAL-44).
  */
 export async function listBalances(db: Db, data: { principal: Principal; group: string; currency?: CurrencyCode }) {
-  const result = await db.execute<{ active: boolean; participants: string[]; sums: { currency: string; participantId: string; paid: string; owed: string }[] }>(sql`
+  const result = await db.execute<{ active: boolean; participants: string[]; sums: BalanceSum[] }>(sql`
     WITH g AS (
       SELECT g.id, m.active FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
       WHERE g.id = ${data.group} OR g.slug = ${data.group} LIMIT 1
     )
     SELECT g.active,
       coalesce((SELECT json_agg(p.id ORDER BY p.name, p.id) FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
-      coalesce((SELECT json_agg(json_build_object('currency', s.currency, 'participantId', s.participant_id, 'paid', s.paid::text, 'owed', s.owed::text))
-        FROM (
-          SELECT e.currency, parts.participant_id, sum(parts.paid) AS paid, sum(parts.owed) AS owed
-          FROM expenses e
-          JOIN (
-            SELECT expense_id, participant_id, amount AS paid, 0::bigint AS owed FROM expense_payers WHERE group_id = g.id
-            UNION ALL
-            SELECT expense_id, participant_id, 0::bigint, amount FROM expense_shares WHERE group_id = g.id
-          ) parts ON parts.expense_id = e.id
-          WHERE e.group_id = g.id AND e.deleted_at IS NULL ${data.currency ? sql`AND e.currency = ${data.currency}` : sql``}
-          GROUP BY e.currency, parts.participant_id
-        ) s), '[]') AS sums
+      ${balanceSums({ group: sql`g.id`, ...(data.currency ? { where: sql`x.currency = ${data.currency}` } : {}) })} AS sums
     FROM g
   `)
   const [row] = result.rows
   if (!row?.active) await requireMember(db, data)
-  const balances = computeBalances(
-    (row?.sums ?? []).map((r) => ({
-      currency: r.currency as CurrencyCode,
-      payers: new Map([[r.participantId, minor(BigInt(r.paid))]]),
-      shares: new Map([[r.participantId, minor(BigInt(r.owed))]]),
-    })),
-  )
+  const balances = balancesOf(row?.sums ?? [])
   const zero = { paid: minor(0n), owed: minor(0n), net: minor(0n) }
   return {
     currencies: [...balances].map(([currency, byPerson]) => {

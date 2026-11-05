@@ -9,6 +9,7 @@ import { minor } from '../../../shared/money'
 import { preferredPayer } from '../../../shared/split'
 import * as exports from '../../export'
 import * as history from '../../history'
+import { iso } from '../../sql'
 import * as stats from '../../stats'
 import { defineTool } from '../registry'
 import { Snapshot, snapshotOf } from './saved'
@@ -18,7 +19,6 @@ import {
   DateTime,
   HistoryFields,
   Id,
-  isoSql,
   MODE_NAMES,
   money,
   Money,
@@ -214,7 +214,7 @@ type LiveRow = {
 async function liveExpenses(db: Parameters<typeof history.listActivities>[0], data: { group: string; ids: readonly string[] }) {
   if (data.ids.length === 0) return new Map<string, typeof LiveExpense.Encoded>()
   const result = await db.execute<LiveRow>(sql`
-    SELECT e.id, e.group_id, e.title, e.vendor, e.amount::text AS amount, e.currency, ${isoSql(sql`e.created_at`)} AS created_at,
+    SELECT e.id, e.group_id, e.title, e.vendor, e.amount::text AS amount, e.currency, ${iso(sql`e.created_at`)} AS created_at,
       e.expense_date::text AS expense_date, e.category_id, e.original_amount::text AS original_amount, e.original_currency, e.conversion_rate,
       e.kind, e.split_mode, e.notes, e.recurrence, e.revision,
       (SELECT l.id FROM recurring_links l WHERE l.current_frame_expense_id = e.id LIMIT 1) AS link_id,
