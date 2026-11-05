@@ -8,6 +8,8 @@
 - P-BAL-93, payments: **keep the server permissive.** Negative amounts stay allowed for expenses and payments, and a payment may involve several people. The ledger must model every money scenario: one person pays and the others owe them, or one person receives money (a refund or a reward) and everyone, possibly including them, shares it.
 - Group F, translations: **English only.** v2 does not port the locale files.
 - Hosting: **stay on Workers Free** and keep each request within the CPU budget.
+- P-FEED-19 (lead, under the approval of group C): "involving me" defaults to true in the UI and in the API, so agents see what people see. The MCP tool description states the default.
+- Retries of a private-expense create or an invitation renewal return Conflict or `url: null` instead of a stored result, because the response holds a secret link that is never stored. An agent renews the invitation to get a new link.
 
 ## A. Decided by PLAN.md (no further approval needed)
 
