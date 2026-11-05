@@ -6,7 +6,7 @@ import { Input } from '~/client/ui/input'
 import { Label } from '~/client/ui/label'
 import { NativeSelect } from '~/client/ui/native-select'
 import { Textarea } from '~/client/ui/textarea'
-import { normalizeSlug, slugProblem } from '~/shared/api'
+import { normalizeSlug, slugProblem } from '~/shared/groups'
 import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
 
 export type GroupFormValues = { name: string; slug: string; information: string; defaultCurrency: CurrencyCode }

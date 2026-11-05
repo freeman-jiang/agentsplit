@@ -6,7 +6,7 @@ import { cn } from '~/client/cn'
 import { money } from '~/client/components/money'
 import { groupQuery, meQuery } from '~/client/queries'
 import { Button } from '~/client/ui/button'
-import { groupRef } from '~/shared/api'
+import { groupRef } from '~/shared/groups'
 
 export const Route = createFileRoute('/$group')({
   beforeLoad: async ({ context }) => {

@@ -9,7 +9,7 @@ import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '~/client/ui/card'
 import { Input } from '~/client/ui/input'
-import { groupRef } from '~/shared/api'
+import { groupRef } from '~/shared/groups'
 
 export const Route = createFileRoute('/groups/create')({
   beforeLoad: async ({ context }) => {

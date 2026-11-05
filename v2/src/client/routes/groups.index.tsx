@@ -1,6 +1,5 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, redirect, useNavigate, useRouter } from '@tanstack/react-router'
-import { Schema } from 'effect'
 import { Calendar, Loader2, MoreHorizontal, Star, Users } from 'lucide-react'
 import { useSyncExternalStore } from 'react'
 import { cn } from '~/client/cn'
@@ -11,15 +10,22 @@ import { Alert, AlertDescription } from '~/client/ui/alert'
 import { Button } from '~/client/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/client/ui/card'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/client/ui/dropdown-menu'
-import { groupRef, type Directory } from '~/shared/api'
+import type { Directory } from '~/shared/api'
+import { groupRef } from '~/shared/groups'
 
-const Search = Schema.Struct({
-  access: Schema.optionalKey(Schema.Literal('denied')),
-  offset: Schema.optionalKey(Schema.Number),
-})
+type Search = { access?: 'denied'; offset?: number }
+
+/** Route options stay in the main chunk, so this parses search params without a schema library. */
+const parseSearch = (raw: Record<string, unknown>): Search => {
+  const offset = typeof raw['offset'] === 'number' ? raw['offset'] : Number(raw['offset'])
+  return {
+    ...(raw['access'] === 'denied' ? { access: 'denied' as const } : {}),
+    ...(Number.isInteger(offset) && offset > 0 ? { offset } : {}),
+  }
+}
 
 export const Route = createFileRoute('/groups/')({
-  validateSearch: Schema.toStandardSchemaV1(Search),
+  validateSearch: parseSearch,
   beforeLoad: async ({ context }) => {
     if (!(await context.queryClient.ensureQueryData(meQuery))) throw redirect({ to: '/sign-in' })
   },
