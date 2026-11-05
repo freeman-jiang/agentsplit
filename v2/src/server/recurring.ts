@@ -117,7 +117,7 @@ export async function materializeNext(tx: Db, data: { today: string; groupId?: s
     SELECT ${id}, group_id, participant_id, amount, weight FROM expense_shares WHERE expense_id = ${frame.id}`)
   // Receipt pointers are copied as new rows; the frame keeps its own (P-RECUR-16).
   const documents = await expenseDocumentsOf(tx, frame.id)
-  if (documents.length) await tx.insert(expenseDocuments).values(documents.map((d) => ({ ...d, id: randomId(), expenseId: id })))
+  if (documents.length) await tx.insert(expenseDocuments).values(documents.map((d, position) => ({ ...d, id: randomId(), expenseId: id, position })))
   await tx.update(recurringLinks).set({ nextExpenseCreatedAt: new Date() }).where(eq(recurringLinks.id, link.id))
   const rule = frame.recurrence
   await tx.insert(recurringLinks).values({

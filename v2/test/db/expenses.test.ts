@@ -105,6 +105,23 @@ describe('expense writes', () => {
     expect(detail.documents.map((d) => d.downloadUrl)).toEqual([`/api/receipts?groupId=g1&url=${encodeURIComponent(doc2.url)}`])
   })
 
+  it('lists receipts in the order they were attached, as the current app does', async () => {
+    const docs = [5, 1, 4, 2, 3].map((n) => ({ id: `o${n}`, url: `r2://agentsplit-receipts/receipts/order${n}.jpg`, width: n, height: n }))
+    await tx((db) => db.insert(receipts).values(docs.map((d) => ({ id: `r-${d.id}`, groupId: 'g1', url: d.url, createdBy: alice.userId }))))
+    const [first, ...others] = docs
+    await tx((db) => createExpense(db, { principal: alice, group: 'g1', expenseId: 'ordered', idempotencyKey: key(), expense: draft(), documents: others }))
+    const urls = async () => (await tx((db) => getExpenseDetail(db, { principal: alice, group: 'g1', expenseId: 'ordered' }))).documents.map((d) => d.url)
+    expect(await urls()).toEqual(others.map((d) => d.url))
+    // A receipt attached later comes last, and the revision keeps the same order.
+    const saved = await tx((db) => getExpenseDetail(db, { principal: alice, group: 'g1', expenseId: 'ordered' }))
+    const kept = saved.documents.map((d) => ({ id: d.id, url: d.url, width: d.width, height: d.height }))
+    await tx((db) => updateExpense(db, { principal: alice, group: 'g1', expenseId: 'ordered', expectedRevision: 1, idempotencyKey: key(), expense: draft(), documents: [...kept, ...(first ? [first] : [])] }))
+    expect(await urls()).toEqual([...others, ...(first ? [first] : [])].map((d) => d.url))
+    expect((await snapshotOf('ordered', 2))?.expense.documents.map((d) => d.url)).toEqual(await urls())
+    // The balance tests below count every live expense of g1.
+    await tx((db) => deleteExpense(db, { principal: alice, group: 'g1', expenseId: 'ordered', expectedRevision: 2, idempotencyKey: key() }))
+  })
+
   it('refuses a receipt that was not uploaded to the group', async () => {
     const foreign = { id: 'd3', url: 'r2://agentsplit-receipts/receipts/ccccccccccccccccccccc.jpg', width: 1, height: 1 }
     await expect(
