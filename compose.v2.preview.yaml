@@ -12,7 +12,7 @@ services:
       - '3000'
     environment:
       BASE_URL: ${BASE_URL:?Set BASE_URL}
-      DATABASE_URL: postgresql://postgres:${DB2_PASSWORD:?Set DB2_PASSWORD}@db2:5432/agentsplit_preview
+      DATABASE_URL: postgresql://postgres:${DB2_PASSWORD:?Set DB2_PASSWORD}@agentsplit-preview-db2:5432/agentsplit_preview
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?Set GOOGLE_CLIENT_SECRET}
@@ -20,7 +20,7 @@ services:
       ENABLE_EXPENSE_DOCUMENTS: 'true'
       # Garage's S3 API on the internal network. The app streams every
       # receipt itself, so no browser or agent talks to storage.
-      S3_UPLOAD_ENDPOINT: http://garage:3900
+      S3_UPLOAD_ENDPOINT: http://agentsplit-preview-garage:3900
       S3_UPLOAD_BUCKET: agentsplit-receipts
       S3_UPLOAD_REGION: garage
       S3_UPLOAD_KEY: ${S3_UPLOAD_KEY:?Set S3_UPLOAD_KEY}
@@ -64,7 +64,10 @@ services:
       retries: 10
     restart: unless-stopped
     networks:
-      - backend
+      backend:
+        # A name no other stack uses: the app also sits on the shared coolify
+        # network, where a plain service name can resolve to another stack.
+        aliases: [agentsplit-preview-db2]
 
   # Internal only: no public route, so it cannot clash with production's
   # agentsplit-s3 router on the same Traefik.
@@ -88,7 +91,10 @@ services:
       start_period: 10s
     restart: unless-stopped
     networks:
-      - backend
+      backend:
+        # A name no other stack uses: the app also sits on the shared coolify
+        # network, where a plain service name can resolve to another stack.
+        aliases: [agentsplit-preview-garage]
 volumes:
   postgres18-data:
   garage-meta:
