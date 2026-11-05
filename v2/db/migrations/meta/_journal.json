@@ -57,6 +57,13 @@
       "when": 1793875365918,
       "tag": "0007_mcp_rate_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793890191705,
+      "tag": "0008_receipt_uploads",
+      "breakpoints": true
     }
   ]
 }

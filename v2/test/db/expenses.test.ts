@@ -9,6 +9,7 @@ import { makeDb, type Db } from '~/server/db'
 import { getExpenseContext, getExpenseDetail, listBalances, listCategories } from '~/server/expenses'
 import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense, type Principal } from '~/server/ledger'
 import { downloadReceipt, uploadReceipt } from '~/server/receipts'
+import { fakeBucket } from './fake-r2'
 import { listRecurring, materializeDue, processGroup } from '~/server/recurring'
 import { resetTestDatabase } from './setup'
 
@@ -306,29 +307,6 @@ describe('recurring expenses', () => {
 })
 
 // ---------- receipts over HTTP ----------
-
-/** An in-memory stand-in for the R2 binding, with only the calls receipts.ts makes. */
-function fakeBucket() {
-  const objects = new Map<string, { bytes: Uint8Array<ArrayBuffer>; contentType: string }>()
-  const calls: string[] = []
-  const bucket = {
-    async get(k: string) {
-      calls.push(`get ${k}`)
-      const o = objects.get(k)
-      return o ? { body: new Blob([o.bytes]).stream(), httpMetadata: { contentType: o.contentType } } : null
-    },
-    async put(k: string, bytes: Uint8Array<ArrayBuffer>, options: { httpMetadata: { contentType: string } }) {
-      calls.push(`put ${k}`)
-      objects.set(k, { bytes, contentType: options.httpMetadata.contentType })
-    },
-    async delete(k: string) {
-      calls.push(`delete ${k}`)
-      objects.delete(k)
-    },
-  }
-  // The binding's full type has many members the code never calls; the fake implements those it does.
-  return { bucket: bucket as unknown as R2Bucket, objects, calls }
-}
 
 const png = (width: number, height: number) => {
   const bytes = new Uint8Array(33)
