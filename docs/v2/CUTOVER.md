@@ -1,13 +1,15 @@
 # Cutover runbook: from the current app to v2, both on Coolify
 
-Status: **draft for Coolify** (2026-11-05). Freeman moved v2 hosting from Cloudflare Workers to Coolify on 2026-11-05 (DECISIONS.md), so this runbook replaces the Workers version. Freeman approves this runbook, the maintenance window, and each gated step before it runs.
+Status: **ready for Freeman's review** (2026-11-05). Freeman moved v2 hosting from Cloudflare Workers to Coolify on 2026-11-05 (DECISIONS.md), so this runbook replaces the Workers version. Freeman approves this runbook, the maintenance window, and each gated step before it runs.
 
 ## Gates before the window
 
 - Met 2026-11-05: receipt uploads through MCP are merged into `v2` (5b0f4f4).
 - Met 2026-11-05: the nightly backup (dots#56) is live on the dev box. `agentsplit-backup.timer` is enabled, with its first run on 2026-11-06 at 03:31 PST, and the alert "AgentSplit backup failed" is applied. Agents have root on the box through `devbox-root` (dots#60).
-- The v2 server runs on Coolify's Compose build: branch `t3/v2-coolify` (in progress) adds the server, the Garage S3 client, `v2/Dockerfile` and `compose.v2.coolify.yaml`, and passes e2e against that stack locally. It is merged into `v2`.
-- A Coolify preview of v2 (a separate application from branch `v2`, synthetic data, its own Postgres and Garage) passes the browser, agent, receipt and upload checks. Freeman approved creating it on 2026-11-05.
+- Met 2026-11-05: the v2 server runs on Coolify's Compose build (bc6d82c): a Bun server, Bun's S3 client for Garage, `v2/Dockerfile` and `compose.v2.coolify.yaml`. e2e passes against that stack locally.
+- Met 2026-11-05: the Coolify preview (`AgentSplit v2 preview`, https://agentsplit-v2-preview.freemanjiang.com, `compose.v2.preview.yaml`, 192 synthetic expenses) passed:
+  - browser: the group page, titles, the balance rail, the expense editor, the expense log, and a receipt image from Garage;
+  - agents: all 20 tools, an upload PUT (a second PUT refused), attach, download with the API key, and writes. Round trips from the dev box: 142 ms p50 for a 30-row list, 114 ms for a write.
 - CI is green on `v2`, and every parity item is covered, changed with a reason, or deferred with Freeman's agreement.
 - Every production step below starts with a new verified backup: `agentsplit-backup coolify` with its test restore passing. A failed backup stops the step.
 
@@ -16,6 +18,10 @@ Status: **draft for Coolify** (2026-11-05). Freeman moved v2 hosting from Cloudf
 - Coolify builds the AgentSplit application from `main` with `compose.coolify.yaml`: services `app` (the current Next.js app), `db` (postgres:17, volume `postgres-data`) and `garage` (bucket `agentsplit-receipts`, volumes `garage-meta` and `garage-data`). `main` is push-to-deploy, so merging into `main` is the deploy.
 - The domain `agentsplit.freemanjiang.com` already routes to that application. The cutover changes no DNS; dots#58 (a Workers custom domain) is no longer needed.
 - Receipts stay in Garage. Stored receipt URLs are absolute Garage URLs, and the objects sit under the keys that v2's `receiptKey` derives, including the three older `document-<time>-<id>.png` keys. So no receipt is copied.
+- Lessons from the preview, applied:
+  - Coolify keeps `/etc/garage.toml` as a file storage of the resource. The existing AgentSplit resource already has it, so the cutover keeps that resource and changes only its Compose file. A new resource would get a directory there, and Garage would not start.
+  - The app is on its stack's `backend` network and on Coolify's shared `coolify` network. A plain service name such as `garage` can resolve to another stack there: on the preview it reached production's Garage, which refused the unknown key. The app now reaches `db2` and Garage only by unique aliases (`agentsplit-db2`, `agentsplit-garage`).
+  - The v2 container applies the migrations at start, so `db2` is migrated and empty before the import.
 - The OAuth signing key in `Jwks` is encrypted with the production `BETTER_AUTH_SECRET`. v2 uses the same secret, so issued tokens and refresh tokens keep working.
 - The Google OAuth client keeps its redirect URI, because the domain does not change.
 
@@ -29,8 +35,8 @@ Status: **draft for Coolify** (2026-11-05). Freeman moved v2 hosting from Cloudf
 
 1. **Freeze writes.** Stop only the `app` container (or turn on Coolify maintenance mode). `db` and `garage` keep running. Confirm that a write fails.
 2. **Final backup.** Run `agentsplit-backup coolify` and confirm that its test restore passes.
-3. **Start `db2`.** Deploy the new Compose file with only `db2` started, or start it as a one-off service, so v2's empty PostgreSQL 18 database exists beside `db`.
-4. **Import and verify.** From the dev box, open SSH tunnels to `db` and `db2` on the Oracle host's internal `backend` network. Apply the migrations to `db2`. Run `scripts/import-legacy.ts` from `db` into `db2`: one transaction, and any problem stops it with the row ID. Then run `test/legacy/verify-import.ts` with `RECEIPTS_JSONL=<final backup>/receipts.jsonl`: the same IDs in every table, every balance to the cent, every expense field by field, and every receipt URL mapped to a backed-up object.
+3. **Start `db2`.** Switch the resource's Compose file to `compose.v2.coolify.yaml` and deploy with the `app` service stopped, or start `db2` and `app` once so `app` migrates it, then stop `app`. The aim: v2's migrated, empty PostgreSQL 18 database exists beside `db`, and no v2 app serves traffic yet.
+4. **Import and verify.** From the dev box, open SSH tunnels to `db` and `db2` on the Oracle host's internal `backend` network. The v2 container migrated `db2` at start, so it is empty but has the schema. Run `scripts/import-legacy.ts` from `db` into `db2`: one transaction, and any problem stops it with the row ID. Then run `test/legacy/verify-import.ts` with `RECEIPTS_JSONL=<final backup>/receipts.jsonl`: the same IDs in every table, every balance to the cent, every expense field by field, and every receipt URL mapped to a backed-up object.
 5. **Deploy v2** (Freeman approves the merge into `main`). Merge `v2` into `main` with `compose.v2.coolify.yaml` as the application's Compose file. Coolify builds and starts the v2 `app` against `db2` and the same `garage`. Wait for the health check.
 6. **Smoke checks.** In the browser: sign in with Google, open the Maple group (balances, expenses, a receipt), add and delete a test expense in the production test group (below), and check the Log. Agents: connect Claude Code through OAuth, list groups, make one write in the production test group, and call with an existing API key. Confirm that an existing agent connection keeps working through a token refresh. Freeman chose this check over a Google sign-in on the preview (2026-11-05), so it is the first run of a real Claude Code client against v2: connect, read, write, and keep working more than 5 minutes later, through a refresh (docs/v2/OAUTH-CLAUDE-CODE.md).
 7. **Announce** that AgentSplit is back.
