@@ -39,3 +39,10 @@ test('a signed-out visitor is sent to sign-in', async ({ page }) => {
   await page.goto('/groups')
   await expect(page).toHaveURL(/\/sign-in/)
 })
+
+test('a signed-out visitor returns to the page they asked for after sign-in (P-AUTH-49)', async ({ page }) => {
+  await page.goto('/groups')
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fgroups/)
+  await page.goto('/home-xyz/expenses?sort=updated')
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fhome-xyz%2Fexpenses%3Fsort%3Dupdated/)
+})
