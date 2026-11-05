@@ -1,13 +1,11 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { pickSearch } from '~/client/search'
 import { useState } from 'react'
-import { errorMessage, expenseContextQuery, invalidateExpenses } from '~/client/queries/feed'
-import { rpc } from '~/client/rpc'
-import { randomId } from '~/server/ids'
+import { randomExpenseId, searchText } from '~/client/components/ids'
+import { PaymentForm, type PaymentPrefill } from '~/client/components/payment-form'
+import { errorMessage, expenseContextQuery } from '~/client/queries/feed'
 import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
-import { today, type ExpenseValues } from '../-expense-form'
-import { PaymentForm } from '../-payment-form'
 
 // "Record repayment" links prefill the suggested transfer. The router parses numbers, so amounts may arrive as either.
 const parseSearch = pickSearch(['from', 'to', 'amount', 'currencyCode'])
@@ -18,24 +16,23 @@ export const Route = createFileRoute('/expenses/$expenseId/payments/create')({
   component: RecordPayment,
 })
 
+/** Drops undefined values, for exact optional props. */
+const optional = (values: Record<string, string | undefined>) => Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined)) as Record<string, string>
+
 function RecordPayment() {
   const { expenseId } = Route.useParams()
   const search = Route.useSearch()
   const context = useQuery(expenseContextQuery(expenseId))
-  const queryClient = useQueryClient()
-  const navigate = useNavigate()
-  // One ID per form: a save that reached the server is found again instead of being recorded twice.
-  const [paymentId] = useState(() => randomId())
-  const [idempotencyKey] = useState(() => randomId())
+  // One ID per form: a save that reached the server is found again instead of being recorded twice (P-BAL-84).
+  const [paymentId] = useState(randomExpenseId)
   if (context.error) return <p role="alert">{errorMessage(context.error)}</p>
   if (!context.data) return <p role="status">Loading expense…</p>
   const data = context.data
   const back = data.context ? ({ to: '/expenses/$expenseId', params: { expenseId: data.context.expenseId } } as const) : ({ to: '/' } as const)
-  const currency = String(search.currencyCode ?? '')
-  const save = async (expense: ExpenseValues) => {
-    await rpc((api) => api('expenses.create', { groupId: data.group.id, expenseId: paymentId, idempotencyKey, expense }))
-    await invalidateExpenses(queryClient)
-    await navigate(back)
+  const currency = searchText(search.currencyCode) ?? ''
+  const prefill: PaymentPrefill = {
+    ...optional({ from: searchText(search.from), to: searchText(search.to), amount: searchText(search.amount) }),
+    ...(currency in CURRENCIES ? { currencyCode: currency as CurrencyCode } : {}),
   }
   return (
     <div className="space-y-6">
@@ -60,19 +57,12 @@ function RecordPayment() {
         </p>
       )}
       <PaymentForm
-        people={data.participants}
-        editing={false}
-        initial={{
-          from: String(search.from ?? data.participantId ?? ''),
-          to: String(search.to ?? ''),
-          amount: String(search.amount ?? ''),
-          currency: currency in CURRENCIES ? (currency as CurrencyCode) : data.expense.currency,
-          date: today(),
-          notes: '',
-          title: 'Payment',
-        }}
-        back={back}
-        onSubmit={save}
+        mode="create"
+        expenseId={paymentId}
+        prefill={prefill}
+        // The form defaults to this currency when the link names none.
+        group={{ id: data.group.id, participants: data.participants, participantId: data.participantId, defaultCurrency: data.expense.currency }}
+        target={{ kind: 'page', back }}
       />
     </div>
   )

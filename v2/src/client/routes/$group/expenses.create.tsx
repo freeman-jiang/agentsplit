@@ -42,5 +42,5 @@ function CreateExpense() {
   const [initial] = useState(() =>
     newExpenseState({ groupId: g.id, participants: g.participants.map((p) => p.id), viewer: g.participantId, defaultCurrency: g.defaultCurrency, prefill: prefillOf(search) }),
   )
-  return <ExpenseForm mode="create" expenseId={expenseId} group={g} groupParam={group} reference={reference} initial={initial} />
+  return <ExpenseForm mode="create" expenseId={expenseId} group={g} target={{ kind: 'group', groupParam: group }} reference={reference} initial={initial} />
 }

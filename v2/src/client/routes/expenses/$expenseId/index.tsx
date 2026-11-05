@@ -1,21 +1,28 @@
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
+import { ExpenseForm, type FormGroup, type PageTarget } from '~/client/components/expense-form'
+import { stateFromExpense } from '~/client/components/expense-form-state'
+import { ExpenseLog } from '~/client/components/history/expense-log'
 import { money } from '~/client/components/money'
+import { isSimplePayment, PaymentForm } from '~/client/components/payment-form'
 import { expensesQuery } from '~/client/queries'
-import { errorMessage, expenseContextQuery, feedOptionsQuery, invalidateExpenses } from '~/client/queries/feed'
+import { expenseDetailQuery, referenceQuery } from '~/client/queries/expenses'
+import { errorMessage, expenseContextQuery } from '~/client/queries/feed'
 import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 import { Input } from '~/client/ui/input'
 import { randomId } from '~/server/ids'
 import type { ExpenseContext } from '~/shared/api'
-import { ExpenseForm, type ExpenseValues } from '../-expense-form'
-import { PaymentForm } from '../-payment-form'
 
 export const Route = createFileRoute('/expenses/$expenseId/')({
   loader: ({ context, params }) => {
-    void context.queryClient.prefetchQuery(expenseContextQuery(params.expenseId))
-    void context.queryClient.prefetchQuery(feedOptionsQuery)
+    // The detail read needs the group ID, which the context gives. The page shows any failure from its own queries.
+    void context.queryClient
+      .fetchQuery(expenseContextQuery(params.expenseId))
+      .then((data) => context.queryClient.prefetchQuery(expenseDetailQuery(data.group.id, params.expenseId)))
+      .catch(() => undefined)
+    void context.queryClient.prefetchQuery(referenceQuery)
   },
   component: ExpensePage,
 })
@@ -61,24 +68,20 @@ const backTo = (data: Context) =>
 
 function Workspace({ data }: { data: Context }) {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
-  const options = useQuery(feedOptionsQuery)
   const { expense, group } = data
   const isPrivate = data.context !== null
-  const back = backTo(data)
-  const finish = async () => {
-    await invalidateExpenses(queryClient)
-    await navigate(back)
-  }
-  const update = async (input: ExpenseValues) => {
-    await rpc((api) => api('expenses.update', { groupId: group.id, expenseId: expense.id, expectedRevision: expense.revision, idempotencyKey: randomId(), expense: input }))
-    await finish()
-  }
-  const remove = async () => {
-    await rpc((api) => api('expenses.delete', { groupId: group.id, expenseId: expense.id, expectedRevision: expense.revision, idempotencyKey: randomId() }))
-    await finish()
-  }
-  const [deleteError, setDeleteError] = useState('')
+  const detail = useQuery(expenseDetailQuery(group.id, expense.id))
+  const reference = useQuery(referenceQuery)
+  // A payment form in create mode reads the default currency; the edit forms here do not.
+  const people: FormGroup = { id: group.id, participants: data.participants, participantId: data.participantId, defaultCurrency: expense.currency }
+  // The current app's privateExpense options apply to ungrouped expenses only (P-UNGROUP-66, P-UNGROUP-67).
+  const target: PageTarget = { kind: 'page', privateExpense: isPrivate, back: backTo(data) }
+  const onReload = () =>
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: expenseContextQuery(expense.id).queryKey }),
+      queryClient.invalidateQueries({ queryKey: expenseDetailQuery(group.id, expense.id).queryKey }),
+    ])
+  const failure = detail.error ?? reference.error
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
@@ -101,63 +104,31 @@ function Workspace({ data }: { data: Context }) {
           </Link>
         </p>
       )}
-      {expense.kind === 'payment' ? (
+      {failure ? (
+        <p role="alert">{errorMessage(failure)}</p>
+      ) : !detail.data || !reference.data ? (
+        <p role="status">Loading expense…</p>
+      ) : isSimplePayment(detail.data) ? (
         <>
           <Metadata data={data} />
-          <PaymentForm
-            people={data.participants}
-            editing
-            initial={{
-              from: expense.payers[0]?.participantId ?? '',
-              to: expense.shares[0]?.participantId ?? '',
-              amount: expense.amount,
-              currency: expense.currency,
-              date: expense.expenseDate,
-              notes: expense.notes,
-              title: expense.title,
-            }}
-            back={back}
-            onSubmit={update}
-            onDelete={remove}
-          />
+          <PaymentForm key={detail.data.expense.revision} mode="edit" detail={detail.data} group={people} target={target} onReload={onReload} />
         </>
       ) : (
-        <div className="space-y-4">
-          <h1 className="font-display text-3xl">Edit expense</h1>
-          <Metadata data={data} />
-          {options.data ? (
-            <ExpenseForm
-              people={data.participants}
-              categories={options.data.categories}
-              initial={expense}
-              fixedPeople={isPrivate}
-              hint={isPrivate ? 'Edits stay in this expense’s private log.' : 'Edits are saved in the group’s log.'}
-              submitLabel="Save"
-              cancel={{ to: '/' }}
-              onSubmit={update}
-            />
-          ) : (
-            <p role="status">Loading categories…</p>
-          )}
-          <div className="space-y-2">
-            <Button
-              variant="outline"
-              onClick={async () => {
-                if (!window.confirm('Delete this expense? It stays in the history, and balances are recalculated.')) return
-                setDeleteError('')
-                await remove().catch((cause: unknown) => setDeleteError(errorMessage(cause)))
-              }}
-            >
-              Delete expense
-            </Button>
-            {deleteError && (
-              <p role="alert" className="text-sm text-destructive">
-                {deleteError}
-              </p>
-            )}
-          </div>
-        </div>
+        // Any other payment shape keeps every detail in the expense editor (P-BAL-89).
+        <ExpenseForm
+          // A new revision starts a fresh form, so a reload after a conflict shows the saved values.
+          key={detail.data.expense.revision}
+          mode="edit"
+          detail={detail.data}
+          group={people}
+          reference={reference.data}
+          target={target}
+          initial={stateFromExpense({ expense: detail.data.expense, documents: detail.data.documents, participants: data.participants.map((p) => p.id) })}
+          onReload={onReload}
+        />
       )}
+      {/* The collapsed expense log under the editor, as in the current app (P-HIST-80). */}
+      <ExpenseLog group={group.id} groupId={group.id} expenseId={expense.id} />
       {data.context && expense.id === data.context.expenseId && <PrivateRepayments data={data} />}
     </div>
   )

@@ -33,7 +33,7 @@ function EditExpense() {
         mode="edit"
         detail={detail}
         group={g}
-        groupParam={group}
+        target={{ kind: 'group', groupParam: group }}
         reference={reference}
         initial={stateFromExpense({
           expense: detail.expense,
