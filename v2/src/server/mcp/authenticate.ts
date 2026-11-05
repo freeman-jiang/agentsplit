@@ -1,7 +1,6 @@
 // Who is calling the MCP endpoint: an API key or an OAuth access token, with
 // the current app's rules (src/lib/mcp/authenticate.ts, src/lib/api-key-header.ts).
-import { eq, sql } from 'drizzle-orm'
-import { user } from '../../../db/schema/auth'
+import { sql } from 'drizzle-orm'
 import { Forbidden } from '../../shared/api'
 import type { Db } from '../db'
 import type { Principal } from '../ledger'
@@ -93,10 +92,7 @@ export async function authenticate(db: Db, data: { request: Request; baseUrl: st
       if (headers.has('x-api-key')) return { response: challenge({ baseUrl }) }
       return await oauth(db, data)
     }
-    const [account] = await db
-      .select({ id: user.id, name: user.name, email: user.email, verified: user.emailVerified })
-      .from(user)
-      .where(eq(user.id, verified.key.referenceId))
+    const account = verified.owner
     if (!account?.verified) return { response: challenge({ baseUrl }) }
     return {
       principal: { userId: account.id, name: account.name, email: account.email, source: 'mcp', agentKeyId: verified.key.id, scopes: null, oauthConnectionId: null },

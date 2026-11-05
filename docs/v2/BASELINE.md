@@ -84,3 +84,13 @@ Same method, with an API key for the synthetic account. Each row stops at a late
 | `list_expenses`, 20 rows | 21 | 43 |
 
 All 69 requests answered `ok`, but 31 used more than 10 ms. Authentication makes five queries before a tool runs: the key lookup, two key updates, the user lookup and the MCP rate-limit upsert. Locally each phase takes under 1 ms once the JIT is warm, so the Workers cost comes from cold module and JIT work and from each query's pg and Drizzle work. The final CPU pass starts by folding those queries into fewer statements.
+
+After folding the API-key queries (the user lookup joins the key lookup, and the rate-limit update sets `updatedAt`), a request makes three statements before the tool instead of five. The same requests, warm isolates:
+
+| Request | p50 | p90 |
+| --- | --- | --- |
+| `ping` | 8 | 12 |
+| `list_groups` | 9 | 15 |
+| `list_expenses`, 20 rows | 13 | 18 |
+
+`list_expenses` is still over the budget at p50. Its read is the next step of the CPU pass.

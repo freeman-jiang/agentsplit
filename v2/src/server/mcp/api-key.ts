@@ -5,13 +5,16 @@
 // validator and no deferred updates. test/db/mcp-auth.test.ts runs both on the
 // same rows and requires the same answers and the same row changes.
 import { and, eq, gt, isNull, lt, lte, sql } from 'drizzle-orm'
-import { apikey } from '../../../db/schema/auth'
+import { apikey, user } from '../../../db/schema/auth'
 import type { Db } from '../db'
 
 type KeyRow = typeof apikey.$inferSelect
 
+/** The key's account, read in the same statement as the key. */
+export type KeyOwner = { readonly id: string; readonly name: string; readonly email: string; readonly verified: boolean }
+
 export type ApiKeyResult =
-  | { readonly valid: true; readonly key: KeyRow }
+  | { readonly valid: true; readonly key: KeyRow; readonly owner: KeyOwner | null }
   | { readonly valid: false; readonly code: 'INVALID_API_KEY' | 'KEY_DISABLED' | 'KEY_EXPIRED' | 'USAGE_EXCEEDED' }
   | { readonly valid: false; readonly code: 'RATE_LIMITED'; readonly tryAgainInMs: number }
 
@@ -56,12 +59,15 @@ async function consumeRemaining(db: Db, key: KeyRow): Promise<KeyRow | null> {
 async function consumeRateLimit(db: Db, key: KeyRow): Promise<KeyRow | { tryAgainInMs: number } | null> {
   const now = new Date()
   if (key.rateLimitEnabled === false) {
-    const [row] = await db.update(apikey).set({ lastRequest: now }).where(byId(key.id)).returning()
+    const [row] = await db.update(apikey).set({ lastRequest: now, updatedAt: now }).where(byId(key.id)).returning()
     return row ?? key
   }
   const window = key.rateLimitTimeWindow
   const max = key.rateLimitMax
-  if (window === null || max === null) return key
+  if (window === null || max === null) {
+    const [row] = await db.update(apikey).set({ updatedAt: now }).where(byId(key.id)).returning()
+    return row ?? null
+  }
   if (key.lastRequest !== null) {
     const since = now.getTime() - key.lastRequest.getTime()
     const windowStart = new Date(now.getTime() - window)
@@ -69,31 +75,37 @@ async function consumeRateLimit(db: Db, key: KeyRow): Promise<KeyRow | { tryAgai
       if ((key.requestCount ?? 0) >= max) return { tryAgainInMs: Math.ceil(window - since) }
       const [row] = await db
         .update(apikey)
-        .set({ requestCount: sql`${apikey.requestCount} + 1`, lastRequest: now })
+        .set({ requestCount: sql`${apikey.requestCount} + 1`, lastRequest: now, updatedAt: now })
         .where(and(byId(key.id), gt(apikey.lastRequest, windowStart), lt(apikey.requestCount, max)))
         .returning()
       if (row) return row
       const again = await fresh(db, key.id)
       return again ? consumeRateLimit(db, again) : null
     }
-    const [row] = await db.update(apikey).set({ requestCount: 1, lastRequest: now }).where(and(byId(key.id), lte(apikey.lastRequest, windowStart))).returning()
+    const [row] = await db.update(apikey).set({ requestCount: 1, lastRequest: now, updatedAt: now }).where(and(byId(key.id), lte(apikey.lastRequest, windowStart))).returning()
     if (row) return row
   } else {
-    const [row] = await db.update(apikey).set({ requestCount: 1, lastRequest: now }).where(and(byId(key.id), isNull(apikey.lastRequest))).returning()
+    const [row] = await db.update(apikey).set({ requestCount: 1, lastRequest: now, updatedAt: now }).where(and(byId(key.id), isNull(apikey.lastRequest))).returning()
     if (row) return row
   }
   const again = await fresh(db, key.id)
   return again ? consumeRateLimit(db, again) : null
 }
 
-/** Verifies a raw API key and records its use, as `auth.api.verifyApiKey({ body: { key } })` does. */
+/**
+ * Verifies a raw API key and records its use, as `auth.api.verifyApiKey({ body: { key } })` does.
+ * Better Auth sets `updatedAt` in a last, separate update; here the rate-limit
+ * update sets it, so a request makes two statements instead of four.
+ */
 export async function verifyApiKey(db: Db, rawKey: string): Promise<ApiKeyResult> {
-  const [key] = await db
-    .select()
+  const [found] = await db
+    .select({ key: apikey, owner: { id: user.id, name: user.name, email: user.email, verified: user.emailVerified } })
     .from(apikey)
+    .leftJoin(user, eq(user.id, apikey.referenceId))
     .where(eq(apikey.key, await hashApiKey(rawKey)))
     .limit(1)
-  if (!key) return { valid: false, code: 'INVALID_API_KEY' }
+  if (!found) return { valid: false, code: 'INVALID_API_KEY' }
+  const { key, owner } = found
   if (key.enabled === false) return { valid: false, code: 'KEY_DISABLED' }
   if (key.expiresAt && Date.now() > key.expiresAt.getTime()) {
     await db.delete(apikey).where(byId(key.id))
@@ -111,6 +123,5 @@ export async function verifyApiKey(db: Db, rawKey: string): Promise<ApiKeyResult
   const limited = await consumeRateLimit(db, row)
   if (!limited) return { valid: false, code: 'INVALID_API_KEY' }
   if ('tryAgainInMs' in limited) return { valid: false, code: 'RATE_LIMITED', tryAgainInMs: limited.tryAgainInMs }
-  const [final] = await db.update(apikey).set({ updatedAt: new Date() }).where(byId(limited.id)).returning()
-  return final ? { valid: true, key: final } : { valid: false, code: 'INVALID_API_KEY' }
+  return { valid: true, key: limited, owner }
 }
