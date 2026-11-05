@@ -2,8 +2,7 @@
 // src/lib/expense-row.ts, for several payers. Presentation only: the amounts
 // come from the stored, resolved parts.
 import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
-import { formatMinor, minor, parseMinor } from '~/shared/money'
-import { Result } from 'effect'
+import { formatMinor, minor, minorOrNull } from '~/shared/minor'
 
 type Part = { readonly participantId: string; readonly amount: string }
 export type RowExpense = {
@@ -16,8 +15,7 @@ export type RowExpense = {
 export type Figure = { readonly label: string; readonly amount: string | null; readonly tone: 'neutral' | 'positive' | 'negative' }
 
 const units = (amount: string, currency: CurrencyCode) => {
-  const parsed = parseMinor({ amount, currency })
-  return Result.isSuccess(parsed) ? (parsed.success as bigint) : 0n
+  return minorOrNull({ amount, currency }) ?? 0n
 }
 const abs = (value: bigint) => (value < 0n ? -value : value)
 

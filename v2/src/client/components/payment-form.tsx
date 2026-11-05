@@ -4,7 +4,6 @@
 // server accepts any payment shape (P-BAL-93); this form records the common one.
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Result } from 'effect'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { money } from '~/client/components/money'
@@ -78,7 +77,7 @@ export function PaymentForm(
       recurrence: saved?.recurrence ?? 'none',
     }
     const checked = validateExpense({ draft, participantIds: new Set(group.participants.map((p) => p.id)) })
-    if (Result.isFailure(checked)) return setError(checked.failure.map((i) => i.message).join(' '))
+    if (!checked.ok) return setError(checked.issues.map((i) => i.message).join(' '))
     setError(null)
     const expense = toInput({ draft, documents: props.mode === 'edit' ? props.detail.documents : [] })
     const signature = JSON.stringify(expense)

@@ -3,7 +3,9 @@
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { CurrencyCodeSchema, DecimalOutput, DecimalString } from '../money'
-import { SplitModeSchema } from '../split'
+import { SPLIT_MODES } from '../split'
+
+export const SplitModeSchema = Schema.Literals(SPLIT_MODES)
 
 // ---------- errors ----------
 

@@ -3,8 +3,7 @@
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
-import { SplitModeSchema } from '../split'
-import { Balance, CalendarDate, CalendarDateOutput, Id, Participant, ReadError } from './core'
+import { Balance, CalendarDate, CalendarDateOutput, Id, Participant, ReadError, SplitModeSchema } from './core'
 
 export const ActivityType = Schema.Literals(['create_group', 'join_group', 'leave_group', 'update_group', 'create_expense', 'update_expense', 'delete_expense'])
 

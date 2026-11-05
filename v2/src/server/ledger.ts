@@ -1,7 +1,6 @@
 // Ledger reads and writes. Every function checks group access itself, so the
 // RPC handlers and the MCP tools cannot skip it. Writes take a transaction.
 import { and, asc, eq, isNull, sql, type SQL } from 'drizzle-orm'
-import { Result } from 'effect'
 import {
   activities,
   categories,
@@ -371,11 +370,11 @@ async function groupParticipants(tx: Db, groupId: string) {
 
 function resolve(draft: ExpenseDraft, people: { id: string }[]): ResolvedExpense {
   const result = validateExpense({ draft, participantIds: new Set(people.map((p) => p.id)) })
-  if (Result.isFailure(result)) {
-    const [first] = result.failure
-    throw new Invalid({ message: result.failure.map((i) => `${i.field}: ${i.message}`).join('; '), ...(first ? { field: first.field } : {}) })
+  if (!result.ok) {
+    const [first] = result.issues
+    throw new Invalid({ message: result.issues.map((i) => `${i.field}: ${i.message}`).join('; '), ...(first ? { field: first.field } : {}) })
   }
-  return result.success
+  return result.value
 }
 
 export type StoredDocument = { id: string; url: string; width: number; height: number }
