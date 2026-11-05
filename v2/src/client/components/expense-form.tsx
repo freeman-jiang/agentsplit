@@ -1,13 +1,15 @@
 // The expense create and edit form, ported from the current app's
 // src/app/groups/[groupId]/expenses/expense-form.tsx, with several payers.
-// validateExpense checks the draft here and again on the server.
-import { useQueryClient } from '@tanstack/react-query'
+// validateExpense checks the draft here and again on the server. The same form
+// edits ungrouped (private) expenses, with the current app's privateExpense options.
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { cn } from '~/client/cn'
 import { money } from '~/client/components/money'
 import { invalidateMoney } from '~/client/queries/expenses'
+import { invalidateExpenses } from '~/client/queries/feed'
 import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 import { Checkbox } from '~/client/ui/checkbox'
@@ -21,7 +23,7 @@ import { LIMITS } from '~/shared/expense-rules'
 import type { SplitMode } from '~/shared/split'
 import { DeleteDialog } from './delete-dialog'
 import { ExpenseDocuments } from './expense-documents'
-import { amountInput, autoAmounts, check, isIncome, payerRemainder, saveSplitDefaults, toDraft, toInput, type FormState } from './expense-form-state'
+import { amountInput, autoAmounts, check, involvesEveryone, isIncome, payerRemainder, saveSplitDefaults, toDraft, toInput, type ExpenseInputData, type FormState } from './expense-form-state'
 import { describeWriteError, type WriteFailure } from './write-error'
 
 type GroupData = typeof Group.Type
@@ -87,16 +89,46 @@ function Field(props: { id: string; label: ReactNode; error?: string | undefined
   )
 }
 
-export type ExpenseFormProps = {
-  group: GroupData
-  reference: ReferenceData
+/** The group fields the expense and payment forms read. The /expenses pages pass the expense context's people. */
+export type FormGroup = Pick<GroupData, 'id' | 'participants' | 'participantId' | 'defaultCurrency'>
+
+/** Where a form on the /expenses pages returns after a save, a delete or Cancel: the original private expense, or the dashboard. */
+export type PageBack = { to: '/' } | { to: '/expenses/$expenseId'; params: { expenseId: string } }
+
+export type GroupTarget = {
+  kind: 'group'
   /** The group's URL segment (slug or ID), for links and cache keys. */
   groupParam: string
+}
+
+/**
+ * An expense on the /expenses pages: an ungrouped expense, its repayment, or a
+ * group expense opened from the dashboard. `privateExpense` turns on the
+ * current app's options for ungrouped expenses. A new ungrouped expense has no
+ * context yet, so `create` saves it; it throws to show the error in the form.
+ */
+export type PageTarget = {
+  kind: 'page'
+  privateExpense: boolean
+  back: PageBack
+  create?: (data: { expense: ExpenseInputData; idempotencyKey: string }) => Promise<void>
+}
+
+export type FormTarget = GroupTarget | PageTarget
+
+const PRIVATE_HINT = 'Edits stay in this expense’s private log.'
+const PRIVATE_INVOLVED = 'The people with access to this private expense cannot be changed. Each person must pay or share.'
+
+export type ExpenseFormProps = {
+  group: FormGroup
+  reference: ReferenceData
+  target: FormTarget
   initial: FormState
 } & ({ mode: 'create'; expenseId: string } | { mode: 'edit'; detail: DetailData; onReload: () => void })
 
 export function ExpenseForm(props: ExpenseFormProps) {
-  const { group, reference, groupParam } = props
+  const { group, reference, target } = props
+  const isPrivate = target.kind === 'page' && target.privateExpense
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [state, setState] = useState<FormState>(props.initial)
@@ -113,7 +145,10 @@ export function ExpenseForm(props: ExpenseFormProps) {
   const touch = (field: string) => setTouched((t) => new Set(t).add(field))
   const income = isIncome(state.amount)
   const noun = income ? 'income' : 'expense'
-  const { issues, preview } = check(state, order)
+  const checked = check(state, order)
+  const { preview } = checked
+  // A private expense keeps its people: each one pays or shares (P-UNGROUP-48).
+  const issues = isPrivate && !involvesEveryone(state, order) ? [...checked.issues, { field: 'shares', message: PRIVATE_INVOLVED }] : checked.issues
   const shown = (field: string) => (submitted || touched.has(field) ? issues.find((i) => i.field === field)?.message : undefined)
   const rowError = (list: 'shares' | 'payers', id: string) => (submitted || touched.has(list) ? issues.find((i) => i.participantId === id && i.field.startsWith(`${list}.`))?.message : undefined)
   const auto = state.splitMode === 'amount' ? autoAmounts(state, order) : new Map<string, string>()
@@ -138,6 +173,11 @@ export function ExpenseForm(props: ExpenseFormProps) {
     keys.current.set(signature, idempotencyKey)
     setBusy(true)
     try {
+      if (props.mode === 'create' && target.kind === 'page' && target.create) {
+        // The caller opens the saved expense, or its invitations, and checks whether a failed save arrived (P-UNGROUP-19).
+        await target.create({ expense, idempotencyKey })
+        return
+      }
       if (props.mode === 'create') {
         await rpc((api) => api('expenses.create', { groupId: group.id, expenseId: props.expenseId, idempotencyKey, expense }))
       } else {
@@ -146,15 +186,16 @@ export function ExpenseForm(props: ExpenseFormProps) {
         )
       }
       if (state.saveDefault) saveSplitDefaults({ groupId: group.id, state, participants: order })
-      await invalidateMoney({ queryClient, group: groupParam })
-      await navigate({ to: '/$group/expenses', params: { group: groupParam } })
+      if (target.kind === 'page') return await leavePage({ queryClient, navigate, back: target.back })
+      await invalidateMoney({ queryClient, group: target.groupParam })
+      await navigate({ to: '/$group/expenses', params: { group: target.groupParam } })
     } catch (error) {
       const described = describeWriteError(error)
       // A create whose ID already exists here was saved by an earlier attempt (P-EXP-39).
-      if (props.mode === 'create' && described.kind === 'conflict') {
-        await invalidateMoney({ queryClient, group: groupParam })
+      if (props.mode === 'create' && described.kind === 'conflict' && target.kind === 'group') {
+        await invalidateMoney({ queryClient, group: target.groupParam })
         toast.success('This expense was already saved.')
-        await navigate({ to: '/$group/expenses/$expenseId/edit', params: { group: groupParam, expenseId: props.expenseId } })
+        await navigate({ to: '/$group/expenses/$expenseId/edit', params: { group: target.groupParam, expenseId: props.expenseId } })
         return
       }
       setFailure(described)
@@ -361,7 +402,8 @@ export function ExpenseForm(props: ExpenseFormProps) {
           <Field id="notes" label="Notes" error={shown('notes')}>
             <Textarea id="notes" rows={4} value={state.notes} onChange={(e) => set({ notes: e.target.value })} onBlur={() => touch('notes')} />
           </Field>
-          {reference.attachments.enabled && (
+          {/* A new private expense has no context to store receipts in yet (P-UNGROUP-14, P-UNGROUP-15). */}
+          {reference.attachments.enabled && !(isPrivate && props.mode === 'create') && (
             <div className="space-y-1.5">
               <p className="text-sm font-medium">Receipts</p>
               <p className="text-xs text-muted-foreground">See and attach receipts to the {noun}.</p>
@@ -403,7 +445,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
                 : 'Select how often the expense should repeat.'
             }
           >
-            <NativeSelect id="recurrence" value={state.recurrence} onChange={(e) => set({ recurrence: e.target.value as FormState['recurrence'] })}>
+            <NativeSelect id="recurrence" disabled={isPrivate} value={state.recurrence} onChange={(e) => set({ recurrence: e.target.value as FormState['recurrence'] })}>
               {RECURRENCE.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
@@ -411,7 +453,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
               ))}
             </NativeSelect>
           </Field>
-          {!income && (
+          {!income && !isPrivate && (
             <div className="flex items-center gap-2">
               <Checkbox id="is-payment" checked={state.kind === 'payment'} onCheckedChange={(value) => set({ kind: value === true ? 'payment' : 'expense' })} />
               <Label htmlFor="is-payment" className="font-normal">
@@ -419,16 +461,19 @@ export function ExpenseForm(props: ExpenseFormProps) {
               </Label>
             </div>
           )}
-          <div className="flex items-center gap-2">
-            <Checkbox id="save-default" checked={state.saveDefault} onCheckedChange={(value) => set({ saveDefault: value === true })} />
-            <Label htmlFor="save-default" className="font-normal">
-              Save as default splitting options
-            </Label>
-          </div>
+          {/* Each private expense has its own people, so a saved default would never apply again. */}
+          {!isPrivate && (
+            <div className="flex items-center gap-2">
+              <Checkbox id="save-default" checked={state.saveDefault} onCheckedChange={(value) => set({ saveDefault: value === true })} />
+              <Label htmlFor="save-default" className="font-normal">
+                Save as default splitting options
+              </Label>
+            </div>
+          )}
         </div>
       </details>
 
-      <Summary state={state} names={names} />
+      <Summary state={state} names={names} hint={isPrivate ? PRIVATE_HINT : 'Edits stay in the group’s log.'} />
 
       {failure && (
         <div role="alert" className="space-y-2 border border-destructive/50 p-3 text-sm text-destructive">
@@ -454,30 +499,41 @@ export function ExpenseForm(props: ExpenseFormProps) {
           <DeleteDialog
             label="Delete"
             title="Delete this expense?"
-            description="It leaves the expense list and the balances. The group's log keeps its history."
+            description={isPrivate ? 'It leaves the expense list and the balances. This expense’s private log keeps its history.' : "It leaves the expense list and the balances. The group's log keeps its history."}
             onConfirm={async () => {
               await rpc((api) =>
                 api('expenses.delete', { groupId: group.id, expenseId: props.detail.expense.id, expectedRevision: props.detail.expense.revision, idempotencyKey: crypto.randomUUID() }),
               )
-              await invalidateMoney({ queryClient, group: groupParam })
-              await navigate({ to: '/$group/expenses', params: { group: groupParam } })
+              if (target.kind === 'page') return await leavePage({ queryClient, navigate, back: target.back })
+              await invalidateMoney({ queryClient, group: target.groupParam })
+              await navigate({ to: '/$group/expenses', params: { group: target.groupParam } })
             }}
           />
         )}
         <Button type="button" variant="ghost" asChild>
-          <Link to="/$group/expenses" params={{ group: groupParam }}>
-            Cancel
-          </Link>
+          {target.kind === 'page' ? (
+            <Link {...target.back}>Cancel</Link>
+          ) : (
+            <Link to="/$group/expenses" params={{ group: target.groupParam }}>
+              Cancel
+            </Link>
+          )}
         </Button>
       </div>
     </form>
   )
 }
 
+/** After a write on the /expenses pages: every screen that shows expenses or balances reads again, then the form returns. */
+export async function leavePage(data: { queryClient: QueryClient; navigate: ReturnType<typeof useNavigate>; back: PageBack }) {
+  await invalidateExpenses(data.queryClient)
+  await data.navigate(data.back)
+}
+
 const formatZero = (currency: CurrencyCode) => (CURRENCIES[currency].decimals ? `0.${'0'.repeat(CURRENCIES[currency].decimals)}` : '0')
 
 /** The wide-screen summary (P-EXP-48). */
-function Summary(props: { state: FormState; names: ReadonlyMap<string, string> }) {
+function Summary(props: { state: FormState; names: ReadonlyMap<string, string>; hint: string }) {
   const { state } = props
   const amount = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(state.amount.trim()) ? money(state.amount.trim(), state.currency) : '—'
   const payers =
@@ -494,7 +550,7 @@ function Summary(props: { state: FormState; names: ReadonlyMap<string, string> }
       <p className="text-muted-foreground">
         {state.currency} · {payers || 'No payer yet'} · {people} {people === 1 ? 'person' : 'people'}
       </p>
-      <p className="mt-1 text-xs text-muted-foreground">Edits stay in the group’s log.</p>
+      <p className="mt-1 text-xs text-muted-foreground">{props.hint}</p>
     </aside>
   )
 }

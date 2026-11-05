@@ -1,22 +1,28 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
+import { ExpenseForm, type PageTarget } from '~/client/components/expense-form'
+import { newExpenseState } from '~/client/components/expense-form-state'
 import { rpc } from '~/client/rpc'
+import { referenceQuery } from '~/client/queries/expenses'
 import { errorMessage, expenseContextQuery, feedOptionsQuery, invalidateExpenses } from '~/client/queries/feed'
 import { Button } from '~/client/ui/button'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
 import { randomId } from '~/server/ids'
-import type { FeedOptions, UngroupedResult } from '~/shared/api'
-import { ExpenseForm, today, type ExpenseValues } from './-expense-form'
+import type { FeedOptions, Reference, UngroupedResult } from '~/shared/api'
 
 export const Route = createFileRoute('/expenses/create')({
-  loader: ({ context }) => void context.queryClient.prefetchQuery(feedOptionsQuery),
+  loader: ({ context }) => {
+    void context.queryClient.prefetchQuery(feedOptionsQuery)
+    void context.queryClient.prefetchQuery(referenceQuery)
+  },
   component: NewExpense,
 })
 
 type Person = { id: string; name: string; email: string; userId?: string }
 type Options = typeof FeedOptions.Type
+type Invitations = (typeof UngroupedResult.Type)['invitations']
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function NewExpense() {
@@ -28,17 +34,16 @@ function NewExpense() {
 
 function ExpenseSetup({ options }: { options: Options }) {
   const self = options.people.find((p) => p.id === options.userId)
-  // One ID and one idempotency key per form: a retried save cannot create a second expense.
+  // One ID per form: a retried save cannot create a second expense.
   const [id] = useState(() => randomId())
-  const [idempotencyKey] = useState(() => randomId())
   const [people, setPeople] = useState<Person[]>(() => (self ? [{ id: randomId(), userId: self.id, name: self.name, email: self.email }] : []))
   const [groupId, setGroupId] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(false)
-  const [invitations, setInvitations] = useState<(typeof UngroupedResult.Type)['invitations'] | null>(null)
-  const queryClient = useQueryClient()
+  const [invitations, setInvitations] = useState<Invitations | null>(null)
+  const reference = useQuery(referenceQuery)
   const navigate = useNavigate()
   if (!self) return <p role="alert">Your verified account could not be loaded.</p>
   if (invitations)
@@ -59,43 +64,7 @@ function ExpenseSetup({ options }: { options: Options }) {
         </Button>
       </div>
     )
-  if (editing) {
-    const me = people.find((p) => p.userId === self.id)
-    const initial: ExpenseValues = {
-      kind: 'expense',
-      title: '',
-      vendor: null,
-      notes: '',
-      categoryId: 0,
-      expenseDate: today(),
-      currency: 'USD',
-      amount: '' as ExpenseValues['amount'],
-      payers: me ? [{ participantId: me.id, amount: '' as ExpenseValues['amount'] }] : [],
-      splitMode: 'evenly',
-      shares: people.map((p) => ({ participantId: p.id, weight: '1' })),
-      recurrence: 'none',
-    }
-    const save = async (expense: ExpenseValues) => {
-      try {
-        const result = await rpc((api) =>
-          api('expenses.createUngrouped', {
-            expenseId: id,
-            idempotencyKey,
-            expense,
-            people: people.map((p) => (p.userId ? { kind: 'account', id: p.id, userId: p.userId } : { kind: 'email', id: p.id, name: p.name, email: p.email })),
-          }),
-        )
-        await invalidateExpenses(queryClient)
-        if (result.invitations.length) setInvitations(result.invitations)
-        else await navigate({ to: '/expenses/$expenseId', params: { expenseId: id } })
-      } catch (cause) {
-        // The save may have reached the server: if the expense exists now, open it.
-        const saved = await queryClient.fetchQuery(expenseContextQuery(id)).catch(() => null)
-        if (!saved) throw cause
-        await invalidateExpenses(queryClient)
-        await navigate({ to: '/expenses/$expenseId', params: { expenseId: id } })
-      }
-    }
+  if (editing)
     return (
       <div className="space-y-5">
         <Button variant="ghost" onClick={() => setEditing(false)}>
@@ -104,19 +73,15 @@ function ExpenseSetup({ options }: { options: Options }) {
         <p className="text-sm text-muted-foreground">
           No group · Private to {people.map((p) => p.name).join(', ')}. You can attach receipts after saving.
         </p>
-        <ExpenseForm
-          people={people}
-          categories={options.categories}
-          initial={initial}
-          fixedPeople
-          hint="Edits stay in this expense’s private log."
-          submitLabel="Create"
-          cancel={{ to: '/' }}
-          onSubmit={save}
-        />
+        {reference.data ? (
+          <PrivateExpense id={id} people={people} selfId={self.id} reference={reference.data} onInvitations={setInvitations} />
+        ) : reference.error ? (
+          <p role="alert">{errorMessage(reference.error)}</p>
+        ) : (
+          <p role="status">Loading categories…</p>
+        )}
       </div>
     )
-  }
   const addInvited = () => {
     const normalized = email.trim().toLowerCase()
     if (!name.trim() || name.trim().length > 50 || !EMAIL.test(normalized)) return setError('Enter a name and a valid email address.')
@@ -219,8 +184,7 @@ function ExpenseSetup({ options }: { options: Options }) {
         disabled={!groupId && (people.length < 2 || options.categories.length === 0)}
         onClick={() => {
           const group = options.groups.find((g) => g.id === groupId)
-          // The group expense form belongs to the group's Expenses tab.
-          if (group) void navigate({ to: '/$group/expenses', params: { group: group.slug ?? group.id } })
+          if (group) void navigate({ to: '/$group/expenses/create', params: { group: group.slug ?? group.id } })
           else setEditing(true)
         }}
       >
@@ -228,4 +192,47 @@ function ExpenseSetup({ options }: { options: Options }) {
       </Button>
     </div>
   )
+}
+
+/** The full expense form for a new ungrouped expense, with the people chosen above. */
+function PrivateExpense(props: { id: string; people: readonly Person[]; selfId: string; reference: typeof Reference.Type; onInvitations: (invitations: Invitations) => void }) {
+  const { id, people } = props
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const me = people.find((p) => p.userId === props.selfId)
+  // The context does not exist until the save, so the expense ID stands in for the group ID.
+  const group = { id, participants: people.map((p) => ({ id: p.id, name: p.name })), participantId: me?.id ?? null, defaultCurrency: 'USD' as const }
+  const [initial] = useState(() =>
+    newExpenseState({ groupId: null, participants: people.map((p) => p.id), viewer: me?.id ?? null, defaultCurrency: group.defaultCurrency, prefill: {} }),
+  )
+  const target: PageTarget = {
+    kind: 'page',
+    privateExpense: true,
+    back: { to: '/' },
+    create: async ({ expense, idempotencyKey }) => {
+      const open = async () => {
+        await invalidateExpenses(queryClient)
+        await navigate({ to: '/expenses/$expenseId', params: { expenseId: id } })
+      }
+      try {
+        const result = await rpc((api) =>
+          api('expenses.createUngrouped', {
+            expenseId: id,
+            idempotencyKey,
+            expense,
+            people: people.map((p) => (p.userId ? { kind: 'account', id: p.id, userId: p.userId } : { kind: 'email', id: p.id, name: p.name, email: p.email })),
+          }),
+        )
+        if (!result.invitations.length) return await open()
+        await invalidateExpenses(queryClient)
+        props.onInvitations(result.invitations)
+      } catch (cause) {
+        // The save may have reached the server: if the expense exists now, open it (P-UNGROUP-19).
+        const saved = await queryClient.fetchQuery(expenseContextQuery(id)).catch(() => null)
+        if (!saved) throw cause
+        await open()
+      }
+    },
+  }
+  return <ExpenseForm mode="create" expenseId={id} group={group} reference={props.reference} target={target} initial={initial} />
 }

@@ -29,5 +29,5 @@ function CreatePayment() {
   const search = Route.useSearch()
   const { data: g } = useSuspenseQuery(groupQuery(group))
   const [expenseId] = useState(randomExpenseId)
-  return <PaymentForm mode="create" expenseId={expenseId} prefill={{ ...optional({ from: searchText(search.from), to: searchText(search.to), amount: searchText(search.amount) }), ...(search.currencyCode ? { currencyCode: search.currencyCode } : {}) }} group={g} groupParam={group} />
+  return <PaymentForm mode="create" expenseId={expenseId} prefill={{ ...optional({ from: searchText(search.from), to: searchText(search.to), amount: searchText(search.amount) }), ...(search.currencyCode ? { currencyCode: search.currencyCode } : {}) }} group={g} target={{ kind: 'group', groupParam: group }} />
 }
