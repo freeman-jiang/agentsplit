@@ -14,6 +14,7 @@ import type { Db } from '../../db'
 import * as history from '../../history'
 import { randomId } from '../../ids'
 import * as ledger from '../../ledger'
+import { attachUploads, prepareUploads, UploadError } from '../../receipt-uploads'
 import { createUngroupedExpense } from '../../ungrouped'
 import { PAYMENT_RULES, RECORDING_RULES } from '../instructions'
 import { defineTool, ToolError } from '../registry'
@@ -591,8 +592,6 @@ type ExpenseInput = typeof ExpenseCreateInput.Type
 type Changes = typeof ExpenseChanges.Type
 
 const DUPLICATE_ID = 'Expense ID already exists. Read it before retrying; use a new ID only for a distinct expense.'
-const UPLOADS_LATER = 'Expense saved, but upload targets could not be prepared. Retry update_expense with the current revision and upload requests.'
-const NO_DOCUMENTS = 'Receipt attachments are not available yet on this server. Save the expense without documents.'
 
 function payersOf(data: { paidBy: string | undefined; payers: ExpenseInput['payers']; amount: string }): ExpenseDraft['payers'] {
   if (data.paidBy !== undefined && data.payers !== undefined)
@@ -603,7 +602,6 @@ function payersOf(data: { paidBy: string | undefined; payers: ExpenseInput['paye
 }
 
 function draftOf(input: ExpenseInput): ExpenseDraft {
-  if (input.documents?.length) throw new ToolError('BAD_REQUEST', NO_DOCUMENTS)
   return {
     kind: input.isReimbursement ? 'payment' : 'expense',
     title: input.title,
@@ -622,7 +620,6 @@ function draftOf(input: ExpenseInput): ExpenseDraft {
 
 /** The saved expense with the changes applied, as one full draft that is validated again. */
 function mergedDraft(current: ledger.ApiExpense, changes: Changes): ExpenseDraft {
-  if (changes.documents !== undefined) throw new ToolError('BAD_REQUEST', NO_DOCUMENTS)
   const currency = changes.currencyCode ?? current.currency
   const amount = changes.amount ?? current.amount
   const moneyChanged = changes.amount !== undefined || changes.currencyCode !== undefined
@@ -654,13 +651,14 @@ function mergedDraft(current: ledger.ApiExpense, changes: Changes): ExpenseDraft
   }
 }
 
-const uploadsResult = (requested: readonly unknown[] | undefined) => ({ uploads: [], uploadError: requested?.length ? UPLOADS_LATER : null })
+/** Upload failures keep the current app's codes. */
+const uploadFailure = (error: unknown) => (error instanceof UploadError ? new ToolError(error.code, error.message) : error)
 
 export const createExpense = defineTool({
   name: 'create_expense',
   kind: 'write',
   destructive: false,
-  description: `Create a group or ungrouped expense with expense. ${RECORDING_RULES} groupId is optional: when present, use the existing participant IDs from get_group and omit people. When omitted, supply people including yourself: each has a unique local id label (1-42 characters, e.g. me or friend) plus kind=account/userId from get_expense_options, or kind=email/name/email for a new invitee. expense.paidBy and paidFor.participant then refer to these local labels. Labels may be reused across expenses; the result maps them to stored participantId values for later operations. Ungrouped creation returns groupId as a private accounting context and invitation links; it sends no messages, requires isReimbursement=false and recurrenceRule=NONE, and receipts are added after saving. Optional vendor is the merchant; title describes the purchase without repeating vendor. Money is a decimal string at face value in currencyCode. One payer: paidBy. Several payers: payers with each exact amount, adding up to amount. Split modes: EVENLY, BY_SHARES (relative weights), BY_PERCENTAGE (sum 100), BY_AMOUNT (sum amount). ${PAYMENT_RULES} Recurrence uses NONE/DAILY/WEEKLY/MONTHLY. Optional uploads file metadata returns signed PUT targets; you may ignore them. After uploading, attach uploadIds with update_expense. No receipt is saved merely by requesting a target. Supply a stable 21-character expenseId and read it before retrying an uncertain create.`,
+  description: `Create a group or ungrouped expense with expense. ${RECORDING_RULES} groupId is optional: when present, use the existing participant IDs from get_group and omit people. When omitted, supply people including yourself: each has a unique local id label (1-42 characters, e.g. me or friend) plus kind=account/userId from get_expense_options, or kind=email/name/email for a new invitee. expense.paidBy and paidFor.participant then refer to these local labels. Labels may be reused across expenses; the result maps them to stored participantId values for later operations. Ungrouped creation returns groupId as a private accounting context and invitation links; it sends no messages, requires isReimbursement=false and recurrenceRule=NONE, and receipts are added after saving. Optional vendor is the merchant; title describes the purchase without repeating vendor. Money is a decimal string at face value in currencyCode. One payer: paidBy. Several payers: payers with each exact amount, adding up to amount. Split modes: EVENLY, BY_SHARES (relative weights), BY_PERCENTAGE (sum 100), BY_AMOUNT (sum amount). ${PAYMENT_RULES} Recurrence uses NONE/DAILY/WEEKLY/MONTHLY. Optional uploads file metadata (JPEG or PNG, at most 5 MiB, at most 10 files, when get_reference_data attachments.enabled) returns PUT targets; you may ignore them. PUT the file bytes once to each target url with exactly its headers, no API key, before expiresAt (300 seconds); a used or expired url is refused. Then attach the uploadIds within 24 hours with update_expense, the current revision and attachUploadIds. No receipt is saved merely by requesting a target or uploading. Supply a stable 21-character expenseId and read it before retrying an uncertain create.`,
   input: Schema.Struct({
     groupId: optional(
       Schema.String.check(Schema.isMinLength(1)).annotate({
@@ -679,7 +677,7 @@ export const createExpense = defineTool({
     participants: optional(Schema.Array(Schema.Struct({ localId: Id, participantId: Id, name: Schema.String }))),
     invitations: optional(Schema.Array(Schema.Struct({ email: Schema.String, url: Schema.String, expiresAt: DateTime }))),
   }),
-  run: async ({ db, principal, baseUrl }, input) => {
+  run: async ({ db, principal, baseUrl, documentsEnabled }, input) => {
     if (input.groupId === undefined && !input.people) throw new ToolError('BAD_REQUEST', 'Supply groupId for a group expense, or people for an ungrouped expense.')
     if (input.groupId !== undefined && input.people) throw new ToolError('BAD_REQUEST', 'With groupId, use its existing participant IDs and omit people.')
     const expenseId = input.expenseId ?? randomId()
@@ -689,6 +687,8 @@ export const createExpense = defineTool({
     const idempotencyKey = `mcp:${randomId()}`
     if (input.groupId === undefined) {
       if (input.uploads?.length) throw new ToolError('BAD_REQUEST', 'Save an ungrouped expense first, then attach its receipts.')
+      if (input.expense.documents?.length)
+        throw new ToolError('BAD_REQUEST', 'Create the expense first, then attach receipts or record a repayment. Ungrouped expenses do not recur.')
       const created = await createUngroupedExpense(db, { principal, baseUrl, expenseId, idempotencyKey, people: input.people ?? [], expense: draft }).catch((error: unknown) => {
         throw duplicate(error)
       })
@@ -701,20 +701,24 @@ export const createExpense = defineTool({
         currencyCode: draft.currency,
         participants: created.participants,
         invitations: created.invitations,
-        ...uploadsResult(input.uploads),
+        uploads: [],
+        uploadError: null,
       }
     }
-    const saved = await ledger.createExpense(db, { principal, group: input.groupId, expenseId, idempotencyKey, expense: draft }).catch((error: unknown) => {
-      throw duplicate(error)
-    })
-    return { groupId: saved.groupId, expenseId: saved.id, revision: saved.revision, amount: saved.amount, currencyCode: saved.currency, ...uploadsResult(input.uploads) }
+    const saved = await ledger
+      .createExpense(db, { principal, group: input.groupId, expenseId, idempotencyKey, expense: draft, documents: input.expense.documents ?? [] })
+      .catch((error: unknown) => {
+        throw duplicate(error)
+      })
+    const targets = await prepareUploads(db, { principal, groupId: saved.groupId, expenseId: saved.id, requests: input.uploads, baseUrl, enabled: documentsEnabled })
+    return { groupId: saved.groupId, expenseId: saved.id, revision: saved.revision, amount: saved.amount, currencyCode: saved.currency, ...targets }
   },
 })
 
 export const updateExpense = defineTool({
   name: 'update_expense',
   kind: 'write',
-  description: `Partially edit an expense using changes and its current expectedRevision from get_expense. Omitted fields stay unchanged. ${RECORDING_RULES} Set vendor to null or empty string to clear it. To change who paid, send paidBy (one payer) or payers (several, each with an amount); an expense with several payers needs payers again when its amount changes. Use documents to retain/remove existing receipt references. Optional uploads returns direct PUT targets; attachUploadIds finalizes already-uploaded images into this expense. Empty changes can request targets without changing the expense. Edits are audited; a stale revision fails rather than overwriting another edit.`,
+  description: `Partially edit an expense using changes and its current expectedRevision from get_expense. Omitted fields stay unchanged. ${RECORDING_RULES} Set vendor to null or empty string to clear it. To change who paid, send paidBy (one payer) or payers (several, each with an amount); an expense with several payers needs payers again when its amount changes. Use documents to retain/remove existing receipt references. Optional uploads returns PUT targets for this expense. PUT the file bytes once to each target url with exactly its headers, no API key, before expiresAt (300 seconds); a used or expired url is refused. attachUploadIds then adds those uploaded images to this expense in one audited revision; only your own uploads for this expense can be attached, each once. Empty changes can request targets without changing the expense. Edits are audited; a stale revision fails rather than overwriting another edit.`,
   input: Schema.Struct({
     expenseId: Schema.String.check(Schema.isMinLength(1)),
     groupId: Schema.String.check(Schema.isMinLength(1)),
@@ -725,15 +729,26 @@ export const updateExpense = defineTool({
   }),
   strict: ['', 'changes', 'uploads[]'],
   output: Schema.Struct(ExpenseWrite),
-  run: async ({ db, principal }, input) => {
-    if (input.attachUploadIds?.length) throw new ToolError('BAD_REQUEST', 'Receipt uploads are not available yet on this server.')
+  run: async ({ db, principal, baseUrl, bucket, documentsEnabled }, input) => {
     const changes = input.changes ?? {}
     const current = await ledger.getExpense(db, { principal, group: input.groupId, expenseId: input.expenseId })
+    // A stale revision conflicts before any upload is checked, so a failed call changes nothing.
+    if (current.revision !== input.expectedRevision) throw new ToolError('CONFLICT', 'The record changed. Read its current revision and retry your intended changes.')
+    const attached = await attachUploads(db, {
+      principal,
+      groupId: current.groupId,
+      expenseId: current.id,
+      uploadIds: input.attachUploadIds ?? [],
+      bucket,
+      enabled: documentsEnabled,
+    }).catch((error: unknown) => {
+      throw uploadFailure(error)
+    })
     let saved = current
-    if (Object.keys(changes).length === 0) {
-      // No change, no revision; a stale revision still conflicts, as in the current app.
-      if (current.revision !== input.expectedRevision) throw new ToolError('CONFLICT', 'The record changed. Read its current revision and retry your intended changes.')
-    } else
+    // No change, no revision, as in the current app.
+    if (Object.keys(changes).length > 0 || attached.length > 0) {
+      // documents replaces the saved list; attached receipts join it, or the saved list when documents is omitted.
+      const documents = attached.length ? [...(changes.documents ?? (await ledger.expenseDocumentsOf(db, current.id))), ...attached] : changes.documents
       saved = await ledger.updateExpense(db, {
         principal,
         group: input.groupId,
@@ -741,8 +756,11 @@ export const updateExpense = defineTool({
         expectedRevision: input.expectedRevision,
         idempotencyKey: `mcp:${randomId()}`,
         expense: mergedDraft(current, changes),
+        ...(documents ? { documents } : {}),
       })
-    return { expenseId: saved.id, revision: saved.revision, amount: saved.amount, currencyCode: saved.currency, ...uploadsResult(input.uploads) }
+    }
+    const targets = await prepareUploads(db, { principal, groupId: current.groupId, expenseId: current.id, requests: input.uploads, baseUrl, enabled: documentsEnabled })
+    return { expenseId: saved.id, revision: saved.revision, amount: saved.amount, currencyCode: saved.currency, ...targets }
   },
 })
 

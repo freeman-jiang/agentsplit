@@ -134,10 +134,16 @@ Proofs:
 | 09–21, 23–25 | Done | `db` "checks the reference, the session and the membership before reading storage", "uploads to R2…"; also curl on the dev server (401, 403 for another origin, 200 with the safe headers). |
 | 15 | Done | v2 reads the JPEG or PNG header itself, as `sharp(...).metadata()` did. `image` |
 | 17 | Changed | New objects get the key `receipts/<id>.jpg|png` in R2 and the pointer `r2://agentsplit-receipts/receipts/<id>.<ext>`. Imported URLs keep working: the key is the URL's `receipts/…` suffix. |
-| 22 | Deferred (MCP area) | API-key authentication on `/api/receipts` waits for the MCP area's key check. |
+| 22 | Done | `GET /api/receipts` takes the agent's API key or OAuth token through the MCP `authenticate` (`receiptReader`). `mcp-uploads` "uploads, attaches and downloads a receipt with the same API key"; e2e `agent-uploads`. |
 | 26 | Done | `image` "derives the storage key and refuses unsafe pointers" |
 | 27 | Done | `db` "serves a receipt that only a deleted expense refers to" |
 | 28 | Done | `POST /api/s3-upload` answers 410. |
 | 29–31 | Done | `db` "records receipts in revision 1…", "removing a receipt keeps it in the earlier revision…", "refuses a receipt that was not uploaded to the group" |
-| 32–44 | Deferred (MCP area) | Agent uploads through staged targets. The current app presigns S3 PUT URLs. With R2 bound to the Worker, the simplest equivalent is an authenticated Worker `PUT` for a staged upload ID, finalized by `update_expense`. |
+| 32, 34, 36–38, 41 | Done | MCP area, `mcp-uploads`. See [mcp.md](mcp.md), create_expense 30–32 and update_expense 09–14. |
+| 33 | Changed | The target is `PUT <BASE_URL>/api/receipt-uploads/<secret>`, valid 300 seconds and for one PUT, with the same `Content-Type` and `Content-Length` headers. The Worker streams the body into R2 at the final key. |
+| 35 | Changed | Only receipts that are off give `uploadError`; the targets are written in the write's transaction. |
+| 39 | Changed | Size and completeness are checked at the PUT; the content must also match the declared type. |
+| 40 | Changed | No copy: the one PUT writes the final key, and the target is spent after it. |
+| 42, 43 | Changed | Nothing to clean up after a failed attach: the transaction rolls back and the uploads stay attachable. The upload row is deleted at attach. The hourly cron deletes targets older than 25 hours and their objects. |
+| 44 | Changed | The R2 binding is always there. Uploads fail with PRECONDITION_FAILED "Receipts are disabled" only when `ENABLE_EXPENSE_DOCUMENTS` is off. |
 | 45–54 | Not ported | The AI features are off (group E). |

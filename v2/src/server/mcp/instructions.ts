@@ -24,7 +24,7 @@ export const INSTRUCTIONS = [
   'One person usually pays: set paidBy. When several people paid parts of one bill, set payers instead, with each payer’s exact amount; the amounts add up to amount.',
   PAYMENT_RULES,
   'For edits/deletion use the current expectedRevision; conflicts require a fresh read. Supply stable create IDs and check an uncertain result before retrying.',
-  'Optional upload targets are not attachments: upload bytes directly, then finalize uploadIds through update_expense.',
+  'Optional upload targets are not attachments: PUT the bytes once to the target url with its headers, then finalize uploadIds through update_expense.',
   'For evolution, list_activity supports chronological order and precise recorded-time filters. Historical expense/list/balance reads accept asOf or atActivityId; these refer to recorded changes, not expense dates. Reuse the returned activity boundary when paging, check history coverage, and never use an old revision as the current version for a write.',
   'Reads have no write side effects; recurrence processing is explicit.',
   'Vendor is optional: put the merchant in vendor and the purchase description in title without repeating vendor. The expense list displays vendor above title; omit vendor when unknown or inapplicable.',

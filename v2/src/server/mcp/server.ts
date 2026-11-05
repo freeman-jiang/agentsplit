@@ -82,7 +82,7 @@ async function serializable<A>(db: Db, work: (tx: Db) => Promise<A>): Promise<A>
   }
 }
 
-export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: string }): McpServer {
+export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: string; bucket: R2Bucket; documentsEnabled: boolean }): McpServer {
   const server = new McpServer(SERVER_INFO, { instructions: INSTRUCTIONS })
   for (const tool of MCP_TOOLS) {
     const schemas = SCHEMAS.get(tool.name)
@@ -92,7 +92,7 @@ export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: s
       { description: tool.description, inputSchema: schemas.input, outputSchema: schemas.output, annotations: annotations(tool) },
       async (args: unknown) => {
         try {
-          const run = (db: Db) => tool.run({ db, principal: data.principal, baseUrl: data.baseUrl }, args)
+          const run = (db: Db) => tool.run({ db, principal: data.principal, baseUrl: data.baseUrl, bucket: data.bucket, documentsEnabled: data.documentsEnabled }, args)
           const write = async (tx: Db) => {
             await assertOAuthWrite(tx, data.principal)
             return run(tx)

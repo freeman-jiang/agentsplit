@@ -8,6 +8,7 @@ import { createAuth } from '~/server/auth'
 import { makeDb, type Db } from '~/server/db'
 import { handleMcp } from '~/server/mcp/endpoint'
 import { createUngroupedExpense } from '~/server/ungrouped'
+import { fakeBucket } from './fake-r2'
 import { resetTestDatabase } from './setup'
 
 export const BASE = 'http://localhost'
@@ -28,7 +29,11 @@ export async function startHarness() {
       client.release()
     }
   }
-  const mcp = (request: Request) => withDb((db) => handleMcp(request, { db, baseUrl: BASE }))
+  /** The receipts bucket of the in-process Worker. */
+  const r2 = fakeBucket()
+  /** ENABLE_EXPENSE_DOCUMENTS of the in-process Worker. */
+  const documents = { enabled: true }
+  const mcp = (request: Request) => withDb((db) => handleMcp(request, { db, baseUrl: BASE, bucket: r2.bucket, documentsEnabled: documents.enabled }))
   const auth = (request: Request) =>
     withDb((db) => createAuth({ db, baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret' }).handler(request))
   const authApi = <A>(work: (api: ReturnType<typeof createAuth>['api']) => Promise<A>) =>
@@ -92,7 +97,7 @@ export async function startHarness() {
     return result.groupId
   }
 
-  return { pool, withDb, mcp, auth, authApi, account, apiKey, group, privateContext, close: () => pool.end() }
+  return { pool, withDb, r2, documents, mcp, auth, authApi, account, apiKey, group, privateContext, close: () => pool.end() }
 }
 
 let nextId = 1

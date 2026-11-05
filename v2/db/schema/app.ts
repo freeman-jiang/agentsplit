@@ -343,3 +343,43 @@ export const authBootstrap = pgTable('auth_bootstrap', {
   userId: text().notNull(),
   createdAt: now(),
 })
+
+/**
+ * Upload targets that an agent asked for with create_expense or update_expense
+ * (the current app's pending-receipts objects). The agent PUTs the bytes once
+ * to /api/receipt-uploads/<token>, and update_expense attaches them. A row is
+ * deleted when its receipt is attached, or by the hourly cleanup.
+ */
+export const receiptUploads = pgTable(
+  'receipt_uploads',
+  {
+    /** The uploadId that attachUploadIds names. */
+    id: text().primaryKey(),
+    /** Hex SHA-256 of the secret in the upload URL; the secret itself is never stored. */
+    tokenHash: text().notNull().unique(),
+    userId: text().notNull(),
+    groupId: text()
+      .notNull()
+      .references(() => groups.id, { onDelete: 'restrict' }),
+    expenseId: text()
+      .notNull()
+      .references(() => expenses.id, { onDelete: 'restrict' }),
+    /** The final R2 key, receipts/<id>.jpg|png. Only the one PUT writes it. */
+    key: text().notNull().unique(),
+    contentType: text().notNull(),
+    bytes: integer().notNull(),
+    /** The PUT must start before this time. */
+    expiresAt: timestamp({ withTimezone: true, mode: 'date' }).notNull(),
+    /** pending: no PUT yet; writing: a PUT is running; stored: the bytes are in R2. */
+    state: text().notNull().default('pending'),
+    // Nullable: set when the PUT is complete.
+    uploadedAt: timestamp({ withTimezone: true, mode: 'date' }),
+    createdAt: now(),
+  },
+  (t) => [
+    index().on(t.createdAt),
+    check('receipt_uploads_content_type', sql`${t.contentType} IN ('image/jpeg', 'image/png')`),
+    check('receipt_uploads_bytes', sql`${t.bytes} BETWEEN 1 AND 5242880`),
+    check('receipt_uploads_state', sql`${t.state} IN ('pending', 'writing', 'stored') AND (${t.state} = 'stored') = (${t.uploadedAt} IS NOT NULL)`),
+  ],
+)
