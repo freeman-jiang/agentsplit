@@ -55,7 +55,7 @@ Freeman decided (2026-11-05) to keep one persistent group in production for chec
 | 3. Deploy v2 behind maintenance | 17:58:39 | `main` pushed (`a464eb2`), deployed through the API (pushes do not deploy). `db`, `garage` kept their volumes from 2026-09-30; `postgres18-data` new. v2 migrated `db2` (9 migrations) and answered 503 to pages and RPC, 200 to `/api/health`. |
 | 4. Import and verify | 17:59 | Import in 21.9 s. The verifier: the same IDs in every table (48 expenses, 146 activities, 14 sessions, 308 OAuth refresh tokens, 3 API keys, 4 OAuth connections), balances to the cent, every expense field by field, 11 receipt URLs mapped to 13 backed-up objects. |
 | 5. Open v2 | 18:00:48 | Maintenance cleared and deployed. Page and `/api/health` 200; the MCP 401 asks for `agentsplit:read agentsplit:write offline_access`. All 11 stored receipt URLs exist in Garage under v2's key. |
-| 6. Smoke checks | pending | Freeman: Google sign-in, Maple, a receipt, the production test group, Claude Code connect, write and refresh. |
+| 6. Smoke checks | 2026-11-06 07:45 | Freeman tried v2 and said it works. The server shows a new Google session at 07:45:27 and 10 RPC calls, all 200, with no errors. Agents work on v2: an API key was used at 07:44, Claude got an OAuth refresh token at 01:42, and ChatGPT refreshed 6 times between 19:28 and 06:11. The **AgentSplit test** group does not exist yet, and no expense was written after the cutover (48 expenses, 146 activities, 11 receipts, as at step 4). |
 
 Downtime: about 4 minutes (17:56:57 to 18:00:48).
 
