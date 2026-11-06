@@ -26,3 +26,13 @@ The flow ran against a local copy of the current app (a restore of the 2026-11-0
 2. A request that needs a scope the token lacks answers HTTP 403 with `WWW-Authenticate: Bearer resource_metadata="…", scope="agentsplit:read agentsplit:write offline_access", error="insufficient_scope"`, before the JSON-RPC call runs.
 3. Refresh tokens stay hashed (`hashOAuthToken`) and rotate as today.
 4. Verify with a real Claude Code client against the preview Worker: connect, read, write, and keep working after the access token expires (more than 5 minutes later, through a refresh).
+
+## Verification on production (2026-11-06)
+
+Discovery on https://agentsplit.freemanjiang.com, without a token:
+
+- `POST /api/mcp` answers 401 with `WWW-Authenticate: Bearer resource_metadata="https://agentsplit.freemanjiang.com/.well-known/oauth-protected-resource/api/mcp", scope="agentsplit:read agentsplit:write offline_access"`.
+- The protected-resource metadata lists `agentsplit:read`, `agentsplit:write` and `offline_access` in `scopes_supported`.
+- The authorization-server metadata supports CIMD, S256 and the `refresh_token` grant, and Claude Code's metadata document answers 200.
+
+ChatGPT, which takes the same path, connected after the cutover and rotated its refresh token 15 times by 09:24 UTC. The real Claude Code run (connect, write in **AgentSplit test**, and a refresh after more than 5 minutes) is still open: it needs Freeman's sign-in and consent.
