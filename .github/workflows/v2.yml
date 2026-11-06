@@ -2,7 +2,7 @@ name: v2
 
 on:
   push:
-    branches: ['v2']
+    branches: ['v2', 'main']
     paths: ['v2/**', '.github/workflows/v2.yml']
   pull_request:
     paths: ['v2/**', '.github/workflows/v2.yml']
