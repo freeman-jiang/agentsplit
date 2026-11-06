@@ -100,7 +100,7 @@ All of these are true:
 
 - v2 serves https://agentsplit.freemanjiang.com.
 - The parity checklist passes in full.
-- The cutover checks pass: row counts, balances to the cent, receipts that open, the Maple group checked in the browser, and agents connected through OAuth and API keys, including Claude Code.
+- The cutover checks pass: row counts, balances to the cent, receipts that open, the Maple group checked in the browser, and agents connected through OAuth and API keys, including Claude Code. Freeman waived the Claude Code run on 2026-11-06 ([DECISIONS.md](DECISIONS.md)); Krish may run it later.
 - The nightly backup and test restore run.
 - CI is green.
 - `README.md`, `MCP.md`, `AUTH.md`, `DEPLOYMENT.md` and `PRIVACY.md` describe v2.
