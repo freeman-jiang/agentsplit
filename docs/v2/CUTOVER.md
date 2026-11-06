@@ -57,6 +57,10 @@ Freeman decided (2026-11-05) to keep one persistent group in production for chec
 | 5. Open v2 | 18:00:48 | Maintenance cleared and deployed. Page and `/api/health` 200; the MCP 401 asks for `agentsplit:read agentsplit:write offline_access`. All 11 stored receipt URLs exist in Garage under v2's key. |
 | 6. Smoke checks | 2026-11-06 07:45 | Freeman tried v2 and said it works. The server shows a new Google session at 07:45:27 and 10 RPC calls, all 200, with no errors. Agents work on v2: an API key was used at 07:44, Claude got an OAuth refresh token at 01:42, and ChatGPT refreshed 6 times between 19:28 and 06:11. The **AgentSplit test** group does not exist yet, and no expense was written after the cutover (48 expenses, 146 activities, 11 receipts, as at step 4). |
 
+First write on v2: on 2026-11-06 at 07:53 UTC, an agent acting for Freeman created a test expense in Maple through MCP. Its payers and shares each total its amount, and no expense in production is unbalanced.
+
+First scheduled backup on v2: on 2026-11-06 at 03:32 PST, the timer ran it with `Result=success`: `ok (2|49|147|49, 13 receipt objects)` in `~/backups/agentsplit/2026-11-06`, test restore included.
+
 Downtime: about 4 minutes (17:56:57 to 18:00:48).
 
 The final pre-cutover backup (the current app's schema, taken after the freeze) is `~/backups/agentsplit/2026-11-05.175807/`: the v2 backup job moved it aside when it ran on the same day, so `~/backups/agentsplit/2026-11-05/` now holds the first v2 backup. Keep the pre-cutover backup until Freeman says otherwise.
