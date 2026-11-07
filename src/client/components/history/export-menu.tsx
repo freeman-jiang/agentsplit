@@ -12,7 +12,8 @@ export function ExportMenu({ group }: { group: string }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button title="Export" aria-label="Export" variant="secondary" size="icon">
+        {/* The input shape, like the search field and the sort control beside it. */}
+        <Button title="Export" aria-label="Export" variant="outline" size="icon" className="rounded-xl border-input">
           <Download className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>

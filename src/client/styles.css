@@ -53,7 +53,7 @@
     --destructive-foreground: 0 0% 5%;
     --owe: 3 90% 68%;
     --owed: 142 52% 56%;
-    --border: 0 0% 18%;
+    --border: 0 0% 21%;
     --input: 0 0% 24%;
     --ring: 0 0% 98%;
     --chart-1: 0 0% 93%;
@@ -80,32 +80,9 @@
   letter-spacing: -0.02em;
 }
 
-/* Spacing and hierarchy shared by the expense editor's existing fields. */
-.expense-editor label {
-  @apply text-sm leading-5 font-normal text-muted-foreground;
-}
-.expense-editor [data-participant-name] {
-  @apply text-foreground;
-}
-.expense-editor details > summary {
-  @apply flex min-h-12 cursor-pointer items-center justify-between gap-4 py-3 text-sm;
-  list-style: none;
-}
-.expense-editor details > summary::-webkit-details-marker {
-  display: none;
-}
-.expense-editor details > summary::after {
-  content: '+';
-  @apply text-muted-foreground;
-}
-.expense-editor details[open] > summary::after {
-  content: '−';
-}
-.expense-editor details > summary:focus-visible {
-  @apply outline-2 outline-offset-4 outline-ring;
-}
-.expense-editor .expense-summary {
-  @apply rounded-2xl bg-muted p-6;
+/* The one section label: small, uppercase and muted. The section container owns the gap above it. */
+@utility eyebrow {
+  @apply mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase;
 }
 
 @media (pointer: coarse) {

@@ -29,7 +29,7 @@ function Settings() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Only admins can change settings, so members see only the People section (P-GROUP-59). */}
       {data.role === 'admin' && (
         <GroupForm
@@ -159,9 +159,9 @@ function People({ details }: { details: Details }) {
     )
 
   return (
-    <section className="scroll-mt-24 space-y-6 rounded-2xl border bg-card p-5 sm:p-6" id="members" aria-labelledby="people-heading">
-      <div className="space-y-2">
-        <h2 id="people-heading" className="font-display text-2xl">
+    <section className="scroll-mt-24 space-y-4 rounded-2xl border bg-card p-6" id="members" aria-labelledby="people-heading">
+      <div className="space-y-1.5">
+        <h2 id="people-heading" className="text-base font-semibold leading-tight">
           People
         </h2>
         <p className="text-sm text-muted-foreground">Track expenses for everyone here. Invite people to give them access.</p>
@@ -176,14 +176,14 @@ function People({ details }: { details: Details }) {
           const pending = details.invitations.find((i) => i.participantId === person.id)
           const member = person.status === 'joined' && person.userId && person.role ? { userId: person.userId, name: person.name, role: person.role } : null
           return (
-            <li key={person.id} className="space-y-3 py-4" aria-label={person.name}>
+            <li key={person.id} className="space-y-3 py-3" aria-label={person.name}>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-medium break-words">
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-sm font-medium break-words">
                     {person.name}
-                    {details.participantId === person.id ? ' (you)' : ''}
+                    {details.participantId === person.id && <span className="font-normal text-muted-foreground"> (you)</span>}
                   </p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {member ? `Joined · ${member.role === 'admin' ? 'Admin' : 'Member'}` : person.status === 'invited' ? 'Invited' : 'Not joined'}
                   </p>
                   {person.email && <p className="text-xs break-all text-muted-foreground">{person.email}</p>}
@@ -298,7 +298,7 @@ function People({ details }: { details: Details }) {
               )}
               {/* The link exists only in this page's memory: after a reload the person shows "Invited" (P-ACCESS-24). */}
               {admin && pending && created?.participantId === person.id && (
-                <div className="space-y-3 border p-3">
+                <div className="space-y-3 rounded-xl bg-muted/50 p-3">
                   <p className="text-sm">Send this to {person.name}. AgentSplit does not send an email automatically.</p>
                   <div className="flex items-center gap-3">
                     <code className="min-w-0 flex-1 text-xs break-all">{created.url}</code>
@@ -317,9 +317,9 @@ function People({ details }: { details: Details }) {
           )
         })}
         {details.unboundMembers.map((member) => (
-          <li key={member.userId} className="space-y-3 py-4">
-            <p className="font-medium">{member.name}</p>
-            <p className="text-sm text-muted-foreground">Joined · Identity needs setup</p>
+          <li key={member.userId} className="space-y-3 py-3">
+            <p className="text-sm font-medium">{member.name}</p>
+            <p className="text-xs text-muted-foreground">Joined · Identity needs setup</p>
             <p className="text-xs break-all">{member.email}</p>
             {admin && (
               <div className="flex flex-wrap gap-2">
@@ -386,15 +386,19 @@ function People({ details }: { details: Details }) {
           </div>
         </form>
       )}
-      <Button
-        variant="outline"
-        disabled={busy}
-        onClick={() => {
-          if (window.confirm('Leave this group? You will need a new invitation to return.')) void actions.access({ action: 'leave', groupId: details.id })
-        }}
-      >
-        Leave group
-      </Button>
+      {/* Leaving is destructive, so it sits apart from the people actions. */}
+      <div className="border-t pt-4">
+        <Button
+          variant="ghost"
+          className="-ms-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm('Leave this group? You will need a new invitation to return.')) void actions.access({ action: 'leave', groupId: details.id })
+          }}
+        >
+          Leave group
+        </Button>
+      </div>
     </section>
   )
 }

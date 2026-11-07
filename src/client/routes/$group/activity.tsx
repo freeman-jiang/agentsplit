@@ -74,21 +74,22 @@ function expenseTitle(activity: ActivityItem) {
 
 function Summary({ activity }: { activity: ActivityItem }) {
   const name = activity.actorName ?? 'Someone'
-  const who = <strong>{name}</strong>
-  const title = <em>“{expenseTitle(activity)}”</em>
+  // One weight for the people and expenses in a line, instead of bold and italic.
+  const who = <span className="font-medium text-foreground">{name}</span>
+  const title = <span className="font-medium text-foreground">“{expenseTitle(activity)}”</span>
   if (activity.expenseRevision === 0 || activity.source === 'baseline')
     return (
       <>
-        History begins here for an existing expense: <em>{expenseTitle(activity)}</em>
+        History begins here for an existing expense: <span className="font-medium text-foreground">{expenseTitle(activity)}</span>
       </>
     )
   switch (activity.type) {
     case 'create_group':
-      return <>{name} created the group</>
+      return <>{who} created the group</>
     case 'join_group':
-      return <>{name} joined the group</>
+      return <>{who} joined the group</>
     case 'leave_group':
-      return <>{name} left the group</>
+      return <>{who} left the group</>
     case 'update_group':
       // Access changes say what changed, never whom (P-ACCESS-30).
       return activity.data ? (
@@ -124,8 +125,8 @@ function Summary({ activity }: { activity: ActivityItem }) {
 function LogHeader({ children }: { children: ReactNode }) {
   return (
     <section>
-      <h2 className="font-display text-2xl leading-tight">Log</h2>
-      <p className="mb-4 text-sm text-muted-foreground">Changes recorded in this group.</p>
+      <h2 className="font-display text-xl">Log</h2>
+      <p className="mb-6 text-sm text-muted-foreground">Changes recorded in this group.</p>
       {children}
     </section>
   )
@@ -184,19 +185,24 @@ function LogTab() {
   const byGroup = Map.groupBy(activities, (a) => dateGroup(new Date(a.time), today))
   return (
     <LogHeader>
-      {DATE_GROUPS.map(([key, label]) => {
-        const items = byGroup.get(key)
-        if (!items?.length) return null
-        return (
-          <div key={key}>
-            <h3 className="pb-2 pt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</h3>
-            {items.map((activity) => (
-              <LogItem key={activity.id} group={group} groupId={g.id} activity={activity} showDate={key !== 'today' && key !== 'yesterday'} />
-            ))}
-          </div>
-        )
-      })}
-      {hasNextPage && <Placeholder ref={more} />}
+      <div className="space-y-6">
+        {DATE_GROUPS.map(([key, label]) => {
+          const items = byGroup.get(key)
+          if (!items?.length) return null
+          return (
+            <div key={key}>
+              <h3 className="eyebrow">{label}</h3>
+              {/* Faint lines tie each event to its revision line. */}
+              <div className="divide-y divide-border/50">
+                {items.map((activity) => (
+                  <LogItem key={activity.id} group={group} groupId={g.id} activity={activity} showDate={key !== 'today' && key !== 'yesterday'} />
+                ))}
+              </div>
+            </div>
+          )
+        })}
+        {hasNextPage && <Placeholder ref={more} />}
+      </div>
     </LogHeader>
   )
 }
@@ -210,25 +216,31 @@ function LogItem({ group, groupId, activity, showDate }: { group: string; groupI
   // Only events of a live expense open it; deleted expenses are not clickable (P-HIST-70).
   const href = activity.expense && activity.expenseId ? expenseHref({ group, expenseId: activity.expenseId, kind: activity.expense.kind }) : undefined
   return (
+    // -mx-2: the text lines up with the headings, and the hover surface reaches past it.
     <div
-      className={cn('flex items-stretch justify-between gap-1 px-2 py-2 text-sm hover:bg-accent sm:rounded-lg sm:pl-2 sm:pr-1', href && 'cursor-pointer')}
+      className={cn('group -mx-2 flex items-start gap-3 px-2 py-2 text-sm hover:bg-accent sm:py-2.5', href && 'cursor-pointer')}
       onClick={href ? () => router.history.push(href) : undefined}
       data-testid="log-item"
     >
-      <div className="flex flex-col items-start justify-between">
-        {showDate && <time className="mt-1 text-xs/5 text-muted-foreground" dateTime={activity.time}>{dateFormat.format(time)}</time>}
-        <time className="my-1 text-xs/5 text-muted-foreground" dateTime={activity.time}>
+      <div className={cn('shrink-0 text-xs/5 tabular-nums text-muted-foreground', showDate ? 'w-24' : 'w-16')}>
+        {showDate && (
+          <time className="block" dateTime={activity.time}>
+            {dateFormat.format(time)}
+          </time>
+        )}
+        <time className="block" dateTime={activity.time}>
           {timeFormat.format(time)}
         </time>
       </div>
       <div className="min-w-0 flex-1">
-        <div className="m-1">
+        {/* The connecting words are muted; names and titles stay in ink. */}
+        <div className="leading-5 text-muted-foreground">
           <Summary activity={activity} />
         </div>
         <ActivityRevision activity={activity} groupId={groupId} />
       </div>
       {href && (
-        <AppLink href={href} onClick={(e) => e.stopPropagation()} aria-label="Open expense" className="hidden h-5 w-5 self-center text-primary sm:flex">
+        <AppLink href={href} onClick={(e) => e.stopPropagation()} aria-label="Open expense" className="hidden h-5 w-5 shrink-0 self-center text-muted-foreground/40 group-hover:text-foreground sm:flex">
           <ChevronRight className="h-4 w-4" />
         </AppLink>
       )}

@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Search } from 'lucide-react'
 import { pickSearch } from '~/client/search'
 import { useEffect, useState } from 'react'
 import { LoginButton } from '~/client/components/login-button'
@@ -38,8 +38,9 @@ function Home() {
 
 function Landing() {
   return (
-    <main>
-      <section className="py-16 md:py-24 lg:py-32">
+    // The hero centers in the space between the header and the footer.
+    <main className="flex flex-1 items-center">
+      <section className="w-full py-16">
         <div className="container mx-auto flex max-w-screen-md flex-col items-center gap-6 px-4 text-center">
           <h1 className="landing-header py-2 font-display text-4xl leading-none! font-normal sm:text-5xl md:text-6xl">
             Shared expenses. <strong>Simply settled.</strong>
@@ -139,9 +140,10 @@ function Dashboard() {
         </div>
         <section aria-label="Filter expenses" className="space-y-3">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
-            <label className="col-span-2 text-sm sm:col-span-1">
+            <label className="relative col-span-2 text-sm sm:col-span-1">
               <span className="sr-only">Search</span>
-              <Input type="search" placeholder="Search descriptions or merchants" maxLength={200} {...select('q')} />
+              <Search aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input type="search" className="ps-9" placeholder="Search descriptions or merchants" maxLength={200} {...select('q')} />
             </label>
             <label className="text-sm">
               <span className="sr-only">Group</span>
@@ -250,7 +252,7 @@ function Dashboard() {
             <p className="mt-2 text-sm text-muted-foreground">Add an expense or adjust your filters.</p>
           </div>
         ) : (
-          <div aria-label="Expense history" className="divide-y overflow-hidden rounded-2xl border">
+          <div aria-label="Expense history" className="divide-y overflow-hidden rounded-2xl border bg-card">
             {expenses.map((expense) => (
               <FeedCard key={expense.id} expense={expense} />
             ))}

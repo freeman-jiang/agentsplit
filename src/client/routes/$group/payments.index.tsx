@@ -31,14 +31,14 @@ function PaymentsTab() {
         </Button>
       </div>
       <SuggestedPayments currencies={balances.currencies} names={names} group={group} viewer={g.participantId} />
-      <section className="rounded-2xl border bg-card p-4" aria-labelledby="history-title">
-        <h2 id="history-title" className="mb-3 font-medium">
+      <section className="rounded-2xl border bg-card p-6" aria-labelledby="history-title">
+        <h2 id="history-title" className="mb-4 text-base font-semibold leading-tight">
           Payment history
         </h2>
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">No payments recorded yet.</p>
         ) : (
-          <ul className="divide-y overflow-hidden rounded-2xl border" data-testid="payment-list">
+          <ul className="divide-y overflow-hidden rounded-2xl border bg-card" data-testid="payment-list">
             {rows.map((p) => (
               <li key={p.id}>
                 <Link to="/$group/payments/$expenseId/edit" params={{ group, expenseId: p.id }} className="flex items-start justify-between gap-3 px-3 py-2 hover:bg-accent/50">
