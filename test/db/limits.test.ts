@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { user } from '../../db/schema/auth'
 import { checkSignUpCap } from '~/server/auth/auth'
 import { takeWrite } from '~/server/rate-limit'
-import { LIMITS, SIGN_UP_LIMIT_CODE } from '~/shared/limits'
+import { apiKeyLimitMessage, LIMITS, SIGN_UP_LIMIT_CODE } from '~/shared/limits'
 import { BASE, failure, startHarness, type Harness } from './harness'
 
 let h: Harness
@@ -59,7 +59,7 @@ describe('other limits', () => {
   it('caps API keys per account, also for keys made by a server call', async () => {
     await h.account('ivan')
     for (let i = 0; i < LIMITS.apiKeys; i++) await h.apiKey('ivan')
-    await expect(h.apiKey('ivan')).rejects.toMatchObject({ body: { message: expect.stringMatching(/^You have 10 API keys/) } })
+    await expect(h.apiKey('ivan')).rejects.toMatchObject({ body: { message: apiKeyLimitMessage } })
   })
 
   it('rate-limits OAuth dynamic client registration per IP address', async () => {

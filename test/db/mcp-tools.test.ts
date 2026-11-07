@@ -3,6 +3,7 @@
 // docs/v2/parity/mcp.md.
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { GROUP_DENIED } from '~/shared/errors'
 import { activities, expenses, mcpRateLimits, memberships } from '../../db/schema/app'
 import { MCP_TOOLS } from '~/server/mcp/tools'
 import { takeMcpRequest } from '~/server/rate-limit'
@@ -227,6 +228,7 @@ describe('list_groups and get_group', () => {
   it('fails the whole call when one requested group is not the caller’s', async () => {
     expect((await checked('list_groups', { groupIds: ['g1'] }))['groups']).toHaveLength(1)
     const denied = await failure(h, { name: 'list_groups', args: { groupIds: ['g1', 'g3'] }, headers: alice })
+    // The agent-facing text, worded as in v1; the other tests compare with GROUP_DENIED.
     expect(denied).toEqual({ code: 'FORBIDDEN', message: 'Group not found, or you are not a member', outcomeUnknown: false, recovery: 'correct_arguments' })
   })
 
@@ -250,7 +252,7 @@ describe('list_groups and get_group', () => {
   it('denies a group of someone else with a certain outcome', async () => {
     for (const groupId of ['g3', 'missing-group']) {
       const denied = await failure(h, { name: 'get_group', args: { groupId }, headers: alice })
-      expect(denied).toMatchObject({ code: 'FORBIDDEN', message: 'Group not found, or you are not a member', outcomeUnknown: false })
+      expect(denied).toMatchObject({ code: 'FORBIDDEN', message: GROUP_DENIED, outcomeUnknown: false })
     }
   })
 })
@@ -334,7 +336,7 @@ describe('expense writes and reads', () => {
 
   it('refuses a group outside the caller’s memberships as Forbidden, with a certain outcome', async () => {
     const denied = await failure(h, { name: 'create_expense', args: { groupId: 'g3', expense: mcpExpense({ paidBy: 'rb', people: ['rb'] }) }, headers: alice })
-    expect(denied).toEqual({ code: 'FORBIDDEN', message: 'Group not found, or you are not a member', outcomeUnknown: false, recovery: 'correct_arguments' })
+    expect(denied).toEqual({ code: 'FORBIDDEN', message: GROUP_DENIED, outcomeUnknown: false, recovery: 'correct_arguments' })
     const people = await failure(h, { name: 'create_expense', args: { groupId: 'g1', people: [], expense: expense() }, headers: alice })
     expect(people.code).toBe('VALIDATION')
     const none = await failure(h, { name: 'create_expense', args: { expense: expense() }, headers: alice })

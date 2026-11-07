@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { activities, categories, expenses, receipts, recurringLinks } from '../../db/schema/app'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { GROUP_DENIED } from '~/shared/errors'
+import { LIMITS } from '~/shared/limits'
 import { listBalances } from '~/server/balances'
 import { makeDb, sqlState } from '~/server/core/db'
 import type { Principal } from '~/server/core/access'
@@ -14,7 +15,7 @@ import { jsonError } from '~/server/core/errors'
 import type { StoredDocument } from '~/server/expense-read'
 import { locateExpense, getExpenseDetail, listCategories } from '~/server/expenses'
 import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense } from '~/server/ledger'
-import { downloadReceipt, uploadReceipt } from '~/server/receipt-routes'
+import { downloadReceipt, ENVELOPE_BYTES, uploadReceipt } from '~/server/receipt-routes'
 import { RECEIPT_REFUSED } from '~/server/receipts'
 import { listRecurring, materializeDue, occurrenceId, processGroup } from '~/server/recurring'
 import { BASE } from '../kit/config'
@@ -380,12 +381,12 @@ describe('receipt endpoints', () => {
       }
       const tiny = png({ width: 1, height: 1 })
       expect((await upload({ groupId: home.groupId, file: tiny, by: null })).status).toBe(401)
-      expect((await upload({ groupId: home.groupId, file: tiny, length: 6 * 1024 * 1024 })).status).toBe(413)
+      expect((await upload({ groupId: home.groupId, file: tiny, length: LIMITS.receiptBytes + ENVELOPE_BYTES + 1 })).status).toBe(413)
       expect((await upload({ groupId: otherGroupId, file: tiny })).status).toBe(403)
       const bad = await upload({ groupId: home.groupId, file: new TextEncoder().encode('not an image at all, really') })
       expect(bad.status).toBe(400)
       expect(await bad.json()).toEqual({ error: RECEIPT_REFUSED })
-      expect((await upload({ groupId: home.groupId, file: png({ width: 8000, height: 6000 }) })).status).toBe(400)
+      expect((await upload({ groupId: home.groupId, file: png({ width: LIMITS.receiptPixelsMax + 1, height: 1 }) })).status).toBe(400)
       expect(objects.size).toBe(0)
 
       // A storage outage is an outage, not a refused image.

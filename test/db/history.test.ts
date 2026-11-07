@@ -4,6 +4,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { Schema } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { GROUP_DENIED } from '~/shared/errors'
 import { activities, expensePayers, expenses, expenseShares, groups, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { savedBalances } from '~/server/balances'
@@ -516,7 +517,7 @@ describe('reads have no side effects (P-HIST-59)', () => {
     const expenseId = next()
     await create({ group: g, expenseId })
     await tx((db) => db.update(memberships).set({ active: false }).where(eq(memberships.groupId, g.id)))
-    await expect(tx((db) => getSavedExpense(db, { principal: alice, groupId: g.id, expenseId, revision: 1 }))).rejects.toMatchObject({ _tag: 'Forbidden', message: 'Group not found, or you are not a member' })
+    await expect(tx((db) => getSavedExpense(db, { principal: alice, groupId: g.id, expenseId, revision: 1 }))).rejects.toMatchObject({ _tag: 'Forbidden', message: GROUP_DENIED })
     await expect(tx((db) => listActivities(db, { limit: 5, principal: alice, groupId: g.id }))).rejects.toMatchObject({ _tag: 'Forbidden' })
   })
 })

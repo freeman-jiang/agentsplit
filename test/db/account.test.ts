@@ -12,6 +12,7 @@ import { createAuth } from '~/server/auth/auth'
 import type { Principal } from '~/server/core/access'
 import { makeDb, type Db } from '~/server/core/db'
 import { safeNextPath } from '~/shared/account'
+import { LIMITS } from '~/shared/limits'
 import { Forbidden, Invalid, NotFound } from '~/shared/api'
 import { BASE, SECRET, testSettings } from '../kit/config'
 import { testDatabase, type TestDatabase } from '../kit/database'
@@ -60,11 +61,11 @@ describe('profile', () => {
     expect(row?.name).toBe(other.name)
   })
 
-  it('accepts 1 to 50 characters after trimming', async () => {
+  it('accepts 1 to LIMITS.nameMax characters after trimming', async () => {
     const caller = await newUser()
     await expect(updateProfile(db, { principal: caller, name: '   ' })).rejects.toBeInstanceOf(Invalid)
-    await expect(updateProfile(db, { principal: caller, name: 'x'.repeat(51) })).rejects.toBeInstanceOf(Invalid)
-    expect((await updateProfile(db, { principal: caller, name: 'x'.repeat(50) })).profile.name).toHaveLength(50)
+    await expect(updateProfile(db, { principal: caller, name: 'x'.repeat(LIMITS.nameMax + 1) })).rejects.toBeInstanceOf(Invalid)
+    expect((await updateProfile(db, { principal: caller, name: 'x'.repeat(LIMITS.nameMax) })).profile.name).toHaveLength(LIMITS.nameMax)
   })
 
   it('refuses an unverified account', async () => {
@@ -86,7 +87,7 @@ describe('API keys', () => {
       prefix: 'agentsplit_',
       rateLimitEnabled: true,
       rateLimitTimeWindow: 60_000,
-      rateLimitMax: 120,
+      rateLimitMax: LIMITS.apiKeyRequestsPerMinute,
       expiresAt: null,
     })
     // Only the hash is stored.
@@ -94,9 +95,9 @@ describe('API keys', () => {
     expect((await makeAuth().api.verifyApiKey({ body: { key: created.key } })).valid).toBe(true)
   })
 
-  it('refuses names over 32 characters', async () => {
+  it('refuses names over LIMITS.apiKeyNameMax characters', async () => {
     const owner = await newUser()
-    await expect(makeAuth().api.createApiKey({ body: { name: 'x'.repeat(33) }, headers: await sessionHeaders(owner.userId) })).rejects.toMatchObject({
+    await expect(makeAuth().api.createApiKey({ body: { name: 'x'.repeat(LIMITS.apiKeyNameMax + 1) }, headers: await sessionHeaders(owner.userId) })).rejects.toMatchObject({
       status: 'BAD_REQUEST',
       body: { code: 'INVALID_NAME_LENGTH' },
     })

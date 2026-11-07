@@ -12,8 +12,8 @@ import { receiptUsage } from '~/server/receipt-quota'
 import { downloadReceipt } from '~/server/receipt-routes'
 import { NEW_URL_PREFIX } from '~/server/receipts'
 import { deleteReceipts, purgeDeletedReceipts } from '~/server/storage'
-import { LIMITS } from '~/shared/limits'
-import { draft } from '../kit/drafts'
+import { LIMITS, storageFullMessage } from '~/shared/limits'
+import { draft, mcpExpense } from '../kit/drafts'
 import { counter } from '../kit/ids'
 import { png } from '../kit/images'
 import { principal } from '../kit/people'
@@ -61,7 +61,7 @@ describe('receipt storage quota', () => {
     expect(await usage('dave')).toBe(LIMITS.receiptStorageBytes - 100 + 64)
     const refused = await upload({ userId: 'dave', groupId: g })
     expect(refused.status).toBe(413)
-    expect(((await refused.json()) as { error: string }).error).toMatch(/^You're out of receipt space \(500 MB of 500 MB\)\. Download or delete old receipts/)
+    expect(((await refused.json()) as { error: string }).error).toBe(storageFullMessage(LIMITS.receiptStorageBytes - 36))
     expect(await usage('dave')).toBe(LIMITS.receiptStorageBytes - 36)
   })
 
@@ -96,7 +96,7 @@ describe('receipt storage quota', () => {
     const g = await groupOf('hank')
     const hank = { 'x-api-key': await h.apiKey('hank') }
     await fill({ userId: 'hank', groupId: g, bytes: LIMITS.receiptStorageBytes - 100 })
-    const expense = { title: 'Taxi', expenseDate: '2026-11-01', amount: '9', currencyCode: 'USD', paidBy: 'p-hank', paidFor: [{ participant: 'p-hank', shares: '1' }], isReimbursement: false }
+    const expense = mcpExpense({ paidBy: 'p-hank', people: ['p-hank'], title: 'Taxi', amount: '9' })
     const image = png({ width: 20, height: 20, bytes: 64 })
     const created = await ok(h, {
       name: 'create_expense',
