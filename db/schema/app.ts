@@ -10,6 +10,7 @@ import {
   boolean,
   check,
   date,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -21,7 +22,9 @@ import {
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core'
+import { CURRENCIES } from '../../src/shared/currencies'
 import { LIMITS } from '../../src/shared/limits'
+import { WEIGHT } from '../../src/shared/split'
 import {
   ACTIVITY_TYPES,
   EXPENSE_KINDS,
@@ -37,6 +40,9 @@ import { oauthClient, user } from './auth'
 
 /** `column IN ('a', 'b')`, written as drizzle-kit keeps it in the migration snapshots. */
 const oneOf = (column: AnyPgColumn, values: readonly string[]): SQL => sql`${column} IN (${sql.raw(values.map((v) => `'${v}'`).join(', '))})`
+
+/** The currencies of src/shared/currencies.ts (0001). */
+const CURRENCY_CODES = Object.keys(CURRENCIES)
 
 const now = () => timestamp({ withTimezone: true, mode: 'date' }).notNull().defaultNow()
 const money = () => bigint({ mode: 'bigint' }).notNull()
@@ -54,7 +60,11 @@ export const groups = pgTable(
     revision: integer().notNull().default(0),
     createdAt: now(),
   },
-  (t) => [check('groups_revision_nonnegative', sql`${t.revision} >= 0`), check('groups_kind', oneOf(t.kind, GROUP_KINDS))],
+  (t) => [
+    check('groups_revision_nonnegative', sql`${t.revision} >= 0`),
+    check('groups_kind', oneOf(t.kind, GROUP_KINDS)),
+    check('groups_currency_supported', oneOf(t.defaultCurrency, CURRENCY_CODES)),
+  ],
 )
 
 /** Slugs a group used before: an old link redirects to the group's current URL. */
@@ -183,6 +193,8 @@ export const expenses = pgTable(
     check('expenses_split_mode', oneOf(t.splitMode, SPLIT_MODES)),
     check('expenses_recurrence', oneOf(t.recurrence, RECURRENCES)),
     check('expenses_kind', oneOf(t.kind, EXPENSE_KINDS)),
+    check('expenses_currency_supported', oneOf(t.currency, CURRENCY_CODES)),
+    check('expenses_original_currency_supported', sql`${t.originalCurrency} IS NULL OR ${oneOf(t.originalCurrency, CURRENCY_CODES)}`),
     unique('expenses_id_group').on(t.id, t.groupId),
     index('expenses_group_date').on(t.groupId, t.deletedAt, t.expenseDate.desc(), t.createdAt.desc(), t.id.desc()),
     index('expenses_group_updated').on(t.groupId, t.deletedAt, t.updatedAt.desc(), t.id.desc()),
@@ -211,6 +223,7 @@ const allocation = (name: 'expense_payers' | 'expense_shares') =>
         'restrict',
       ),
       index().on(t.participantId),
+      check(`${name}_weight_decimal`, sql`${t.weight} ~ ${sql.raw(`'${WEIGHT.source}'`)}`),
     ],
   )
 
@@ -463,3 +476,20 @@ export const receiptUploads = pgTable(
     check('receipt_uploads_state', sql`${oneOf(t.state, UPLOAD_STATES)} AND (${t.state} = 'stored') = (${t.uploadedAt} IS NOT NULL)`),
   ],
 )
+
+/**
+ * Per-user token buckets (rate-limit.ts): the MCP request budget (0007) and
+ * the write budget (0012). Tokens are fractional, because a bucket refills
+ * continuously. `allowed` records whether the latest request took a token:
+ * RETURNING sees only the new row.
+ */
+const tokenBucket = (name: 'mcp_rate_limits' | 'write_rate_limits') =>
+  pgTable(name, {
+    userId: text().primaryKey(),
+    tokens: doublePrecision().notNull(),
+    updatedAt: timestamp({ withTimezone: true, mode: 'date' }).notNull(),
+    allowed: boolean().notNull(),
+  })
+
+export const mcpRateLimits = tokenBucket('mcp_rate_limits')
+export const writeRateLimits = tokenBucket('write_rate_limits')
