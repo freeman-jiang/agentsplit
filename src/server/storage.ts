@@ -8,7 +8,7 @@ import { deletedReceipts, groups } from '../../db/schema/app'
 import { Forbidden, NotFound, type ReceiptOrder as ReceiptOrderSchema } from '../shared/api'
 import { LIMITS } from '../shared/limits'
 import { absoluteUrl, receiptDownloadPath } from '../shared/paths'
-import type { GroupKind, Role } from '../shared/vocabulary'
+import { RECEIPT_FORMATS, type GroupKind, type Role } from '../shared/vocabulary'
 import type { Bucket } from './bucket'
 import type { Db } from './core/db'
 import { myMemberships, requireMember, type Principal } from './core/access'
@@ -241,7 +241,7 @@ export async function receiptArchive(db: Db, data: { principal: Principal; group
   for (const row of result.rows) {
     const key = receiptKey(row.url)
     if (!key) continue
-    const ext = /\.png$/i.test(key) ? 'png' : 'jpg'
+    const ext = Object.values(RECEIPT_FORMATS).find((f) => key.toLowerCase().endsWith(`.${f.extension}`))?.extension ?? RECEIPT_FORMATS['image/jpeg'].extension
     const base = row.expense
       ? `${row.expense.live ? '' : 'Deleted expenses/'}${row.expense.date} ${safeName(row.expense.title)}`
       : `Not attached/${row.created_at.slice(0, 10)} receipt`

@@ -6,6 +6,7 @@ import { sql } from 'drizzle-orm'
 import { receipts } from '../../db/schema/app'
 import { groupAccessDenied, Invalid, NotFound } from '../shared/api'
 import { LIMITS, mebibytes } from '../shared/limits'
+import { RECEIPT_FORMATS, receiptTypeOf, type ReceiptFormat } from '../shared/vocabulary'
 import type { Bucket } from './bucket'
 import type { Db } from './core/db'
 import { randomId } from './core/ids'
@@ -21,7 +22,7 @@ const MAX_PIXELS = 40_000_000
  */
 export const NEW_URL_PREFIX = 'r2://agentsplit-receipts/'
 
-export type ImageInfo = { format: 'jpeg' | 'png'; width: number; height: number }
+export type ImageInfo = { format: ReceiptFormat; width: number; height: number }
 
 /**
  * Reads the format and size from the image header. The content decides the
@@ -127,12 +128,13 @@ export async function storeReceipt(db: Db, data: { bucket: Bucket; principal: Pr
   const { userId } = data.principal
   const early = await spaceFor(db, { userId, bytes: bytes.length, lock: false, outstanding: false })
   if (early) throw new Invalid({ message: early, reason: 'precondition' })
-  const key = `receipts/${randomId()}.${info.format === 'jpeg' ? 'jpg' : 'png'}`
+  const contentType = receiptTypeOf(info.format)
+  const key = `receipts/${randomId()}.${RECEIPT_FORMATS[contentType].extension}`
   const url = `${NEW_URL_PREFIX}${key}`
   const id = randomId()
   let refused: string | null
   try {
-    await data.bucket.put(key, bytes, { contentType: info.format === 'jpeg' ? 'image/jpeg' : 'image/png' })
+    await data.bucket.put(key, bytes, { contentType })
     refused = await db.transaction(async (tx) => {
       const message = await spaceFor(tx, { userId, bytes: bytes.length, lock: true, outstanding: false })
       if (!message) await tx.insert(receipts).values({ id, groupId, url, createdBy: userId, bytes: bytes.length })

@@ -10,7 +10,7 @@ import { Forbidden, Invalid } from '../shared/api'
 import { SECRET_TOKEN } from '../shared/ids'
 import { LIMITS } from '../shared/limits'
 import { absoluteUrl, receiptUploadPath } from '../shared/paths'
-import type { ReceiptContentType } from '../shared/vocabulary'
+import { RECEIPT_FORMATS, receiptTypeOf, type ReceiptContentType } from '../shared/vocabulary'
 import type { Bucket } from './bucket'
 import type { Db } from './core/db'
 import { randomId, randomToken, sha256Hex } from './core/ids'
@@ -60,7 +60,7 @@ export async function prepareUploads(
         userId: data.principal.userId,
         groupId: data.groupId,
         expenseId: data.expenseId,
-        key: `receipts/${randomId()}.${file.contentType === 'image/png' ? 'png' : 'jpg'}`,
+        key: `receipts/${randomId()}.${RECEIPT_FORMATS[file.contentType].extension}`,
         contentType: file.contentType,
         bytes: file.bytes,
         expiresAt,
@@ -192,7 +192,7 @@ export async function attachUploads(
     if (!row) throw unfinished
     const info = await storedImage(data.bucket, row)
     // The key's extension and the stored Content-Type come from the declared type, so the content must match it.
-    if (!info || `image/${info.format}` !== row.contentType) throw new Invalid({ message: 'Receipts must be valid JPEG or PNG images' })
+    if (!info || receiptTypeOf(info.format) !== row.contentType) throw new Invalid({ message: 'Receipts must be valid JPEG or PNG images' })
     const url = `${NEW_URL_PREFIX}${row.key}`
     await tx.insert(receipts).values({ id: randomId(), groupId: data.groupId, url, createdBy: data.principal.userId, bytes: row.bytes })
     documents.push({ id: randomId(), url, width: info.width, height: info.height })
