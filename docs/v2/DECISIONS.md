@@ -88,3 +88,10 @@ Decision: option 2, English only.
 ## G. Minor wording and leftovers (recommended: fix as part of the rewrite)
 
 P-AUTH-03 (client errors reported as 503), P-AUTH-30 (bootstrap errors on every session lookup), P-AUTH-61 (stale AUTH.md), P-GROUP-07 and P-GROUP-08 (copy), P-GROUP-19 (link prompt), P-GROUP-50 (untranslated tab label), P-EXP-97 (prefill link), P-HIST-68 and P-HIST-75 (log wording), P-EXPORT-15 (export file name), P-PWA-31 (robots.txt), P-MCP-56 (rate-limit answer is 401 instead of 429), P-MCP-158 (connection order), P-DB-70 (receipt rows immutable by trigger).
+
+## H. Database rules changed after the cutover
+
+- 0014 dropped the 0006 trigger that filled `recurring_links.anchor_day` on insert. Only the one-time importer needed it, and the importer is gone (owner decision); the column stays NOT NULL, so a link without the day is still refused.
+- 0017 let a share weight carry a sign, so that a negative amount split by amount (a refund) can be stored (P-BAL-93, P-MONEY-52). A CHECK cannot see the expense, so 0017 allowed a sign in every split mode. 0019 restores the rest of the rule at commit: a signed share weight is refused unless the expense is split by amount and its amount is negative. The form of a weight stays a CHECK (`1.` and `--1` are refused).
+- 0018 rewrote the payer weight CHECK of 0001 in the text that `db/schema/app.ts` declares. It accepts the same values.
+
