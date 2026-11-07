@@ -46,7 +46,7 @@ function Landing() {
           <p className="max-w-lg leading-normal text-muted-foreground sm:text-xl sm:leading-8">
             Keep track of everyday expenses with the people you share them with. In your browser, or with your agent.
           </p>
-          <LoginButton label="Log In" selectAccount={false} callbackURL="/" />
+          <LoginButton label="Sign in with Google" selectAccount={false} callbackURL="/" />
         </div>
       </section>
     </main>
@@ -136,14 +136,14 @@ function Dashboard() {
           <h2 className="font-display text-xl">Expenses</h2>
           <p className="text-xs text-muted-foreground">Newest expense date first</p>
         </div>
-        <section aria-label="Filter expenses" className="space-y-3 border bg-card p-3 sm:space-y-4 sm:p-4">
+        <section aria-label="Filter expenses" className="space-y-3 sm:space-y-4 sm:border sm:bg-card sm:p-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
             <label className="col-span-2 space-y-2 text-sm sm:col-span-1">
-              <span>Search</span>
+              <span className="max-sm:sr-only">Search</span>
               <Input type="search" placeholder="Search descriptions or merchants" maxLength={200} {...select('q')} />
             </label>
             <label className="space-y-2 text-sm">
-              <span>Group</span>
+              <span className="max-sm:sr-only">Group</span>
               <NativeSelect value={text(params.group) || 'all'} onChange={(e) => update('group', e.target.value === 'all' ? '' : e.target.value)}>
                 <option value="all">All expenses</option>
                 <option value="ungrouped">No group</option>
@@ -156,7 +156,7 @@ function Dashboard() {
               </NativeSelect>
             </label>
             <label className="space-y-2 text-sm">
-              <span>Show</span>
+              <span className="max-sm:sr-only">Show</span>
               <NativeSelect value={text(params.view) === 'all' ? 'all' : 'mine'} onChange={(e) => update('view', e.target.value === 'all' ? 'all' : '')}>
                 <option value="mine">Involving me</option>
                 <option value="all">All accessible expenses</option>

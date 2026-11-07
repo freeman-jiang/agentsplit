@@ -83,7 +83,7 @@ function ExpensesTab() {
         <h2 className="font-display text-xl">Expenses</h2>
         <Button asChild>
           <Link to="/$group/expenses/create" params={{ group }}>
-            Create expense
+            Add expense
           </Link>
         </Button>
       </div>
@@ -186,7 +186,7 @@ function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewe
         <div className="min-w-0 flex-1">
           {e.vendor && <div className="truncate text-xs text-muted-foreground">{e.vendor}</div>}
           <div className={cn('flex items-center gap-1.5', e.kind === 'payment' && 'italic')}>
-            <span className="truncate">{e.title}</span>
+            <span className="truncate font-medium">{e.title}</span>
             {e.documentCount > 0 && (
               <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground" aria-label={`${e.documentCount} documents`}>
                 <Paperclip className="h-3 w-3" aria-hidden="true" />
@@ -199,7 +199,7 @@ function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewe
         <div className="max-w-[7rem] shrink-0 text-right text-sm sm:max-w-none">
           {/* On narrow screens the viewer's figure leads and the paid figure sits under it. */}
           <div className={cn('text-xs sm:hidden', tones[figures.personal.tone])}>{figures.personal.label}</div>
-          <div className={cn('font-semibold tabular-nums sm:hidden', tones[figures.personal.tone])}>
+          <div className={cn('text-base font-semibold tabular-nums sm:hidden', tones[figures.personal.tone])}>
             {figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
           </div>
           <div className="mt-0.5 text-xs leading-tight text-muted-foreground sm:hidden">

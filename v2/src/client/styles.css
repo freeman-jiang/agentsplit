@@ -75,7 +75,7 @@
 }
 
 .landing-header strong {
-  @apply font-normal text-primary;
+  @apply block font-normal text-primary;
 }
 
 /* Spacing and hierarchy shared by the expense editor's existing fields. */

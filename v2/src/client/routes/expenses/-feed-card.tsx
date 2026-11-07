@@ -1,9 +1,8 @@
 import { Link } from '@tanstack/react-router'
-import { Paperclip, Users } from 'lucide-react'
+import { Paperclip } from 'lucide-react'
 import { cn } from '~/client/cn'
 import { CategoryIcon } from '~/client/components/category-icon'
 import { money } from '~/client/components/money'
-import { Badge } from '~/client/ui/badge'
 import type { Attribution, FeedItem } from '~/shared/api'
 import type { CurrencyCode } from '~/shared/currencies'
 import { formatMinor, minor, minorOrNull, type Minor } from '~/shared/minor'
@@ -69,7 +68,7 @@ export function FeedCard({ expense }: { expense: Item }) {
       className="grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-x-3 border-b px-3 py-4 transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring sm:grid-cols-[2rem_2.5rem_minmax(0,1fr)_minmax(7rem,auto)_minmax(7rem,auto)] sm:items-center sm:gap-x-4"
     >
       <time dateTime={expense.expenseDate} className="text-center text-muted-foreground">
-        <span className="block text-[10px] uppercase tracking-wide">{month.format(date)}</span>
+        <span className="block text-xs uppercase tracking-wide">{month.format(date)}</span>
         <span className="block text-xl leading-tight tabular-nums">{date.getUTCDate()}</span>
         <span className="sr-only">{date.getUTCFullYear()}</span>
       </time>
@@ -77,21 +76,6 @@ export function FeedCard({ expense }: { expense: Item }) {
         <CategoryIcon categoryId={expense.categoryId} className="h-5 w-5" />
       </span>
       <div className="min-w-0">
-        {expense.group ? (
-          <Badge
-            variant="outline"
-            data-testid="expense-group-badge"
-            className="mb-1 max-w-full gap-1 rounded border-border/60 bg-muted/20 px-1.5 py-0 text-[10px] font-normal leading-4 text-muted-foreground"
-            title={expense.group.name}
-          >
-            <Users aria-hidden="true" className="h-2.5 w-2.5 shrink-0" />
-            <span className="truncate">{expense.group.name}</span>
-          </Badge>
-        ) : (
-          <div data-testid="expense-no-group" className="mb-1 text-[10px] italic leading-4 text-muted-foreground">
-            No group
-          </div>
-        )}
         {context && (
           <div data-testid="expense-context" className="mb-1 text-xs text-muted-foreground">
             {context}
@@ -103,7 +87,7 @@ export function FeedCard({ expense }: { expense: Item }) {
           </div>
         )}
         <div className="flex items-center gap-2">
-          <span data-testid="expense-title" title={expense.title} className={cn('truncate text-sm font-semibold sm:text-base', expense.kind === 'payment' && 'italic')}>
+          <span data-testid="expense-title" title={expense.title} className={cn('truncate text-base font-medium', expense.kind === 'payment' && 'italic')}>
             {expense.title}
           </span>
           {expense.documentCount > 0 && (
@@ -113,8 +97,18 @@ export function FeedCard({ expense }: { expense: Item }) {
             </span>
           )}
         </div>
-        <p className="text-xs text-muted-foreground" data-testid="expense-metadata">
-          {attributionLine(expense.attribution)}
+        {/* The group sits in the metadata line, so the title stays on the first lines of the row. */}
+        <p className="truncate text-xs text-muted-foreground" data-testid="expense-metadata">
+          {expense.group ? (
+            <span data-testid="expense-group-badge" title={expense.group.name}>
+              {expense.group.name}
+            </span>
+          ) : (
+            <span data-testid="expense-no-group" className="italic">
+              No group
+            </span>
+          )}{' '}
+          · {attributionLine(expense.attribution)}
         </p>
       </div>
       {/* On narrow screens the viewer's figure leads a right-aligned column, as on the group page. */}
@@ -131,7 +125,7 @@ export function FeedCard({ expense }: { expense: Item }) {
             <div
               className={cn(
                 'mt-0.5 tabular-nums sm:text-base',
-                i === 1 ? 'text-sm font-semibold' : 'text-xs text-muted-foreground sm:text-foreground',
+                i === 1 ? 'text-base font-semibold' : 'text-xs text-muted-foreground sm:text-foreground',
                 figure.tone === 'positive' && 'text-owed',
                 figure.tone === 'negative' && 'text-owe',
               )}

@@ -25,7 +25,7 @@ export function BalancesCard(props: { currencies: Currencies; names: Names }) {
           const largest = Math.max(1, ...c.balances.map((b) => size(b.net)))
           return (
             <div key={c.currency} className="mb-4 last:mb-0">
-              <h3 className="mb-1 text-sm font-medium">{c.currency}</h3>
+              <h3 className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{c.currency}</h3>
               <ul className="space-y-1">
                 {c.balances.map((b) => {
                   const positive = !b.net.startsWith('-') && size(b.net) > 0
@@ -38,7 +38,7 @@ export function BalancesCard(props: { currencies: Currencies; names: Names }) {
                           <span className="truncate">{props.names.get(b.participantId) ?? 'Unknown'}</span>
                         ) : (
                           <>
-                            {size(b.net) > 0 && <span aria-hidden="true" className="absolute inset-y-1 right-0 bg-owe/15" style={{ width }} />}
+                            {size(b.net) > 0 && <span aria-hidden="true" className="absolute inset-y-1 right-0 bg-owe/15 dark:bg-owe/25" style={{ width }} />}
                             <span className="relative text-owe tabular-nums">{money(b.net, c.currency)}</span>
                           </>
                         )}
@@ -46,7 +46,7 @@ export function BalancesCard(props: { currencies: Currencies; names: Names }) {
                       <div className="relative flex h-8 items-center px-2">
                         {positive ? (
                           <>
-                            <span aria-hidden="true" className="absolute inset-y-1 left-0 bg-owed/15" style={{ width }} />
+                            <span aria-hidden="true" className="absolute inset-y-1 left-0 bg-owed/15 dark:bg-owed/25" style={{ width }} />
                             <span className="relative text-owed tabular-nums">{money(b.net, c.currency)}</span>
                           </>
                         ) : (
@@ -80,7 +80,7 @@ export function SuggestedPayments(props: { currencies: Currencies; names: Names;
       ) : (
         pending.map((c) => (
           <div key={c.currency} className="mb-4 last:mb-0">
-            <h3 className="mb-1 text-sm font-medium">{c.currency}</h3>
+            <h3 className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{c.currency}</h3>
             <ul className="divide-y border">
               {c.settlements.map((s) => (
                 <li key={`${s.from}-${s.to}`} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm" data-testid="suggestion">
