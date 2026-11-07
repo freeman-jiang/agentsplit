@@ -4,14 +4,14 @@
 import { randomBytes } from 'node:crypto'
 import type { BrowserContext } from '@playwright/test'
 import pg from 'pg'
-import { groups, memberships, participants } from '../db/schema/app'
 import type { ExpenseDraft } from '../src/shared/expense-rules'
 import { randomId } from '../src/shared/ids'
 import { createAuth } from '../src/server/auth/auth'
 import { makeDb, serializable, type Db } from '../src/server/core/db'
 import { createExpense, updateExpense } from '../src/server/ledger'
 import { draft as evenDraft } from '../test/kit/drafts'
-import { seedHousehold as seedGroup, type Household } from '../test/kit/seed'
+import { testSettings } from '../test/kit/config'
+import { seedGroup, seedHousehold as seedHouseholdRows, type Household } from '../test/kit/seed'
 import { signIn } from '../test/kit/session'
 
 const url = new URL(process.env['E2E_DATABASE_URL'] ?? '')
@@ -31,6 +31,10 @@ export async function withDb<A>(work: (db: Db) => Promise<A>): Promise<A> {
 
 const tx = <A>(work: (db: Db) => Promise<A>) => withDb((db) => serializable(db, work))
 
+/** The Google client that scripts/e2e.sh gives the server. */
+export const E2E_GOOGLE_CLIENT_ID = 'e2e-client'
+const e2eSettings = (baseUrl: string) => testSettings({ baseUrl, secret, googleClientId: E2E_GOOGLE_CLIENT_ID, googleClientSecret: 'e2e-secret' })
+
 export type { Household }
 
 /** A group with three people; the first is the signed-in owner, the others have no account. */
@@ -39,7 +43,7 @@ export async function seedHousehold(context: BrowserContext, baseURL: string): P
   const [alice, bob, cara] = ['Alice', 'Bob', 'Cara'].map((name) => ({ id: `${name.toLowerCase()}-${suffix}`, name: `${name} Example` }))
   if (!alice || !bob || !cara) throw new Error('three people')
   const { household, cookie } = await withDb(async (db) => {
-    const household = await seedGroup(db, { groupId: `g-${suffix}`, slug: `home-${suffix}`, name: `Household ${suffix}`, people: [{ ...alice, userId: `u-${alice.id}` }, bob, cara] })
+    const household = await seedHouseholdRows(db, { groupId: `g-${suffix}`, slug: `home-${suffix}`, name: `Household ${suffix}`, people: [{ ...alice, userId: `u-${alice.id}` }, bob, cara] })
     return { household, cookie: await signIn(db, { userId: household.owner.userId, secret, baseUrl: baseURL }) }
   })
   await context.addCookies([{ name: cookie.name, value: cookie.value, url: baseURL, httpOnly: true, sameSite: 'Lax' }])
@@ -50,11 +54,16 @@ export async function seedHousehold(context: BrowserContext, baseURL: string): P
 export async function seedUnsluggedGroup(household: Household): Promise<string> {
   const groupId = randomId()
   const participantId = randomId()
-  await withDb(async (db) => {
-    await db.insert(groups).values({ id: groupId, kind: 'named', slug: null, name: `Trip ${groupId}`, defaultCurrency: 'USD' })
-    await db.insert(participants).values({ id: participantId, groupId, name: household.owner.name })
-    await db.insert(memberships).values({ userId: household.owner.userId, groupId, role: 'admin', participantId })
-  })
+  await tx((db) =>
+    seedGroup(db, {
+      groupId,
+      slug: null,
+      name: `Trip ${groupId}`,
+      people: [{ id: participantId, name: household.owner.name }],
+      creator: household.owner,
+      members: [{ userId: household.owner.userId, participantId, role: 'admin' }],
+    }),
+  )
   return groupId
 }
 
@@ -79,6 +88,6 @@ export const editExpense = (household: Household, expenseId: string, expectedRev
 /** A raw agent API key for a seeded account, from Better Auth's own createApiKey, as Settings creates it. */
 export const agentKey = (userId: string, baseURL: string) =>
   withDb(async (db) => {
-    const auth = createAuth({ db, baseUrl: baseURL, secret, googleClientId: 'e2e-client', googleClientSecret: 'e2e-secret', bootstrapEmail: undefined, signUpDailyLimit: 200 })
+    const auth = createAuth({ ...e2eSettings(baseURL), db })
     return (await auth.api.createApiKey({ body: { userId } })).key
   })

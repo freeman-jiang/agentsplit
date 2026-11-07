@@ -211,7 +211,7 @@ function BalanceDetails(props: { entry: Entry; participants: ReadonlyArray<typeo
                 {person.name}
                 {person.id === participantId && <span className="font-normal text-muted-foreground"> (you)</span>}
               </div>
-              <div className={cn('text-sm tabular-nums', NET_CLASS[netTone(total)])}>
+              <div className={cn('text-sm tabular-nums', NET_CLASS[netTone(total)])} data-testid="summary-net">
                 {netLabel(total, 'them')}
                 {!isZero(total) && <> {money(magnitude(total), currency)}</>}
               </div>
