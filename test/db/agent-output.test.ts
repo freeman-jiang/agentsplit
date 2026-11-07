@@ -6,6 +6,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { Schema } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { GROUP_DENIED } from '~/shared/errors'
 import { activities, expensePayers, expenses, expenseShares } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { listActivities } from '~/server/history'
@@ -23,7 +24,6 @@ let alice: Record<string, string>
 let aliceCookie: string
 let bobCookie: string
 
-const DENIED = 'Group not found, or you are not a member'
 
 beforeAll(async () => {
   h = await startHarness()
@@ -116,12 +116,12 @@ describe('exports', () => {
     for (const path of ['/groups/g3/expenses/export/json', '/groups/missing-group/expenses/export/csv']) {
       const denied = await download(path, alice)
       expect(denied.status).toBe(403)
-      expect(await denied.json()).toEqual({ error: DENIED })
+      expect(await denied.json()).toEqual({ error: GROUP_DENIED })
     }
     expect((await download('/groups/g3/expenses/export/json', { cookie: bobCookie })).status).toBe(200)
     for (const groupId of ['g3', 'missing-group']) {
       const denied = await failure(h, { name: 'export_group', args: { groupId }, headers: alice })
-      expect(denied).toMatchObject({ code: 'FORBIDDEN', message: DENIED, outcomeUnknown: false })
+      expect(denied).toMatchObject({ code: 'FORBIDDEN', message: GROUP_DENIED, outcomeUnknown: false })
     }
   })
 })

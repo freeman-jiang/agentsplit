@@ -5,6 +5,7 @@
 // membership change applies to every token of that account.
 import { and, eq, sql } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { GROUP_DENIED } from '~/shared/errors'
 import { expenses, memberships } from '../../db/schema/app'
 import { oauthConsent } from '../../db/schema/auth'
 import { OAUTH_CONNECTION_CLAIM } from '~/server/auth/constants'
@@ -480,7 +481,7 @@ describe('OAuth routes', () => {
     expect(((await json.json()) as { id: string }).id).toBe(user.groupId)
     const denied = await h.fetch(new Request(`${BASE}/groups/${FOREIGN_GROUP}/expenses/export/csv`, { headers: bearer(t) }))
     expect(denied.status).toBe(403)
-    expect(await denied.json()).toEqual({ error: 'Group not found, or you are not a member' })
+    expect(await denied.json()).toEqual({ error: GROUP_DENIED })
     // Read scope is required: without it the export gets the 403 of the MCP endpoint.
     await setConsent(user, ['offline_access'])
     const noRead = await h.fetch(new Request(`${BASE}/groups/${user.groupId}/expenses/export/json`, { headers: bearer(t) }))

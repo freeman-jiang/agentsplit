@@ -2,6 +2,7 @@
 // feed privacy, private contexts, invitations, ordering and settlement.
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { GROUP_DENIED } from '~/shared/errors'
 import { expenses, groups, invitations, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { accountBalances, listBalances } from '~/server/balances'
@@ -139,7 +140,7 @@ describe('ungrouped expenses', () => {
       await expect(tx((db) => expenseContext(db, { principal: peer, expenseId: privateId }))).rejects.toMatchObject({ _tag: 'NotFound' })
       await expect(tx((db) => getExpense(db, { principal: peer, groupId: privateId, expenseId: privateId }))).rejects.toMatchObject({
         _tag: 'Forbidden',
-        message: 'Group not found, or you are not a member',
+        message: GROUP_DENIED,
       })
       await expect(tx((db) => listExpenses(db, { principal: peer, groupId: privateId, filter: {}, cursor: null, limit: 10 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
     }
@@ -281,7 +282,7 @@ describe('ungrouped expenses', () => {
     expect((await tx((db) => expenseContext(db, { principal: bob, expenseId: id }))).context?.invitations).toEqual([])
     await expect(tx((db) => renewPrivateInvitation(db, { principal: outsider, baseUrl: BASE, groupId: id, participantId: `${id}_guest` }))).rejects.toMatchObject({
       _tag: 'Forbidden',
-      message: 'Group not found, or you are not a member',
+      message: GROUP_DENIED,
     })
     await expect(tx((db) => renewPrivateInvitation(db, { principal: bob, baseUrl: BASE, groupId: id, participantId: `${id}_guest` }))).rejects.toMatchObject({
       message: 'Only the expense creator can reissue its original invitations.',
