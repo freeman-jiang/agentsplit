@@ -44,7 +44,7 @@ function Landing() {
           <h1 className="landing-header py-2 font-display text-4xl leading-none! font-normal sm:text-5xl md:text-6xl">
             Shared expenses. <strong>Simply settled.</strong>
           </h1>
-          <p className="max-w-lg leading-normal text-muted-foreground sm:text-xl sm:leading-8">
+          <p className="max-w-lg leading-normal text-pretty text-muted-foreground sm:text-xl sm:leading-8">
             Keep track of everyday expenses with the people you share them with. In your browser, or with your agent.
           </p>
           <LoginButton label="Sign in with Google" selectAccount={false} callbackURL="/" />
