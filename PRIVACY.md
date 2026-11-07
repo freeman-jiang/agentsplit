@@ -9,9 +9,11 @@ AgentSplit v2 runs a Bun server, PostgreSQL and Garage on the operator's Coolify
 | Accounts | Name, email, verified-email status and profile image from Google; the Google account link; sessions. |
 | Groups | Name, slug, currency, participants, memberships with roles and participant bindings, and invitations (email, hashed token, expiry). |
 | Expenses | Title, vendor, notes, amounts, payers, splits, category, dates, recurrence, and the receipt references. |
-| Receipts | The JPEG and PNG images that people and agents attach. |
+| Receipts | The JPEG and PNG images that people and agents attach, with each image's size and the account that uploaded it. |
+| Receipt deletions | For each receipt deleted for good: which receipt, the account that deleted it, and when. |
 | Activity history | One immutable snapshot per expense revision, group changes, and the authenticated actor of each change: account, name, source (web or agent) and agent key or connection ID. |
-| Agent connections | Hashed API keys; OAuth clients, consents, connections and hashed tokens; the JWT signing keys, encrypted with `BETTER_AUTH_SECRET`; rate-limit counters. |
+| Agent connections | Hashed API keys; OAuth clients, consents, connections and hashed tokens; the JWT signing keys, encrypted with `BETTER_AUTH_SECRET`. |
+| Rate-limit counters | Per account: the MCP request budget and the write budget. Per IP address and route: Better Auth's counters for sign-in and client registration. |
 
 ## Where
 
@@ -37,10 +39,15 @@ AgentSplit v2 runs a Bun server, PostgreSQL and Garage on the operator's Coolify
 - Browsers upload through the authenticated app, from the app's own origin only.
 - Agents upload through a single-use target URL on the app that expires after 300 seconds. The server checks the real image format and size before it attaches the image. No URL can write over a stored receipt.
 - Storage credentials never reach the browser or the agent.
+- Photos shrink in the browser before upload: at most 2000 pixels on the long side, as JPEG. Small images upload as they are.
+- Each account has 500 MB of receipt storage, a fair-use limit. A receipt counts against the account that uploaded it until it is deleted for good. Settings, under Storage and limits, shows the use and lists the account's receipts.
+- Members can download every receipt of a group as one ZIP file from the group's Export menu.
 
 ## Retention
 
 - No expense is ever hard-deleted. A deleted expense leaves current views and balances, but its revisions and receipt references stay in the history.
+- A receipt can be deleted for good by the account that uploaded it or by an admin of its group, in Settings or with the agent tool `delete_receipts`. The image is removed from storage at once; if storage fails, the hourly job removes it within an hour. Each current expense that shows it gets a new revision without it. The history keeps the receipt pointer, and every view of it shows "Receipt deleted by <name> on <date>" instead of the image. Downloads of it answer 410.
+- Backups made before a receipt deletion still hold the image until they expire (below).
 - The activity history is append-only. Database triggers reject updates and deletes of it. They protect against ordinary application changes, not against a privileged database administrator or the loss of the host.
 - Leaving or removing a member keeps their bookkeeping identity and history.
 - A revoked API key is deleted. A revoked OAuth connection keeps a revoked marker; its tokens and consent are deleted.
