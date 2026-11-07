@@ -6,7 +6,7 @@
 // No Effect import: the client bundle uses this module (BUILDING.md).
 import { CURRENCIES, isCurrencyCode, type CurrencyCode } from './currencies'
 import type { DecimalString } from './minor'
-import type { ExpenseKind, Recurrence, SplitMode } from './vocabulary'
+import { RECURRENCE_LABELS, type ExpenseKind, type Recurrence, type SplitMode } from './vocabulary'
 
 export type Category = { readonly grouping: string; readonly name: string }
 
@@ -90,7 +90,6 @@ export const REVISION_FIELDS = [
 export type RevisionField = (typeof REVISION_FIELDS)[number][0]
 
 const SPLIT_LABEL: Record<SplitMode, string> = { evenly: 'Evenly', shares: 'By shares', percentage: 'By percentage', amount: 'By amount' }
-const RECURRENCE_LABEL: Record<Recurrence, string> = { none: 'None', daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly' }
 
 /**
  * Every field of the revision panel as text. Changed fields are found by
@@ -111,7 +110,7 @@ export function describeRevision(expense: SavedExpense): Record<RevisionField, s
     category: expense.category?.name ?? '',
     originalAmount: expense.originalAmount === null ? '' : money(expense.originalAmount, expense.originalCurrency ?? expense.currency),
     conversionRate: expense.conversionRate ?? '',
-    recurrence: RECURRENCE_LABEL[expense.recurrence],
+    recurrence: RECURRENCE_LABELS[expense.recurrence],
     notes: expense.notes,
     attachments:
       expense.documents.length > 0

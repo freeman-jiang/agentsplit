@@ -19,7 +19,7 @@ import type { ExpenseDetail, Participant, Reference } from '~/shared/api'
 import { CURRENCIES } from '~/shared/currencies'
 import { LIMITS } from '~/shared/limits'
 import { DECIMAL, formatMinor, minor } from '~/shared/minor'
-import type { SplitMode } from '~/shared/vocabulary'
+import { RECURRENCE_LABELS, RECURRENCES, SPLIT_MODE_LABELS, SPLIT_MODES, type SplitMode } from '~/shared/vocabulary'
 import { DeleteDialog } from './delete-dialog'
 import { ExpenseDocuments } from './expense-documents'
 import { amountInput, autoAmounts, check, involvesEveryone, isIncome, payerRemainder, saveSplitDefaults, toDraft, type FormState } from './expense-form-state'
@@ -28,18 +28,8 @@ import { toInput, useEntryWrite, type EntryTarget } from './entry-write'
 type DetailData = typeof ExpenseDetail.Type
 type ReferenceData = typeof Reference.Type
 
-const SPLIT_MODES: readonly [SplitMode, string][] = [
-  ['evenly', 'Evenly'],
-  ['shares', 'Unevenly – By shares'],
-  ['percentage', 'Unevenly – By percentage'],
-  ['amount', 'Unevenly – By amount'],
-]
-const RECURRENCE = [
-  ['none', 'None'],
-  ['daily', 'Daily'],
-  ['weekly', 'Weekly'],
-  ['monthly', 'Monthly'],
-] as const
+const SPLIT_OPTIONS = SPLIT_MODES.map((mode) => [mode, SPLIT_MODE_LABELS[mode]] as const)
+const RECURRENCE = RECURRENCES.map((rule) => [rule, RECURRENCE_LABELS[rule]] as const)
 
 function Field(props: { id: string; label: ReactNode; error?: string | undefined; children: ReactNode; hint?: ReactNode }) {
   return (
@@ -259,7 +249,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
           </div>
           <Field id="split-mode" label="Split mode">
             <NativeSelect id="split-mode" className="h-11" value={state.splitMode} onChange={(e) => setMode(e.target.value as SplitMode)}>
-              {SPLIT_MODES.map(([value, label]) => (
+              {SPLIT_OPTIONS.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>

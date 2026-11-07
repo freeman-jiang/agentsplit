@@ -9,10 +9,19 @@ export type ExpenseKind = (typeof EXPENSE_KINDS)[number]
 export const SPLIT_MODES = ['evenly', 'shares', 'percentage', 'amount'] as const
 export type SplitMode = (typeof SPLIT_MODES)[number]
 
+/** The current app's names of the split modes, as its form and its CSV export show them. */
+export const SPLIT_MODE_LABELS = {
+  evenly: 'Evenly',
+  shares: 'Unevenly – By shares',
+  percentage: 'Unevenly – By percentage',
+  amount: 'Unevenly – By amount',
+} as const satisfies Record<SplitMode, string>
+
 /** The rules of a recurring expense. */
 export const RECURRING_PERIODS = ['daily', 'weekly', 'monthly'] as const
 export const RECURRENCES = ['none', ...RECURRING_PERIODS] as const
 export type Recurrence = (typeof RECURRENCES)[number]
+export const RECURRENCE_LABELS = { none: 'None', daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly' } as const satisfies Record<Recurrence, string>
 
 /**
  * The fixed categories that code names, from db/migrations/0002_categories.sql.

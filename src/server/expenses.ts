@@ -10,7 +10,7 @@ import { receiptDownloadPath } from '../shared/paths'
 import { RECEIPT_CONTENT_TYPES, RECURRENCES, SPLIT_MODES, type ExpenseKind } from '../shared/vocabulary'
 import { myMemberships, requireMember, type Principal } from './core/access'
 import type { Db } from './core/db'
-import { expenseColumns, toExpense, type ExpenseRow } from './expense-read'
+import { expenseColumns, openLink, toExpense, type ExpenseRow } from './expense-read'
 import { iso } from './sql'
 
 /** Every category, ordered by ID (P-EXP-102: the current app has no order). */
@@ -32,7 +32,7 @@ export async function getExpenseDetail(db: Db, data: { principal: Principal; gro
   const [row] = result.rows
   if (!row || row.deleted) throw new NotFound({ entity: 'expense', id: data.expenseId })
   const expense = toExpense(row)
-  const open = expense.link && expense.link.nextExpenseCreatedAt === null ? expense.link : null
+  const open = openLink(expense)
   return {
     expense,
     documents: (expense.documents ?? []).map((d) => ({

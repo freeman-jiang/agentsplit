@@ -7,7 +7,7 @@ import { EMAIL } from '../groups'
 import { SECRET_TOKEN } from '../ids'
 import { LIMITS } from '../limits'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
-import { EmailInput, GroupKindSchema, Id, IdempotencyKey, NewId, Offset, ReadError, RoleSchema as Role, WriteError } from './core'
+import { EmailInput, GroupKindSchema, Id, IdempotencyKey, NewId, Offset, ReadError, Timestamp, RoleSchema as Role, WriteError } from './core'
 
 export const GroupName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(LIMITS.groupNameMin, LIMITS.nameMax))
 export const Information = Schema.String.check(Schema.isMaxLength(LIMITS.informationMax))
@@ -16,8 +16,7 @@ export const PersonName = Schema.String.check(Schema.isTrimmed(), Schema.isBetwe
 export const SlugInput = Schema.NullOr(Schema.String.check(Schema.isMaxLength(LIMITS.slugMax)))
 export const Email = EmailInput.check(Schema.isPattern(EMAIL))
 /** An invitation link from this app, as a person pastes it. */
-export const ShareUrl = Schema.String.check(Schema.isMaxLength(2000))
-const Timestamp = Schema.String // ISO 8601, UTC
+export const ShareUrl = Schema.String.check(Schema.isMaxLength(LIMITS.urlMax))
 
 // ---------- shapes ----------
 

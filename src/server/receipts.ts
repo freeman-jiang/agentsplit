@@ -14,7 +14,6 @@ import { requireMember, type Principal } from './core/access'
 import { spaceFor } from './receipt-quota'
 import type { Tombstone } from './expense-read'
 
-const MAX_PIXELS = 40_000_000
 /**
  * The pointer of a receipt stored by v2: this prefix and the object key. The
  * name is from the time v2 stored receipts in R2. The current app's objects
@@ -55,7 +54,7 @@ export function imageInfo(bytes: Uint8Array): ImageInfo | null {
   return null
 }
 
-const sized = (info: ImageInfo) => (info.width >= 1 && info.height >= 1 && info.width * info.height <= MAX_PIXELS ? info : null)
+const sized = (info: ImageInfo) => (info.width >= 1 && info.height >= 1 && info.width * info.height <= LIMITS.receiptPixelsMax ? info : null)
 
 /**
  * The object key of a stored receipt URL: the part after the storage prefix, as the

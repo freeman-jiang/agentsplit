@@ -68,7 +68,8 @@ export const CalendarDate = Schema.String.check(
 )
 /** A calendar date the server produces from a DATE column; not checked again on encode. */
 export const CalendarDateOutput = Schema.String
-const Timestamp = Schema.String // ISO 8601, UTC
+/** An ISO 8601 time in UTC, as the server writes it. */
+export const Timestamp = Schema.String
 
 export const Me = Schema.Struct({
   userId: Schema.String,
@@ -110,6 +111,8 @@ export const Group = Schema.Struct({
 })
 
 export const Part = Schema.Struct({ participantId: Schema.String, amount: DecimalOutput })
+/** A suggested repayment: `from` pays `to`. */
+export const Transfer = Schema.Struct({ from: Schema.String, to: Schema.String, amount: DecimalOutput })
 export const SharePart = Schema.Struct({ participantId: Schema.String, amount: DecimalOutput, weight: Schema.String })
 const PartInput = Schema.Struct({ participantId: Id, amount: DecimalString })
 
@@ -167,8 +170,8 @@ export const ExpensePage = Schema.Struct({
 
 /** A receipt attached to an expense. The URL must name a receipt uploaded to the same group. */
 export const DocumentInput = Schema.Struct({
-  id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
-  url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2000)).annotate({ format: 'uri' }),
+  id: Id,
+  url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(LIMITS.urlMax)).annotate({ format: 'uri' }),
   width: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
   height: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
 })

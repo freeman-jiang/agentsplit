@@ -15,13 +15,13 @@ export const DECIMAL = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/
 /** Minor units from a decimal string, or null if it is malformed or has more decimals than the currency allows. */
 export function minorOrNull(data: { amount: string; currency: CurrencyCode }): Minor | null {
   const { decimals } = CURRENCIES[data.currency]
-  const match = /^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?$/.exec(data.amount)
-  if (!match) return null
-  const [, sign, whole, rawFraction = ''] = match
+  if (!DECIMAL.test(data.amount)) return null
+  const negative = data.amount.startsWith('-')
+  const [whole = '0', rawFraction = ''] = (negative ? data.amount.slice(1) : data.amount).split('.')
   const fraction = rawFraction.replace(/0+$/, '')
   if (fraction.length > decimals) return null
-  const units = BigInt((whole ?? '0') + fraction.padEnd(decimals, '0'))
-  return minor(sign === '-' ? -units : units)
+  const units = BigInt(whole + fraction.padEnd(decimals, '0'))
+  return minor(negative ? -units : units)
 }
 
 /** Minor units of decimal text that the server formatted, so it always fits its currency; anything else is a bug. */
