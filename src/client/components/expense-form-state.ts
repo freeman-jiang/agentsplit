@@ -54,7 +54,7 @@ function preferredOf(state: FormState, order: readonly string[]): string | null 
 /**
  * In amount mode, every selected person who has not typed an amount shares
  * what is left evenly, in minor units, with the payer first (P-MONEY-83).
- * Returns null for a person when the total or a typed amount does not parse.
+ * The map is empty when the total or a typed amount does not parse.
  */
 export function autoAmounts(state: FormState, order: readonly string[]): ReadonlyMap<string, string> {
   const result = new Map<string, string>()

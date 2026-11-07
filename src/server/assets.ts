@@ -85,9 +85,8 @@ function respond(request: Request, asset: Asset): Response {
 
 /**
  * The static handler. A file path serves its file. Any other path serves the
- * SPA page, as the Workers asset server did ("single-page-application"),
- * except under /assets/: a missing chunk is a 404, so an old page that asks
- * for a removed chunk gets an error instead of HTML.
+ * SPA page, except under /assets/: a missing chunk is a 404, so an old page
+ * that asks for a removed chunk gets an error instead of HTML.
  */
 export function assetHandler(assets: ReadonlyMap<string, Asset>) {
   const page = assets.get('/index.html')

@@ -27,13 +27,11 @@ export function searchParams<const S extends Record<string, Param<unknown>>>(spe
  */
 export const textParam: Param<string | number> = (value) => (typeof value === 'string' || typeof value === 'number' ? value : undefined)
 
-/** A text param as text. */
 export const text = (value: string | number | undefined) => (value === undefined ? undefined : String(value))
 
 /** A param that only a string fills, such as a path. */
 export const stringParam: Param<string> = (value) => (typeof value === 'string' ? value : undefined)
 
-/** A non-empty string. */
 export const nonEmptyParam: Param<string> = (value) => (typeof value === 'string' && value ? value : undefined)
 
 /** A number, from a number or numeric text. */
@@ -42,7 +40,6 @@ export const numberParam: Param<number> = (value) => {
   return Number.isFinite(n) ? n : undefined
 }
 
-/** A positive whole number. */
 export const positiveIntegerParam: Param<number> = (value) => {
   const n = numberParam(value)
   return n !== undefined && Number.isInteger(n) && n > 0 ? n : undefined
@@ -52,7 +49,6 @@ export const positiveIntegerParam: Param<number> = (value) => {
 export const currencyParam: Param<CurrencyCode> = (value) =>
   typeof value === 'string' && Object.hasOwn(CURRENCIES, value) ? (value as CurrencyCode) : undefined
 
-/** One of the given strings. */
 export const oneOf =
   <const T extends string>(values: readonly T[]): Param<T> =>
   (value) =>

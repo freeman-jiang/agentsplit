@@ -11,7 +11,8 @@ type ActivityItem = typeof Activity.Type
 
 /**
  * Only http and https pointers and v2's own r2: pointers become links; a
- * `javascript:` URL never does (P-HIST-76). The link is always /api/receipts.
+ * `javascript:` URL never does (P-HIST-76). The r2: name is historical: the
+ * objects are in Garage. The link is always /api/receipts.
  */
 function receiptLink(data: { groupId: string; url: string }) {
   try {

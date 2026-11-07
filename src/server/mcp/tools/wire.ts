@@ -25,7 +25,6 @@ export const NullableString = Schema.NullOr(Schema.String)
 /** An ISO timestamp in output. */
 export const DateTime = Schema.String.annotate({ format: 'date-time' })
 export const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
-/** Money in output: an exact decimal string in the stated currency. */
 export const Money = Schema.String.annotate({ description: 'Exact decimal string in the stated currency, e.g. 12.34' })
 
 /** The contract's recorded time: a time zone, and at most millisecond precision. */
