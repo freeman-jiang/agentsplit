@@ -10,7 +10,7 @@ import type { Recurrence } from '../shared/vocabulary'
 import { requireMember, type Principal } from './core/access'
 import { recordExpenseEvent } from './activity'
 import { serializable, type Db } from './core/db'
-import { documentRows, EXPENSE_FIELDS, fieldColumn, isActiveSeries, loadExpenses } from './expense-read'
+import { documentRows, EXPENSE_FIELDS, fieldColumn, isActiveSeries, loadExpenses, openLink } from './expense-read'
 import { displayNames } from './people'
 import { textList } from './sql'
 
@@ -216,5 +216,8 @@ export async function listRecurring(db: Db, data: { principal: Principal; groupI
     ORDER BY e.amount DESC, e.id
   `)
   const expenses = await loadExpenses(db, { ids: rows.rows.map((r) => r.id) })
-  return expenses.filter(isActiveSeries).map((expense) => ({ expense, nextDate: expense.link?.nextExpenseDate ?? '' }))
+  return expenses.flatMap((expense) => {
+    const link = openLink(expense)
+    return link && isActiveSeries(expense) ? [{ expense, nextDate: link.nextExpenseDate }] : []
+  })
 }

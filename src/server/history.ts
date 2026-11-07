@@ -241,7 +241,7 @@ export async function getSavedExpense(
 
 // ---------- the ledger at a boundary ----------
 
-type LedgerHead = Head & { saved: { id: string; expenseId: string; type: ActivityType; snapshot: unknown }[]; missing: string[] }
+type LedgerHead = Head & { before_group: boolean; saved: { id: string; expenseId: string; type: ActivityType; snapshot: unknown }[]; missing: string[] }
 
 /**
  * The ledger as recorded at a boundary: the last saved state of every expense,
@@ -274,7 +274,7 @@ export async function historicalLedger(db: Db, data: { principal: Principal; gro
       ${categoriesColumn}
     FROM g
   `)
-  const head = requireActive(result.rows[0] as (LedgerHead & { before_group: boolean }) | undefined)
+  const head = requireActive(result.rows[0])
   requireBoundaryFound({ selection: data, head })
   if (head.before_group) throw new NotFound({ entity: 'groupAtTime', id: data.groupId })
   const categories = categoryMap(head.categories)

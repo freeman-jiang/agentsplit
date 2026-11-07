@@ -35,7 +35,6 @@ async function load(db: Db, data: { principal: Principal; groupId: string }) {
     return {
       ...e,
       amount: minorOf(e.amount, e.currency),
-      category: e.category ?? { grouping: '', name: '' },
       activeSeries: isActiveSeries(e),
       payers: e.payers.map((p) => ({ participantId: p.participantId, amount: minorOf(p.amount, e.currency) })),
       shares: e.shares.map((s) => ({ participantId: s.participantId, amount: minorOf(s.amount, e.currency) })),

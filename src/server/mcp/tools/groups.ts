@@ -2,7 +2,7 @@
 // manage_group_access, with the current app's inputs and output shapes
 // (src/trpc/routers/groups/*, src/lib/group-access.ts). They call the groups
 // and ungrouped services, which check access and write the log.
-import { Schema } from 'effect'
+import { Result, Schema } from 'effect'
 import { Id as IdInput, Invalid, NewId } from '../../../shared/api'
 import { AccessRequest, Email, GroupName, Information, PersonName, ShareUrl, SlugInput, type GroupChanges, type GroupCreateInput } from '../../../shared/api/groups'
 import { CURRENCIES, CURRENCY_CODES, isCurrencyCode, type CurrencyCode } from '../../../shared/currencies'
@@ -221,6 +221,7 @@ const REQUIRED: Readonly<Record<Action, readonly Field[]>> = {
   renew_invitation: ['groupId', 'participantId'],
 }
 const ACTIONS = Object.keys(REQUIRED) as [Action, ...Action[]]
+const decodeAccessRequest = Schema.decodeUnknownResult(AccessRequest)
 
 const AccessInput = Schema.Struct({
   action: Schema.Literals(ACTIONS),
@@ -258,8 +259,10 @@ export const manageGroupAccess = defineTool({
       const { groupId, ...rest } = invitation
       return { groupId, joined: false, invitation: rest }
     }
-    // The input schema decoded every field with the contract's schema, and its filter checked that the action's fields are present.
-    const request = { action: input.action, ...Object.fromEntries(REQUIRED[input.action].map((name) => [name, field(name)])) } as Request
+    // Each field was decoded with the contract's schema; this checks the action's member as a whole.
+    const decoded = decodeAccessRequest({ action: input.action, ...Object.fromEntries(REQUIRED[input.action].map((name) => [name, field(name)])) })
+    if (Result.isFailure(decoded)) throw new Invalid({ message: decoded.failure.message })
+    const request = decoded.success
     const result = await groups.changeAccess(db, { principal, baseUrl, idempotencyKey: null, request })
     const i = result.invitation
     return {
