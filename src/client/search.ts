@@ -1,6 +1,6 @@
 // Search-param parsing for route options. Route options stay in the main chunk,
 // so they must not pull in a schema library (BUILDING.md, client bundle budget).
-import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
+import { isCurrencyCode, type CurrencyCode } from '~/shared/currencies'
 
 /** Reads one search param; undefined drops it. */
 type Param<T> = (value: unknown) => T | undefined
@@ -47,7 +47,7 @@ export const positiveIntegerParam: Param<number> = (value) => {
 
 /** A currency code from the registry. */
 export const currencyParam: Param<CurrencyCode> = (value) =>
-  typeof value === 'string' && Object.hasOwn(CURRENCIES, value) ? (value as CurrencyCode) : undefined
+  typeof value === 'string' && isCurrencyCode(value) ? value : undefined
 
 export const oneOf =
   <const T extends string>(values: readonly T[]): Param<T> =>

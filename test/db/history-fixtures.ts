@@ -5,8 +5,14 @@
 import { activities, expensePayers, expenses, expenseShares } from '../../db/schema/app'
 import type { Db } from '~/server/core/db'
 import { randomId } from '~/server/core/ids'
+import { isCurrencyCode } from '~/shared/currencies'
 import { minor } from '~/shared/minor'
 import type { StoredActivitySource } from '~/shared/vocabulary'
+
+const supported = (code: string) => {
+  if (!isCurrencyCode(code)) throw new Error(`Not a supported currency: ${code}`)
+  return code
+}
 
 export type V1Expense = {
   id: string
@@ -96,7 +102,7 @@ export async function insertImportedExpense(
     notes: last.notes ?? '',
     categoryId: last.categoryId,
     expenseDate: last.expenseDate,
-    currency: last.currencyCode,
+    currency: supported(last.currencyCode),
     amount: minor(data.current.amount),
     splitMode: data.current.splitMode,
     createdAt: new Date(last.createdAt),

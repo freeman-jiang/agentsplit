@@ -5,7 +5,7 @@
 // that returns an expense, a snapshot or a group returns the same shape.
 import { Schema } from 'effect'
 import { RecordedTime as ContractRecordedTime } from '../../../shared/api/history'
-import { CURRENCIES, type CurrencyCode } from '../../../shared/currencies'
+import { CURRENCIES, isCurrencyCode, type CurrencyCode } from '../../../shared/currencies'
 import { legacyDateTime } from '../../../shared/dates'
 import type { SavedExpense, SavedState } from '../../../shared/history'
 import { formatMinor, minor } from '../../../shared/minor'
@@ -37,8 +37,6 @@ export const RecordedTime = ContractRecordedTime.annotate({
 export const SplitModeName = Schema.Literals(SPLIT_MODE_LIST)
 export const RecurrenceName = Schema.Literals(RECURRENCE_LIST)
 export const ActivityTypeName = Schema.Literals(ACTIVITY_TYPE_LIST)
-
-export const isCurrencyCode = (code: string): code is CurrencyCode => code in CURRENCIES
 
 /** Stored minor units as decimal text at the currency's full precision. */
 export const money = (amount: string, currency: string) => (isCurrencyCode(currency) ? formatMinor({ amount: minor(BigInt(amount)), currency }) : amount)

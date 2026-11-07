@@ -4,7 +4,7 @@
 // RPC handlers and the client's revision panel make the compiler check that
 // each fits the other.
 // No Effect import: the client bundle uses this module (BUILDING.md).
-import { CURRENCIES, type CurrencyCode } from './currencies'
+import { CURRENCIES, isCurrencyCode, type CurrencyCode } from './currencies'
 import type { DecimalString } from './minor'
 import type { ExpenseKind, Recurrence, SplitMode } from './vocabulary'
 
@@ -63,7 +63,7 @@ export type SavedState = { readonly _tag: 'expense'; readonly expense: SavedExpe
 
 /** "1,234.50 USD": the currency's decimals and the ISO code, as the current app's revision panel shows. */
 function codeAmount(amount: string, currency: string): string {
-  const decimals = currency in CURRENCIES ? CURRENCIES[currency as CurrencyCode].decimals : 2
+  const decimals = isCurrencyCode(currency) ? CURRENCIES[currency].decimals : 2
   const negative = amount.startsWith('-')
   const [whole = '0', fraction = ''] = (negative ? amount.slice(1) : amount).split('.')
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')

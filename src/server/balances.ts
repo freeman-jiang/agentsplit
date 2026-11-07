@@ -15,7 +15,7 @@ import type { Db } from './core/db'
 import { historicalLedger, type Boundary } from './history'
 import { participantName } from './people'
 
-export type BalanceSum = { currency: string; participantId: string; paid: string; owed: string }
+export type BalanceSum = { currency: CurrencyCode; participantId: string; paid: string; owed: string }
 
 /**
  * Each participant's paid and owed sums per currency over the live expenses
@@ -39,7 +39,7 @@ export const balanceSums = (data: { group: SQL; where?: SQL }) => sql`coalesce((
 export const balancesOf = (sums: readonly BalanceSum[]) =>
   computeBalances(
     sums.map((s) => ({
-      currency: s.currency as CurrencyCode,
+      currency: s.currency,
       payers: new Map([[s.participantId, minor(BigInt(s.paid))]]),
       shares: new Map([[s.participantId, minor(BigInt(s.owed))]]),
     })),
@@ -112,7 +112,7 @@ export async function listBalances(db: Db, data: { principal: Principal; groupId
 // ---------- the caller across groups ----------
 
 type AccountRow = {
-  rows: { groupId: string; groupName: string; kind: GroupKind; currency: string; participantId: string; participantName: string; amount: string }[]
+  rows: { groupId: string; groupName: string; kind: GroupKind; currency: CurrencyCode; participantId: string; participantName: string; amount: string }[]
   unbound: string[]
   denied: string[]
   foreign: string[]
@@ -154,10 +154,9 @@ export async function accountBalances(db: Db, data: { principal: Principal; scop
   if (row.foreign.length) throw new Invalid({ message: 'Participant does not belong to this group.', field: 'participantId' })
   const totals = new Map<CurrencyCode, bigint>()
   const balances = row.rows.map((r) => {
-    const currency = r.currency as CurrencyCode
     const amount = BigInt(r.amount)
-    totals.set(currency, (totals.get(currency) ?? 0n) + amount)
-    return { ...r, currency, amount: formatMinor({ amount: minor(amount), currency }) }
+    totals.set(r.currency, (totals.get(r.currency) ?? 0n) + amount)
+    return { ...r, amount: formatMinor({ amount: minor(amount), currency: r.currency }) }
   })
   return {
     balances,

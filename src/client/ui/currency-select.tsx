@@ -1,9 +1,9 @@
 import type { SelectHTMLAttributes } from 'react'
-import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
+import { CURRENCIES, CURRENCY_CODES, isCurrencyCode, type CurrencyCode } from '~/shared/currencies'
 import { NativeSelect } from './native-select'
 
 const COMMON = ['USD', 'EUR', 'JPY', 'GBP', 'CNY'] as const satisfies readonly CurrencyCode[]
-const OTHERS = (Object.keys(CURRENCIES) as CurrencyCode[]).filter((code) => !(COMMON as readonly string[]).includes(code)).sort()
+const OTHERS = CURRENCY_CODES.filter((code) => !(COMMON as readonly string[]).includes(code)).sort()
 const GROUPS = [
   ['Common', COMMON],
   ['Other', OTHERS],
@@ -29,7 +29,7 @@ export function CurrencySelect(
       value={value}
       {...(compact && value ? { displayValue: value } : {})}
       onChange={(event) => {
-        const code = Object.hasOwn(CURRENCIES, event.target.value) ? (event.target.value as CurrencyCode) : null
+        const code = isCurrencyCode(event.target.value) ? event.target.value : null
         if (props.any !== undefined) props.onChange(code ?? '')
         else if (code) props.onChange(code)
       }}

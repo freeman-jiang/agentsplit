@@ -15,6 +15,7 @@ import { principal } from '../kit/people'
 import { createPrivateContext } from '../kit/seed'
 import { signIn } from '../kit/session'
 import { fakeBucket } from './fake-bucket'
+import type { CurrencyCode } from '~/shared/currencies'
 
 export { BASE, SECRET }
 export const MCP_URL = `${BASE}/api/mcp`
@@ -60,7 +61,7 @@ export async function startHarness(options: { perf?: boolean; maintenance?: bool
   const apiKey = (userId: string) => authApi(async (api) => (await api.createApiKey({ body: { userId } })).key)
 
   /** A named group with participants named `Name <id>`; members are [userId, participantId, role]. */
-  async function group(data: { id: string; name?: string; slug?: string; currency?: string; people: string[]; members: [string, string | null, 'admin' | 'member'][] }) {
+  async function group(data: { id: string; name?: string; slug?: string; currency?: CurrencyCode; people: string[]; members: [string, string | null, 'admin' | 'member'][] }) {
     await withDb(async (db) => {
       await db.insert(groups).values({ id: data.id, kind: 'named', slug: data.slug ?? null, name: data.name ?? data.id, defaultCurrency: data.currency ?? 'USD' })
       if (data.people.length) await db.insert(participants).values(data.people.map((p) => ({ id: p, groupId: data.id, name: `Name ${p}` })))

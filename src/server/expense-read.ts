@@ -97,10 +97,10 @@ export type ExpenseRow = {
   category_id: number
   category: { id: number; name: string; grouping: string } | null
   expense_date: string
-  currency: string
+  currency: CurrencyCode
   amount: string
   original_amount: string | null
-  original_currency: string | null
+  original_currency: CurrencyCode | null
   conversion_rate: string | null
   split_mode: SplitMode
   recurrence: Recurrence
@@ -119,7 +119,7 @@ export type ExpenseRow = {
 
 /** An expense row as the services return it. Money is exact decimal text in the expense's currency. */
 export function toExpense(e: ExpenseRow) {
-  const currency = e.currency as CurrencyCode
+  const { currency } = e
   const money = (amount: string, code: CurrencyCode = currency) => formatMinor({ amount: minor(BigInt(amount)), currency: code })
   const named = (p: Part) => (p.name === undefined ? {} : { name: p.name })
   return {
@@ -136,7 +136,7 @@ export function toExpense(e: ExpenseRow) {
     currency,
     amount: money(e.amount),
     /** A conversion that the current app recorded, in its original currency; v2 never writes one. */
-    originalAmount: e.original_amount === null || e.original_currency === null ? null : money(e.original_amount, e.original_currency as CurrencyCode),
+    originalAmount: e.original_amount === null || e.original_currency === null ? null : money(e.original_amount, e.original_currency),
     originalCurrency: e.original_currency,
     conversionRate: e.conversion_rate,
     splitMode: e.split_mode,

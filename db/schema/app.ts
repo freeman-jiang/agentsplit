@@ -23,7 +23,7 @@ import {
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core'
-import { CURRENCIES } from '../../src/shared/currencies'
+import { CURRENCY_CODES, type CurrencyCode } from '../../src/shared/currencies'
 import { LIMITS } from '../../src/shared/limits'
 import { DECIMAL } from '../../src/shared/minor'
 import { WEIGHT } from '../../src/shared/split'
@@ -43,9 +43,6 @@ import { oauthClient, user } from './auth'
 /** `column IN ('a', 'b')`, written as drizzle-kit keeps it in the migration snapshots. */
 const oneOf = (column: AnyPgColumn, values: readonly string[]): SQL => sql`${column} IN (${sql.raw(values.map((v) => `'${v}'`).join(', '))})`
 
-/** The currencies of src/shared/currencies.ts (0001). */
-const CURRENCY_CODES = Object.keys(CURRENCIES)
-
 const now = () => timestamp({ withTimezone: true, mode: 'date' }).notNull().defaultNow()
 const money = () => bigint({ mode: 'bigint' }).notNull()
 
@@ -58,7 +55,7 @@ export const groups = pgTable(
     slug: text().unique(),
     name: text().notNull(),
     information: text().notNull().default(''),
-    defaultCurrency: text().notNull(),
+    defaultCurrency: text().$type<CurrencyCode>().notNull(),
     revision: integer().notNull().default(0),
     createdAt: now(),
   },
@@ -172,12 +169,12 @@ export const expenses = pgTable(
       .default(0)
       .references(() => categories.id),
     expenseDate: date({ mode: 'string' }).notNull(),
-    currency: text().notNull(),
+    currency: text().$type<CurrencyCode>().notNull(),
     amount: money(),
     splitMode: text({ enum: SPLIT_MODES }).notNull(),
     // Nullable as a set: present only for an amount converted from another currency.
     originalAmount: bigint({ mode: 'bigint' }),
-    originalCurrency: text(),
+    originalCurrency: text().$type<CurrencyCode>(),
     conversionRate: text(),
     recurrence: text({ enum: RECURRENCES }).notNull().default('none'),
     createdAt: now(),

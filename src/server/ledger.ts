@@ -36,7 +36,7 @@ type GroupRow = {
   context_expense_id: string | null
   slug: string | null
   name: string
-  default_currency: string
+  default_currency: CurrencyCode
   information: string
   revision: number
   role: Role
@@ -64,7 +64,7 @@ export async function getGroup(db: Db, data: { principal: Principal; groupId: st
     contextExpenseId: g.context_expense_id,
     slug: g.slug,
     name: g.name,
-    defaultCurrency: g.default_currency as CurrencyCode,
+    defaultCurrency: g.default_currency,
     role: g.role,
     participantId: g.participant_id,
     information: g.information,

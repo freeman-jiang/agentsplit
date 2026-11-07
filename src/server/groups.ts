@@ -49,7 +49,7 @@ const groupPage = (data: { principal: Principal; offset: number; limit: number; 
 
 type DirectoryRow = {
   groups: { id: string; slug: string | null; name: string; participantCount: number; createdAt: string }[]
-  totals: { currency: string; net: string }[]
+  totals: { currency: CurrencyCode; net: string }[]
   unbound: number
 }
 
@@ -76,10 +76,7 @@ export async function listDirectory(db: Db, data: { principal: Principal; offset
   return {
     groups: row.groups.slice(0, LIMITS.directoryPage),
     nextOffset: row.groups.length > LIMITS.directoryPage ? offset + LIMITS.directoryPage : null,
-    totals: row.totals.map((t) => {
-      const currency = t.currency as CurrencyCode
-      return { currency, net: formatMinor({ amount: minor(BigInt(t.net)), currency }) }
-    }),
+    totals: row.totals.map((t) => ({ currency: t.currency, net: formatMinor({ amount: minor(BigInt(t.net)), currency: t.currency }) })),
     unboundGroupCount: row.unbound,
   }
 }
@@ -90,7 +87,7 @@ type PageRow = {
   name: string
   information: string
   revision: number
-  default_currency: string
+  default_currency: CurrencyCode
   created_at: string
   participant_count: number
 }
@@ -121,7 +118,7 @@ export async function listGroupPage(db: Db, data: { principal: Principal; offset
       name: g.name,
       information: g.information,
       revision: g.revision,
-      defaultCurrency: g.default_currency as CurrencyCode,
+      defaultCurrency: g.default_currency,
       createdAt: g.created_at,
       participantCount: g.participant_count,
     })),
@@ -135,7 +132,7 @@ type DetailsRow = {
   slug: string | null
   name: string
   information: string
-  default_currency: string
+  default_currency: CurrencyCode
   revision: number
   role: Role
   participant_id: string | null
@@ -202,7 +199,7 @@ export async function getGroupDetails(db: Db, data: { principal: Principal; grou
     slug: g.slug,
     name: g.name,
     information: g.information,
-    defaultCurrency: g.default_currency as CurrencyCode,
+    defaultCurrency: g.default_currency,
     revision: g.revision,
     role: g.role,
     participantId: g.participant_id,
@@ -254,7 +251,7 @@ async function currentSnapshot(tx: Db, groupId: string) {
   const [group] = await tx.select().from(groups).where(eq(groups.id, groupId))
   if (!group) throw new NotFound({ entity: 'group', id: groupId })
   const people = await tx.execute<{ id: string; name: string }>(sql`${displayNames(sql`${groupId}`)} ORDER BY p.created_at, p.id`)
-  return groupSnapshot({ group: { ...group, defaultCurrency: group.defaultCurrency as CurrencyCode }, participants: people.rows })
+  return groupSnapshot({ group, participants: people.rows })
 }
 
 export async function createGroup(
