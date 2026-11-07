@@ -17,7 +17,7 @@ Run every command inside the dev shell, from the repository root: `direnv exec .
 | End-to-end tests, the image and the Coolify stack | `./scripts/e2e.sh --compose` |
 | Image | `docker build -t agentsplit .` |
 | Apply migrations locally | `DATABASE_URL=postgresql://postgres@127.0.0.1:5437/<db> bun db/migrate.ts` |
-| New SQL migration | `bunx drizzle-kit generate --name <name>`, or `--custom` for triggers |
+| New SQL migration | `bunx drizzle-kit generate --name <name>`, or `--custom` for triggers. Declare every table and CHECK in `db/schema/`, so `drizzle-kit generate` reports no changes afterwards (CI checks it). |
 
 ## Local database
 
@@ -27,8 +27,8 @@ Run every command inside the dev shell, from the repository root: `direnv exec .
 - Never touch `agentsplit_dev`, `agentsplit_restore_test` or `agentsplit_import_test`; the lead uses them.
 - The dev server is two processes: Vite serves the client and sends the server's paths (`/api/`, `/.well-known/`, the exports) to `bun run dev:server` on `API_PORT`. Bun reads `.env.local` (it is gitignored). Put the dev settings there: `DATABASE_URL=postgresql://postgres@127.0.0.1:5437/agentsplit_dev_<area>`, `PORT=<api-port>`, `BASE_URL=http://localhost:<vite-port>`, `BETTER_AUTH_SECRET` (a random 64-character hex string), `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (any placeholders), and the S3 settings of a local Garage (`S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET`). `scripts/e2e.sh` shows how to start one Garage from the compose file.
 - The end-to-end tests start Garage (and, with `--compose`, the app image and PostgreSQL 18) through `docker-compose` on the Podman socket. Each run uses new test-only secrets and removes its containers and volumes.
-- To sign in on a dev server without Google, insert a `session` row for a synthetic user and set the cookie `better-auth.session_token=<token>.<signature>`, signed with `serializeSignedCookie` from `better-call` and the dev `BETTER_AUTH_SECRET` (see `test/db/session.test.ts`).
-- Use synthetic data only (`scripts/seed-synthetic.ts`, or your own test fixtures). Never copy the production backups.
+- To sign in on a dev server without Google, seed the dev database: `DATABASE_URL=postgresql://postgres@127.0.0.1:5437/agentsplit_dev_<area> bun scripts/seed-synthetic.ts <cookie-file>`. It adds a synthetic household with a year of expenses and writes the signed session cookie of `alice@example.com` to `<cookie-file>`, signed with the `BETTER_AUTH_SECRET` of `.env.local` for its `BASE_URL`. Send the file's text as the `Cookie` header, or set the cookie in the browser.
+- Use synthetic data only (`scripts/seed-synthetic.ts`, or the test kit in `test/kit/`). Never copy the production backups.
 
 ## Adding an area
 
@@ -39,7 +39,7 @@ Each area owns its own files, so areas can be built in parallel:
 3. **Domain service:** `src/server/<area>.ts` holds the functions. Each takes `(db, { principal, groupId, ... })`, where `groupId` is the caller's group reference (an ID or a slug), checks access itself, and returns values or throws the shared domain errors (`Forbidden`, `NotFound`, `Conflict`, `Invalid`). It never builds an HTTP response.
 4. **Handlers:** `src/server/handlers/<area>.ts` exports a layer of `Api.toLayerHandler(tag, ...)` calls built with `read`, `write` and `publicRead` from `src/server/rpc.ts`. Add it to `Layer.mergeAll` in `src/server/main/app.ts` (a one-line edit).
 5. **Client:** queries in `src/client/queries/<area>.ts` (`queryOptions` and `infiniteQueryOptions`) with keys from `queries/keys.ts`, screens as TanStack Router file routes under `src/client/routes/`. Replace the placeholder route of your screen.
-6. **Tests:** `test/db/<area>.test.ts` for services against a real database, and the parity record below.
+6. **Tests:** `test/db/<area>.test.ts` for services against a real database, and the parity record below. Build the data with the test kit (`test/kit/`: the database copy and its transaction, principals, drafts, images, uploads, session cookies, seeded groups, ID counters and the MCP client), and reach the app through `test/db/harness.ts`, which serves every request through `createApp`. Each test makes its own rows, so it passes alone and in any order (`bun run test -- --sequence.shuffle.tests`).
 7. **Parity record:** `docs/v2/parity/<area>.md` lists every PARITY.md item you covered, with the test that proves it, and every item you could not cover, with the reason.
 
 ## Server modules

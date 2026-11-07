@@ -48,7 +48,7 @@ The dev shell runs one PostgreSQL 18 server for the machine at `127.0.0.1:5437`.
 6. In a second terminal, start Vite: `API_PORT=<api-port> direnv exec . bun run dev -- --port <vite-port> --strictPort`.
 7. Open `http://localhost:<vite-port>`.
 
-Vite serves the client and sends `/api/`, `/.well-known/`, `/robots.txt`, `/sitemap.xml` and the export paths to the API server. To sign in without Google, follow "Local database" in [docs/v2/BUILDING.md](docs/v2/BUILDING.md). Use synthetic data only (`scripts/seed-synthetic.ts`). Never copy the production backups.
+Vite serves the client and sends `/api/`, `/.well-known/`, `/robots.txt`, `/sitemap.xml` and the export paths to the API server. To sign in without Google, run `scripts/seed-synthetic.ts` (see "Local database" in [docs/v2/BUILDING.md](docs/v2/BUILDING.md)). Use synthetic data only. Never copy the production backups.
 
 ## Test and build
 
@@ -63,9 +63,9 @@ Vite serves the client and sends `/api/`, `/.well-known/`, `/robots.txt`, `/site
 | Image | `docker build -t agentsplit .` |
 | New SQL migration | `direnv exec . bunx drizzle-kit generate --name <name>` (add `--custom` for triggers) |
 
-- The test database name must contain `test`. Create it with `direnv exec . db-reset agentsplit_test_<area>`.
+- The test database name must contain `test` and have at most 53 characters. Without `TEST_DATABASE_URL`, the tests use `agentsplit_test` on the dev shell's PostgreSQL. The tests migrate that database once and give each test file its own copy (`<name>__<8 hex digits>`), so the files run in parallel; the run drops the copies at the end.
 - The end-to-end tests start Garage (and, with `--compose`, the image and PostgreSQL 18) through `docker-compose` on the Podman socket. Each run uses new test-only secrets and removes its containers and volumes. Set `E2E_PORT` to run more than one suite at a time.
-- The GitHub workflow `.github/workflows/ci.yml` runs the same checks.
+- The GitHub workflow `.github/workflows/ci.yml` runs the same checks in the same dev shell (`nix develop`), and two more: `drizzle-kit generate` must find no change between `db/schema` and the migrations, and `scripts/gen-auth-schema.ts` must leave `db/schema/auth.ts` as it is.
 
 The rules for adding to the app are in [docs/v2/BUILDING.md](docs/v2/BUILDING.md).
 
