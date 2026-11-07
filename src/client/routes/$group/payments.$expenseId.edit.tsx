@@ -38,7 +38,7 @@ function EditPayment() {
         mode="edit"
         detail={detail}
         participants={g.participants}
-        target={{ ...target, groupId }}
+        target={target}
         onReload={() => void queryClient.invalidateQueries({ queryKey: expenseDetailQuery(groupId, expenseId).queryKey })}
       />
       <ExpenseLog groupId={groupId} expenseId={expenseId} />

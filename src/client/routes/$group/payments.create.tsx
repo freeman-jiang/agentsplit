@@ -29,7 +29,7 @@ function CreatePayment() {
       viewer={g.participantId}
       defaultCurrency={g.defaultCurrency}
       participants={g.participants}
-      target={{ ...target, groupId }}
+      target={target}
     />
   )
 }

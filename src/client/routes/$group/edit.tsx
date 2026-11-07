@@ -65,18 +65,23 @@ function Settings() {
   )
 }
 
-/** One access or people change at a time, with its error shown at the top of the section. */
+/**
+ * One access or people change at a time. An inline action shows its error at
+ * the top of the section; a confirmed action (`confirmed`) rejects instead, so
+ * its dialog stays open and says why.
+ */
 function useActions(details: Details) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const run = async <A,>(work: () => Promise<A>): Promise<A | null> => {
+  const run = async <A,>(data: { work: () => Promise<A>; rethrow: boolean }): Promise<A | null> => {
     setBusy(true)
     setError(null)
     try {
-      return await work()
+      return await data.work()
     } catch (e) {
+      if (data.rethrow) throw e
       setError(describeError(e).message)
       return null
     } finally {
@@ -84,24 +89,25 @@ function useActions(details: Details) {
       setBusy(false)
     }
   }
+  const access = (request: typeof AccessRequest.Type) => async () => {
+    const result = await rpc((api) => api('groups.access', { idempotencyKey: newIdempotencyKey(), request }))
+    if (!result.joined) {
+      queryClient.removeQueries({ queryKey: keys.group(details.id) })
+      await navigate({ to: '/groups' })
+    }
+    return result
+  }
+  const savePeople = (participants: NonNullable<(typeof GroupChanges.Type)['participants']>) => () =>
+    rpc((api) => api('groups.update', { groupId: details.id, expectedRevision: details.revision, idempotencyKey: newIdempotencyKey(), changes: { participants } }))
   return {
     busy,
     error,
-    access: (request: typeof AccessRequest.Type) =>
-      run(async () => {
-        const result = await rpc((api) => api('groups.access', { idempotencyKey: newIdempotencyKey(), request }))
-        if (!result.joined) {
-          queryClient.removeQueries({ queryKey: keys.group(details.id) })
-          await navigate({ to: '/groups' })
-        }
-        return result
-      }),
-    savePeople: (participants: NonNullable<(typeof GroupChanges.Type)['participants']>) =>
-      run(() =>
-        rpc((api) =>
-          api('groups.update', { groupId: details.id, expectedRevision: details.revision, idempotencyKey: newIdempotencyKey(), changes: { participants } }),
-        ),
-      ),
+    access: (request: typeof AccessRequest.Type) => run({ work: access(request), rethrow: false }),
+    savePeople: (participants: Parameters<typeof savePeople>[0]) => run({ work: savePeople(participants), rethrow: false }),
+    confirmed: {
+      access: (request: typeof AccessRequest.Type) => run({ work: access(request), rethrow: true }),
+      savePeople: (participants: Parameters<typeof savePeople>[0]) => run({ work: savePeople(participants), rethrow: true }),
+    },
   }
 }
 
@@ -212,7 +218,7 @@ function People({ details }: { details: Details }) {
                               </Button>
                             }
                             title={`Delete ${person.name} from this group?`}
-                            onConfirm={() => actions.savePeople(list().filter((p) => p.id !== person.id))}
+                            onConfirm={() => actions.confirmed.savePeople(list().filter((p) => p.id !== person.id))}
                           />
                         )}
                       </div>
@@ -334,7 +340,7 @@ function People({ details }: { details: Details }) {
                   pending="Linking…"
                   onConfirm={async () => {
                     const participantId = bindings[member.userId]
-                    if (participantId) await actions.access({ action: 'bind_member', groupId: details.id, userId: member.userId, email: member.email, participantId })
+                    if (participantId) await actions.confirmed.access({ action: 'bind_member', groupId: details.id, userId: member.userId, email: member.email, participantId })
                   }}
                 />
               </div>
@@ -383,7 +389,7 @@ function People({ details }: { details: Details }) {
           title="Leave this group?"
           description="You will need a new invitation to return."
           pending="Leaving…"
-          onConfirm={() => actions.access({ action: 'leave', groupId: details.id })}
+          onConfirm={() => actions.confirmed.access({ action: 'leave', groupId: details.id })}
         />
       </div>
       <DeleteDialog
@@ -393,7 +399,7 @@ function People({ details }: { details: Details }) {
         description="Their expenses will remain."
         pending="Removing…"
         onConfirm={async () => {
-          if (removing) await actions.access({ action: 'remove_member', groupId: details.id, userId: removing.userId })
+          if (removing) await actions.confirmed.access({ action: 'remove_member', groupId: details.id, userId: removing.userId })
         }}
       />
     </section>

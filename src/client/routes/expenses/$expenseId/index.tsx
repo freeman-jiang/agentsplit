@@ -92,7 +92,7 @@ function Workspace({ data }: { data: Context }) {
       ) : isSimplePayment(detail.data) ? (
         <>
           <Metadata data={data} />
-          <PaymentForm key={detail.data.expense.revision} mode="edit" detail={detail.data} participants={data.participants} target={{ ...target, groupId: group.id }} onReload={onReload} />
+          <PaymentForm key={detail.data.expense.revision} mode="edit" detail={detail.data} participants={data.participants} target={target} onReload={onReload} />
         </>
       ) : (
         // An expense, or a payment of any other shape, uses the expense editor, which keeps every detail (P-BAL-89).
