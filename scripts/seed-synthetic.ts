@@ -54,7 +54,7 @@ for (let day = 0; day < 365; day += 1 + Math.floor(random() * 3)) {
     (tx) =>
       createExpense(tx, {
         principal: alice,
-        group: groupId,
+        groupId: groupId,
         expenseId,
         idempotencyKey: `seed-${expenseId}`,
         expense: {

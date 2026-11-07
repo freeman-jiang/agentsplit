@@ -3,11 +3,11 @@
 // public input onto the shared domain services in src/server/; it never
 // checks access itself (the services do) and never reads arguments as identity.
 import { Result, Schema } from 'effect'
-import { Conflict, Forbidden, GROUP_ACCESS_DENIED, Invalid, NotFound } from '../../shared/api'
+import { ERROR_ANSWERS, errorKind, errorText, MCP_INTERNAL } from '../../shared/errors'
 import type { Bucket } from '../bucket'
+import type { AfterCommit, CallError } from '../calls'
 import type { Db } from '../db'
-import { GROUP_DENIED } from '../security'
-import type { McpPrincipal } from './authenticate'
+import type { McpPrincipal } from '../auth/authenticate'
 
 export type ToolContext = {
   readonly db: Db
@@ -15,11 +15,8 @@ export type ToolContext = {
   readonly baseUrl: string
   /** The receipts bucket, for upload attachment. */
   readonly bucket: Bucket
-  /**
-   * Runs `work` on the request's connection after a write tool's transaction
-   * commits, such as removing deleted receipts from storage. A failure is logged.
-   */
-  readonly afterCommit: (work: (db: Db) => Promise<unknown>) => void
+  /** Work for after a write tool's transaction commits, such as removing deleted receipts from storage. */
+  readonly afterCommit: AfterCommit
 }
 
 export type JsonSchema = { readonly [key: string]: JsonValue }
@@ -43,56 +40,22 @@ export type McpTool = {
 }
 
 /**
- * An expected tool failure with the current app's tRPC code. Domain errors
- * (Forbidden, NotFound, Conflict, Invalid) map onto these codes too.
+ * The error result body `{error: {code, message, outcomeUnknown, recovery}}`
+ * of a failed call, from the error registry (src/shared/errors.ts). The
+ * runner (calls.ts) has turned every failure into a declared error. Only an
+ * unexpected failure of a write leaves its outcome unknown; an access denial
+ * has a certain outcome (DECISIONS.md, P-MCP-41).
  */
-export class ToolError extends Error {
-  constructor(
-    readonly code: 'BAD_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'CONFLICT' | 'PRECONDITION_FAILED' | 'TOO_MANY_REQUESTS',
-    message: string,
-  ) {
-    super(message)
-  }
-}
-
-const INTERNAL_MESSAGE = 'Unable to complete this operation. Check the arguments; for an uncertain write, read its record before retrying.'
-
-/** The current app's texts for what a service did not find, by NotFound entity. */
-const NOT_FOUND: Readonly<Record<string, string>> = {
-  expense: 'Expense not found',
-  'history boundary in this group': 'History boundary not found in this group',
-  'saved expense revision at this point': 'Expense revision not found at this point',
-  'group at this time': 'The group did not exist at this time',
-  receipt: 'Receipt not found',
-}
-
-/**
- * The error result body `{error: {code, message, outcomeUnknown, recovery}}`.
- * Only an unexpected failure of a write leaves its outcome unknown. An access
- * denial has a certain outcome (DECISIONS.md, P-MCP-41).
- */
-export function errorBody(data: { error: unknown; kind: 'read' | 'write' }) {
+export function errorBody(data: { error: CallError; kind: 'read' | 'write' }) {
   const { error } = data
-  const [code, message]: [string, string] =
-    error instanceof ToolError
-      ? [error.code, error.message]
-      : error instanceof Forbidden
-        ? ['FORBIDDEN', error.message === GROUP_ACCESS_DENIED ? GROUP_DENIED : error.message]
-        : error instanceof NotFound
-          ? ['NOT_FOUND', NOT_FOUND[error.entity] ?? 'Group not found.']
-          : error instanceof Conflict
-            ? ['CONFLICT', 'The record changed. Read its current revision and retry your intended changes.']
-            : error instanceof Invalid
-              ? [error.reason === 'state' ? 'CONFLICT' : 'BAD_REQUEST', error.message]
-              : ['INTERNAL_SERVER_ERROR', INTERNAL_MESSAGE]
-  const outcomeUnknown = data.kind === 'write' && code === 'INTERNAL_SERVER_ERROR'
+  const { mcp: code, recovery, answer } = ERROR_ANSWERS[errorKind(error)]
+  const outcomeUnknown = data.kind === 'write' && !answer
   return {
     error: {
       code,
-      message,
+      message: answer ? errorText(error) : MCP_INTERNAL,
       outcomeUnknown,
-      recovery:
-        code === 'CONFLICT' ? 'read_current_revision' : code === 'TOO_MANY_REQUESTS' ? 'retry_later' : outcomeUnknown ? 'read_before_retry' : 'correct_arguments',
+      recovery: answer || outcomeUnknown ? recovery : ('correct_arguments' as const),
     },
   }
 }

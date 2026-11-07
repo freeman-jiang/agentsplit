@@ -9,7 +9,7 @@ import { groups, memberships, participants } from '../db/schema/app'
 import { session, user } from '../db/schema/auth'
 import type { ExpenseDraft } from '../src/shared/expense-rules'
 import { randomId } from '../src/shared/ids'
-import { createAuth } from '../src/server/auth'
+import { createAuth } from '../src/server/auth/auth'
 import { makeDb, type Db } from '../src/server/db'
 import type { Principal } from '../src/server/access'
 import { createExpense, updateExpense } from '../src/server/ledger'
@@ -86,14 +86,14 @@ export function draft(household: Household, data: { title: string; amount: strin
 }
 
 export const addExpense = (household: Household, expenseId: string, expense: ExpenseDraft) =>
-  tx((db) => createExpense(db, { principal: household.owner, group: household.groupId, expenseId, idempotencyKey: `e2e-${expenseId}`, expense }))
+  tx((db) => createExpense(db, { principal: household.owner, groupId: household.groupId, expenseId, idempotencyKey: `e2e-${expenseId}`, expense }))
 
 export const editExpense = (household: Household, expenseId: string, expectedRevision: number, expense: ExpenseDraft) =>
-  tx((db) => updateExpense(db, { principal: household.owner, group: household.groupId, expenseId, expectedRevision, idempotencyKey: `e2e-edit-${expenseId}-${expectedRevision}`, expense }))
+  tx((db) => updateExpense(db, { principal: household.owner, groupId: household.groupId, expenseId, expectedRevision, idempotencyKey: `e2e-edit-${expenseId}-${expectedRevision}`, expense }))
 
 /** A raw agent API key for a seeded account, from Better Auth's own createApiKey, as Settings creates it. */
 export const agentKey = (userId: string, baseURL: string) =>
   withDb(async (db) => {
-    const auth = createAuth({ db, baseUrl: baseURL, secret, googleClientId: 'e2e-client', googleClientSecret: 'e2e-secret' })
+    const auth = createAuth({ db, baseUrl: baseURL, secret, googleClientId: 'e2e-client', googleClientSecret: 'e2e-secret', bootstrapEmail: undefined, signUpDailyLimit: 200 })
     return (await auth.api.createApiKey({ body: { userId } })).key
   })

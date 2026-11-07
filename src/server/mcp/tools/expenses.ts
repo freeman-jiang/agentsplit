@@ -4,14 +4,15 @@
 // which checks membership, validates, records history and checks revisions.
 // Multiple payers are new: `payers` beside the current single `paidBy`.
 import { Schema } from 'effect'
+import { legacyDateTime } from '../../../shared/dates'
 import { sql } from 'drizzle-orm'
-import { Conflict, NotFound } from '../../../shared/api'
+import { Conflict, Invalid, NotFound } from '../../../shared/api'
 import type { ExpenseDraft } from '../../../shared/expense-rules'
 import type { SavedExpense } from '../../../shared/history'
 import { GROUP_ID } from '../../../shared/ids'
 import { LIMITS, mebibytes } from '../../../shared/limits'
 import { formatMinor, minor, minorOf } from '../../../shared/minor'
-import { preferredPayer } from '../../../shared/split'
+import { mainPayer } from '../../../shared/split'
 import { RECURRENCE_BY_NAME, RECURRENCE_NAMES, SPLIT_MODE_BY_NAME, SPLIT_MODE_NAMES, RECEIPT_CONTENT_TYPES } from '../../../shared/vocabulary'
 import { memberCte, requireMember, type Principal } from '../../access'
 import { attributionEvents, attributionOf, type AttributionEvent } from '../../activity'
@@ -20,12 +21,12 @@ import { expenseColumns, involves, toExpense, type ExpenseRow, type ReadExpense 
 import * as history from '../../history'
 import { randomId } from '../../ids'
 import * as ledger from '../../ledger'
-import { attachUploads, prepareUploads, UploadError } from '../../receipt-uploads'
+import { attachUploads, prepareUploads } from '../../receipt-uploads'
 import { receiptDownloadPath } from '../../receipts'
 import { escapeLike } from '../../sql'
 import { createUngroupedExpense } from '../../ungrouped'
 import { PAYMENT_RULES, RECORDING_RULES } from '../instructions'
-import { defineTool, ToolError } from '../registry'
+import { defineTool } from '../registry'
 import { categoryOf, ExpenseSnapshot, expenseSnapshot, ReceiptDeleted, savedPayer } from './saved'
 import {
   CalendarDate,
@@ -286,8 +287,9 @@ const expenseSelect = (data: { detail: boolean }) => sql`
 /** A share's split input as the current app writes it: exact amounts in BY_AMOUNT, weights otherwise. */
 const shareText = (e: ReadExpense, weight: string) => (e.splitMode === 'amount' ? money(weight, e.currency) : weight)
 
-function mainPayer(e: ReadExpense) {
-  const id = e.payers.length ? preferredPayer(e.payers.map((p) => ({ participantId: p.participantId, amount: minorOf(p.amount, e.currency) }))) : ''
+/** The payer who paid the most, with the name, as the current app's paidBy. */
+function payerOf(e: ReadExpense) {
+  const id = mainPayer(e) ?? ''
   const payer = e.payers.find((p) => p.participantId === id)
   return { id, name: payer?.name ?? '' }
 }
@@ -299,7 +301,7 @@ const common = (e: ReadExpense) => ({
   amount: e.amount,
   currencyCode: e.currency,
   createdAt: e.createdAt,
-  expenseDate: `${e.expenseDate}T00:00:00.000Z`,
+  expenseDate: legacyDateTime(e.expenseDate),
   originalAmount: e.originalAmount,
   originalCurrency: e.originalCurrency,
   isReimbursement: e.kind === 'payment',
@@ -313,7 +315,7 @@ const summary = (row: Row, viewer: string): typeof ExpenseSummary.Encoded => {
   return {
     ...common(e),
     attribution: attribution({ events: row.events, viewer }),
-    paidBy: mainPayer(e),
+    paidBy: payerOf(e),
     payers: e.payers.map((p) => ({ participant: { id: p.participantId, name: p.name ?? '' }, amount: p.amount })),
     paidFor: e.shares.map((s) => ({ participant: { id: s.participantId, name: s.name ?? '' }, shares: shareText(e, s.weight) })),
     _count: { documents: e.documentCount },
@@ -322,7 +324,7 @@ const summary = (row: Row, viewer: string): typeof ExpenseSummary.Encoded => {
 
 const detail = (row: Row, data: { viewer: string; baseUrl: string }): typeof ExpenseDetail.Encoded => {
   const e = toExpense(row)
-  const payer = mainPayer(e)
+  const payer = payerOf(e)
   return {
     ...common(e),
     groupId: e.groupId,
@@ -352,7 +354,7 @@ const detail = (row: Row, data: { viewer: string; baseUrl: string }): typeof Exp
       groupId: e.groupId,
       currentFrameExpenseId: e.id,
       nextExpenseCreatedAt: e.link.nextExpenseCreatedAt,
-      nextExpenseDate: `${e.link.nextExpenseDate}T00:00:00.000Z`,
+      nextExpenseDate: legacyDateTime(e.link.nextExpenseDate),
     },
   }
 }
@@ -366,7 +368,7 @@ const historicalCommon = (e: SavedExpense) => ({
   amount: e.amount,
   currencyCode: e.currency,
   createdAt: e.createdAt,
-  expenseDate: `${e.expenseDate}T00:00:00.000Z`,
+  expenseDate: legacyDateTime(e.expenseDate),
   originalAmount: e.originalAmount,
   originalCurrency: e.originalCurrency,
   isReimbursement: e.kind === 'payment',
@@ -421,7 +423,7 @@ export const listExpenses = defineTool({
     if (input.asOf !== undefined || input.atActivityId !== undefined) {
       const saved = await history.listSavedExpenses(db, {
         principal,
-        group: input.groupId,
+        groupId: input.groupId,
         ...(input.asOf === undefined ? {} : { asOf: input.asOf }),
         ...(input.atActivityId === undefined ? {} : { atActivityId: input.atActivityId }),
         cursor,
@@ -441,7 +443,7 @@ export const listExpenses = defineTool({
       })
       return { history: saved.history, expenses: saved.expenses.map(savedSummary), hasMore: saved.hasMore, nextCursor: saved.nextCursor }
     }
-    const member = { principal, group: input.groupId }
+    const member = { principal, groupId: input.groupId }
     const where = [sql`e.group_id = (SELECT id FROM g WHERE active)`, sql`e.deleted_at IS NULL`]
     if (input.filter) where.push(sql`(e.title ILIKE ${escapeLike(input.filter)} OR e.vendor ILIKE ${escapeLike(input.filter)})`)
     // Trimmed, as the current app's z.string().trim() did.
@@ -476,7 +478,7 @@ async function savedDetail(db: Db, data: { principal: Principal; baseUrl: string
   const { input } = data
   const saved = await history.getSavedExpense(db, {
     principal: data.principal,
-    group: input.groupId,
+    groupId: input.groupId,
     expenseId: input.expenseId,
     ...(input.revision === undefined ? {} : { revision: input.revision }),
     ...(input.asOf === undefined ? {} : { asOf: input.asOf }),
@@ -526,7 +528,7 @@ export const getExpense = defineTool({
   output: Schema.Struct({ history: optional(RevisionHistory), expense: ExpenseDetail }),
   run: async ({ db, principal, baseUrl }, input) => {
     if (input.revision !== undefined || input.asOf !== undefined || input.atActivityId !== undefined) return savedDetail(db, { principal, baseUrl, input })
-    const { groupId } = await requireMember(db, { principal, group: input.groupId })
+    const { groupId } = await requireMember(db, { principal, groupId: input.groupId })
     const result = await db.execute<Row>(sql`${expenseSelect({ detail: true })}
       WHERE e.id = ${input.expenseId} AND e.group_id = ${groupId} AND e.deleted_at IS NULL`)
     const row = result.rows[0]
@@ -544,9 +546,9 @@ const DUPLICATE_ID = 'Expense ID already exists. Read it before retrying; use a 
 
 function payersOf(data: { paidBy: string | undefined; payers: ExpenseInput['payers']; amount: string }): ExpenseDraft['payers'] {
   if (data.paidBy !== undefined && data.payers !== undefined)
-    throw new ToolError('BAD_REQUEST', 'Use paidBy for one payer or payers for several people, not both.')
+    throw new Invalid({ message: 'Use paidBy for one payer or payers for several people, not both.' })
   if (data.payers) return data.payers.map((p) => ({ participantId: p.participant, amount: p.amount }))
-  if (data.paidBy === undefined) throw new ToolError('BAD_REQUEST', 'Choose who paid: paidBy, or payers with each amount.')
+  if (data.paidBy === undefined) throw new Invalid({ message: 'Choose who paid: paidBy, or payers with each amount.' })
   return [{ participantId: data.paidBy, amount: data.amount }]
 }
 
@@ -576,7 +578,7 @@ function mergedDraft(current: ReadExpense, changes: Changes): ExpenseDraft {
   if (changes.paidBy !== undefined || changes.payers !== undefined) payers = payersOf({ paidBy: changes.paidBy, payers: changes.payers, amount })
   else if (current.payers.length === 1 && current.payers[0]) payers = [{ participantId: current.payers[0].participantId, amount }]
   else if (!moneyChanged) payers = current.payers
-  else throw new ToolError('BAD_REQUEST', 'This expense has several payers. Send payers with each payer’s new amount.')
+  else throw new Invalid({ message: 'This expense has several payers. Send payers with each payer’s new amount.' })
   const splitMode = changes.splitMode ? SPLIT_MODE_BY_NAME[changes.splitMode] : current.splitMode
   return {
     kind: changes.isReimbursement === undefined ? current.kind : changes.isReimbursement ? 'payment' : 'expense',
@@ -599,9 +601,6 @@ function mergedDraft(current: ReadExpense, changes: Changes): ExpenseDraft {
     recurrence: changes.recurrenceRule ? RECURRENCE_BY_NAME[changes.recurrenceRule] : current.recurrence,
   }
 }
-
-/** Upload failures keep the current app's codes. */
-const uploadFailure = (error: unknown) => (error instanceof UploadError ? new ToolError(error.code, error.message) : error)
 
 export const createExpense = defineTool({
   name: 'create_expense',
@@ -627,16 +626,16 @@ export const createExpense = defineTool({
     invitations: optional(Schema.Array(Schema.Struct({ email: Schema.String, url: Schema.String, expiresAt: DateTime }))),
   }),
   run: async ({ db, principal, baseUrl }, input) => {
-    if (input.groupId === undefined && !input.people) throw new ToolError('BAD_REQUEST', 'Supply groupId for a group expense, or people for an ungrouped expense.')
-    if (input.groupId !== undefined && input.people) throw new ToolError('BAD_REQUEST', 'With groupId, use its existing participant IDs and omit people.')
+    if (input.groupId === undefined && !input.people) throw new Invalid({ message: 'Supply groupId for a group expense, or people for an ungrouped expense.' })
+    if (input.groupId !== undefined && input.people) throw new Invalid({ message: 'With groupId, use its existing participant IDs and omit people.' })
     const expenseId = input.expenseId ?? randomId()
     const draft = draftOf(input.expense)
     // The stable create ID is the idempotency guard: a reused ID is a Conflict, never a second expense.
     // So the tool sends no idempotency key, and the write skips the key's lookup and row.
-    const duplicate = (error: unknown) => (error instanceof Conflict && error.id === expenseId ? new ToolError('CONFLICT', DUPLICATE_ID) : error)
+    const duplicate = (error: unknown) => (error instanceof Conflict && error.id === expenseId ? new Conflict({ ...error, message: DUPLICATE_ID }) : error)
     const idempotencyKey = null
     if (input.groupId === undefined) {
-      if (input.uploads?.length || input.expense.documents?.length) throw new ToolError('BAD_REQUEST', 'Save an ungrouped expense first, then attach its receipts.')
+      if (input.uploads?.length || input.expense.documents?.length) throw new Invalid({ message: 'Save an ungrouped expense first, then attach its receipts.' })
       const created = await createUngroupedExpense(db, { principal, baseUrl, expenseId, idempotencyKey, people: input.people ?? [], expense: draft }).catch((error: unknown) => {
         throw duplicate(error)
       })
@@ -654,7 +653,7 @@ export const createExpense = defineTool({
       }
     }
     const saved = await ledger
-      .createExpense(db, { principal, group: input.groupId, expenseId, idempotencyKey, expense: draft, documents: input.expense.documents ?? [] })
+      .createExpense(db, { principal, groupId: input.groupId, expenseId, idempotencyKey, expense: draft, documents: input.expense.documents ?? [] })
       .catch((error: unknown) => {
         throw duplicate(error)
       })
@@ -680,7 +679,7 @@ export const updateExpense = defineTool({
   run: async ({ db, principal, baseUrl, bucket }, input) => {
     const changes = input.changes ?? {}
     // One read for the tool and the ledger write. Each call is new, so it sends no idempotency key.
-    const context = await ledger.loadWriteContext(db, { principal, group: input.groupId, expenseId: input.expenseId, op: 'change', idempotencyKey: null })
+    const context = await ledger.loadWriteContext(db, { principal, groupId: input.groupId, expenseId: input.expenseId, op: 'change', idempotencyKey: null })
     // A stale revision conflicts before any upload is checked, so a failed call changes nothing.
     const current = ledger.currentExpense(context, input.expectedRevision)
     const attached = await attachUploads(db, {
@@ -689,8 +688,6 @@ export const updateExpense = defineTool({
       expenseId: current.id,
       uploadIds: input.attachUploadIds ?? [],
       bucket,
-    }).catch((error: unknown) => {
-      throw uploadFailure(error)
     })
     let saved = current
     // No change, no revision, as in the current app.
@@ -699,7 +696,7 @@ export const updateExpense = defineTool({
       const documents = attached.length ? [...(changes.documents ?? current.documents ?? []), ...attached] : changes.documents
       saved = await ledger.updateExpense(db, {
         principal,
-        group: input.groupId,
+        groupId: input.groupId,
         expenseId: input.expenseId,
         expectedRevision: input.expectedRevision,
         idempotencyKey: null,
@@ -728,7 +725,7 @@ export const deleteExpense = defineTool({
   run: async ({ db, principal }, input) => {
     const { revision } = await ledger.deleteExpense(db, {
       principal,
-      group: input.groupId,
+      groupId: input.groupId,
       expenseId: input.expenseId,
       expectedRevision: input.expectedRevision,
       idempotencyKey: null,

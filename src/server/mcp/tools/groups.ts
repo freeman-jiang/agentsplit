@@ -6,7 +6,7 @@
 import { Result, Schema } from 'effect'
 import { sql } from 'drizzle-orm'
 import { CURRENCIES, type CurrencyCode } from '../../../shared/currencies'
-import { groupAccessDenied, NotFound } from '../../../shared/api'
+import { groupAccessDenied, Invalid, NotFound } from '../../../shared/api'
 import { AccessRequest, GroupChanges, GroupCreateInput } from '../../../shared/api/groups'
 import { EMAIL, groupPath } from '../../../shared/groups'
 import { GROUP_ID } from '../../../shared/ids'
@@ -19,7 +19,7 @@ import * as groups from '../../groups'
 import { participantName } from '../../people'
 import { iso } from '../../sql'
 import { renewPrivateInvitation } from '../../ungrouped'
-import { defineTool, ToolError } from '../registry'
+import { defineTool } from '../registry'
 import { DateTime, Id, isCurrencyCode, NonNegativeInt, NullableString, origin } from './shared'
 
 /** The current group wire shape. `currency` is the currency's symbol; v2 stores only the code. */
@@ -136,7 +136,7 @@ export const getGroup = defineTool({
   }),
   run: async ({ db, principal, baseUrl }, { groupId }) => {
     const result = await db.execute<DetailsRow>(sql`
-      WITH ${memberCte({ principal, group: groupId })}
+      WITH ${memberCte({ principal, groupId })}
       SELECT ${groupColumns}, g.role, g.participant_id, g.active,
         (SELECT pc.expense_id FROM private_contexts pc WHERE pc.group_id = g.id) AS context_expense_id,
         coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${participantName}, 'groupId', p.group_id) ORDER BY p.created_at, p.id)
@@ -198,21 +198,21 @@ const NO_CUSTOM_CURRENCY = 'Set currencyCode to a supported currency code, such 
  */
 function currencyOf(data: { currency: string | undefined; currencyCode: string | null | undefined }): CurrencyCode {
   if (data.currencyCode) {
-    if (!isCurrencyCode(data.currencyCode)) throw new ToolError('BAD_REQUEST', NO_CUSTOM_CURRENCY)
+    if (!isCurrencyCode(data.currencyCode)) throw new Invalid({ message: NO_CUSTOM_CURRENCY })
     return data.currencyCode
   }
   const text = data.currency?.trim() ?? ''
   if (isCurrencyCode(text.toUpperCase())) return text.toUpperCase() as CurrencyCode
   const bySymbol = (Object.keys(CURRENCIES) as CurrencyCode[]).filter((code) => CURRENCIES[code].symbol === text)
   const [only] = bySymbol
-  if (bySymbol.length !== 1 || !only) throw new ToolError('BAD_REQUEST', NO_CUSTOM_CURRENCY)
+  if (bySymbol.length !== 1 || !only) throw new Invalid({ message: NO_CUSTOM_CURRENCY })
   return only
 }
 
 /** Applies the RPC contract's checks to a value built from MCP input, as the RPC decoder would. */
 function contract<S extends Schema.Top & Schema.ConstraintDecoder<unknown>>(schema: S, value: unknown): S['Type'] {
   const decoded = Schema.decodeUnknownResult(schema, { errors: 'all' })(value)
-  if (Result.isFailure(decoded)) throw new ToolError('BAD_REQUEST', decoded.failure.message)
+  if (Result.isFailure(decoded)) throw new Invalid({ message: decoded.failure.message })
   return decoded.success
 }
 
@@ -297,7 +297,7 @@ export const updateGroup = defineTool({
         ? {}
         : { participants: c.participants.map((p) => ({ ...(p.id === undefined ? {} : { id: p.id }), name: p.name.trim() })) }),
     })
-    const updated = await groups.updateGroup(db, { principal, group: input.groupId, expectedRevision: input.expectedRevision, idempotencyKey: null, changes })
+    const updated = await groups.updateGroup(db, { principal, groupId: input.groupId, expectedRevision: input.expectedRevision, idempotencyKey: null, changes })
     return readGroup(db, updated.id)
   },
 })
@@ -338,14 +338,6 @@ const AccessInput = Schema.Struct({
   }),
 )
 
-/** The current app's texts for what an access change did not find. */
-const notFound = (error: NotFound) =>
-  error.entity === 'invitation'
-    ? new ToolError('NOT_FOUND', error.id === 'token' ? 'Invitation not found or no longer valid' : 'Pending invitation not found')
-    : error.entity === 'member'
-      ? new ToolError('NOT_FOUND', 'Member not found')
-      : error
-
 export const manageGroupAccess = defineTool({
   name: 'manage_group_access',
   kind: 'write',
@@ -371,9 +363,7 @@ export const manageGroupAccess = defineTool({
       action: input.action,
       ...Object.fromEntries(REQUIRED[input.action].map((name) => [name, field(name)])),
     })
-    const result = await groups.changeAccess(db, { principal, baseUrl, idempotencyKey: null, request }).catch((error: unknown) => {
-      throw error instanceof NotFound ? notFound(error) : error
-    })
+    const result = await groups.changeAccess(db, { principal, baseUrl, idempotencyKey: null, request })
     const i = result.invitation
     return {
       groupId: result.groupId,

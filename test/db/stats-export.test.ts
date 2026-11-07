@@ -5,7 +5,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { activities, groups, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { makeDb, type Db } from '~/server/db'
-import { contentDisposition, exportCsv, exportJson } from '~/server/export'
+import { exportCsv, exportJson } from '~/server/export'
+import { contentDisposition } from '~/server/export-routes'
 import { createExpense, deleteExpense } from '~/server/ledger'
 import { type Principal } from '~/server/access'
 import { statsExpenses, statsOverview } from '~/server/stats'
@@ -31,7 +32,7 @@ const create = (id: string, over: Partial<ExpenseDraft>) =>
   tx((db) =>
     createExpense(db, {
       principal: alice,
-      group: 'g1',
+      groupId: 'g1',
       expenseId: id,
       idempotencyKey: `key-stats-${++keys}`,
       expense: {
@@ -74,7 +75,7 @@ beforeAll(async () => {
   await create('payback', { kind: 'payment', categoryId: 1, amount: '20.00', expenseDate: '2026-03-03', payers: [{ participantId: 'pb', amount: '20.00' }], splitMode: 'amount', shares: [{ participantId: 'pa', weight: '20.00' }] })
   await create('ramen', { currency: 'JPY', amount: '1500', payers: [{ participantId: 'pa', amount: '1500' }], expenseDate: '2026-02-01', categoryId: 8 })
   await create('gone', { amount: '999.00', payers: [{ participantId: 'pa', amount: '999.00' }] })
-  await tx((db) => deleteExpense(db, { principal: alice, group: 'g1', expenseId: 'gone', expectedRevision: 1, idempotencyKey: 'key-stats-delete' }))
+  await tx((db) => deleteExpense(db, { principal: alice, groupId: 'g1', expenseId: 'gone', expectedRevision: 1, idempotencyKey: 'key-stats-delete' }))
 })
 afterAll(async () => {
   await pool.end()
@@ -82,12 +83,12 @@ afterAll(async () => {
 
 describe('stats overview', () => {
   it('defaults to the group currency and lists every used currency', async () => {
-    const s = await tx((db) => statsOverview(db, { principal: alice, group: 'flat', today: '2026-05-20' }))
+    const s = await tx((db) => statsOverview(db, { principal: alice, groupId: 'flat', today: '2026-05-20' }))
     expect([s.currency, s.currencies]).toEqual(['USD', ['JPY', 'USD']])
   })
 
   it('leaves payments out of every figure and counts each payer (P-STATS-12, P-STATS-18, P-STATS-20)', async () => {
-    const s = await tx((db) => statsOverview(db, { principal: alice, group: 'g1', today: '2026-05-20' }))
+    const s = await tx((db) => statsOverview(db, { principal: alice, groupId: 'g1', today: '2026-05-20' }))
     expect([s.total, s.yourPaid, s.yourShare]).toEqual(['1245.00', '795.00', '415.00'])
     expect(s.summary).toEqual({ count: 3, average: '415.00', largest: { title: 'rent', amount: '1200.00' }, firstDate: '2026-01-10', lastDate: '2026-03-02' })
     expect(s.participants).toEqual([
@@ -100,12 +101,12 @@ describe('stats overview', () => {
   })
 
   it('hides personal totals without a bound participant (P-STATS-21)', async () => {
-    const s = await tx((db) => statsOverview(db, { principal: unbound, group: 'g1', today: '2026-05-20' }))
+    const s = await tx((db) => statsOverview(db, { principal: unbound, groupId: 'g1', today: '2026-05-20' }))
     expect([s.participantId, s.yourPaid, s.yourShare]).toEqual([null, null, null])
   })
 
   it('shows the same months in both charts, through the current month (P-STATS-25, P-STATS-36)', async () => {
-    const s = await tx((db) => statsOverview(db, { principal: alice, group: 'g1', today: '2026-05-20' }))
+    const s = await tx((db) => statsOverview(db, { principal: alice, groupId: 'g1', today: '2026-05-20' }))
     expect(s.months).toEqual([
       { month: '2026-01', total: '95.00' },
       { month: '2026-02', total: '0.00' },
@@ -120,7 +121,7 @@ describe('stats overview', () => {
   })
 
   it('ranks categories with whole percentages and leaves out zero totals (P-STATS-29, P-STATS-30)', async () => {
-    const s = await tx((db) => statsOverview(db, { principal: alice, group: 'g1', today: '2026-05-20' }))
+    const s = await tx((db) => statsOverview(db, { principal: alice, groupId: 'g1', today: '2026-05-20' }))
     expect(s.categories).toEqual([
       { categoryId: 18, grouping: 'Home', name: 'Rent', total: '1150.00', percent: 92 },
       { categoryId: 9, grouping: 'Food and Drink', name: 'Groceries', total: '95.00', percent: 8 },
@@ -128,7 +129,7 @@ describe('stats overview', () => {
   })
 
   it('scopes to a range, but not the recurring card (P-STATS-09, P-STATS-42)', async () => {
-    const s = await tx((db) => statsOverview(db, { principal: alice, group: 'g1', from: '2026-03-01', to: '2026-01-01', today: '2026-05-20' }))
+    const s = await tx((db) => statsOverview(db, { principal: alice, groupId: 'g1', from: '2026-03-01', to: '2026-01-01', today: '2026-05-20' }))
     // Reversed bounds are swapped (P-STATS-10).
     expect([s.total, s.summary.count]).toEqual(['1295.00', 2])
     expect(s.months.map((m) => m.month)).toEqual(['2026-01', '2026-02', '2026-03'])
@@ -136,22 +137,22 @@ describe('stats overview', () => {
   })
 
   it('shows one currency at a time', async () => {
-    const s = await tx((db) => statsOverview(db, { principal: alice, group: 'g1', currency: 'JPY', today: '2026-05-20' }))
+    const s = await tx((db) => statsOverview(db, { principal: alice, groupId: 'g1', currency: 'JPY', today: '2026-05-20' }))
     expect([s.total, s.summary.average, s.recurring.count, s.categories.map((c) => c.name)]).toEqual(['1500', '1500', 0, ['Dining Out']])
   })
 
   it('drills down into a month or a category, newest first (P-STATS-27, P-STATS-31)', async () => {
-    const march = await tx((db) => statsExpenses(db, { principal: alice, group: 'g1', currency: 'USD', month: '2026-03' }))
+    const march = await tx((db) => statsExpenses(db, { principal: alice, groupId: 'g1', currency: 'USD', month: '2026-03' }))
     expect(march.map((e) => e.id)).toEqual(['refund', 'rent'])
-    const food = await tx((db) => statsExpenses(db, { principal: alice, group: 'g1', currency: 'USD', categoryId: 9, from: '2026-02-01' }))
+    const food = await tx((db) => statsExpenses(db, { principal: alice, groupId: 'g1', currency: 'USD', categoryId: 9, from: '2026-02-01' }))
     expect(food).toEqual([])
   })
 
   it('refuses non-members and writes nothing (P-STATS-44)', async () => {
-    await expect(tx((db) => statsOverview(db, { principal: stranger, group: 'g1' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => statsOverview(db, { principal: stranger, groupId: 'g1' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
     const count = async () => (await tx((db) => db.execute<{ n: number }>(sql`SELECT (SELECT count(*) FROM expenses) + (SELECT count(*) FROM activities) AS n`))).rows[0]?.n
     const before = await count()
-    await tx((db) => statsOverview(db, { principal: alice, group: 'g1' }))
+    await tx((db) => statsOverview(db, { principal: alice, groupId: 'g1' }))
     expect(await count()).toBe(before)
   })
 })
@@ -202,7 +203,7 @@ describe('exports', () => {
   })
 
   it('writes the CSV in a defined order, with net changes that sum to zero (P-EXPORT-17 to P-EXPORT-29)', async () => {
-    const file = await tx((db) => exportCsv(db, { principal: alice, group: 'flat' }))
+    const file = await tx((db) => exportCsv(db, { principal: alice, groupId: 'flat' }))
     expect(file.contentType).toBe('text/csv; charset=utf-8')
     expect(file.filename).toMatch(/^AgentSplit Export - Flat · Zürich - \d{4}-\d{2}-\d{2}\.csv$/)
     expect(file.content.startsWith('﻿')).toBe(true)
@@ -219,7 +220,7 @@ describe('exports', () => {
   })
 
   it('writes the JSON without user IDs, connection IDs or email addresses (P-EXPORT-10 to P-EXPORT-15)', async () => {
-    const file = await tx((db) => exportJson(db, { principal: alice, group: 'g1' }))
+    const file = await tx((db) => exportJson(db, { principal: alice, groupId: 'g1' }))
     expect(file.filename).toMatch(/^AgentSplit Export - Flat · Zürich - \d{4}-\d{2}-\d{2}\.json$/)
     const body = JSON.parse(file.content) as {
       currency: string
@@ -241,15 +242,15 @@ describe('exports', () => {
   })
 
   it('leaves deleted expenses out of both files (P-EXPORT-08)', async () => {
-    const csv = await tx((db) => exportCsv(db, { principal: alice, group: 'g1' }))
-    const json = JSON.parse((await tx((db) => exportJson(db, { principal: alice, group: 'g1' }))).content) as { expenses: { id: string }[] }
+    const csv = await tx((db) => exportCsv(db, { principal: alice, groupId: 'g1' }))
+    const json = JSON.parse((await tx((db) => exportJson(db, { principal: alice, groupId: 'g1' }))).content) as { expenses: { id: string }[] }
     expect(csv.content).not.toContain('gone')
     expect(json.expenses.map((e) => e.id)).not.toContain('gone')
   })
 
   it('refuses non-members (P-EXPORT-04)', async () => {
-    await expect(tx((db) => exportCsv(db, { principal: stranger, group: 'g1' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
-    await expect(tx((db) => exportJson(db, { principal: stranger, group: 'flat' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => exportCsv(db, { principal: stranger, groupId: 'g1' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => exportJson(db, { principal: stranger, groupId: 'flat' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
   })
 
   it('names the file with an ASCII fallback (P-EXPORT-28)', () => {

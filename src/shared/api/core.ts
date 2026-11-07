@@ -2,6 +2,7 @@
 // domain services, so these schemas also describe agent writes.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
+import { GROUP_DENIED, INVALID_REASONS, NOT_FOUND_ENTITIES } from '../errors'
 import { LIMITS } from '../limits'
 import { CurrencyCodeSchema, DecimalOutput, DecimalString } from '../money'
 import { EXPENSE_KINDS, GROUP_KINDS, RECURRENCES, ROLES, SPLIT_MODES } from '../vocabulary'
@@ -15,31 +16,26 @@ export const GroupKindSchema = Schema.Literals(GROUP_KINDS)
 export const SearchText = Schema.String.check(Schema.isMaxLength(LIMITS.searchMax))
 
 // ---------- errors ----------
+// What each one means to a caller, and how MCP answers it, is in src/shared/errors.ts.
 
 export class Unauthorized extends Schema.TaggedError<Unauthorized>()('Unauthorized', {}) {}
 export class Forbidden extends Schema.TaggedError<Forbidden>()('Forbidden', { message: Schema.String }) {}
-/** The message of a denied group access. The MCP tools answer it with their own text (mcp/registry.ts). */
-export const GROUP_ACCESS_DENIED = 'Group access denied'
 /** A group that does not exist and a group the caller cannot see give the same error. */
-export const groupAccessDenied = () => new Forbidden({ message: GROUP_ACCESS_DENIED })
-export class NotFound extends Schema.TaggedError<NotFound>()('NotFound', { entity: Schema.String, id: Schema.String }) {}
+export const groupAccessDenied = () => new Forbidden({ message: GROUP_DENIED })
+export class NotFound extends Schema.TaggedError<NotFound>()('NotFound', { entity: Schema.Literals(NOT_FOUND_ENTITIES), id: Schema.String }) {}
 /** The expected revision is not the current one: read again, then retry. */
 export class Conflict extends Schema.TaggedError<Conflict>()('Conflict', {
   entity: Schema.String,
   id: Schema.String,
   currentRevision: Schema.Number,
-  /** What conflicts, when it is not a revision: a slug in use, the last admin leaving. */
+  /** What conflicts, when it is not a revision: an ID in use. */
   message: Schema.optional(Schema.String),
 }) {}
-/**
- * The request cannot apply. `reason: 'state'` marks a conflict with the current
- * state (the last admin, a used invitation, a taken ID), which agents see as
- * CONFLICT and resolve by reading again, as in the current app.
- */
+/** The request cannot apply, for the arguments or for a `reason` (src/shared/errors.ts). */
 export class Invalid extends Schema.TaggedError<Invalid>()('Invalid', {
   message: Schema.String,
   field: Schema.optional(Schema.String),
-  reason: Schema.optional(Schema.Literal('state')),
+  reason: Schema.optional(Schema.Literals(INVALID_REASONS)),
 }) {}
 /** The server could not complete the request; the outcome of a write is unknown, so read before retrying. */
 export class Unavailable extends Schema.TaggedError<Unavailable>()('Unavailable', { message: Schema.String }) {}

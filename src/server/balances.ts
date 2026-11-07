@@ -3,7 +3,6 @@
 // as of a recorded change. Only live expenses count; reads never create due
 // recurring expenses (P-BAL-30).
 import { sql, type SQL } from 'drizzle-orm'
-import { Schema } from 'effect'
 import { groupAccessDenied, Invalid } from '../shared/api'
 import { computeBalances, suggestSettlements, type Balance } from '../shared/balances'
 import type { CurrencyCode } from '../shared/currencies'
@@ -74,7 +73,7 @@ export const netsCte = sql`nets AS (
 // ---------- one group ----------
 
 /** Every participant of the group, by name, and the balances per currency, in one statement that also checks membership. */
-export async function groupBalances(db: Db, data: { principal: Principal; group: string; currency?: CurrencyCode | undefined }) {
+export async function groupBalances(db: Db, data: { principal: Principal; groupId: string; currency?: CurrencyCode | undefined }) {
   const result = await db.execute<{ active: boolean; participants: string[]; sums: BalanceSum[] }>(sql`
     WITH ${memberCte(data)}
     SELECT g.active,
@@ -92,7 +91,7 @@ export async function groupBalances(db: Db, data: { principal: Principal; group:
  * P-BAL-26). Every participant of the group is listed in each currency, at
  * zero when they have no part in it (P-BAL-44).
  */
-export async function listBalances(db: Db, data: { principal: Principal; group: string; currency?: CurrencyCode }) {
+export async function listBalances(db: Db, data: { principal: Principal; groupId: string; currency?: CurrencyCode }) {
   const { participants, balances } = await groupBalances(db, data)
   const zero = { paid: minor(0n), owed: minor(0n), net: minor(0n) }
   return {
@@ -175,26 +174,21 @@ export async function accountBalances(db: Db, data: { principal: Principal; scop
 const INCOMPLETE_HISTORY =
   'Historical balances are unavailable because some expenses have no saved state at this point. Read list_expenses at the same boundary to inspect history coverage.'
 
-/** Some expenses have no saved state at the boundary, so a balance there would be a partial total. */
-export class IncompleteHistory extends Schema.TaggedError<IncompleteHistory>()('IncompleteHistory', { message: Schema.String }) {}
-
 /**
  * Balances from the saved splits at a boundary, per currency and participant.
- * Throws IncompleteHistory when the boundary is incomplete, so a partial total
- * is never shown as a balance.
+ * When some expenses have no saved state at the boundary, it refuses with a
+ * precondition Invalid, so a partial total is never shown as a balance.
  */
-export async function historicalBalances(db: Db, data: { principal: Principal; group: string; currency?: CurrencyCode | undefined } & Boundary) {
+export async function historicalBalances(db: Db, data: { principal: Principal; groupId: string; currency?: CurrencyCode | undefined } & Boundary) {
   const ledger = await historicalLedger(db, data)
-  if (!ledger.history.complete) throw new IncompleteHistory({ message: INCOMPLETE_HISTORY })
+  if (!ledger.history.complete) throw new Invalid({ message: INCOMPLETE_HISTORY, reason: 'precondition' })
   const saved = ledger.expenses.filter((e) => data.currency === undefined || e.currency === data.currency)
   return { history: ledger.history, balances: computeBalances(saved.map(savedEntry)) }
 }
 
-/** historicalBalances for the web: one row per participant and currency, and an incomplete boundary as Invalid. */
-export async function savedBalances(db: Db, data: { principal: Principal; group: string } & Boundary) {
-  const { history, balances } = await historicalBalances(db, data).catch((error: unknown) => {
-    throw error instanceof IncompleteHistory ? new Invalid({ message: error.message }) : error
-  })
+/** historicalBalances for the web: one row per participant and currency. */
+export async function savedBalances(db: Db, data: { principal: Principal; groupId: string } & Boundary) {
+  const { history, balances } = await historicalBalances(db, data)
   return {
     history,
     balances: [...balances].flatMap(([currency, byPerson]) =>

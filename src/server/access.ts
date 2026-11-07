@@ -27,10 +27,10 @@ export const groupIdOf = (ref: SQL) => sql`agentsplit_group_id(${ref})`
  * inactive one, means no access. A statement that starts with it reads rows
  * only from a group the caller belongs to, in the same round trip.
  */
-export const memberCte = (data: { principal: Principal; group: string }) => sql`g AS (
+export const memberCte = (data: { principal: Principal; groupId: string }) => sql`g AS (
   SELECT g.*, m.role, m.participant_id, m.active
   FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
-  WHERE g.id = ${groupIdOf(sql`${data.group}`)})`
+  WHERE g.id = ${groupIdOf(sql`${data.groupId}`)})`
 
 /** The row of a statement built on memberCte, or the denial. A group that does not exist and one the caller cannot see look the same. */
 export function requireActive<T extends { active: boolean | null }>(row: T | undefined): T {
@@ -39,7 +39,7 @@ export function requireActive<T extends { active: boolean | null }>(row: T | und
 }
 
 /** The membership check on its own. `admin` is the refusal for a caller who is not an admin. */
-export async function requireMember(db: Db, data: { principal: Principal; group: string; admin?: string }): Promise<Membership> {
+export async function requireMember(db: Db, data: { principal: Principal; groupId: string; admin?: string }): Promise<Membership> {
   const result = await db.execute<{ id: string; role: Role; participant_id: string | null; active: boolean }>(
     sql`WITH ${memberCte(data)} SELECT id, role, participant_id, active FROM g`,
   )

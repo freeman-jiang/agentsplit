@@ -46,7 +46,7 @@ const draft = (over: Partial<ExpenseDraft>): ExpenseDraft => ({
   ...over,
 })
 const create = (p: Principal, id: string, over: Partial<ExpenseDraft>) =>
-  tx((db) => createExpense(db, { principal: p, group: 'g1', expenseId: id, idempotencyKey: key(), expense: draft(over) }))
+  tx((db) => createExpense(db, { principal: p, groupId: 'g1', expenseId: id, idempotencyKey: key(), expense: draft(over) }))
 const ids = async (filter: FeedFilter, p: Principal = alice) =>
   (await tx((db) => listFeed(db, { principal: p, filter: { involvingMe: false, ...filter }, cursor: null, limit: 100 }))).expenses.map((e) => e.id)
 
@@ -137,7 +137,7 @@ describe('feed', () => {
     const rent = await one('e-rent')
     expect(rent?.attribution.createdBy).toEqual({ userId: bob.userId, name: 'Bob', source: 'agent' })
     expect(rent?.attribution.updatedBy).toBeNull()
-    await tx((db) => updateExpense(db, { principal: alice, group: 'g1', expenseId: 'e-rent', expectedRevision: 1, idempotencyKey: key(), expense: draft({ title: 'Rent', categoryId: 18, expenseDate: '2026-10-02', payers: [{ participantId: 'pb', amount: '30' }] }) }))
+    await tx((db) => updateExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e-rent', expectedRevision: 1, idempotencyKey: key(), expense: draft({ title: 'Rent', categoryId: 18, expenseDate: '2026-10-02', payers: [{ participantId: 'pb', amount: '30' }] }) }))
     const edited = await one('e-rent')
     expect(edited?.attribution.updatedBy).toEqual({ userId: alice.userId, name: 'Alice Renamed', source: 'web' })
     expect(edited?.attribution.lastEditedByYouAt).toBe(edited?.attribution.updatedAt)

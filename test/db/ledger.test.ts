@@ -58,27 +58,27 @@ const draft = (over: Partial<ExpenseDraft> = {}): ExpenseDraft => ({
 
 describe('ledger', () => {
   it('creates an expense, splits it, and gives the payer the leftover cent', async () => {
-    const e = await tx((db) => createExpense(db, { principal: alice, group: 'home', expenseId: 'e1', idempotencyKey: 'key-e1-0001', expense: draft() }))
+    const e = await tx((db) => createExpense(db, { principal: alice, groupId: 'home', expenseId: 'e1', idempotencyKey: 'key-e1-0001', expense: draft() }))
     expect(e.revision).toBe(1)
     expect(e.shares.map((s) => [s.participantId, s.amount])).toEqual([['pa', '33.34'], ['pb', '33.33'], ['pc', '33.33']])
-    const { currencies } = await tx((db) => listBalances(db, { principal: alice, group: 'g1' }))
+    const { currencies } = await tx((db) => listBalances(db, { principal: alice, groupId: 'g1' }))
     expect(currencies.flatMap((c) => c.balances).find((b) => b.participantId === 'pa')?.net).toBe('66.66')
   })
 
   it('returns the stored result when a write is retried with the same key', async () => {
-    const again = await tx((db) => createExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', idempotencyKey: 'key-e1-0001', expense: draft() }))
+    const again = await tx((db) => createExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1', idempotencyKey: 'key-e1-0001', expense: draft() }))
     expect(again.id).toBe('e1')
     await expect(
-      tx((db) => createExpense(db, { principal: alice, group: 'g1', expenseId: 'e9', idempotencyKey: 'key-e1-0001', expense: draft() })),
+      tx((db) => createExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e9', idempotencyKey: 'key-e1-0001', expense: draft() })),
     ).rejects.toMatchObject({ _tag: 'Invalid', field: 'idempotencyKey' })
   })
 
   it('refuses a stale revision and accepts the current one', async () => {
     await expect(
-      tx((db) => updateExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', expectedRevision: 0, idempotencyKey: 'key-u-stale', expense: draft({ title: 'Stale' }) })),
+      tx((db) => updateExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1', expectedRevision: 0, idempotencyKey: 'key-u-stale', expense: draft({ title: 'Stale' }) })),
     ).rejects.toMatchObject({ _tag: 'Conflict', currentRevision: 1 })
     const updated = await tx((db) =>
-      updateExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', expectedRevision: 1, idempotencyKey: 'key-u-0001', expense: draft({ title: 'Weekly groceries' }) }),
+      updateExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1', expectedRevision: 1, idempotencyKey: 'key-u-0001', expense: draft({ title: 'Weekly groceries' }) }),
     )
     expect(updated.revision).toBe(2)
   })
@@ -87,7 +87,7 @@ describe('ledger', () => {
     const e = await tx((db) =>
       createExpense(db, {
         principal: alice,
-        group: 'g1',
+        groupId: 'g1',
         expenseId: 'e2',
         idempotencyKey: 'key-e2-0001',
         expense: draft({ expenseDate: '2026-10-01', amount: '90.00', payers: [{ participantId: 'pa', amount: '30.00' }, { participantId: 'pb', amount: '60.00' }] }),
@@ -97,35 +97,35 @@ describe('ledger', () => {
   })
 
   it('orders by expense date or by last change, and filters', async () => {
-    const byDate = await tx((db) => listExpenses(db, { principal: alice, group: 'g1', filter: {}, cursor: null, limit: 10 }))
+    const byDate = await tx((db) => listExpenses(db, { principal: alice, groupId: 'g1', filter: {}, cursor: null, limit: 10 }))
     expect(byDate.expenses.map((e) => e.id)).toEqual(['e1', 'e2'])
     // Editing the older expense moves it to the top of "recently changed".
-    await tx((db) => updateExpense(db, { principal: alice, group: 'g1', expenseId: 'e2', expectedRevision: 1, idempotencyKey: 'key-u-e2-1', expense: draft({ expenseDate: '2026-10-01', amount: '90.00', payers: [{ participantId: 'pa', amount: '30.00' }, { participantId: 'pb', amount: '60.00' }], title: 'Edited' }) }))
-    const byUpdate = await tx((db) => listExpenses(db, { principal: alice, group: 'g1', filter: { sort: 'updated' }, cursor: null, limit: 10 }))
+    await tx((db) => updateExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e2', expectedRevision: 1, idempotencyKey: 'key-u-e2-1', expense: draft({ expenseDate: '2026-10-01', amount: '90.00', payers: [{ participantId: 'pa', amount: '30.00' }, { participantId: 'pb', amount: '60.00' }], title: 'Edited' }) }))
+    const byUpdate = await tx((db) => listExpenses(db, { principal: alice, groupId: 'g1', filter: { sort: 'updated' }, cursor: null, limit: 10 }))
     expect(byUpdate.expenses.map((e) => e.id)).toEqual(['e2', 'e1'])
-    const page = await tx((db) => listExpenses(db, { principal: alice, group: 'g1', filter: { sort: 'updated' }, cursor: null, limit: 1 }))
-    const next = await tx((db) => listExpenses(db, { principal: alice, group: 'g1', filter: { sort: 'updated' }, cursor: page.nextCursor, limit: 1 }))
+    const page = await tx((db) => listExpenses(db, { principal: alice, groupId: 'g1', filter: { sort: 'updated' }, cursor: null, limit: 1 }))
+    const next = await tx((db) => listExpenses(db, { principal: alice, groupId: 'g1', filter: { sort: 'updated' }, cursor: page.nextCursor, limit: 1 }))
     expect([...page.expenses, ...next.expenses].map((e) => e.id)).toEqual(['e2', 'e1'])
-    const search = await tx((db) => listExpenses(db, { principal: alice, group: 'g1', filter: { search: 'cost' }, cursor: null, limit: 10 }))
+    const search = await tx((db) => listExpenses(db, { principal: alice, groupId: 'g1', filter: { search: 'cost' }, cursor: null, limit: 10 }))
     expect(search.expenses).toHaveLength(2)
-    const payer = await tx((db) => listExpenses(db, { principal: alice, group: 'g1', filter: { payerId: 'pb' }, cursor: null, limit: 10 }))
+    const payer = await tx((db) => listExpenses(db, { principal: alice, groupId: 'g1', filter: { payerId: 'pb' }, cursor: null, limit: 10 }))
     expect(payer.expenses.map((e) => e.id)).toEqual(['e2'])
-    const range = await tx((db) => listExpenses(db, { principal: alice, group: 'g1', filter: { from: '2026-10-15' }, cursor: null, limit: 10 }))
+    const range = await tx((db) => listExpenses(db, { principal: alice, groupId: 'g1', filter: { from: '2026-10-15' }, cursor: null, limit: 10 }))
     expect(range.expenses.map((e) => e.id)).toEqual(['e1'])
   })
 
   it('deletes by tombstone and keeps balances consistent', async () => {
-    await tx((db) => deleteExpense(db, { principal: alice, group: 'g1', expenseId: 'e2', expectedRevision: 2, idempotencyKey: 'key-d-e2-1' }))
-    const { currencies } = await tx((db) => listBalances(db, { principal: alice, group: 'g1' }))
+    await tx((db) => deleteExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e2', expectedRevision: 2, idempotencyKey: 'key-d-e2-1' }))
+    const { currencies } = await tx((db) => listBalances(db, { principal: alice, groupId: 'g1' }))
     expect(currencies.flatMap((c) => c.balances).reduce((sum, b) => sum + Math.round(Number(b.net) * 100), 0)).toBe(0)
   })
 
   it('refuses non-members', async () => {
-    await expect(tx((db) => getGroup(db, { principal: mallory, group: 'g1' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
-    await expect(tx((db) => listExpenses(db, { principal: mallory, group: 'g1', filter: {}, cursor: null, limit: 10 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
-    await expect(tx((db) => listExpenses(db, { principal: mallory, group: 'home', filter: { search: 'nothing matches this' }, cursor: null, limit: 10 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => getGroup(db, { principal: mallory, groupId: 'g1' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => listExpenses(db, { principal: mallory, groupId: 'g1', filter: {}, cursor: null, limit: 10 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => listExpenses(db, { principal: mallory, groupId: 'home', filter: { search: 'nothing matches this' }, cursor: null, limit: 10 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
     await expect(
-      tx((db) => createExpense(db, { principal: mallory, group: 'g1', expenseId: 'e3', idempotencyKey: 'key-m-0001', expense: draft() })),
+      tx((db) => createExpense(db, { principal: mallory, groupId: 'g1', expenseId: 'e3', idempotencyKey: 'key-m-0001', expense: draft() })),
     ).rejects.toMatchObject({ _tag: 'Forbidden' })
   })
 })

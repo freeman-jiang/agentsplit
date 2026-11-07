@@ -105,7 +105,7 @@ type DetailsRow = {
 }
 
 /** The Settings tab in one statement that also checks the caller's membership. Only admins see invitations. */
-export async function getGroupDetails(db: Db, data: { principal: Principal; group: string }) {
+export async function getGroupDetails(db: Db, data: { principal: Principal; groupId: string }) {
   const result = await db.execute<DetailsRow>(sql`
     WITH ${memberCte(data)},
     pending AS (
@@ -242,7 +242,7 @@ async function lockGroup(tx: Db, groupId: string) {
  */
 export async function updateGroup(
   tx: Db,
-  data: { principal: Principal; group: string; expectedRevision: number; idempotencyKey: string | null; changes: ChangesInput },
+  data: { principal: Principal; groupId: string; expectedRevision: number; idempotencyKey: string | null; changes: ChangesInput },
 ): Promise<{ id: string; slug: string | null; revision: number }> {
   const { groupId } = await requireMember(tx, { ...data, admin: 'Only group admins can edit group settings' })
   const request = { op: 'update_group', groupId, expectedRevision: data.expectedRevision, changes: data.changes }
@@ -456,7 +456,7 @@ async function applyAccess(
 
   if (input.action === 'revoke_invitation') {
     const [row] = await revokeInvitations(tx, { groupId, invitationId: input.invitationId })
-    if (!row) throw new NotFound({ entity: 'invitation', id: input.invitationId })
+    if (!row) throw new NotFound({ entity: 'pendingInvitation', id: input.invitationId })
     await log({ type: 'update_group', data: `Invitation revoked${row.participantName ? ` for ${row.participantName}` : ''}` })
     return done()
   }
