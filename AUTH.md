@@ -1,6 +1,6 @@
 # Accounts, API keys and OAuth
 
-AgentSplit v2 uses self-hosted Better Auth with Google as the only identity provider. PostgreSQL (`db2`) stores accounts, sessions, memberships, invitations, hashed API keys and OAuth data. No hosted auth vendor or email service is used. Better Auth telemetry is off. The code is in `src/server/auth/` (sign-in, sessions, API keys, OAuth and agent connections) and `src/server/account.ts` (the Settings screens and the owner bootstrap).
+AgentSplit v2 uses self-hosted Better Auth with Google as the only identity provider. PostgreSQL (`db2`) stores accounts, sessions, memberships, invitations, hashed API keys and OAuth data. No hosted auth vendor or email service is used. Better Auth telemetry is off. The code is in `src/server/auth/` (sign-in, sessions, API keys, OAuth and agent connections) and `src/server/account.ts` (the Settings screens). The owner bootstrap is `src/server/auth/owner-bootstrap.ts`.
 
 ## Google sign-in
 
