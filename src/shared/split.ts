@@ -7,8 +7,11 @@ import type { SplitMode } from './vocabulary'
 /** A weight is an exact non-negative decimal: a share count, a percentage, or an amount. */
 export type Weight = { readonly units: bigint; readonly scale: number }
 
+/** The text of a weight. The database CHECKs it too (db/schema/app.ts). */
+export const WEIGHT = /^(0|[1-9][0-9]*)(?:\.([0-9]+))?$/
+
 export function parseWeight(text: string): Weight {
-  const match = /^(0|[1-9][0-9]*)(?:\.([0-9]+))?$/.exec(text)
+  const match = WEIGHT.exec(text)
   if (!match) throw new Error(`Invalid split weight: ${text}`)
   const fraction = (match[2] ?? '').replace(/0+$/, '')
   return { units: BigInt((match[1] ?? '0') + fraction), scale: fraction.length }
