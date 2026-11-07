@@ -120,7 +120,7 @@ Proofs:
 | 06, 09, 13, 15–19, 22, 23 | Done | `db` "creates every missed month…", "never duplicates when two runs race", "stops a series…", "counts an edited rule…". Each occurrence gets a deterministic ID from its link, so a duplicate fails on the primary key even if the lock were bypassed. Cron checked on the dev server: two runs created three weekly copies once. |
 | 10, 11 | Done | No read path writes. |
 | 12, 14 | Done | `recurring.process`. `db` "lets a member process one group only, and records them". Write scope belongs to the MCP area. |
-| 24 | Done | The scheduled job logs a failed occurrence and stops that run; `recurring.process` fails the call. |
+| 24 | Done | The scheduled job logs a failed occurrence, skips its link for the rest of the run and creates the other links; the next run tries it again. `recurring.process` fails the call. `db/expenses.test.ts` "skips a link that always fails in the scheduled run". |
 | 25 | Done | `recurring.list` (open series, non-payments, largest amount first). |
 
 ## Receipts (P-RECEIPT)

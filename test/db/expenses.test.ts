@@ -13,7 +13,7 @@ import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense } f
 import { type Principal } from '~/server/access'
 import { downloadReceipt, uploadReceipt } from '~/server/receipts'
 import { fakeBucket } from './fake-bucket'
-import { listRecurring, materializeDue, processGroup } from '~/server/recurring'
+import { listRecurring, materializeDue, occurrenceId, processGroup } from '~/server/recurring'
 import { resetTestDatabase, testUsers } from './setup'
 
 let pool: Pool
@@ -324,6 +324,26 @@ describe('recurring expenses', () => {
     }
     const [gym] = await tx((db) => db.select({ deleted: expenses.deletedAt }).from(expenses).where(eq(expenses.id, 'gym')))
     expect(gym?.deleted).toBeNull()
+  })
+
+  it('skips a link that always fails in the scheduled run, and creates the other links (P-RECUR-24)', async () => {
+    const solo = (over: Partial<ExpenseDraft>) =>
+      draft({ payers: [{ participantId: 'pm', amount: '90.00' }], shares: [{ participantId: 'pm', weight: '1' }], recurrence: 'daily', ...over })
+    const create = (expenseId: string, expense: ExpenseDraft) => tx((db) => createExpense(db, { principal: mallory, group: 'g2', expenseId, idempotencyKey: key(), expense }))
+    await create('broken', solo({ title: 'Broken', expenseDate: '2026-07-30' }))
+    await create('fine', solo({ title: 'Fine', expenseDate: '2026-07-31' }))
+    // The broken link is due first, and the ID of its next occurrence is taken, so its insert always fails.
+    const [link] = await tx((db) => db.select().from(recurringLinks).where(eq(recurringLinks.currentFrameExpenseId, 'broken')))
+    if (!link) throw new Error('missing link')
+    await create(await occurrenceId(link.id), solo({ title: 'Taken', recurrence: 'none' }))
+    const failed: string[] = []
+    const created = await materializeDue({ today: '2026-08-01', groupId: 'g2', transaction: (work) => tx(work), onError: (_error, linkId) => failed.push(linkId) })
+    expect(failed).toEqual([link.id])
+    const fine = await tx((db) => listExpenses(db, { principal: mallory, group: 'g2', filter: { search: 'Fine' }, cursor: null, limit: 50 }))
+    expect(fine.expenses.map((e) => e.expenseDate)).toEqual(['2026-08-01', '2026-07-31'])
+    expect(created).toEqual([fine.expenses[0]?.id])
+    // An explicit request still fails on the broken link.
+    await expect(tx((db) => processGroup(db, { principal: mallory, group: 'g2', today: '2026-08-01', transaction: (work) => work(db) }))).rejects.toBeDefined()
   })
 })
 

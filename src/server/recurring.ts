@@ -70,7 +70,7 @@ export async function stopRecurrence(tx: Db, data: { expenseId: string }) {
  * second run that somehow reaches the same link fails on the primary key
  * instead of creating a duplicate.
  */
-async function occurrenceId(linkId: string) {
+export async function occurrenceId(linkId: string) {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`agentsplit-recurrence:${linkId}`)))
   return idOfBytes(digest.slice(0, 21))
 }
@@ -149,30 +149,38 @@ export const MAX_OCCURRENCES_PER_RUN = 50
 
 /**
  * Creates every due occurrence, one transaction each, so missed periods are
- * caught up one by one (P-RECUR-09): each occurrence opens the next link. A
- * failed occurrence is logged and skipped by the scheduled job (P-RECUR-24);
+ * caught up one by one (P-RECUR-09): each occurrence opens the next link.
  * `transaction` must open a SERIALIZABLE transaction.
+ *
+ * With `onError` (the scheduled job), a link that fails is reported, skipped
+ * for the rest of the run, and the run continues with the other links
+ * (P-RECUR-24); the next run tries it again. Without it (a member's explicit
+ * request), the first failure fails the call.
  */
 export async function materializeDue(data: {
   today: string
   groupId?: string
   principal?: Principal
   transaction: <A>(work: (tx: Db) => Promise<A>) => Promise<A>
-  onError?: (error: unknown) => void
+  onError?: (error: unknown, linkId: string) => void
 }): Promise<string[]> {
   const created: string[] = []
   const skip = new Set<string>()
   while (created.length < MAX_OCCURRENCES_PER_RUN) {
+    const attempt: { linkId: string | null } = { linkId: null }
     let step: { done: true } | { done: false; id: string | null }
     try {
       step = await data.transaction(async (tx) => {
         const link = await nextDueLink(tx, { today: data.today, groupId: data.groupId, skip })
-        return link ? { done: false as const, id: await materialize(tx, { link, principal: data.principal ?? null }) } : { done: true as const }
+        if (!link) return { done: true as const }
+        attempt.linkId = link.id
+        return { done: false as const, id: await materialize(tx, { link, principal: data.principal ?? null }) }
       })
     } catch (error) {
-      if (!data.onError) throw error
-      data.onError(error)
-      break
+      if (!data.onError || attempt.linkId === null) throw error
+      data.onError(error, attempt.linkId)
+      skip.add(attempt.linkId)
+      continue
     }
     if (step.done) break
     if (step.id) created.push(step.id)
