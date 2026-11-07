@@ -1,7 +1,7 @@
 import { requireSignedIn } from '~/client/queries/account'
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, Outlet, redirect, useRouterState } from '@tanstack/react-router'
-import { ArrowLeftRight, BarChart3, ChevronDown, Info, Receipt, RefreshCw, Scale, ScrollText, Settings, Users } from 'lucide-react'
+import { ChevronDown, RefreshCw, Users } from 'lucide-react'
 import { cn } from '~/client/cn'
 import { money } from '~/client/components/money'
 import { groupQuery } from '~/client/queries'
@@ -36,13 +36,13 @@ export const Route = createFileRoute('/$group')({
 })
 
 const TABS = [
-  { to: '/$group/expenses', label: 'Expenses', Icon: Receipt },
-  { to: '/$group/payments', label: 'Payments', Icon: ArrowLeftRight },
-  { to: '/$group/balances', label: 'Balances', Icon: Scale },
-  { to: '/$group/information', label: 'Information', Icon: Info },
-  { to: '/$group/stats', label: 'Stats', Icon: BarChart3 },
-  { to: '/$group/activity', label: 'Log', Icon: ScrollText },
-  { to: '/$group/edit', label: 'Settings', Icon: Settings },
+  { to: '/$group/expenses', label: 'Expenses' },
+  { to: '/$group/payments', label: 'Payments' },
+  { to: '/$group/balances', label: 'Balances' },
+  { to: '/$group/information', label: 'Information' },
+  { to: '/$group/stats', label: 'Stats' },
+  { to: '/$group/activity', label: 'Log' },
+  { to: '/$group/edit', label: 'Settings' },
 ] as const
 
 /**
@@ -79,7 +79,7 @@ function GroupLayout() {
           aria-label="Group"
           className="flex gap-x-1 overflow-x-auto px-4 [mask-image:linear-gradient(to_right,#000_calc(100%-2.5rem),transparent)] [scrollbar-width:none] sm:gap-x-4 sm:px-0 sm:[mask-image:none]"
         >
-          {TABS.map(({ to, label, Icon }) => (
+          {TABS.map(({ to, label }) => (
             <Link
               key={to}
               to={to}
@@ -87,7 +87,6 @@ function GroupLayout() {
               className="inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 border-transparent px-2 py-3 text-sm whitespace-nowrap text-muted-foreground"
               activeProps={{ className: 'border-primary! text-foreground! font-medium' }}
             >
-              <Icon className="hidden h-4 w-4 lg:block" aria-hidden="true" />
               {label}
             </Link>
           ))}
@@ -139,7 +138,7 @@ function BalanceRail({ group, hideOnMobile, summaryOnly }: { group: string; hide
       aria-label="Group balances"
       data-testid="group-balance-summary"
       className={cn(
-        'relative z-20 h-fit self-start border bg-card p-3 md:sticky md:p-4 md:top-24 md:col-start-2 md:row-start-1 md:max-h-[calc(100dvh-7rem)] md:overflow-y-auto',
+        'relative z-20 h-fit self-start rounded-2xl border bg-card p-3 md:sticky md:p-4 md:top-24 md:col-start-2 md:row-start-1 md:max-h-[calc(100dvh-7rem)] md:overflow-y-auto',
         hideOnMobile && 'max-md:hidden',
       )}
     >

@@ -230,7 +230,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
       </h2>
       {props.mode === 'edit' && <Attribution detail={props.detail} />}
 
-      <section className="space-y-2 border bg-card p-4 sm:space-y-4" aria-label={income ? 'Income details' : 'Expense details'}>
+      <section className="space-y-2 rounded-2xl border bg-card p-4 sm:space-y-4" aria-label={income ? 'Income details' : 'Expense details'}>
         <Field id="title" label="Description" error={shown('title')}>
           <Input
             id="title"
@@ -292,9 +292,9 @@ export function ExpenseForm(props: ExpenseFormProps) {
               ))}
             </NativeSelect>
           ) : (
-            <ul className="divide-y border">
+            <ul className="divide-y">
               {group.participants.map((p) => (
-                <li key={p.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                <li key={p.id} className="flex items-center justify-between gap-3 py-2.5">
                   <Label htmlFor={`payer-${p.id}`} className="font-normal">
                     {p.name}
                   </Label>
@@ -335,7 +335,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
         </fieldset>
       </section>
 
-      <section className="space-y-3 border bg-card p-4" aria-labelledby="paid-for">
+      <section className="space-y-3 rounded-2xl border bg-card p-4" aria-labelledby="paid-for">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 id="paid-for" className="text-sm font-semibold">
             {income ? 'Received for' : 'Paid for'}
@@ -358,13 +358,13 @@ export function ExpenseForm(props: ExpenseFormProps) {
             ))}
           </NativeSelect>
         </Field>
-        <ul className="divide-y border">
+        <ul className="divide-y">
           {group.participants.map((p) => {
             const selected = !!state.selected[p.id]
             const input = state.splitMode === 'amount' ? amountInput(state, auto, p.id) : { value: state.weights[p.id] ?? '', placeholder: '' }
             const error = rowError('shares', p.id)
             return (
-              <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id={`share-${p.id}`}
@@ -418,7 +418,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
         )}
       </section>
 
-      <details className="border bg-card p-4" open={!!state.notes || state.documents.length > 0 || !!shown('notes')}>
+      <details className="rounded-2xl border bg-card p-4" open={!!state.notes || state.documents.length > 0 || !!shown('notes')}>
         <summary className="cursor-pointer font-medium">Notes & receipts</summary>
         <div className="mt-4 space-y-4">
           <Field id="notes" label="Notes" error={shown('notes')}>
@@ -435,7 +435,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
         </div>
       </details>
 
-      <details className="border bg-card p-4" open={state.kind === 'payment' || state.recurrence !== 'none'}>
+      <details className="rounded-2xl border bg-card p-4" open={state.kind === 'payment' || state.recurrence !== 'none'}>
         <summary className="cursor-pointer font-medium">
           More options
           <span className="ml-2 text-sm font-normal text-muted-foreground">
@@ -567,7 +567,7 @@ function Summary(props: { state: FormState; names: ReadonlyMap<string, string>; 
           .join(', ')
   const people = Object.values(state.selected).filter(Boolean).length
   return (
-    <aside className="hidden border bg-muted/40 p-4 text-sm sm:block" aria-label="Expense total">
+    <aside className="hidden rounded-2xl border bg-muted/40 p-4 text-sm sm:block" aria-label="Expense total">
       <p className="text-2xl tabular-nums">{amount}</p>
       <p className="text-muted-foreground">
         {state.currency} · {payers || 'No payer yet'} · {people} {people === 1 ? 'person' : 'people'}

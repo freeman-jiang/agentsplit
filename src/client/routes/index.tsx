@@ -245,12 +245,12 @@ function Dashboard() {
         ) : !feed.data ? (
           <p role="status">Loading expenses…</p>
         ) : expenses.length === 0 ? (
-          <div className="border border-dashed px-6 py-12 text-center">
+          <div className="rounded-2xl border border-dashed px-6 py-12 text-center">
             <h2 className="font-display text-xl">No expenses here yet</h2>
             <p className="mt-2 text-sm text-muted-foreground">Add an expense or adjust your filters.</p>
           </div>
         ) : (
-          <div aria-label="Expense history" className="divide-y border">
+          <div aria-label="Expense history" className="divide-y overflow-hidden rounded-2xl border">
             {expenses.map((expense) => (
               <FeedCard key={expense.id} expense={expense} />
             ))}

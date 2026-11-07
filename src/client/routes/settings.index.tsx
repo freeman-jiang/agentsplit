@@ -189,7 +189,7 @@ function ApiKeys(props: { keys: readonly Key[] }) {
         </p>
       )}
       {secret && (
-        <div className="space-y-3 border bg-card p-4">
+        <div className="space-y-3 rounded-2xl border bg-card p-4">
           <p className="font-medium">Copy your new key now. It is shown only once.</p>
           <p className="text-sm text-muted-foreground">
             Paste the key exactly as copied into your client’s API key or X-API-Key header field. No prefix is needed.

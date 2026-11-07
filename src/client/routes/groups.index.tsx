@@ -210,7 +210,7 @@ function GroupCard({ group, starred, archived, marks }: { group: Group; starred:
     <li>
       {/* The whole card opens the group; the name stays a real link for keyboards and new tabs. */}
       <div
-        className="w-full cursor-pointer rounded-lg border bg-card px-4 py-3 shadow-sm hover:bg-secondary/60"
+        className="w-full cursor-pointer rounded-2xl border bg-card px-4 py-3 transition-colors hover:bg-accent"
         onClick={() => navigate({ to: '/$group', params })}
       >
         <div className="flex justify-between gap-2">

@@ -2,63 +2,65 @@
 @config '../../tailwind.config.cjs';
 
 @layer base {
+  /* Monochrome and quiet, after OpenAI and Apple: white or near-black surfaces,
+     hairline borders, one ink color, and color only for money. */
   :root {
-    --background: 42 39% 94%;
-    --foreground: 84 9% 20%;
-    --card: 45 57% 97%;
-    --card-foreground: 84 9% 20%;
-    --popover: 45 57% 97%;
-    --popover-foreground: 84 9% 20%;
-    --primary: 90 17% 32%;
-    --primary-foreground: 45 100% 98%;
-    --secondary: 45 28% 88%;
-    --secondary-foreground: 84 9% 20%;
-    --muted: 45 28% 88%;
-    --muted-foreground: 67 8% 37%;
-    --accent: 60 19% 87%;
-    --accent-foreground: 90 17% 27%;
-    --destructive: 12 50% 39%;
-    --destructive-foreground: 45 100% 98%;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 5%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 5%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 5%;
+    --primary: 0 0% 5%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96.5%;
+    --secondary-foreground: 0 0% 5%;
+    --muted: 0 0% 96.5%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 0 0% 95%;
+    --accent-foreground: 0 0% 5%;
+    --destructive: 3 78% 44%;
+    --destructive-foreground: 0 0% 100%;
     /* Money the viewer owes, and money owed to them, on every screen. */
-    --owe: 14 62% 42%;
-    --owed: 152 45% 28%;
-    --border: 47 19% 81%;
-    --input: 47 19% 75%;
-    --ring: 90 17% 32%;
-    --radius: 0rem;
-    --chart-1: 90 17% 32%;
-    --chart-2: 25 33% 44%;
-    --chart-3: 170 18% 37%;
-    --chart-4: 43 40% 49%;
-    --chart-5: 10 28% 47%;
+    --owe: 3 78% 44%;
+    --owed: 145 63% 29%;
+    --border: 0 0% 91%;
+    --input: 0 0% 87%;
+    --ring: 0 0% 5%;
+    --radius: 0.75rem;
+    --chart-1: 0 0% 5%;
+    --chart-2: 0 0% 45%;
+    --chart-3: 0 0% 70%;
+    --chart-4: 145 63% 29%;
+    --chart-5: 3 78% 44%;
   }
   .dark {
-    --background: 60 8% 13%;
-    --foreground: 45 32% 90%;
-    --card: 67 11% 16%;
-    --card-foreground: 45 32% 90%;
-    --popover: 67 11% 16%;
-    --popover-foreground: 45 32% 90%;
-    --primary: 85 27% 72%;
-    --primary-foreground: 90 28% 16%;
-    --secondary: 78 13% 19%;
-    --secondary-foreground: 45 32% 90%;
-    --muted: 78 13% 19%;
-    --muted-foreground: 60 11% 68%;
-    --accent: 78 15% 23%;
-    --accent-foreground: 85 27% 82%;
-    --destructive: 15 69% 72%;
-    --destructive-foreground: 12 40% 16%;
-    --owe: 14 75% 70%;
-    --owed: 145 32% 62%;
-    --border: 73 10% 28%;
-    --input: 73 10% 34%;
-    --ring: 85 27% 72%;
-    --chart-1: 85 27% 72%;
-    --chart-2: 25 45% 67%;
-    --chart-3: 170 25% 60%;
-    --chart-4: 43 47% 67%;
-    --chart-5: 10 42% 68%;
+    --background: 0 0% 8%;
+    --foreground: 0 0% 93%;
+    --card: 0 0% 11.5%;
+    --card-foreground: 0 0% 93%;
+    --popover: 0 0% 11.5%;
+    --popover-foreground: 0 0% 93%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 5%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 93%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 64%;
+    --accent: 0 0% 16%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 3 90% 68%;
+    --destructive-foreground: 0 0% 5%;
+    --owe: 3 90% 68%;
+    --owed: 142 52% 56%;
+    --border: 0 0% 18%;
+    --input: 0 0% 24%;
+    --ring: 0 0% 98%;
+    --chart-1: 0 0% 93%;
+    --chart-2: 0 0% 64%;
+    --chart-3: 0 0% 40%;
+    --chart-4: 142 52% 56%;
+    --chart-5: 3 90% 68%;
   }
   * {
     @apply border-border;
@@ -66,16 +68,16 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
-  input,
-  select,
-  textarea,
-  button {
-    border-radius: 0;
-  }
 }
 
 .landing-header strong {
-  @apply block font-normal text-primary;
+  @apply block font-semibold text-muted-foreground;
+}
+
+/* The display face is the system sans: headings carry weight and tight tracking instead of a serif. */
+.font-display {
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 /* Spacing and hierarchy shared by the expense editor's existing fields. */
@@ -103,7 +105,7 @@
   @apply outline-2 outline-offset-4 outline-ring;
 }
 .expense-editor .expense-summary {
-  @apply bg-muted p-6;
+  @apply rounded-2xl bg-muted p-6;
 }
 
 @media (pointer: coarse) {

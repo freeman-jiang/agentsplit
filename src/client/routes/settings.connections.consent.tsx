@@ -106,7 +106,7 @@ function ConsentScreen(props: { request: Request; clientName: string | null }) {
         destination, this is an app running on your computer.
       </p>
       <div className="space-y-6">
-        <div className="space-y-4 border bg-card p-5">
+        <div className="space-y-4 rounded-2xl border bg-card p-5">
           <h2 className="font-medium">Requested access</h2>
           <ul className="list-disc space-y-3 ps-5 text-sm">
             {scopes.includes(OAUTH_READ_SCOPE) && (

@@ -72,7 +72,7 @@ export function FeedCard({ expense }: { expense: Item }) {
         <span className="block text-lg tabular-nums">{date.getUTCDate()}</span>
         <span className="sr-only">{date.getUTCFullYear()}</span>
       </time>
-      <span className="hidden h-10 w-10 items-center justify-center bg-muted text-primary sm:flex">
+      <span className="hidden h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground sm:flex">
         <CategoryIcon categoryId={expense.categoryId} className="h-5 w-5" />
       </span>
       <div className="min-w-0">
