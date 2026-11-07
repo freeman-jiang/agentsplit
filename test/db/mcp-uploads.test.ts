@@ -5,8 +5,12 @@
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { receipts, receiptUploads } from '../../db/schema/app'
-import { putUpload } from '~/server/receipt-routes'
 import { removeStaleUploads } from '~/server/receipt-uploads'
+import { LIMITS } from '~/shared/limits'
+import { RECEIPT_CONTENT_TYPES } from '~/shared/vocabulary'
+import { mcpExpense } from '../kit/drafts'
+import { id21 as id } from '../kit/ids'
+import { JPEG as jpeg, png as pngOf } from '../kit/images'
 import { BASE, failure, ok, startHarness, type Harness } from './harness'
 
 let h: Harness
@@ -14,7 +18,7 @@ let alice: Record<string, string>
 let bob: Record<string, string>
 let mallory: Record<string, string>
 
-const id21 = (n: number) => `u${String(n).padStart(20, '0')}`
+const id21 = (n: number) => id('u', n)
 
 beforeAll(async () => {
   h = await startHarness()
@@ -29,27 +33,9 @@ beforeAll(async () => {
 })
 afterAll(() => h.close())
 
-const png = (width: number, height: number) => {
-  const bytes = new Uint8Array(64)
-  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52])
-  new DataView(bytes.buffer).setUint32(16, width)
-  new DataView(bytes.buffer).setUint32(20, height)
-  return bytes
-}
-const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x01, 0xe0, 0x02, 0x80, 0x03, 0x01, 0x22, 0x00])
+const png = (width: number, height: number) => pngOf({ width, height, bytes: 64 })
 
-const expense = {
-  title: 'Groceries',
-  expenseDate: '2026-11-01',
-  amount: '20',
-  currencyCode: 'USD',
-  paidBy: 'pa',
-  paidFor: [
-    { participant: 'pa', shares: '1' },
-    { participant: 'pb', shares: '1' },
-  ],
-  isReimbursement: false,
-}
+const expense = mcpExpense({ paidBy: 'pa', people: ['pa', 'pb'], title: 'Groceries', amount: '20' })
 
 type Target = { uploadId: string; filename: string; method: string; url: string; headers: Record<string, string>; expiresAt: string }
 
@@ -59,16 +45,8 @@ async function create(n: number, uploads: { filename: string; contentType: strin
   return created['uploads'] as Target[]
 }
 
-/** The agent's PUT to a target, with the target's headers unless others are given. */
-const put = (target: Target, body: Uint8Array<ArrayBuffer>, headers = target.headers) =>
-  h.withDb((db) =>
-    putUpload({
-      db,
-      bucket: h.storage.bucket,
-      request: new Request(target.url, { method: 'PUT', headers, body }),
-      token: new URL(target.url).pathname.split('/').pop() ?? '',
-    }),
-  )
+/** The agent's PUT to a target through the app, with the target's headers unless others are given. */
+const put = (target: Target, body: Uint8Array<ArrayBuffer>, headers = target.headers) => h.fetch(new Request(target.url, { method: 'PUT', headers, body }))
 
 const revisionOf = async (n: number) => {
   const read = await ok(h, { name: 'get_expense', args: { groupId: 'g1', expenseId: id21(n) }, headers: alice })
@@ -76,9 +54,9 @@ const revisionOf = async (n: number) => {
 }
 
 describe('agent receipt uploads', () => {
-  it('reports attachments as enabled with the current limits', async () => {
+  it('reports attachments as enabled with the limits the upload enforces', async () => {
     const reference = await ok(h, { name: 'get_reference_data', args: {}, headers: alice })
-    expect(reference['attachments']).toEqual({ enabled: true, contentTypes: ['image/jpeg', 'image/png'], maxBytes: 5_242_880 })
+    expect(reference['attachments']).toEqual({ enabled: true, contentTypes: [...RECEIPT_CONTENT_TYPES], maxBytes: LIMITS.receiptBytes })
   })
 
   it('uploads, attaches and downloads a receipt with the same API key', async () => {
