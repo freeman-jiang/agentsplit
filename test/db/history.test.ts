@@ -17,6 +17,7 @@ import { describeRevision } from '~/shared/history'
 import { minor } from '~/shared/minor'
 import { insertImportedExpense, v1GroupSnapshot } from './history-fixtures'
 import { testDatabase, type TestDatabase } from '../kit/database'
+import { waitFor } from '../kit/wait'
 import { userRows } from '../kit/people'
 
 let database: TestDatabase
@@ -24,7 +25,11 @@ const alice: Principal = { userId: 'u-alice', name: 'Alice Account', email: 'a@e
 const agent: Principal = { userId: 'u-alice', name: 'Alice Account', email: 'a@example.com', source: 'agent', agentKeyId: 'key-123' }
 
 const tx = <A>(work: (db: Db) => Promise<A>) => database.tx(work)
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+/** Waits until the database clock is past the millisecond of `event`, so the next event has a later recorded time. */
+const after = (event: Event) =>
+  waitFor(async () => (await database.pool.query<{ past: boolean }>(`SELECT date_trunc('milliseconds', clock_timestamp()) > $1::timestamptz AS past`, [event.time])).rows[0]?.past === true, {
+    what: `a time after ${event.time}`,
+  })
 let keys = 0
 const key = () => `key-history-${++keys}`
 
@@ -94,10 +99,10 @@ beforeAll(async () => {
   creation = await latestEvent('g1')
   await tx((db) => createExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1', idempotencyKey: key(), expense: draft() }))
   initial = await latestEvent('g1')
-  await sleep(5)
+  await after(initial)
   await tx((db) => updateExpense(db, { principal: agent, groupId: 'g1', expenseId: 'e1', expectedRevision: 1, idempotencyKey: key(), expense: draft({ amount: '90', payers: [{ participantId: 'pa', amount: '90' }], notes: 'edited' }) }))
   edited = await latestEvent('g1')
-  await sleep(5)
+  await after(edited)
   // A rename changes current names only; snapshots keep the names they saved.
   await tx((db) => db.update(participants).set({ name: 'Renamed Bob' }).where(eq(participants.id, 'pb')))
   await tx((db) => deleteExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1', expectedRevision: 2, idempotencyKey: key() }))
