@@ -4,34 +4,16 @@
 // figures, the Log and the files come from src/server/stats.ts, history.ts
 // and export.ts; this file only maps names.
 import { Schema } from 'effect'
-import { legacyDateTime } from '../../../shared/dates'
+import { Id as IdInput } from '../../../shared/api'
 import { LIMITS } from '../../../shared/limits'
-import { mainPayer } from '../../../shared/split'
-import { ACTIVITY_TYPE_BY_NAME, ACTIVITY_TYPE_LIST, ACTIVITY_TYPE_NAMES, RECURRENCE_NAMES, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
-import type { Db } from '../../db'
+import { ACTIVITY_TYPE_BY_NAME, ACTIVITY_TYPE_NAMES, RECURRENCE_NAMES } from '../../../shared/vocabulary'
 import { loadExpenses } from '../../expense-read'
 import * as exports from '../../export'
 import * as history from '../../history'
 import * as stats from '../../stats'
 import { defineTool } from '../registry'
-import { Snapshot, snapshotOf } from './saved'
-import {
-  CalendarDate,
-  CurrencyCodeInput,
-  DateTime,
-  HistoryFields,
-  Id,
-  money,
-  Money,
-  NonNegativeInt,
-  NullableString,
-  RecordedTime,
-  RecurrenceInput,
-  ShortId,
-  SplitModeInput,
-} from './shared'
-
-const optional = <S extends Schema.Top>(schema: S) => Schema.optionalKey(schema)
+import { CalendarDate, CurrencyCodeInput, HistoryFields, PageLimit } from './inputs'
+import { ActivityTypeName, DateTime, expenseRow, ExpenseRow, Id, liveSource, money, Money, NonNegativeInt, NullableString, optional, RecordedTime, Snapshot, snapshotOf } from './wire'
 
 // ---------- get_spending_stats ----------
 
@@ -54,8 +36,8 @@ export const getSpendingStats = defineTool({
   description:
     'Read spending totals, participant shares, categories, monthly trends and recurrence estimates in one selected currency. Optional participantId and inclusive from/to dates select the view. Discover other available currencies in availableCurrencyCodes. Money is exact decimal text. Payments are not spending.',
   input: Schema.Struct({
-    groupId: Schema.String.check(Schema.isMinLength(1)),
-    participantId: optional(Schema.String),
+    groupId: IdInput,
+    participantId: optional(IdInput),
     from: optional(CalendarDate),
     to: optional(CalendarDate),
     currencyCode: optional(CurrencyCodeInput),
@@ -151,66 +133,6 @@ export const getSpendingStats = defineTool({
 
 // ---------- list_activity ----------
 
-const ActivityTypeInput = Schema.Literals(ACTIVITY_TYPE_LIST)
-
-/** The live expense beside a current Log entry (the current app's `expense` convenience field). */
-const LiveExpense = Schema.Struct({
-  id: Id,
-  groupId: Id,
-  title: Schema.String,
-  vendor: NullableString,
-  amount: Money,
-  currencyCode: Schema.String,
-  createdAt: DateTime,
-  expenseDate: DateTime,
-  categoryId: Schema.Int,
-  paidById: Id,
-  originalAmount: Schema.NullOr(Money),
-  originalCurrency: NullableString,
-  conversionRate: NullableString,
-  isReimbursement: Schema.Boolean,
-  splitMode: SplitModeInput,
-  notes: NullableString,
-  recurrenceRule: Schema.NullOr(RecurrenceInput),
-  recurringExpenseLinkId: Schema.NullOr(Id),
-  deletedAt: Schema.NullOr(DateTime),
-  revision: NonNegativeInt,
-})
-
-/** The live expenses on a page, in the list_activity shape. listActivities has checked access to the group. */
-async function liveExpenses(db: Db, data: { groupId: string; ids: readonly string[] }) {
-  const rows = await loadExpenses(db, { ids: data.ids, groupId: data.groupId })
-  return new Map(
-    rows
-      .filter((e) => !e.deleted)
-      .map((e): [string, typeof LiveExpense.Encoded] => [
-        e.id,
-        {
-          id: e.id,
-          groupId: e.groupId,
-          title: e.title,
-          vendor: e.vendor,
-          amount: e.amount,
-          currencyCode: e.currency,
-          createdAt: e.createdAt,
-          expenseDate: legacyDateTime(e.expenseDate),
-          categoryId: e.categoryId,
-          paidById: mainPayer(e) ?? '',
-          originalAmount: e.originalAmount,
-          originalCurrency: e.originalCurrency,
-          conversionRate: e.conversionRate,
-          isReimbursement: e.kind === 'payment',
-          splitMode: SPLIT_MODE_NAMES[e.splitMode],
-          notes: e.notes === '' ? null : e.notes,
-          recurrenceRule: RECURRENCE_NAMES[e.recurrence],
-          recurringExpenseLinkId: e.link?.id ?? null,
-          deletedAt: null,
-          revision: e.revision,
-        },
-      ]),
-  )
-}
-
 export const listActivity = defineTool({
   name: 'list_activity',
   kind: 'read',
@@ -221,13 +143,13 @@ export const listActivity = defineTool({
     recordedFrom: optional(RecordedTime),
     recordedTo: optional(RecordedTime),
     order: optional(Schema.Literals(['asc', 'desc']).annotate({ default: 'desc' })),
-    groupId: ShortId,
+    groupId: IdInput,
     cursor: optional(NonNegativeInt.annotate({ default: 0 })),
-    limit: optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax })).annotate({ default: 5 })),
-    expenseId: optional(ShortId),
+    limit: optional(PageLimit(LIMITS.agentActivityPage)),
+    expenseId: optional(IdInput),
     from: optional(CalendarDate),
     to: optional(CalendarDate),
-    activityType: optional(ActivityTypeInput),
+    activityType: optional(ActivityTypeName),
   }),
   strict: [''],
   output: Schema.Struct({
@@ -238,7 +160,7 @@ export const listActivity = defineTool({
         id: Id,
         groupId: Id,
         time: DateTime,
-        activityType: ActivityTypeInput,
+        activityType: ActivityTypeName,
         participantId: NullableString,
         expenseId: NullableString,
         data: NullableString,
@@ -249,7 +171,7 @@ export const listActivity = defineTool({
         actorName: NullableString,
         actorUserId: NullableString,
         agentKeyId: NullableString,
-        expense: optional(LiveExpense),
+        expense: optional(ExpenseRow),
       }),
     ),
     hasMore: Schema.Boolean,
@@ -257,12 +179,22 @@ export const listActivity = defineTool({
   }),
   run: async ({ db, principal }, input) => {
     const { activityType, ...query } = input
-    const page = await history.listActivities(db, { principal, withActors: true, ...query, ...(activityType ? { type: ACTIVITY_TYPE_BY_NAME[activityType] } : {}) })
+    const page = await history.listActivities(db, {
+      principal,
+      withActors: true,
+      ...query,
+      limit: query.limit ?? LIMITS.agentActivityPage,
+      ...(activityType ? { type: ACTIVITY_TYPE_BY_NAME[activityType] } : {}),
+    })
     const { groupId } = page
     const historical = input.asOf !== undefined || input.atActivityId !== undefined
-    const live = historical
-      ? new Map<string, typeof LiveExpense.Encoded>()
-      : await liveExpenses(db, { groupId, ids: [...new Set(page.activities.flatMap((a) => (a.expense && a.expenseId ? [a.expenseId] : [])))] })
+    // The current app's convenience field: the live expense beside a current entry. listActivities has checked access to the group.
+    const ids = historical ? [] : [...new Set(page.activities.flatMap((a) => (a.expense && a.expenseId ? [a.expenseId] : [])))]
+    const live = new Map(
+      (await loadExpenses(db, { ids, groupId }))
+        .filter((e) => !e.deleted)
+        .map((e) => [e.id, expenseRow(liveSource(e), { groupId: e.groupId, revision: e.revision, linkId: e.link?.id ?? null, deletedAt: null })]),
+    )
     return {
       atActivityId: page.atActivityId,
       asOf: page.asOf,
@@ -300,7 +232,7 @@ export const exportGroup = defineTool({
   kind: 'read',
   description:
     'Export the authorized group as CSV or JSON. Returns filename, contentType and complete UTF-8 content. JSON includes preserved audit history; deleted expenses are excluded from current expense rows. This read does not process recurrence.',
-  input: Schema.Struct({ groupId: ShortId, format: optional(Schema.Literals(['json', 'csv']).annotate({ default: 'json' })) }),
+  input: Schema.Struct({ groupId: IdInput, format: optional(Schema.Literals(['json', 'csv']).annotate({ default: 'json' })) }),
   strict: [''],
   output: Schema.Struct({ filename: Schema.String, contentType: Schema.String, content: Schema.String }),
   run: async ({ db, principal }, input) => {
@@ -309,4 +241,3 @@ export const exportGroup = defineTool({
   },
 })
 
-export const historyTools = [getSpendingStats, listActivity, exportGroup]

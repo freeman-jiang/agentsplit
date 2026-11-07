@@ -75,19 +75,17 @@ const readOnly: AfterCommit = () => {
   throw new Error('Only a write tool can run work after its commit')
 }
 
-const SCHEMAS = new Map(MCP_TOOLS.map((tool) => [tool.name, { input: inputOf(tool), output: outputOf(tool) }]))
+const REGISTERED = MCP_TOOLS.map((tool) => ({ tool, input: inputOf(tool), output: outputOf(tool) }))
 
 /** What every tool call of the process shares: the app's URL for links, and the receipts bucket. */
 export type McpSettings = { readonly baseUrl: string; readonly bucket: Bucket }
 
 export function createServer(data: { db: Db; principal: McpPrincipal; settings: McpSettings }): McpServer {
   const server = new McpServer(SERVER_INFO, { instructions: INSTRUCTIONS })
-  for (const tool of MCP_TOOLS) {
-    const schemas = SCHEMAS.get(tool.name)
-    if (!schemas) throw new Error(`No schemas for ${tool.name}`)
+  for (const { tool, input, output } of REGISTERED) {
     server.registerTool(
       tool.name,
-      { description: tool.description, inputSchema: schemas.input, outputSchema: schemas.output, annotations: annotations(tool) },
+      { description: tool.description, inputSchema: input, outputSchema: output, annotations: annotations(tool) },
       async (args: unknown) => {
         const call = { name: `MCP tool ${tool.name}` }
         const context = { principal: data.principal, ...data.settings }

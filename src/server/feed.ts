@@ -8,7 +8,7 @@ import { Invalid, NotFound } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import type { ExpenseKind, GroupKind, Role } from '../shared/vocabulary'
 import { groupIdOf, type Principal } from './access'
-import { attributionEvents, attributionOf, type AttributionEvent } from './activity'
+import { attributionOf } from './activity'
 import { balanceSums, settlementsOf, type BalanceSum } from './balances'
 import type { Db } from './db'
 import { expenseColumns, involves, toExpense, type ExpenseRow } from './expense-read'
@@ -32,9 +32,6 @@ export type FeedFilter = {
 
 export type FeedCursor = { readonly date: string; readonly createdAt: string; readonly id: string }
 
-/** The attribution of expense row `e`, with the accounts' current names. */
-const attribution = attributionEvents({ groupId: sql`e.group_id`, expenseId: sql`e.id` })
-
 // ---------- feed ----------
 
 type FeedRow = ExpenseRow & {
@@ -46,7 +43,6 @@ type FeedRow = ExpenseRow & {
   viewer_participant_id: string | null
   cursor_created: string
   people: { id: string; name: string }[]
-  attribution: AttributionEvent[]
 }
 
 /**
@@ -85,15 +81,14 @@ export async function listFeed(db: Db, data: { principal: Principal; filter: Fee
     where.push(sql`(e.expense_date, e.created_at, e.id) < (${data.cursor.date}::date, ${data.cursor.createdAt}::timestamptz, ${data.cursor.id})`)
 
   const result = await db.execute<FeedRow>(sql`
-    SELECT ${expenseColumns()},
+    SELECT ${expenseColumns({ attribution: true })},
       g.kind AS group_kind, g.name AS group_name, g.slug AS group_slug,
       pc.expense_id AS context_expense_id, ce.title AS context_expense_title,
       m.participant_id AS viewer_participant_id,
       to_char(e.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_created,
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${participantName}) ORDER BY p.id) FROM participants p
         WHERE p.id IN (SELECT participant_id FROM expense_payers WHERE expense_id = e.id
-          UNION SELECT participant_id FROM expense_shares WHERE expense_id = e.id)), '[]') AS people,
-      ${attribution} AS attribution
+          UNION SELECT participant_id FROM expense_shares WHERE expense_id = e.id)), '[]') AS people
     FROM expenses e
     JOIN memberships m ON m.group_id = e.group_id AND m.user_id = ${data.principal.userId} AND m.active
     JOIN groups g ON g.id = e.group_id
@@ -113,7 +108,7 @@ export async function listFeed(db: Db, data: { principal: Principal; filter: Fee
       contextExpenseId: r.context_expense_id,
       contextExpenseTitle: r.context_expense_title,
       participantId: r.viewer_participant_id,
-      attribution: attributionOf({ events: r.attribution, viewer: data.principal.userId }),
+      attribution: attributionOf({ events: r.events ?? [], viewer: data.principal.userId }),
     })),
     nextCursor: result.rows.length > limit && last ? { date: last.expense_date, createdAt: last.cursor_created, id: last.id } : null,
   }
@@ -156,7 +151,6 @@ type ContextRow = ExpenseRow & {
   context_expense_title: string | null
   sums: BalanceSum[] | null
   invitations: { id: string; email: string; participantId: string; participantName: string; expiresAt: string }[] | null
-  attribution: AttributionEvent[]
 }
 
 /**
@@ -167,7 +161,7 @@ type ContextRow = ExpenseRow & {
  */
 export async function expenseContext(db: Db, data: { principal: Principal; expenseId: string }) {
   const result = await db.execute<ContextRow>(sql`
-    SELECT ${expenseColumns()},
+    SELECT ${expenseColumns({ attribution: true })},
       m.role, m.participant_id AS viewer_participant_id, g.name AS g_name, g.slug AS g_slug, g.kind AS g_kind,
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${participantName}) ORDER BY p.name, p.id)
         FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
@@ -177,8 +171,7 @@ export async function expenseContext(db: Db, data: { principal: Principal; expen
         SELECT json_agg(json_build_object('id', i.id, 'email', i.email, 'participantId', i.participant_id,
           'participantName', coalesce(i.participant_name, ip.name), 'expiresAt', ${iso(sql`i.expires_at`)}) ORDER BY i.created_at, i.id)
         FROM invitations i JOIN participants ip ON ip.id = i.participant_id
-        WHERE i.group_id = g.id AND ${listedInvitation({ i: sql`i`, kind: sql`g.kind` })}), '[]') END AS invitations,
-      ${attribution} AS attribution
+        WHERE i.group_id = g.id AND ${listedInvitation({ i: sql`i`, kind: sql`g.kind` })}), '[]') END AS invitations
     FROM expenses e
     JOIN memberships m ON m.group_id = e.group_id AND m.user_id = ${data.principal.userId} AND m.active
     JOIN groups g ON g.id = e.group_id
@@ -190,7 +183,7 @@ export async function expenseContext(db: Db, data: { principal: Principal; expen
   if (!r) throw new NotFound({ entity: 'expense', id: data.expenseId })
   return {
     expense: toExpense(r),
-    attribution: attributionOf({ events: r.attribution, viewer: data.principal.userId }),
+    attribution: attributionOf({ events: r.events ?? [], viewer: data.principal.userId }),
     group: { id: r.group_id, name: r.g_name, slug: r.g_slug, kind: r.g_kind },
     role: r.role,
     participantId: r.viewer_participant_id,

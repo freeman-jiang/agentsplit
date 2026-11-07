@@ -5,15 +5,14 @@
 // in either format (src/shared/snapshots.ts).
 import { sql, type SQL } from 'drizzle-orm'
 import { Invalid, NotFound } from '../shared/api'
-import type { CurrencyCode } from '../shared/currencies'
 import type { Category, SavedExpense, SavedState } from '../shared/history'
 import { compareIds } from '../shared/ids'
 import { readSnapshot } from '../shared/snapshots'
-import type { ActivityType, ExpenseKind, Recurrence } from '../shared/vocabulary'
+import type { ActivityType, ExpenseKind } from '../shared/vocabulary'
 import { memberCte, requireActive, type Principal } from './access'
-import { activitySource, activityText, notBaseline, savedTitle } from './activity'
+import { activitySource, activityText, attributionEvents, notBaseline, savedTitle, type AttributionEvent } from './activity'
 import type { Db } from './db'
-import { tombstonesJson, type Tombstone } from './expense-read'
+import { tombstonesJson, type ExpenseFilter, type Tombstone } from './expense-read'
 import { iso } from './sql'
 
 export type Boundary = { readonly asOf?: string; readonly atActivityId?: string }
@@ -200,12 +199,19 @@ type EventRow = { id: string; time: string; type: ActivityType; revision: number
 /**
  * One expense as saved: at a revision, or at the revision in effect at a
  * boundary. A deletion event returns the last saved state with its deletion
- * time. Never reads the live expense row.
+ * time. Never reads the live expense row. `attribution` adds the create and
+ * update events up to that revision, with the names recorded then (P-FEED-40).
  */
-export async function getSavedExpense(db: Db, data: { principal: Principal; groupId: string; expenseId: string; revision?: number } & Boundary) {
+export async function getSavedExpense(
+  db: Db,
+  data: { principal: Principal; groupId: string; expenseId: string; revision?: number; attribution?: boolean } & Boundary,
+) {
   checkBoundary(data)
   const byRevision = data.revision !== undefined
-  const result = await db.execute<Head & { event: EventRow | null; tombstones: Tombstones }>(sql`
+  const events = data.attribution
+    ? attributionEvents({ groupId: sql`g.id`, expenseId: sql`${data.expenseId}`, through: sql`(SELECT id FROM ev)` })
+    : sql`NULL::json`
+  const result = await db.execute<Head & { event: EventRow | null; tombstones: Tombstones; events: AttributionEvent[] | null }>(sql`
     WITH ${memberCte(data)}, ${boundaryCte(data)},
     ev AS (
       SELECT a.* FROM activities a, g
@@ -219,6 +225,7 @@ export async function getSavedExpense(db: Db, data: { principal: Principal; grou
         'saved', (SELECT s.snapshot FROM activities s WHERE s.group_id = ev.group_id AND s.expense_id = ev.expense_id
           AND s.expense_revision IS NOT NULL AND s.sequence < ev.sequence AND s.snapshot IS NOT NULL ORDER BY s.sequence DESC LIMIT 1))
         FROM ev) AS event,
+      ${events} AS events,
       ${tombstonesJson(sql`g.id`)} AS tombstones,
       ${categoriesColumn}
     FROM g
@@ -237,6 +244,8 @@ export async function getSavedExpense(db: Db, data: { principal: Principal; grou
     expense: withTombstones(state.expense, head.tombstones),
     deletedAt: deleted ? event.time : null,
     history: { activityId: event.id, recordedAt: event.time, revision: event.revision, deleted },
+    /** null unless asked for. */
+    attributionEvents: head.events,
   }
 }
 
@@ -297,27 +306,16 @@ export async function historicalLedger(db: Db, data: { principal: Principal; gro
   }
 }
 
-export type HistoricalFilter = {
-  readonly search?: string
-  readonly vendor?: string
-  readonly currency?: CurrencyCode
-  readonly categoryId?: number
-  readonly payerId?: string
-  readonly participantId?: string
-  readonly kind?: ExpenseKind
-  readonly recurrence?: Recurrence
-  readonly from?: string
-  readonly to?: string
-}
-
 /** Filters saved values (never live ones), then sorts by saved expense date, creation time and ID, newest first. */
-export function filterSaved(expenses: readonly SavedExpense[], f: HistoricalFilter): SavedExpense[] {
+/** The same filter as the live list (ledger.ts listExpenses); its sort does not apply. */
+export function filterSaved(expenses: readonly SavedExpense[], f: ExpenseFilter): SavedExpense[] {
   const text = f.search?.trim().toLocaleLowerCase()
+  const vendor = f.vendor?.trim().toLocaleLowerCase()
   return expenses
     .filter(
       (e) =>
-        (!text || [e.title, e.vendor ?? ''].some((v) => v.toLocaleLowerCase().includes(text))) &&
-        (!f.vendor || e.vendor?.toLocaleLowerCase() === f.vendor.toLocaleLowerCase()) &&
+        (!text || [e.title, e.vendor ?? '', e.notes].some((v) => v.toLocaleLowerCase().includes(text))) &&
+        (!vendor || e.vendor?.toLocaleLowerCase() === vendor) &&
         (!f.currency || e.currency === f.currency) &&
         (f.categoryId === undefined || e.categoryId === f.categoryId) &&
         (!f.payerId || e.payers.some((p) => p.participantId === f.payerId)) &&
@@ -332,7 +330,7 @@ export function filterSaved(expenses: readonly SavedExpense[], f: HistoricalFilt
 
 export async function listSavedExpenses(
   db: Db,
-  data: { principal: Principal; groupId: string; filter: HistoricalFilter; cursor?: number; limit?: number } & Boundary,
+  data: { principal: Principal; groupId: string; filter: ExpenseFilter; cursor?: number; limit?: number } & Boundary,
 ) {
   const ledger = await historicalLedger(db, data)
   const cursor = data.cursor ?? 0

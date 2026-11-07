@@ -5,7 +5,7 @@ import { Schema } from 'effect'
 import { LIMITS } from '../../../shared/limits'
 import * as account from '../../account'
 import { defineTool } from '../registry'
-import { Id } from './shared'
+import { Id } from './wire'
 
 export const updateProfile = defineTool({
   name: 'update_profile',
@@ -25,4 +25,3 @@ export const updateProfile = defineTool({
   run: ({ db, principal }, { name }) => account.updateProfile(db, { principal, name }),
 })
 
-export const accountTools = [updateProfile]

@@ -2,7 +2,7 @@
 // email-bound invitations. Every function checks access itself, so the RPC
 // handlers and the MCP tools cannot skip it. Ported from the current app's
 // createGroup and updateGroup (src/lib/api.ts) and src/lib/group-access.ts.
-import { and, eq, inArray, ne, sql } from 'drizzle-orm'
+import { and, eq, inArray, ne, sql, type SQL } from 'drizzle-orm'
 import { groups, groupSlugHistory, invitations, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { Conflict, Forbidden, groupAccessDenied, Invalid, NotFound } from '../shared/api'
@@ -32,6 +32,21 @@ type ChangesInput = typeof GroupChanges.Type
 
 // ---------- reads ----------
 
+/**
+ * A page of the caller's named groups, newest first, as the CTE `page`: the
+ * directory and MCP's list_groups list the same groups in the same order.
+ * `refs` keeps only the groups that its references name.
+ */
+const groupPage = (data: { principal: Principal; offset: number; limit: number; refs?: SQL }) => sql`page AS (
+  SELECT g.id, g.slug, g.name, g.information, g.revision, g.default_currency, g.created_at,
+    (SELECT count(*)::int FROM participants p WHERE p.group_id = g.id) AS participant_count
+  FROM memberships m JOIN groups g ON g.id = m.group_id
+  WHERE m.user_id = ${data.principal.userId} AND m.active AND g.kind = 'named'
+    ${data.refs ? sql`AND g.id IN (SELECT ${groupIdOf(sql`r.ref`)} FROM ${data.refs})` : sql``}
+  ORDER BY g.created_at DESC, g.id DESC
+  OFFSET ${data.offset} LIMIT ${data.limit + 1}
+)`
+
 type DirectoryRow = {
   groups: { id: string; slug: string | null; name: string; participantCount: number; createdAt: string }[]
   totals: { currency: string; net: string }[]
@@ -47,17 +62,9 @@ export async function listDirectory(db: Db, data: { principal: Principal; offset
   const offset = Math.max(Math.trunc(data.offset) || 0, 0)
   const result = await db.execute<DirectoryRow>(sql`
     WITH mine AS (
-      SELECT m.group_id, m.participant_id, g.kind FROM memberships m JOIN groups g ON g.id = m.group_id
-      WHERE m.user_id = ${data.principal.userId} AND m.active
+      SELECT m.group_id, m.participant_id FROM memberships m WHERE m.user_id = ${data.principal.userId} AND m.active
     ),
-    page AS (
-      SELECT g.id, g.slug, g.name, g.created_at,
-        (SELECT count(*)::int FROM participants p WHERE p.group_id = g.id) AS participant_count
-      FROM mine JOIN groups g ON g.id = mine.group_id
-      WHERE mine.kind = 'named'
-      ORDER BY g.created_at DESC, g.id DESC
-      OFFSET ${offset} LIMIT ${LIMITS.directoryPage + 1}
-    ),
+    ${groupPage({ principal: data.principal, offset, limit: LIMITS.directoryPage })},
     ${netsCte},
     totals AS (SELECT currency, sum(net) AS net FROM nets GROUP BY currency)
     SELECT
@@ -76,6 +83,51 @@ export async function listDirectory(db: Db, data: { principal: Principal; offset
       return { currency, net: formatMinor({ amount: minor(BigInt(t.net)), currency }) }
     }),
     unboundGroupCount: row.unbound,
+  }
+}
+
+type PageRow = {
+  id: string
+  slug: string | null
+  name: string
+  information: string
+  revision: number
+  default_currency: string
+  created_at: string
+  participant_count: number
+}
+
+/**
+ * MCP's list_groups: a page of the caller's named groups, newest first, by
+ * offset, as the current app paged them. `groupIds` keeps only the groups it
+ * names (IDs or slugs), and one that is not the caller's denies the whole read.
+ */
+export async function listGroupPage(db: Db, data: { principal: Principal; offset: number; limit: number; groupIds?: readonly string[] }) {
+  const requested = data.groupIds ? [...new Set(data.groupIds)] : undefined
+  if (requested?.length === 0) return { groups: [], hasMore: false }
+  const refs = requested && sql`unnest(ARRAY[${sql.join(requested.map((id) => sql`${id}`), sql`, `)}]::text[]) AS r(ref)`
+  if (refs) {
+    const denied = await db.execute<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM ${refs}
+      WHERE NOT EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = ${data.principal.userId} AND m.group_id = ${groupIdOf(sql`r.ref`)} AND m.active)`)
+    if (denied.rows[0]?.n !== 0) throw groupAccessDenied()
+  }
+  const result = await db.execute<PageRow>(sql`
+    WITH ${groupPage({ principal: data.principal, offset: data.offset, limit: data.limit, ...(refs ? { refs } : {}) })}
+    SELECT id, slug, name, information, revision, default_currency, ${iso(sql`created_at`)} AS created_at, participant_count
+    FROM page ORDER BY page.created_at DESC, page.id DESC`)
+  return {
+    groups: result.rows.slice(0, data.limit).map((g) => ({
+      id: g.id,
+      slug: g.slug,
+      name: g.name,
+      information: g.information,
+      revision: g.revision,
+      defaultCurrency: g.default_currency as CurrencyCode,
+      createdAt: g.created_at,
+      participantCount: g.participant_count,
+    })),
+    hasMore: result.rows.length > data.limit,
   }
 }
 
@@ -101,10 +153,16 @@ type DetailsRow = {
     reserved: boolean
   }[]
   unbound: { userId: string; name: string; email: string; role: Role }[]
+  members: { userId: string; name: string; email: string; role: Role; participantId: string | null }[]
   invitations: { id: string; email: string; participantId: string | null; participantName: string | null; expiresAt: string }[]
+  context_expense_id: string | null
+  created: string
 }
 
-/** The Settings tab in one statement that also checks the caller's membership. Only admins see invitations. */
+/**
+ * The Settings tab and MCP's get_group in one statement that also checks the
+ * caller's membership. Only admins see invitations.
+ */
 export async function getGroupDetails(db: Db, data: { principal: Principal; groupId: string }) {
   const result = await db.execute<DetailsRow>(sql`
     WITH ${memberCte(data)},
@@ -112,7 +170,8 @@ export async function getGroupDetails(db: Db, data: { principal: Principal; grou
       SELECT i.id, i.email, i.participant_id, i.participant_name, i.expires_at FROM invitations i, g
       WHERE i.group_id = g.id AND g.role = 'admin' AND ${listedInvitation({ i: sql`i`, kind: sql`g.kind` })}
     )
-    SELECT g.*,
+    SELECT g.*, ${iso(sql`g.created_at`)} AS created,
+      (SELECT pc.expense_id FROM private_contexts pc WHERE pc.group_id = g.id) AS context_expense_id,
       coalesce((SELECT json_agg(json_build_object(
           'id', p.id, 'name', d.name,
           'memberEmail', u.email, 'memberRole', m.role, 'userId', m.user_id,
@@ -130,6 +189,9 @@ export async function getGroupDetails(db: Db, data: { principal: Principal; grou
       coalesce((SELECT json_agg(json_build_object('userId', u.id, 'name', u.name, 'email', u.email, 'role', m.role) ORDER BY m.created_at, u.id)
         FROM memberships m JOIN "user" u ON u.id = m.user_id
         WHERE m.group_id = g.id AND m.active AND m.participant_id IS NULL), '[]') AS unbound,
+      coalesce((SELECT json_agg(json_build_object('userId', u.id, 'name', u.name, 'email', u.email, 'role', m.role, 'participantId', m.participant_id)
+          ORDER BY m.created_at, u.id)
+        FROM memberships m JOIN "user" u ON u.id = m.user_id WHERE m.group_id = g.id AND m.active), '[]') AS members,
       coalesce((SELECT json_agg(json_build_object('id', id, 'email', email, 'participantId', participant_id, 'participantName', participant_name,
           'expiresAt', ${iso(sql`expires_at`)}) ORDER BY expires_at, id)
         FROM pending), '[]') AS invitations
@@ -158,6 +220,11 @@ export async function getGroupDetails(db: Db, data: { principal: Principal; grou
     })),
     unboundMembers: g.unbound,
     invitations: g.invitations,
+    /** Every active member in the order they joined, with their account name; MCP's get_group lists them. */
+    members: g.members,
+    /** The expense of a private context; null for a named group. */
+    contextExpenseId: g.context_expense_id,
+    createdAt: g.created,
   }
 }
 
