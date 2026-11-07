@@ -138,14 +138,14 @@ function BalanceRail({ group, hideOnMobile, summaryOnly }: { group: string; hide
       aria-label="Group balances"
       data-testid="group-balance-summary"
       className={cn(
-        'relative z-20 h-fit self-start rounded-2xl border bg-card p-3 md:sticky md:px-5 md:py-6 md:top-24 md:col-start-2 md:row-start-1 md:max-h-[calc(100dvh-7rem)] md:overflow-y-auto',
+        'relative z-20 h-fit self-start rounded-2xl border bg-card p-3 md:sticky md:p-6 md:top-24 md:col-start-2 md:row-start-1 md:max-h-[calc(100dvh-7rem)] md:overflow-y-auto',
         hideOnMobile && 'max-md:hidden',
       )}
     >
       {/* On narrow screens the heading is for screen readers and the refresh button sits in the summary row. */}
       <div className="flex items-center justify-between gap-2 max-md:absolute max-md:end-2 max-md:top-2.5">
         <h2 className="text-base font-semibold leading-tight max-md:sr-only">Group balances</h2>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => void refetch()} disabled={isFetching} aria-label="Refresh balances">
+        <Button variant="ghost" size="icon" className="h-7 w-7 md:-my-1.5" onClick={() => void refetch()} disabled={isFetching} aria-label="Refresh balances">
           <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} aria-hidden="true" />
         </Button>
       </div>
