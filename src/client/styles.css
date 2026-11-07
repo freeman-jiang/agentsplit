@@ -80,6 +80,11 @@
   letter-spacing: -0.02em;
 }
 
+/* The one section label: small, uppercase and muted. The section container owns the gap above it. */
+@utility eyebrow {
+  @apply mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase;
+}
+
 @media (pointer: coarse) {
   button,
   [role='tab'],

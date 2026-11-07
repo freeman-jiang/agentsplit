@@ -231,7 +231,7 @@ function BalanceDetails(props: { entry: Entry; participants: ReadonlyArray<Perso
       </ul>
       {entry.settlements.length > 0 && (
         <div className="border-t pt-4">
-          <h3 className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Suggested payments</h3>
+          <h3 className="eyebrow">Suggested payments</h3>
           <ul className="space-y-3 text-sm">
             {entry.settlements.map((payment) => (
               <li key={`${payment.from}-${payment.to}`} data-testid="summary-payment">
