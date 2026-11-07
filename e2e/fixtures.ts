@@ -11,7 +11,8 @@ import type { ExpenseDraft } from '../src/shared/expense-rules'
 import { randomId } from '../src/shared/ids'
 import { createAuth } from '../src/server/auth'
 import { makeDb, type Db } from '../src/server/db'
-import { createExpense, updateExpense, type Principal } from '../src/server/ledger'
+import type { Principal } from '../src/server/access'
+import { createExpense, updateExpense } from '../src/server/ledger'
 
 const url = new URL(process.env['E2E_DATABASE_URL'] ?? '')
 if (!['127.0.0.1', 'localhost'].includes(url.hostname) || !/e2e/.test(url.pathname)) throw new Error('E2E needs the disposable loopback database from scripts/e2e.sh')

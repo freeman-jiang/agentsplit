@@ -409,6 +409,10 @@ describe('expense writes and reads', () => {
     expect(await filtered({ paidById: 'pb', from: '2026-11-02' })).toEqual([id21(7)])
     expect((await filtered({ participantId: 'pc' })).includes(id21(7))).toBe(false)
     expect(await filtered({ currencyCode: 'JPY' })).toEqual([])
+    // A slug in any case names the group, and the answers carry its ID.
+    expect(await filtered({ groupId: 'HOME', isReimbursement: true })).toEqual([id21(7)])
+    expect(((await checked('get_group', { groupId: 'Home' }))['group'] as { id: string }).id).toBe('g1')
+    expect(((await checked('list_activity', { groupId: 'home', limit: 1 }))['activities'] as { groupId: string }[])[0]?.groupId).toBe('g1')
     const reimbursement = (await checked('list_expenses', { groupId: 'g1', filter: 'Payback' }))['expenses'] as Record<string, unknown>[]
     expect(reimbursement[0]).toMatchObject({ isReimbursement: true, paidBy: { id: 'pb', name: 'Bob' }, paidFor: [{ participant: { id: 'pa', name: 'Alice' }, shares: '1' }], category: { id: 0 } })
   })

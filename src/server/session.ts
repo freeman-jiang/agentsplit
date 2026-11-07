@@ -7,7 +7,7 @@ import { and, eq, gt } from 'drizzle-orm'
 import { parseCookies } from 'better-call'
 import { session, user } from '../../db/schema/auth'
 import type { Db } from './db'
-import type { Principal } from './ledger'
+import type { Principal } from './access'
 
 /** Better Auth reads one name: the __Secure- form when the app runs on HTTPS. */
 const cookieName = (baseUrl: string) =>

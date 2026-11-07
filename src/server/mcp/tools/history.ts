@@ -200,7 +200,7 @@ type LiveRow = {
 }
 
 /** The live rows of the expenses on a page. listActivities has checked access to the group. */
-async function liveExpenses(db: Parameters<typeof history.listActivities>[0], data: { group: string; ids: readonly string[] }) {
+async function liveExpenses(db: Parameters<typeof history.listActivities>[0], data: { groupId: string; ids: readonly string[] }) {
   if (data.ids.length === 0) return new Map<string, typeof LiveExpense.Encoded>()
   const result = await db.execute<LiveRow>(sql`
     SELECT e.id, e.group_id, e.title, e.vendor, e.amount::text AS amount, e.currency, ${iso(sql`e.created_at`)} AS created_at,
@@ -209,7 +209,7 @@ async function liveExpenses(db: Parameters<typeof history.listActivities>[0], da
       (SELECT l.id FROM recurring_links l WHERE l.current_frame_expense_id = e.id LIMIT 1) AS link_id,
       coalesce((SELECT json_agg(json_build_object('participantId', p.participant_id, 'amount', p.amount::text)) FROM expense_payers p WHERE p.expense_id = e.id), '[]') AS payers
     FROM expenses e
-    WHERE e.group_id = agentsplit_group_id(${data.group}) AND e.deleted_at IS NULL AND e.id IN (${sql.join(data.ids.map((id) => sql`${id}`), sql`, `)})`)
+    WHERE e.group_id = ${data.groupId} AND e.deleted_at IS NULL AND e.id IN (${sql.join(data.ids.map((id) => sql`${id}`), sql`, `)})`)
   return new Map(
     result.rows.map((e) => [
       e.id,
@@ -284,12 +284,13 @@ export const listActivity = defineTool({
     nextCursor: NonNegativeInt,
   }),
   run: async ({ db, principal }, input) => {
-    const { activityType, groupId, ...query } = input
-    const page = await history.listActivities(db, { principal, group: groupId, withActors: true, ...query, ...(activityType ? { type: ACTIVITY_TYPE_BY_NAME[activityType] } : {}) })
+    const { activityType, groupId: group, ...query } = input
+    const page = await history.listActivities(db, { principal, group, withActors: true, ...query, ...(activityType ? { type: ACTIVITY_TYPE_BY_NAME[activityType] } : {}) })
+    const { groupId } = page
     const historical = input.asOf !== undefined || input.atActivityId !== undefined
     const live = historical
       ? new Map<string, typeof LiveExpense.Encoded>()
-      : await liveExpenses(db, { group: groupId, ids: [...new Set(page.activities.flatMap((a) => (a.expense && a.expenseId ? [a.expenseId] : [])))] })
+      : await liveExpenses(db, { groupId, ids: [...new Set(page.activities.flatMap((a) => (a.expense && a.expenseId ? [a.expenseId] : [])))] })
     return {
       atActivityId: page.atActivityId,
       asOf: page.asOf,

@@ -4,7 +4,7 @@ import { AgentSplitApi, Conflict, Invalid, Unauthorized, Unavailable } from '../
 import { tooManyWritesMessage } from '../shared/limits'
 import type { Bucket } from './bucket'
 import { DatabaseError, REQUEST_ID_HEADER, RequestDb, requestDbFor, transaction, useDb, type Db, type DomainError } from './db'
-import type * as ledger from './ledger'
+import type { Principal } from './access'
 import { takeWrite } from './rate-limit'
 import { sessionPrincipal } from './session'
 
@@ -23,7 +23,7 @@ export class AppConfig extends Context.Service<
 export class ReceiptBucket extends Context.Service<ReceiptBucket, Bucket>()('agentsplit/ReceiptBucket') {}
 
 /** The signed-in caller, or null. Resolved once per request by AuthMiddleware. */
-export class CurrentPrincipal extends Context.Service<CurrentPrincipal, ledger.Principal | null>()('agentsplit/CurrentPrincipal') {}
+export class CurrentPrincipal extends Context.Service<CurrentPrincipal, Principal | null>()('agentsplit/CurrentPrincipal') {}
 
 export class AuthMiddleware extends RpcMiddleware.Service<AuthMiddleware, { provides: CurrentPrincipal | RequestDb }>()(
   'agentsplit/AuthMiddleware',
@@ -79,7 +79,7 @@ const run = <A, R>(effect: Effect.Effect<A, DatabaseError | DomainError, R>) =>
   Effect.mapError(effect, (e) => (e instanceof DatabaseError ? new Unavailable({ message: e.message }) : e))
 
 /** A read on this request's connection, for a signed-in caller. */
-export const read = <A>(work: (db: Db, principal: ledger.Principal) => Promise<A>) =>
+export const read = <A>(work: (db: Db, principal: Principal) => Promise<A>) =>
   Effect.flatMap(requirePrincipal, (principal) =>
     run(useDb((db) => work(db, principal))).pipe(
       // Reads never check revisions; a Conflict here would be a bug, so report it as a failure.
@@ -91,7 +91,7 @@ export const read = <A>(work: (db: Db, principal: ledger.Principal) => Promise<A
  * takes one write from the caller's fair-use budget, outside the transaction;
  * a refused write changes nothing and says how long to wait.
  */
-export const write = <A>(work: (db: Db, principal: ledger.Principal) => Promise<A>) =>
+export const write = <A>(work: (db: Db, principal: Principal) => Promise<A>) =>
   Effect.flatMap(requirePrincipal, (principal) =>
     run(
       Effect.flatMap(useDb((db) => takeWrite(db, principal.userId)), (wait) =>

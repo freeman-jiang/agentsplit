@@ -9,7 +9,7 @@ import type { CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/minor'
 import type { ExpenseKind, GroupKind, Role } from '../shared/vocabulary'
 import type { Db } from './db'
-import type { Principal } from './ledger'
+import type { Principal } from './access'
 import { activitySource, balancesOf, balanceSums, displayName as displayNameOf, escapeLike, expenseColumns, involves, iso, notBaseline, toExpense, type BalanceSum, type ExpenseRow } from './sql'
 
 export type FeedFilter = {
@@ -96,7 +96,7 @@ export async function listFeed(db: Db, data: { principal: Principal; filter: Fee
   if (f.scope === 'grouped') where.push(sql`g.kind = 'named'`)
   if (f.scope === 'ungrouped') where.push(sql`g.kind = 'private'`)
   // Any group or context the caller belongs to, private ones included (DECISIONS.md, P-FEED-18).
-  if (f.groupId) where.push(sql`(g.id = ${f.groupId} OR g.slug = ${f.groupId})`)
+  if (f.groupId) where.push(sql`g.id = agentsplit_group_id(${f.groupId})`)
   const search = f.search?.trim()
   if (search) {
     const term = escapeLike(search)
@@ -176,9 +176,9 @@ export type BalanceScope = ReadonlyArray<{ readonly groupId: string; readonly pa
  * the whole read, as does a participant from another group.
  */
 export async function accountBalances(db: Db, data: { principal: Principal; scope?: BalanceScope }) {
-  const scope = data.scope ? JSON.stringify(data.scope.map((s) => ({ group_id: s.groupId, participant_id: s.participantId ?? null }))) : null
+  const scope = data.scope ? JSON.stringify(data.scope.map((s) => ({ ref: s.groupId, participant_id: s.participantId ?? null }))) : null
   const result = await db.execute<{ result: BalancesRow }>(sql`
-    WITH s AS (SELECT * FROM json_to_recordset(${scope ?? '[]'}::json) AS s(group_id text, participant_id text)),
+    WITH s AS (SELECT DISTINCT agentsplit_group_id(s.ref) AS group_id, s.participant_id FROM json_to_recordset(${scope ?? '[]'}::json) AS s(ref text, participant_id text)),
     m AS (
       SELECT m.group_id, ${scope ? sql`coalesce(s.participant_id, m.participant_id)` : sql`m.participant_id`} AS participant_id
       FROM memberships m ${scope ? sql`JOIN s ON s.group_id = m.group_id` : sql``}

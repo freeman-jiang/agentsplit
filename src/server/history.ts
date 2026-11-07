@@ -4,7 +4,7 @@
 // expense state to a historical answer. Stored snapshots are read as stored,
 // in either format (src/shared/snapshots.ts).
 import { sql, type SQL } from 'drizzle-orm'
-import { groupAccessDenied, Invalid, NotFound } from '../shared/api'
+import { Invalid, NotFound } from '../shared/api'
 import { computeBalances } from '../shared/balances'
 import type { CurrencyCode } from '../shared/currencies'
 import type { Category, SavedExpense, SavedState } from '../shared/history'
@@ -12,7 +12,7 @@ import { readSnapshot, savedEntry } from '../shared/snapshots'
 import { formatMinor } from '../shared/minor'
 import type { ActivityType, ExpenseKind, Recurrence } from '../shared/vocabulary'
 import type { Db } from './db'
-import type { Principal } from './ledger'
+import { memberCte, requireActive, type Principal } from './access'
 import { activityData, activitySource, iso, tombstonesJson, type Tombstone } from './sql'
 
 export type Boundary = { readonly asOf?: string; readonly atActivityId?: string }
@@ -23,17 +23,6 @@ export type Boundary = { readonly asOf?: string; readonly atActivityId?: string 
  * `asOf`, must still include that event.
  */
 const ms = (column: SQL) => sql`date_trunc('milliseconds', ${column})`
-
-/**
- * The caller's membership in the group, as the first CTE of a statement. Rows
- * then come only from a group the caller belongs to, in the same round trip.
- */
-const memberCte = (data: { principal: Principal; group: string }) => sql`g AS (
-  SELECT g.id, g.created_at, g.default_currency, m.active, m.participant_id
-  FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
-  WHERE g.id = ${data.group} OR g.slug = ${data.group}
-  LIMIT 1
-)`
 
 /** All categories as one JSON object, `{ "<id>": [grouping, name] }`; 44 fixed rows. */
 const categoriesColumn = sql`(SELECT json_object_agg(c.id, json_build_array(c.grouping, c.name)) FROM categories c) AS categories`
@@ -70,12 +59,7 @@ const boundaryCte = (selection: Boundary) => sql`b AS (
 const withinBoundary = (selection: Boundary, alias: SQL) =>
   sql`${alias}.sequence <= coalesce((SELECT sequence FROM b), 0) ${selection.asOf !== undefined ? sql`AND ${ms(sql`${alias}.time`)} <= ${selection.asOf}::timestamptz` : sql``}`
 
-type Head = { active: boolean | null; boundary_id: string | null; boundary_time: string | null; group_created: string; categories: Record<string, [string, string]> | null }
-
-function requireAccess<T extends { active: boolean | null }>(row: T | undefined): T {
-  if (!row?.active) throw groupAccessDenied()
-  return row
-}
+type Head = { active: boolean | null; group_id: string; boundary_id: string | null; boundary_time: string | null; group_created: string; categories: Record<string, [string, string]> | null }
 
 function requireBoundaryFound(data: { selection: Boundary; head: Head }) {
   if (data.selection.atActivityId !== undefined && data.head.boundary_id === null)
@@ -168,7 +152,7 @@ export async function listActivities(db: Db, data: { principal: Principal; group
       SELECT a.* FROM activities a, g WHERE ${sql.join(where, sql` AND `)}
       ORDER BY a.sequence ${order} OFFSET ${cursor} LIMIT ${limit + 1}
     )
-    SELECT g.active, g.created_at::text AS group_created,
+    SELECT g.active, g.id AS group_id, g.created_at::text AS group_created,
       (SELECT id FROM b) AS boundary_id, (SELECT ${iso(sql`time`)} FROM b) AS boundary_time,
       coalesce((
         SELECT json_agg(json_build_object(
@@ -187,11 +171,12 @@ export async function listActivities(db: Db, data: { principal: Principal; group
       ${categoriesColumn}
     FROM g
   `)
-  const head = requireAccess(result.rows[0])
+  const head = requireActive(result.rows[0])
   requireBoundaryFound({ selection: data, head })
   const categories = categoryMap(head.categories)
   const rows = head.activities
   return {
+    groupId: head.group_id,
     atActivityId: head.boundary_id,
     asOf: boundaryTime({ selection: data, head }),
     activities: rows.slice(0, limit).map((a) => ({
@@ -237,7 +222,7 @@ export async function getSavedExpense(db: Db, data: { principal: Principal; grou
         AND ${byRevision ? sql`a.expense_revision = ${data.revision ?? 0}` : sql`a.expense_revision IS NOT NULL AND ${withinBoundary(data, sql`a`)}`}
       ORDER BY a.sequence DESC LIMIT 1
     )
-    SELECT g.active, g.created_at::text AS group_created,
+    SELECT g.active, g.id AS group_id, g.created_at::text AS group_created,
       (SELECT id FROM b) AS boundary_id, (SELECT ${iso(sql`time`)} FROM b) AS boundary_time,
       (SELECT json_build_object('id', ev.id, 'time', ${iso(sql`ev.time`)}, 'type', ev.type, 'revision', ev.expense_revision, 'snapshot', ev.snapshot,
         'saved', (SELECT s.snapshot FROM activities s WHERE s.group_id = ev.group_id AND s.expense_id = ev.expense_id
@@ -247,7 +232,7 @@ export async function getSavedExpense(db: Db, data: { principal: Principal; grou
       ${categoriesColumn}
     FROM g
   `)
-  const head = requireAccess(result.rows[0])
+  const head = requireActive(result.rows[0])
   if (!byRevision) requireBoundaryFound({ selection: data, head })
   const event = head.event
   if (!event) throw new NotFound({ entity: 'saved expense revision at this point', id: data.expenseId })
@@ -257,6 +242,7 @@ export async function getSavedExpense(db: Db, data: { principal: Principal; grou
   if (state._tag !== 'expense') throw new Invalid({ message: 'This event saved a group, not an expense' })
   const deleted = event.type === 'delete_expense'
   return {
+    groupId: head.group_id,
     expense: withTombstones(state.expense, head.tombstones),
     deletedAt: deleted ? event.time : null,
     history: { activityId: event.id, recordedAt: event.time, revision: event.revision, deleted },
@@ -285,7 +271,7 @@ export async function historicalLedger(db: Db, data: { principal: Principal; gro
       ORDER BY a.expense_id, a.sequence DESC
     ),
     at_time AS (SELECT coalesce(${data.asOf ?? null}::timestamptz, (SELECT time FROM b), now()) AS t)
-    SELECT g.active, g.created_at::text AS group_created, ${ms(sql`g.created_at`)} > (SELECT t FROM at_time) AS before_group,
+    SELECT g.active, g.id AS group_id, g.created_at::text AS group_created, ${ms(sql`g.created_at`)} > (SELECT t FROM at_time) AS before_group,
       (SELECT id FROM b) AS boundary_id, (SELECT ${iso(sql`time`)} FROM b) AS boundary_time,
       coalesce((SELECT json_agg(json_build_object('id', l.id, 'expenseId', l.expense_id, 'type', l.type, 'snapshot', l.snapshot) ORDER BY l.expense_id)
         FROM latest l WHERE l.type <> 'delete_expense'), '[]') AS saved,
@@ -298,7 +284,7 @@ export async function historicalLedger(db: Db, data: { principal: Principal; gro
       ${categoriesColumn}
     FROM g
   `)
-  const head = requireAccess(result.rows[0] as (LedgerHead & { before_group: boolean }) | undefined)
+  const head = requireActive(result.rows[0] as (LedgerHead & { before_group: boolean }) | undefined)
   requireBoundaryFound({ selection: data, head })
   if (head.before_group) throw new NotFound({ entity: 'group at this time', id: data.group })
   const categories = categoryMap(head.categories)

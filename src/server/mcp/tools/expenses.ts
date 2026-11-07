@@ -5,7 +5,7 @@
 // Multiple payers are new: `payers` beside the current single `paidBy`.
 import { Schema } from 'effect'
 import { sql, type SQL } from 'drizzle-orm'
-import { Conflict, groupAccessDenied, NotFound } from '../../../shared/api'
+import { Conflict, NotFound } from '../../../shared/api'
 import type { ExpenseDraft } from '../../../shared/expense-rules'
 import type { SavedExpense } from '../../../shared/history'
 import { GROUP_ID } from '../../../shared/ids'
@@ -13,6 +13,7 @@ import { LIMITS, mebibytes } from '../../../shared/limits'
 import { formatMinor, minor } from '../../../shared/minor'
 import { preferredPayer } from '../../../shared/split'
 import { RECURRENCE_BY_NAME, RECURRENCE_NAMES, SPLIT_MODE_BY_NAME, SPLIT_MODE_NAMES, RECEIPT_CONTENT_TYPES, type ExpenseKind, type Recurrence, type SplitMode } from '../../../shared/vocabulary'
+import { memberCte, requireMember, type Principal } from '../../access'
 import type { Db } from '../../db'
 import * as history from '../../history'
 import { randomId } from '../../ids'
@@ -415,14 +416,6 @@ const detail = (row: Row, data: { viewer: string; baseUrl: string }): typeof Exp
   }
 }
 
-const memberOf = (data: { userId: string; groupId: string }) =>
-  sql`EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = ${data.userId} AND m.group_id = ${data.groupId} AND m.active)`
-
-async function requireAccess(db: Db, data: { userId: string; groupId: string }) {
-  const result = await db.execute<{ ok: boolean }>(sql`SELECT ${memberOf(data)} AS ok`)
-  if (!result.rows[0]?.ok) throw groupAccessDenied()
-}
-
 // ---------- historical reads: saved revisions, never the live rows ----------
 
 const historicalCommon = (e: SavedExpense) => ({
@@ -507,7 +500,8 @@ export const listExpenses = defineTool({
       })
       return { history: saved.history, expenses: saved.expenses.map(savedSummary), hasMore: saved.hasMore, nextCursor: saved.nextCursor }
     }
-    const where = [sql`e.group_id = ${input.groupId}`, memberOf({ userId: principal.userId, groupId: input.groupId }), sql`e.deleted_at IS NULL`]
+    const member = { principal, group: input.groupId }
+    const where = [sql`e.group_id = (SELECT id FROM g WHERE active)`, sql`e.deleted_at IS NULL`]
     if (input.filter) where.push(sql`(e.title ILIKE ${escapeLike(input.filter)} OR e.vendor ILIKE ${escapeLike(input.filter)})`)
     // Trimmed, as the current app's z.string().trim() did.
     const vendor = input.vendor?.trim()
@@ -520,12 +514,12 @@ export const listExpenses = defineTool({
     if (input.to) where.push(sql`e.expense_date <= ${input.to}::date`)
     if (input.paidById) where.push(sql`EXISTS (SELECT 1 FROM expense_payers p WHERE p.expense_id = e.id AND p.participant_id = ${input.paidById})`)
     if (input.participantId) where.push(involves(sql`${input.participantId}`))
-    const result = await db.execute<Row>(sql`${expenseSelect({ detail: false })}
+    const result = await db.execute<Row>(sql`WITH ${memberCte(member)} ${expenseSelect({ detail: false })}
       WHERE ${sql.join(where, sql` AND `)}
       ORDER BY e.expense_date DESC, e.created_at DESC, e.id DESC
       LIMIT ${limit + 1} OFFSET ${cursor}`)
     // No rows: an empty page, or not a member. Only then is the separate check needed.
-    if (result.rows.length === 0) await requireAccess(db, { userId: principal.userId, groupId: input.groupId })
+    if (result.rows.length === 0) await requireMember(db, member)
     return {
       expenses: result.rows.slice(0, limit).map((row) => summary(row, principal.userId)),
       hasMore: result.rows.length > limit,
@@ -537,7 +531,7 @@ export const listExpenses = defineTool({
 type GetInput = { groupId: string; expenseId: string; revision?: number; asOf?: string; atActivityId?: string }
 
 /** One saved revision in the get_expense shape, with its authors as of that revision. */
-async function savedDetail(db: Db, data: { principal: ledger.Principal; baseUrl: string; input: GetInput }) {
+async function savedDetail(db: Db, data: { principal: Principal; baseUrl: string; input: GetInput }) {
   const { input } = data
   const saved = await history.getSavedExpense(db, {
     principal: data.principal,
@@ -547,11 +541,12 @@ async function savedDetail(db: Db, data: { principal: ledger.Principal; baseUrl:
     ...(input.asOf === undefined ? {} : { asOf: input.asOf }),
     ...(input.atActivityId === undefined ? {} : { atActivityId: input.atActivityId }),
   })
+  const { groupId } = saved
   const e = saved.expense
   const payer = savedPayer(e)
   const expense: typeof ExpenseDetail.Encoded = {
     ...historicalCommon(e),
-    groupId: input.groupId,
+    groupId,
     categoryId: e.categoryId,
     paidById: payer.id,
     conversionRate: e.conversionRate,
@@ -559,8 +554,8 @@ async function savedDetail(db: Db, data: { principal: ledger.Principal; baseUrl:
     recurringExpenseLinkId: null,
     deletedAt: saved.deletedAt,
     revision: saved.history.revision,
-    attribution: await attributionThrough(db, { groupId: input.groupId, expenseId: input.expenseId, activityId: saved.history.activityId, viewer: data.principal.userId }),
-    paidBy: { ...payer, groupId: input.groupId },
+    attribution: await attributionThrough(db, { groupId, expenseId: input.expenseId, activityId: saved.history.activityId, viewer: data.principal.userId }),
+    paidBy: { ...payer, groupId },
     payers: e.payers.map((p) => ({ participantId: p.participantId, name: p.name, amount: p.amount })),
     paidFor: e.shares.map((s) => ({ expenseId: e.id, participantId: s.participantId, shares: s.weight })),
     documents: e.documents.map((d) => ({
@@ -568,11 +563,11 @@ async function savedDetail(db: Db, data: { principal: ledger.Principal; baseUrl:
       url: d.url,
       expenseId: e.id,
       deleted: d.deleted ?? null,
-      ...(d.deleted ? {} : { downloadUrl: `${origin(data.baseUrl)}${receiptDownloadPath({ groupId: input.groupId, url: d.url })}` }),
+      ...(d.deleted ? {} : { downloadUrl: `${origin(data.baseUrl)}${receiptDownloadPath({ groupId, url: d.url })}` }),
     })),
     recurringExpenseLink: null,
   }
-  return { history: { ...saved.history, snapshot: expenseSnapshot({ expense: e, groupId: input.groupId }) }, expense }
+  return { history: { ...saved.history, snapshot: expenseSnapshot({ expense: e, groupId }) }, expense }
 }
 
 export const getExpense = defineTool({
@@ -590,9 +585,9 @@ export const getExpense = defineTool({
   output: Schema.Struct({ history: optional(RevisionHistory), expense: ExpenseDetail }),
   run: async ({ db, principal, baseUrl }, input) => {
     if (input.revision !== undefined || input.asOf !== undefined || input.atActivityId !== undefined) return savedDetail(db, { principal, baseUrl, input })
-    await requireAccess(db, { userId: principal.userId, groupId: input.groupId })
+    const { groupId } = await requireMember(db, { principal, group: input.groupId })
     const result = await db.execute<Row>(sql`${expenseSelect({ detail: true })}
-      WHERE e.id = ${input.expenseId} AND e.group_id = ${input.groupId} AND e.deleted_at IS NULL`)
+      WHERE e.id = ${input.expenseId} AND e.group_id = ${groupId} AND e.deleted_at IS NULL`)
     const row = result.rows[0]
     if (!row) throw new NotFound({ entity: 'expense', id: input.expenseId })
     return { expense: detail(row, { viewer: principal.userId, baseUrl }) }

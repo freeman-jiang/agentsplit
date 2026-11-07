@@ -2,13 +2,12 @@
 // Reads only: unlike the current app, loading stats never creates due
 // recurring expenses (DECISIONS.md, P-STATS-44).
 import { sql } from 'drizzle-orm'
-import { groupAccessDenied } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor, type Minor } from '../shared/minor'
 import * as stats from '../shared/stats'
 import type { ExpenseKind, Recurrence } from '../shared/vocabulary'
 import type { Db } from './db'
-import type { Principal } from './ledger'
+import { memberCte, requireActive, type Principal } from './access'
 
 type Row = {
   id: string
@@ -43,12 +42,7 @@ type Head = {
  */
 async function load(db: Db, data: { principal: Principal; group: string }) {
   const result = await db.execute<Head>(sql`
-    WITH g AS (
-      SELECT g.id, g.default_currency, m.active, m.participant_id
-      FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
-      WHERE g.id = ${data.group} OR g.slug = ${data.group}
-      LIMIT 1
-    )
+    WITH ${memberCte(data)}
     SELECT g.active, g.participant_id, g.default_currency,
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id) FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
       coalesce((SELECT json_agg(json_build_object(
@@ -63,8 +57,7 @@ async function load(db: Db, data: { principal: Principal; group: string }) {
         WHERE e.group_id = g.id AND e.deleted_at IS NULL), '[]') AS expenses
     FROM g
   `)
-  const head = result.rows[0]
-  if (!head?.active) throw groupAccessDenied()
+  const head = requireActive(result.rows[0])
   const expenses = head.expenses.map((e) => ({
     ...e,
     amount: minor(BigInt(e.amount)),

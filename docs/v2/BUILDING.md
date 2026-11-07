@@ -51,7 +51,7 @@ Each area owns its own files, so areas can be built in parallel:
 - Money is minor units (`bigint`) inside, exact decimal strings outside. Use `minorOrNull`, `formatMinor`, `resolveShares` and `validateExpense`. Never use floats for money.
 - Value lists (kinds, split modes, recurrences, roles, group kinds, activity types and sources, upload states, receipt types, and the current app's names for them) live only in `src/shared/vocabulary.ts`. Every limit (field lengths, people per group, page sizes, times, rates and the fair-use limits) lives only in `src/shared/limits.ts`. The contract, the Drizzle enums and CHECKs, the MCP schemas and descriptions, the rule messages and the client derive from these two modules; `test/db/database-rules.test.ts` compares the database's CHECKs with them. A new list or limit goes there, not into a schema.
 - Expense dates are `YYYY-MM-DD` strings. Times are `timestamptz` and ISO strings in the API.
-- The membership check happens on the server for every read and write: `requireMember`, or a membership CTE in the same statement.
+- The membership check happens on the server for every read and write, through `src/server/access.ts`: `requireMember`, or `memberCte` as the first CTE of the same statement. Both resolve a group reference with `agentsplit_group_id` (an ID, a current slug in any case, or a retired slug), so never match `id` or `slug` by hand.
 - The database triggers are the last line of defense. Never disable them, and never write migrations that weaken them.
 
 ### Speed

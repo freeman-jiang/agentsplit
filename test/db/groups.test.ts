@@ -17,9 +17,12 @@ import {
   updateGroup,
 } from '~/server/groups'
 import { listBalances } from '~/server/expenses'
-import { accountBalances } from '~/server/feed'
+import { exportJson } from '~/server/export'
+import { accountBalances, listFeed } from '~/server/feed'
 import { listActivities } from '~/server/history'
-import { createExpense, getGroup, requireMember, type Principal } from '~/server/ledger'
+import { createExpense, getGroup } from '~/server/ledger'
+import { requireMember, type Principal } from '~/server/access'
+import { statsOverview } from '~/server/stats'
 import { createUngroupedExpense } from '~/server/ungrouped'
 import { resetTestDatabase } from './setup'
 
@@ -215,6 +218,43 @@ describe('slugs', () => {
     // A current slug wins over another group's old one.
     const other = await create(alice, { slug: 'macademia-test' })
     expect((await getGroupBy(alice, 'macademia-test')).id).toBe(other.id)
+  })
+
+  it('resolves a retired, mixed-case slug the same way in every read', async () => {
+    const g = await create(alice, { slug: 'old-flat', participants: ['Kim'] })
+    const [me, kim] = (await details(alice, g.id)).people
+    await tx((db) =>
+      createExpense(db, {
+        principal: alice,
+        group: g.id,
+        expenseId: `exp-${g.id}`,
+        idempotencyKey: key(),
+        expense: {
+          kind: 'expense',
+          title: 'Dinner',
+          vendor: null,
+          notes: '',
+          categoryId: 0,
+          expenseDate: '2026-11-01',
+          currency: 'USD',
+          amount: '10.00',
+          payers: [{ participantId: me!.id, amount: '10.00' }],
+          splitMode: 'evenly',
+          shares: [{ participantId: me!.id, weight: '1' }, { participantId: kim!.id, weight: '1' }],
+          recurrence: 'none',
+        },
+      }),
+    )
+    await update(alice, g.id, 1, { slug: 'new-flat' })
+    const ref = 'OLD-Flat'
+    const activity = await tx((db) => listActivities(db, { principal: alice, group: ref }))
+    expect(activity.groupId).toBe(g.id)
+    expect((await tx((db) => statsOverview(db, { principal: alice, group: ref }))).total).toBe('10.00')
+    expect(JSON.parse((await tx((db) => exportJson(db, { principal: alice, group: ref }))).content).id).toBe(g.id)
+    expect((await tx((db) => listBalances(db, { principal: alice, group: ref }))).currencies).toHaveLength(1)
+    expect((await tx((db) => listFeed(db, { principal: alice, filter: { groupId: ref }, cursor: null, limit: 10 }))).expenses).toHaveLength(1)
+    expect((await tx((db) => accountBalances(db, { principal: alice, scope: [{ groupId: ref }] }))).balances).toMatchObject([{ groupId: g.id, amount: '5.00' }])
+    await expect(tx((db) => statsOverview(db, { principal: mallory, group: ref }))).rejects.toMatchObject({ _tag: 'Forbidden' })
   })
 
   it('does not grant access through a slug (P-GROUP-103, P-ACCESS-09)', async () => {
