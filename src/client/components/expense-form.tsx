@@ -13,6 +13,7 @@ import { invalidateExpenses } from '~/client/queries/feed'
 import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 import { Checkbox } from '~/client/ui/checkbox'
+import { disclosure, DisclosureSummary } from '~/client/ui/disclosure'
 import { Input } from '~/client/ui/input'
 import { Label } from '~/client/ui/label'
 import { NativeSelect } from '~/client/ui/native-select'
@@ -418,82 +419,84 @@ export function ExpenseForm(props: ExpenseFormProps) {
         )}
       </section>
 
-      <details className="rounded-2xl border bg-card p-4" open={!!state.notes || state.documents.length > 0 || !!shown('notes')}>
-        <summary className="cursor-pointer font-medium">Notes & receipts</summary>
-        <div className="mt-4 space-y-4">
-          <Field id="notes" label="Notes" error={shown('notes')}>
-            <Textarea id="notes" rows={4} value={state.notes} onChange={(e) => set({ notes: e.target.value })} onBlur={() => touch('notes')} />
-          </Field>
-          {/* A new private expense has no context to store receipts in yet (P-UNGROUP-14, P-UNGROUP-15). */}
-          {reference.attachments.enabled && !(isPrivate && props.mode === 'create') && (
-            <div className="space-y-1.5">
-              <p className="text-sm font-medium">Receipts</p>
-              <p className="text-xs text-muted-foreground">See and attach receipts to the {noun}.</p>
-              <ExpenseDocuments groupId={group.id} documents={state.documents} onChange={(documents) => set({ documents })} />
-            </div>
-          )}
-        </div>
-      </details>
+      <div className="divide-y rounded-2xl border bg-card">
+        <details className={cn(disclosure, 'px-4 py-1.5')} open={!!state.notes || state.documents.length > 0 || !!shown('notes')}>
+          <DisclosureSummary>Notes & receipts</DisclosureSummary>
+          <div className="space-y-4 pt-2 pb-3">
+            <Field id="notes" label="Notes" error={shown('notes')}>
+              <Textarea id="notes" rows={4} value={state.notes} onChange={(e) => set({ notes: e.target.value })} onBlur={() => touch('notes')} />
+            </Field>
+            {/* A new private expense has no context to store receipts in yet (P-UNGROUP-14, P-UNGROUP-15). */}
+            {reference.attachments.enabled && !(isPrivate && props.mode === 'create') && (
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">Receipts</p>
+                <p className="text-xs text-muted-foreground">See and attach receipts to the {noun}.</p>
+                <ExpenseDocuments groupId={group.id} documents={state.documents} onChange={(documents) => set({ documents })} />
+              </div>
+            )}
+          </div>
+        </details>
 
-      <details className="rounded-2xl border bg-card p-4" open={state.kind === 'payment' || state.recurrence !== 'none'}>
-        <summary className="cursor-pointer font-medium">
-          More options
-          <span className="ml-2 text-sm font-normal text-muted-foreground">
-            {category?.name ?? 'General'} · {RECURRENCE.find(([v]) => v === state.recurrence)?.[1]}
-          </span>
-        </summary>
-        <div className="mt-4 space-y-4">
-          <Field id="category" label="Category">
-            <NativeSelect id="category" value={String(state.categoryId)} onChange={(e) => set({ categoryId: Number(e.target.value) })}>
-              {[...new Set(reference.categories.map((c) => c.grouping))].map((grouping) => (
-                <optgroup key={grouping} label={grouping}>
-                  {reference.categories
-                    .filter((c) => c.grouping === grouping)
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                </optgroup>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Field
-            id="recurrence"
-            label="Expense Recurrence"
-            hint={
-              props.mode === 'edit' && props.detail.nextOccurrence
-                ? `The next copy is created on ${props.detail.nextOccurrence}. Choose None to stop the series.`
-                : 'Select how often the expense should repeat.'
-            }
-          >
-            <NativeSelect id="recurrence" disabled={isPrivate} value={state.recurrence} onChange={(e) => set({ recurrence: e.target.value as FormState['recurrence'] })}>
-              {RECURRENCE.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-          {!income && !isPrivate && (
-            <div className="flex items-center gap-2">
-              <Checkbox id="is-payment" checked={state.kind === 'payment'} onCheckedChange={(value) => set({ kind: value === true ? 'payment' : 'expense' })} />
-              <Label htmlFor="is-payment" className="font-normal">
-                This is a payment
-              </Label>
-            </div>
-          )}
-          {/* Each private expense has its own people, so a saved default would never apply again. */}
-          {!isPrivate && (
-            <div className="flex items-center gap-2">
-              <Checkbox id="save-default" checked={state.saveDefault} onCheckedChange={(value) => set({ saveDefault: value === true })} />
-              <Label htmlFor="save-default" className="font-normal">
-                Save as default splitting options
-              </Label>
-            </div>
-          )}
-        </div>
-      </details>
+        <details className={cn(disclosure, 'px-4 py-1.5')} open={state.kind === 'payment' || state.recurrence !== 'none'}>
+          <DisclosureSummary>
+            More options
+            <span className="ml-2 font-normal text-muted-foreground">
+              {category?.name ?? 'General'} · {RECURRENCE.find(([v]) => v === state.recurrence)?.[1]}
+            </span>
+          </DisclosureSummary>
+          <div className="space-y-4 pt-2 pb-3">
+            <Field id="category" label="Category">
+              <NativeSelect id="category" value={String(state.categoryId)} onChange={(e) => set({ categoryId: Number(e.target.value) })}>
+                {[...new Set(reference.categories.map((c) => c.grouping))].map((grouping) => (
+                  <optgroup key={grouping} label={grouping}>
+                    {reference.categories
+                      .filter((c) => c.grouping === grouping)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Field
+              id="recurrence"
+              label="Expense Recurrence"
+              hint={
+                props.mode === 'edit' && props.detail.nextOccurrence
+                  ? `The next copy is created on ${props.detail.nextOccurrence}. Choose None to stop the series.`
+                  : 'Select how often the expense should repeat.'
+              }
+            >
+              <NativeSelect id="recurrence" disabled={isPrivate} value={state.recurrence} onChange={(e) => set({ recurrence: e.target.value as FormState['recurrence'] })}>
+                {RECURRENCE.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+            {!income && !isPrivate && (
+              <div className="flex items-center gap-2">
+                <Checkbox id="is-payment" checked={state.kind === 'payment'} onCheckedChange={(value) => set({ kind: value === true ? 'payment' : 'expense' })} />
+                <Label htmlFor="is-payment" className="font-normal">
+                  This is a payment
+                </Label>
+              </div>
+            )}
+            {/* Each private expense has its own people, so a saved default would never apply again. */}
+            {!isPrivate && (
+              <div className="flex items-center gap-2">
+                <Checkbox id="save-default" checked={state.saveDefault} onCheckedChange={(value) => set({ saveDefault: value === true })} />
+                <Label htmlFor="save-default" className="font-normal">
+                  Save as default splitting options
+                </Label>
+              </div>
+            )}
+          </div>
+        </details>
+      </div>
 
       <Summary state={state} names={names} hint={isPrivate ? PRIVATE_HINT : 'Edits stay in the group’s log.'} />
 

@@ -1,7 +1,9 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { cn } from '~/client/cn'
 import { CopyButton } from '~/client/components/copy-button'
 import { requireSignedIn } from '~/client/queries/account'
 import { Button } from '~/client/ui/button'
+import { disclosure, DisclosureSummary } from '~/client/ui/disclosure'
 
 export const Route = createFileRoute('/agents')({
   beforeLoad: ({ context, location }) => requireSignedIn({ queryClient: context.queryClient, location }),
@@ -74,9 +76,9 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
           Connect with OAuth
         </h2>
         <p className="text-sm text-muted-foreground">No API key needed. Your first Google sign-in creates your account automatically.</p>
-        <details className="border-y py-4">
-          <summary className="cursor-pointer font-medium">ChatGPT</summary>
-          <div className="space-y-4 pt-4 text-sm leading-relaxed">
+        <details className={cn(disclosure, 'border-y py-1')}>
+          <DisclosureSummary>ChatGPT</DisclosureSummary>
+          <div className="space-y-4 pt-2 pb-4 text-sm leading-relaxed">
             <ol className="list-decimal space-y-3 ps-5">
               <li>
                 On ChatGPT web, open{' '}
@@ -121,9 +123,9 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
             </a>
           </div>
         </details>
-        <details className="border-b pb-4">
-          <summary className="cursor-pointer font-medium">Claude</summary>
-          <div className="space-y-4 pt-4 text-sm leading-relaxed">
+        <details className={cn(disclosure, 'border-b py-1')}>
+          <DisclosureSummary>Claude</DisclosureSummary>
+          <div className="space-y-4 pt-2 pb-4 text-sm leading-relaxed">
             <ol className="list-decimal space-y-3 ps-5">
               <li>
                 Open <strong>Customize → Connectors → + Add → Add custom connector</strong>.
@@ -205,9 +207,9 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
         <p className="text-sm text-muted-foreground">
           Keep the key in your client’s private settings or environment. Do not paste it into an agent conversation or a group note.
         </p>
-        <details className="border-y py-4">
-          <summary className="cursor-pointer font-medium">Codex app</summary>
-          <ol className="list-decimal space-y-3 ps-5 pt-4 text-sm leading-relaxed">
+        <details className={cn(disclosure, 'border-y py-1')}>
+          <DisclosureSummary>Codex app</DisclosureSummary>
+          <ol className="list-decimal space-y-3 ps-5 pt-2 pb-4 text-sm leading-relaxed">
             <li>
               Open <strong>Plugins → MCPs</strong> and add an HTTP MCP server.
             </li>
@@ -223,9 +225,9 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
             </li>
           </ol>
         </details>
-        <details className="border-b pb-4">
-          <summary className="cursor-pointer text-sm font-medium">Codex CLI and configuration files</summary>
-          <div className="space-y-5 pt-4">
+        <details className={cn(disclosure, 'border-b py-1')}>
+          <DisclosureSummary>Codex CLI and configuration files</DisclosureSummary>
+          <div className="space-y-5 pt-2 pb-4">
             <p className="text-sm text-muted-foreground">{ENVIRONMENT}</p>
             <Configuration
               title="Codex configuration"
@@ -235,9 +237,9 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
             />
           </div>
         </details>
-        <details className="border-b pb-4">
-          <summary className="cursor-pointer text-sm font-medium">Claude Code with an API key</summary>
-          <div className="space-y-4 pt-4">
+        <details className={cn(disclosure, 'border-b py-1')}>
+          <DisclosureSummary>Claude Code with an API key</DisclosureSummary>
+          <div className="space-y-4 pt-2 pb-4">
             <p className="text-sm text-muted-foreground">{ENVIRONMENT}</p>
             <Configuration
               title="Claude Code configuration"
@@ -257,9 +259,9 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
           Ask: “Show my AgentSplit groups and balances.” If you’re new, ask your agent to create a group or accept your invitation link.
           Invitations must match your Google email; you can accept before or after connecting.
         </p>
-        <details className="border-y py-4">
-          <summary className="cursor-pointer text-sm font-medium">Detailed agent instructions</summary>
-          <div className="space-y-3 pt-4">
+        <details className={cn(disclosure, 'border-y py-1')}>
+          <DisclosureSummary>Detailed agent instructions</DisclosureSummary>
+          <div className="space-y-3 pt-2 pb-4">
             <CopyButton text={instructions} title="Copy agent instructions" />
             <p className="whitespace-pre-wrap text-sm leading-relaxed">{instructions}</p>
           </div>

@@ -80,34 +80,6 @@
   letter-spacing: -0.02em;
 }
 
-/* Spacing and hierarchy shared by the expense editor's existing fields. */
-.expense-editor label {
-  @apply text-sm leading-5 font-normal text-muted-foreground;
-}
-.expense-editor [data-participant-name] {
-  @apply text-foreground;
-}
-.expense-editor details > summary {
-  @apply flex min-h-12 cursor-pointer items-center justify-between gap-4 py-3 text-sm;
-  list-style: none;
-}
-.expense-editor details > summary::-webkit-details-marker {
-  display: none;
-}
-.expense-editor details > summary::after {
-  content: '+';
-  @apply text-muted-foreground;
-}
-.expense-editor details[open] > summary::after {
-  content: '−';
-}
-.expense-editor details > summary:focus-visible {
-  @apply outline-2 outline-offset-4 outline-ring;
-}
-.expense-editor .expense-summary {
-  @apply rounded-2xl bg-muted p-6;
-}
-
 @media (pointer: coarse) {
   button,
   [role='tab'],
