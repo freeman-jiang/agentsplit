@@ -159,8 +159,8 @@ function People({ details }: { details: Details }) {
     )
 
   return (
-    <section className="scroll-mt-24 space-y-6 rounded-2xl border bg-card p-6" id="members" aria-labelledby="people-heading">
-      <div className="space-y-2">
+    <section className="scroll-mt-24 space-y-4 rounded-2xl border bg-card p-6" id="members" aria-labelledby="people-heading">
+      <div className="space-y-1.5">
         <h2 id="people-heading" className="text-base font-semibold leading-tight">
           People
         </h2>
@@ -176,9 +176,9 @@ function People({ details }: { details: Details }) {
           const pending = details.invitations.find((i) => i.participantId === person.id)
           const member = person.status === 'joined' && person.userId && person.role ? { userId: person.userId, name: person.name, role: person.role } : null
           return (
-            <li key={person.id} className="space-y-3 py-4" aria-label={person.name}>
+            <li key={person.id} className="space-y-3 py-3" aria-label={person.name}>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
+                <div className="min-w-0 space-y-0.5">
                   <p className="font-medium break-words">
                     {person.name}
                     {details.participantId === person.id ? ' (you)' : ''}
@@ -317,7 +317,7 @@ function People({ details }: { details: Details }) {
           )
         })}
         {details.unboundMembers.map((member) => (
-          <li key={member.userId} className="space-y-3 py-4">
+          <li key={member.userId} className="space-y-3 py-3">
             <p className="font-medium">{member.name}</p>
             <p className="text-sm text-muted-foreground">Joined · Identity needs setup</p>
             <p className="text-xs break-all">{member.email}</p>
@@ -386,15 +386,19 @@ function People({ details }: { details: Details }) {
           </div>
         </form>
       )}
-      <Button
-        variant="outline"
-        disabled={busy}
-        onClick={() => {
-          if (window.confirm('Leave this group? You will need a new invitation to return.')) void actions.access({ action: 'leave', groupId: details.id })
-        }}
-      >
-        Leave group
-      </Button>
+      {/* Leaving is destructive, so it sits apart from the people actions. */}
+      <div className="border-t pt-4">
+        <Button
+          variant="ghost"
+          className="-ms-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm('Leave this group? You will need a new invitation to return.')) void actions.access({ action: 'leave', groupId: details.id })
+          }}
+        >
+          Leave group
+        </Button>
+      </div>
     </section>
   )
 }
