@@ -1,17 +1,16 @@
 // The MCP endpoint, the tool advertisement, and the group and expense tools,
 // over HTTP in process, against a real database. Parity items are named in
 // docs/v2/parity/mcp.md.
-import { Schema } from 'effect'
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { activities, expenses, mcpRateLimits, memberships } from '../../db/schema/app'
 import { MCP_TOOLS } from '~/server/mcp/tools'
 import { takeMcpRequest } from '~/server/rate-limit'
 import { LIMITS } from '~/shared/limits'
-import { mcpExpense } from '../kit/drafts'
+import { mcpExpense, type McpExpenseChanges } from '../kit/drafts'
 import { id21 } from '../kit/ids'
 import current from './fixtures/current-mcp-tools.json'
-import { BASE, callTool, failure, MCP_URL, ok, rpc, startHarness, type Harness } from './harness'
+import { BASE, callTool, checked as checkedCall, failure, type Harness, MCP_URL, rpc, startHarness } from './harness'
 
 let h: Harness
 let alice: Record<string, string>
@@ -31,27 +30,18 @@ beforeAll(async () => {
   await h.group({ id: 'g2', name: 'Trip', people: ['qa'], members: [['alice', 'qa', 'admin']] })
   await h.group({ id: 'g3', name: 'Bob only', people: ['rb'], members: [['bob', 'rb', 'admin']] })
   await h.privateContext({ owner: 'alice', expenseId: 'private-dinner' })
-  alice = { 'x-api-key': await h.apiKey('alice') }
+  const aliceKey = await h.apiKeyWithId('alice')
+  alice = { 'x-api-key': aliceKey.key }
+  aliceKeyId = aliceKey.id
   bob = { authorization: `Bearer ${await h.apiKey('bob')}` }
-  const keys = await h.withDb((db) => db.execute<{ id: string }>(sql`SELECT id FROM apikey WHERE reference_id = 'alice'`))
-  aliceKeyId = keys.rows[0]?.id ?? ''
 })
 afterAll(() => h.close())
 
-const tool = (name: string) => {
-  const found = MCP_TOOLS.find((t) => t.name === name)
-  if (!found) throw new Error(name)
-  return found
-}
-/** Every result must decode with the tool's advertised output schema. */
-const checked = async (name: string, args: object, headers = alice) => {
-  const result = await ok(h, { name, args, headers })
-  Schema.decodeUnknownSync(tool(name).output as Schema.Codec<unknown>)(result)
-  return result
-}
+/** A successful call whose result decodes with the tool's advertised output schema. */
+const checked = (name: string, args: object, headers = alice) => checkedCall(h, { name, args, headers })
 
 /** The create_expense argument in g1: 30 paid by Alice, one share each for Alice, Bob and pc. */
-const expense = (over: Record<string, unknown> = {}) => mcpExpense({ paidBy: 'pa', people: ['pa', 'pb', 'pc'], ...over })
+const expense = (over: McpExpenseChanges = {}) => mcpExpense({ paidBy: 'pa', people: ['pa', 'pb', 'pc'], ...over })
 
 /**
  * A new account (named Lena) with an API key, admin of a new group of three
@@ -65,7 +55,7 @@ async function household(tag: string, data: { slug?: string } = {}) {
   const [a, b, c] = [`${tag}-a`, `${tag}-b`, `${tag}-c`]
   await h.group({ id: groupId, ...(data.slug ? { slug: data.slug } : {}), people: [a, b, c], members: [[owner, a, 'admin']] })
   const headers = { 'x-api-key': await h.apiKey(owner) }
-  return { owner, groupId, a, b, c, headers, expense: (over: Record<string, unknown> = {}) => mcpExpense({ paidBy: a, people: [a, b, c], ...over }) }
+  return { owner, groupId, a, b, c, headers, expense: (over: McpExpenseChanges = {}) => mcpExpense({ paidBy: a, people: [a, b, c], ...over }) }
 }
 
 describe('protocol', () => {
@@ -293,7 +283,7 @@ describe('expense writes and reads', () => {
     await checked('create_expense', {
       groupId: 'g1',
       expenseId: id,
-      expense: expense({ paidBy: undefined, payers: [{ participant: 'pa', amount: '10' }, { participant: 'pb', amount: '20' }], title: 'Groceries' }),
+      expense: expense({ paidBy: null, payers: [{ participant: 'pa', amount: '10' }, { participant: 'pb', amount: '20' }], title: 'Groceries' }),
     })
     const read = (await checked('get_expense', { groupId: 'g1', expenseId: id }))['expense'] as { paidById: string; payers: unknown }
     expect(read.paidById).toBe('pb')
@@ -303,8 +293,8 @@ describe('expense writes and reads', () => {
     ])
     for (const bad of [
       { paidBy: 'pa', payers: [{ participant: 'pa', amount: '30' }] },
-      { paidBy: undefined },
-      { paidBy: undefined, payers: [{ participant: 'pa', amount: '10' }] },
+      { paidBy: null },
+      { paidBy: null, payers: [{ participant: 'pa', amount: '10' }] },
     ]) {
       const refused = await failure(h, { name: 'create_expense', args: { groupId: 'g1', expense: expense(bad) }, headers: alice })
       expect(refused.code).toBe('BAD_REQUEST')
@@ -315,7 +305,7 @@ describe('expense writes and reads', () => {
     const { groupId, a, headers, expense: draft } = await household('invalid')
     const written = async () => (await h.withDb((db) => db.select().from(expenses).where(eq(expenses.groupId, groupId)))).length
     for (const bad of [
-      draft({ amount: 10 }),
+      { ...draft(), amount: 10 },
       draft({ amount: '12.345' }),
       draft({ amount: ' 1' }),
       draft({ amount: '1e3' }),
@@ -330,7 +320,7 @@ describe('expense writes and reads', () => {
       draft({ paidFor: [{ participant: a, shares: '1' }, { participant: a, shares: '1' }] }),
       // A participant of another group.
       draft({ paidBy: 'qa' }),
-      draft({ originalAmount: '5' }),
+      { ...draft(), originalAmount: '5' },
       draft({ documents: [{ id: 'd', url: 'https://x.example/r.png', width: 1, height: 1 }] }),
     ]) {
       const refused = await failure(h, { name: 'create_expense', args: { groupId, expense: bad }, headers })
@@ -381,7 +371,7 @@ describe('expense writes and reads', () => {
       { expenseId: exact, participantId: b, shares: '6.25' },
     ])
     const shared = newExpenseId()
-    await checked('create_expense', { groupId, expenseId: shared, expense: draft({ paidBy: undefined, payers: [{ participant: a, amount: '10' }, { participant: b, amount: '20' }] }) }, headers)
+    await checked('create_expense', { groupId, expenseId: shared, expense: draft({ paidBy: null, payers: [{ participant: a, amount: '10' }, { participant: b, amount: '20' }] }) }, headers)
     const multi = await failure(h, { name: 'update_expense', args: { groupId, expenseId: shared, expectedRevision: 1, changes: { amount: '40' } }, headers })
     expect(multi.code).toBe('BAD_REQUEST')
     const fixed = await checked('update_expense', { groupId, expenseId: shared, expectedRevision: 1, changes: { amount: '40', payers: [{ participant: a, amount: '15' }, { participant: b, amount: '25' }] } }, headers)
