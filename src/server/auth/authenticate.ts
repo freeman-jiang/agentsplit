@@ -1,5 +1,6 @@
 // Who is calling the MCP endpoint: an API key or an OAuth access token, with
 // the current app's rules (src/lib/mcp/authenticate.ts, src/lib/api-key-header.ts).
+import { API_KEY_HEADER } from '../../shared/mcp'
 import type { Db } from '../core/db'
 import type { Principal } from '../core/access'
 import { verifyApiKey } from './api-key'
@@ -22,7 +23,7 @@ const validKey = (key: string) => key.length >= 32 && key.length <= 4096 && /^[^
  * and a malformed header never falls back to the other one.
  */
 export function readApiKey(headers: Headers): string | undefined {
-  const direct = headers.get('x-api-key')
+  const direct = headers.get(API_KEY_HEADER)
   const authorization = headers.get('authorization')
   const bearer = authorization?.match(/^Bearer ([^\s,]+)$/i)?.[1]
   if (authorization !== null && !bearer) return undefined
@@ -61,11 +62,11 @@ export async function authenticate(db: Db, data: { request: Request; baseUrl: st
   const headers = request.headers
   try {
     const authorization = headers.get('authorization')
-    if (!headers.has('x-api-key') && /^DPoP [^\s,]{32,16384}$/i.test(authorization ?? '')) return await oauth(db, data)
+    if (!headers.has(API_KEY_HEADER) && /^DPoP [^\s,]{32,16384}$/i.test(authorization ?? '')) return await oauth(db, data)
     const key = readApiKey(headers)
     if (!key) return { response: challenge({ baseUrl }) }
     // Issued API keys are opaque. OAuth access JWTs use the compact three-part form.
-    if (!headers.has('x-api-key') && key.split('.').length === 3) return await oauth(db, data)
+    if (!headers.has(API_KEY_HEADER) && key.split('.').length === 3) return await oauth(db, data)
     const verified = await verifyApiKey(db, key)
     if (!verified.valid) {
       // The current app answered a rate-limited key with 401; v2 answers 429 (DECISIONS.md, P-MCP-56).
@@ -76,7 +77,7 @@ export async function authenticate(db: Db, data: { request: Request; baseUrl: st
             { status: 429, headers: { ...noStore, 'Retry-After': String(Math.max(1, Math.ceil(verified.tryAgainInMs / 1000))) } },
           ),
         }
-      if (headers.has('x-api-key')) return { response: challenge({ baseUrl }) }
+      if (headers.has(API_KEY_HEADER)) return { response: challenge({ baseUrl }) }
       return await oauth(db, data)
     }
     const account = verified.owner
@@ -103,7 +104,7 @@ export type Reader = { readonly principal: Principal } | { readonly response: Re
 export async function httpReader(db: Db, data: { request: Request; baseUrl: string; secret: string; signIn: string }): Promise<Reader> {
   const headers = data.request.headers
   const signIn = () => ({ response: jsonError({ status: 401, message: data.signIn }) })
-  if (headers.has('x-api-key') || headers.has('authorization')) {
+  if (headers.has(API_KEY_HEADER) || headers.has('authorization')) {
     const result = await authenticate(db, { request: data.request, baseUrl: data.baseUrl })
     return 'response' in result && result.response.status === 401 ? signIn() : result
   }

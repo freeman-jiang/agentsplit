@@ -9,7 +9,7 @@ import { PrivatePeople } from '../../../shared/api/feed'
 import type { ExpenseDraft } from '../../../shared/expense-rules'
 import { LIMITS, mebibytes } from '../../../shared/limits'
 import { formatMinor, minorOf } from '../../../shared/minor'
-import { RECEIPT_CONTENT_TYPES, RECURRENCE_BY_NAME, RECURRENCE_LIST, RECURRENCE_NAMES, SPLIT_MODE_BY_NAME, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
+import { CATEGORY, RECEIPT_CONTENT_TYPES, RECURRENCE_BY_NAME, RECURRENCE_LIST, RECURRENCE_NAMES, SPLIT_MODE_BY_NAME, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
 import type { ExpenseFilter } from '../../expense-read'
 import * as history from '../../history'
 import { randomId } from '../../core/ids'
@@ -280,7 +280,7 @@ function draftOf(input: ExpenseInputs): ExpenseDraft {
     title: input.title,
     vendor: input.vendor ?? null,
     notes: input.notes ?? '',
-    categoryId: input.category ?? 0,
+    categoryId: input.category ?? CATEGORY.general,
     expenseDate: input.expenseDate,
     currency: input.currencyCode,
     amount: input.amount,
