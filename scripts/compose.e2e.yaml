@@ -1,0 +1,23 @@
+# Local e2e only (scripts/e2e.sh), on top of compose.coolify.yaml:
+# loopback ports, a disposable database, and a local network in place of
+# Coolify's external one.
+services:
+  app:
+    ports: ['127.0.0.1:${E2E_PORT:-5190}:3000']
+    environment:
+      DATABASE_URL: postgresql://postgres:${DB2_PASSWORD}@db2:5432/agentsplit_e2e
+  db2:
+    environment:
+      POSTGRES_DB: agentsplit_e2e
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d agentsplit_e2e']
+    ports: ['127.0.0.1:${E2E_DB_PORT:-5191}:5432']
+    networks: [backend, e2e]
+  garage:
+    ports: ['127.0.0.1:${E2E_S3_PORT:-5192}:3900']
+    networks: [backend, e2e]
+
+networks:
+  coolify:
+    external: false
+  e2e: {}
