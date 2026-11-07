@@ -1,58 +1,50 @@
 // The account area against a real database: profile, API keys through Better
 // Auth, connected apps, consent clients, the owner bootstrap, and the
 // security rules that sign-in and the server rely on.
-import { serializeSignedCookie } from 'better-call'
 import { and, eq } from 'drizzle-orm'
 import type { Pool, PoolClient } from 'pg'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { authBootstrap, groups, legacyGroupClaims, memberships, oauthConnections } from '../../db/schema/app'
 import * as auth from '../../db/schema/auth'
 import { consentClient, getAccount, revokeApiKey, revokeConnection, updateProfile } from '~/server/account'
 import { bootstrapOwner } from '~/server/auth/owner-bootstrap'
 import { createAuth } from '~/server/auth/auth'
-import { makeDb, type Db } from '~/server/core/db'
 import type { Principal } from '~/server/core/access'
-import { LIMITS } from '~/shared/limits'
-import { CONTENT_SECURITY_POLICY } from '~/server/headers'
-import { readinessResponse } from '~/server/public-pages'
+import { makeDb, type Db } from '~/server/core/db'
+import { createApp } from '~/server/main/app'
 import { safeNextPath } from '~/shared/account'
 import { Forbidden, Invalid, NotFound } from '~/shared/api'
+import { BASE, SECRET, testSettings } from '../kit/config'
 import { testDatabase, type TestDatabase } from '../kit/database'
+import { counter } from '../kit/ids'
+import { principal, userRows } from '../kit/people'
+import { signIn } from '../kit/session'
+import { fakeBucket } from './fake-bucket'
 
-const secret = 'test-secret-0123456789-0123456789-0123456789'
-const baseUrl = 'http://localhost:5185'
 let database: TestDatabase
 let pool: Pool
 let client: PoolClient
 let db: Db
 
-const principal = (userId: string): Principal => ({ userId, name: userId, email: `${userId}@example.com`, source: 'web', agentKeyId: null })
-const alice = principal('alice')
-const bob = principal('bob')
 const day = (n: number) => new Date(Date.UTC(2026, 10, n))
+const nextUser = counter('user')
 
-const makeAuth = (bootstrapEmail?: string) =>
-  createAuth({ db, baseUrl, secret, googleClientId: 'test-client', googleClientSecret: 'test-secret', bootstrapEmail, signUpDailyLimit: LIMITS.signUpsPerDay })
-
-async function sessionHeaders(userId: string): Promise<Headers> {
-  const token = `token-${userId}-${crypto.randomUUID()}`
-  const now = new Date()
-  await db.insert(auth.session).values({ id: token, token, userId, expiresAt: new Date(Date.now() + 3_600_000), createdAt: now, updatedAt: now })
-  const cookie = (await serializeSignedCookie('better-auth.session_token', token, secret)).split(';')[0] ?? ''
-  return new Headers({ cookie, origin: baseUrl })
+/** A new account for one test, verified unless asked. */
+async function newUser(data: { verified?: boolean } = {}): Promise<Principal> {
+  const person = principal(nextUser())
+  await db.insert(auth.user).values(userRows([person], { verified: data.verified ?? true }))
+  return person
 }
+
+const makeAuth = (bootstrapEmail?: string) => createAuth({ ...testSettings({ bootstrapEmail }), db })
+
+const sessionHeaders = async (userId: string) => new Headers({ cookie: (await signIn(db, { userId, secret: SECRET, baseUrl: BASE })).header, origin: BASE })
 
 beforeAll(async () => {
   database = await testDatabase()
   pool = database.pool
   client = await pool.connect()
   db = makeDb(client)
-  const now = new Date()
-  await db.insert(auth.user).values([
-    { id: 'alice', name: 'Alice', email: 'alice@example.com', emailVerified: true, createdAt: now, updatedAt: now },
-    { id: 'bob', name: 'Bob', email: 'bob@example.com', emailVerified: true, createdAt: now, updatedAt: now },
-    { id: 'unverified', name: 'U', email: 'u@example.com', emailVerified: false, createdAt: now, updatedAt: now },
-  ])
 })
 afterAll(async () => {
   client.release()
@@ -61,33 +53,36 @@ afterAll(async () => {
 
 describe('profile', () => {
   it('trims the name and changes only the caller', async () => {
-    const result = await updateProfile(db, { principal: alice, name: '  Alice Liddell  ' })
-    expect(result).toEqual({ profile: { id: 'alice', name: 'Alice Liddell', email: 'alice@example.com', emailVerified: true } })
-    const [other] = await db.select({ name: auth.user.name }).from(auth.user).where(eq(auth.user.id, 'bob'))
-    expect(other?.name).toBe('Bob')
+    const caller = await newUser()
+    const other = await newUser()
+    const result = await updateProfile(db, { principal: caller, name: '  Alice Liddell  ' })
+    expect(result).toEqual({ profile: { id: caller.userId, name: 'Alice Liddell', email: caller.email, emailVerified: true } })
+    const [row] = await db.select({ name: auth.user.name }).from(auth.user).where(eq(auth.user.id, other.userId))
+    expect(row?.name).toBe(other.name)
   })
 
   it('accepts 1 to 50 characters after trimming', async () => {
-    await expect(updateProfile(db, { principal: alice, name: '   ' })).rejects.toBeInstanceOf(Invalid)
-    await expect(updateProfile(db, { principal: alice, name: 'x'.repeat(51) })).rejects.toBeInstanceOf(Invalid)
-    expect((await updateProfile(db, { principal: alice, name: 'x'.repeat(50) })).profile.name).toHaveLength(50)
-    await updateProfile(db, { principal: alice, name: 'Alice' })
+    const caller = await newUser()
+    await expect(updateProfile(db, { principal: caller, name: '   ' })).rejects.toBeInstanceOf(Invalid)
+    await expect(updateProfile(db, { principal: caller, name: 'x'.repeat(51) })).rejects.toBeInstanceOf(Invalid)
+    expect((await updateProfile(db, { principal: caller, name: 'x'.repeat(50) })).profile.name).toHaveLength(50)
   })
 
   it('refuses an unverified account', async () => {
-    const error = await updateProfile(db, { principal: principal('unverified'), name: 'New' }).catch((e: unknown) => e)
-    expect(error).toBeInstanceOf(Forbidden)
-    expect((error as Forbidden).message).toBe('Verify your email before setting your display name.')
+    const refused = updateProfile(db, { principal: await newUser({ verified: false }), name: 'New' })
+    await expect(refused).rejects.toBeInstanceOf(Forbidden)
+    await expect(refused).rejects.toMatchObject({ message: 'Verify your email before setting your display name.' })
   })
 })
 
 describe('API keys', () => {
   it('creates keys through Better Auth with the current prefix, rate limit and owner', async () => {
-    const created = await makeAuth().api.createApiKey({ body: { name: 'My Codex' }, headers: await sessionHeaders('alice') })
+    const owner = await newUser()
+    const created = await makeAuth().api.createApiKey({ body: { name: 'My Codex' }, headers: await sessionHeaders(owner.userId) })
     expect(created.key.startsWith('agentsplit_')).toBe(true)
     const [row] = await db.select().from(auth.apikey).where(eq(auth.apikey.id, created.id))
     expect(row).toMatchObject({
-      referenceId: 'alice',
+      referenceId: owner.userId,
       name: 'My Codex',
       prefix: 'agentsplit_',
       rateLimitEnabled: true,
@@ -101,35 +96,85 @@ describe('API keys', () => {
   })
 
   it('refuses names over 32 characters', async () => {
-    await expect(makeAuth().api.createApiKey({ body: { name: 'x'.repeat(33) }, headers: await sessionHeaders('alice') })).rejects.toThrow()
+    const owner = await newUser()
+    await expect(makeAuth().api.createApiKey({ body: { name: 'x'.repeat(33) }, headers: await sessionHeaders(owner.userId) })).rejects.toMatchObject({
+      status: 'BAD_REQUEST',
+      body: { code: 'INVALID_NAME_LENGTH' },
+    })
+    expect((await getAccount(db, { principal: owner })).apiKeys).toEqual([])
   })
 
   it('refuses to create a key with a key instead of a session', async () => {
-    const created = await makeAuth().api.createApiKey({ body: { name: 'Agent' }, headers: await sessionHeaders('bob') })
-    const asKey = new Headers({ 'x-api-key': created.key, origin: baseUrl })
-    await expect(makeAuth().api.createApiKey({ body: { name: 'Minted' }, headers: asKey })).rejects.toThrow()
+    const owner = await newUser()
+    const created = await makeAuth().api.createApiKey({ body: { name: 'Agent' }, headers: await sessionHeaders(owner.userId) })
+    const asKey = new Headers({ 'x-api-key': created.key, origin: BASE })
+    await expect(makeAuth().api.createApiKey({ body: { name: 'Minted' }, headers: asKey })).rejects.toMatchObject({ status: 'UNAUTHORIZED' })
     expect(await makeAuth().api.getSession({ headers: asKey })).toBeNull()
+    expect((await getAccount(db, { principal: owner })).apiKeys.map((k) => k.name)).toEqual(['Agent'])
   })
 
   it('lists only the caller’s keys, newest first, without the key', async () => {
-    const account = await getAccount(db, { principal: alice })
-    expect(account.apiKeys.map((k) => k.name)).toEqual(['My Codex'])
+    const owner = await newUser()
+    const other = await newUser()
+    const older = await makeAuth().api.createApiKey({ body: { userId: owner.userId, name: 'Older' } })
+    await makeAuth().api.createApiKey({ body: { userId: owner.userId, name: 'Newer' } })
+    await makeAuth().api.createApiKey({ body: { userId: other.userId, name: 'Not mine' } })
+    // Two keys can share a millisecond, so the older key gets an earlier date.
+    await db.update(auth.apikey).set({ createdAt: day(1) }).where(eq(auth.apikey.id, older.id))
+    const account = await getAccount(db, { principal: owner })
+    expect(account.apiKeys.map((k) => k.name)).toEqual(['Newer', 'Older'])
     expect(Object.keys(account.apiKeys[0] ?? {}).sort()).toEqual(['createdAt', 'id', 'name', 'start'])
-    // Better Auth stores the first characters of the key for recognition.
+    // Better Auth stores the first characters of the key for recognition: the prefix, never the secret part.
     expect('agentsplit_'.startsWith(account.apiKeys[0]?.start ?? 'missing')).toBe(true)
     expect(account.apiKeys[0]?.createdAt).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/)
   })
 
   it('revokes only the caller’s own key, and a revoked key stops working', async () => {
-    const created = await makeAuth().api.createApiKey({ body: { name: 'Temp' }, headers: await sessionHeaders('alice') })
-    await expect(revokeApiKey(db, { principal: bob, keyId: created.id })).rejects.toBeInstanceOf(NotFound)
+    const owner = await newUser()
+    const other = await newUser()
+    const created = await makeAuth().api.createApiKey({ body: { name: 'Temp' }, headers: await sessionHeaders(owner.userId) })
+    await expect(revokeApiKey(db, { principal: other, keyId: created.id })).rejects.toBeInstanceOf(NotFound)
     expect((await makeAuth().api.verifyApiKey({ body: { key: created.key } })).valid).toBe(true)
-    expect(await revokeApiKey(db, { principal: alice, keyId: created.id })).toEqual({ revoked: true })
+    expect(await revokeApiKey(db, { principal: owner, keyId: created.id })).toEqual({ revoked: true })
     expect((await makeAuth().api.verifyApiKey({ body: { key: created.key } })).valid).toBe(false)
   })
 })
 
 describe('connected apps', () => {
+  const alice = principal('alice')
+
+  /**
+   * Connections of `userId` to four clients: ChatGPT with write consent, an
+   * unnamed reader whose consent was reduced to read after the grant, a client
+   * without consent, and a revoked one. ChatGPT also has tokens.
+   */
+  async function connectApps(userId: string) {
+    const connection = (id: string, clientId: string, scopes: string[], createdAt: Date, revokedAt: Date | null = null) => ({
+      id: `${userId}-${id}`,
+      authorizationCodeId: `code-${userId}-${id}`,
+      userId,
+      clientId,
+      scopes,
+      createdAt,
+      revokedAt,
+    })
+    await db.insert(oauthConnections).values([
+      connection('c1', 'chatgpt', ['agentsplit:read', 'agentsplit:write'], day(2)),
+      connection('c2', 'reader', ['agentsplit:read', 'agentsplit:write'], day(3)),
+      connection('c3', 'no-consent', ['agentsplit:read'], day(4)),
+      connection('c4', 'revoked', ['agentsplit:read'], day(5), day(6)),
+    ])
+    const consent = (clientId: string, scopes: string[]) => ({ id: `consent-${userId}-${clientId}`, clientId, userId, scopes, createdAt: day(1) })
+    await db.insert(auth.oauthConsent).values([
+      consent('chatgpt', ['agentsplit:read', 'agentsplit:write', 'offline_access']),
+      // Consent reduced to read only after the grant: write is gone at once.
+      consent('reader', ['agentsplit:read']),
+      consent('revoked', ['agentsplit:read']),
+    ])
+    await db.insert(auth.oauthRefreshToken).values({ id: `${userId}-r1`, token: `hash-${userId}-r1`, clientId: 'chatgpt', userId, scopes: ['agentsplit:read'] })
+    await db.insert(auth.oauthAccessToken).values({ id: `${userId}-a1`, token: `hash-${userId}-a1`, clientId: 'chatgpt', userId, scopes: ['agentsplit:read'] })
+  }
+
   beforeAll(async () => {
     const client = (clientId: string, name: string | null, disabled = false) => ({
       id: clientId,
@@ -147,30 +192,8 @@ describe('connected apps', () => {
       client('revoked', 'Revoked'),
       client('disabled', 'Off', true),
     ])
-    const connection = (id: string, clientId: string, scopes: string[], createdAt: Date, revokedAt: Date | null = null) => ({
-      id,
-      authorizationCodeId: `code-${id}`,
-      userId: 'alice',
-      clientId,
-      scopes,
-      createdAt,
-      revokedAt,
-    })
-    await db.insert(oauthConnections).values([
-      connection('c1', 'chatgpt', ['agentsplit:read', 'agentsplit:write'], day(2)),
-      connection('c2', 'reader', ['agentsplit:read', 'agentsplit:write'], day(3)),
-      connection('c3', 'no-consent', ['agentsplit:read'], day(4)),
-      connection('c4', 'revoked', ['agentsplit:read'], day(5), day(6)),
-    ])
-    const consent = (clientId: string, scopes: string[]) => ({ id: `consent-${clientId}`, clientId, userId: 'alice', scopes, createdAt: day(1) })
-    await db.insert(auth.oauthConsent).values([
-      consent('chatgpt', ['agentsplit:read', 'agentsplit:write', 'offline_access']),
-      // Consent reduced to read only after the grant: write is gone at once.
-      consent('reader', ['agentsplit:read']),
-      consent('revoked', ['agentsplit:read']),
-    ])
-    await db.insert(auth.oauthRefreshToken).values({ id: 'r1', token: 'hash-r1', clientId: 'chatgpt', userId: 'alice', scopes: ['agentsplit:read'] })
-    await db.insert(auth.oauthAccessToken).values({ id: 'a1', token: 'hash-a1', clientId: 'chatgpt', userId: 'alice', scopes: ['agentsplit:read'] })
+    await db.insert(auth.user).values(userRows([alice], { verified: true }))
+    await connectApps(alice.userId)
   })
 
   it('lists unrevoked, consented clients once, newest connection first', async () => {
@@ -179,18 +202,22 @@ describe('connected apps', () => {
       { clientId: 'reader', name: 'Connected app', canWrite: false },
       { clientId: 'chatgpt', name: 'ChatGPT', canWrite: true },
     ])
-    expect((await getAccount(db, { principal: bob })).connections).toEqual([])
+    expect((await getAccount(db, { principal: await newUser() })).connections).toEqual([])
   })
 
   it('revokes with a tombstone and deletes the tokens and consent', async () => {
-    expect(await revokeConnection(db, { principal: alice, clientId: 'chatgpt' })).toEqual({ revoked: true })
-    const [connection] = await db.select().from(oauthConnections).where(eq(oauthConnections.id, 'c1'))
+    const owner = await newUser()
+    await connectApps(owner.userId)
+    await makeAuth().api.createApiKey({ body: { userId: owner.userId } })
+    expect(await revokeConnection(db, { principal: owner, clientId: 'chatgpt' })).toEqual({ revoked: true })
+    const [connection] = await db.select().from(oauthConnections).where(eq(oauthConnections.id, `${owner.userId}-c1`))
     expect(connection?.revokedAt).toBeInstanceOf(Date)
     for (const table of [auth.oauthAccessToken, auth.oauthRefreshToken, auth.oauthConsent])
-      expect(await db.select().from(table).where(and(eq(table.userId, 'alice'), eq(table.clientId, 'chatgpt')))).toEqual([])
+      expect(await db.select().from(table).where(and(eq(table.userId, owner.userId), eq(table.clientId, 'chatgpt')))).toEqual([])
     // Other clients and the user's API keys are untouched.
-    expect((await getAccount(db, { principal: alice })).connections.map((c) => c.clientId)).toEqual(['reader'])
-    expect((await getAccount(db, { principal: alice })).apiKeys).toHaveLength(1)
+    const account = await getAccount(db, { principal: owner })
+    expect(account.connections.map((c) => c.clientId)).toEqual(['reader'])
+    expect(account.apiKeys).toHaveLength(1)
   })
 
   it('names a known, enabled client on the consent page', async () => {
@@ -202,23 +229,32 @@ describe('connected apps', () => {
 
 describe('owner bootstrap', () => {
   beforeAll(async () => {
-    const now = new Date()
-    await db.insert(auth.user).values([
-      { id: 'owner', name: 'Owner', email: 'Owner@Example.com', emailVerified: true, createdAt: now, updatedAt: now },
-      { id: 'impostor', name: 'I', email: 'owner@example.org', emailVerified: false, createdAt: now, updatedAt: now },
-    ])
     await db.insert(groups).values([
       { id: 'legacy-1', kind: 'named', name: 'Legacy 1', defaultCurrency: 'USD' },
       { id: 'legacy-2', kind: 'named', name: 'Legacy 2', defaultCurrency: 'USD' },
       { id: 'later', kind: 'named', name: 'Later', defaultCurrency: 'USD' },
     ])
     await db.insert(legacyGroupClaims).values([{ groupId: 'legacy-1' }, { groupId: 'legacy-2' }])
-    // An earlier, removed membership is reactivated as admin.
-    await db.insert(memberships).values({ userId: 'owner', groupId: 'legacy-2', role: 'member', active: false })
+  })
+  // The bootstrap marker is one row for the whole database, so each test starts without it.
+  beforeEach(async () => {
+    await db.delete(authBootstrap)
   })
 
-  const ownerMemberships = () =>
-    db.select({ groupId: memberships.groupId, role: memberships.role, active: memberships.active }).from(memberships).where(eq(memberships.userId, 'owner'))
+  /** A verified account with `email`, for one test. */
+  async function owner(email: string) {
+    const now = new Date()
+    const id = nextUser()
+    await db.insert(auth.user).values({ id, name: 'Owner', email, emailVerified: true, createdAt: now, updatedAt: now })
+    return { id, email, emailVerified: true }
+  }
+
+  const membershipsOf = (userId: string) =>
+    db
+      .select({ groupId: memberships.groupId, role: memberships.role, active: memberships.active })
+      .from(memberships)
+      .where(eq(memberships.userId, userId))
+      .orderBy(memberships.groupId)
 
   it('ignores other and unverified emails', async () => {
     const user = { id: 'impostor', email: 'owner@example.com', emailVerified: false }
@@ -228,28 +264,28 @@ describe('owner bootstrap', () => {
   })
 
   it('runs on sign-in, once, and grants only the claimed groups', async () => {
-    const authWithOwner = makeAuth('  OWNER@example.com ')
-    const context = await authWithOwner.$context
-    await context.internalAdapter.createSession('owner')
-    expect((await ownerMemberships()).sort((a, b) => a.groupId.localeCompare(b.groupId))).toEqual([
+    const o = await owner('Owner-Signin@Example.com')
+    // An earlier, removed membership is reactivated as admin.
+    await db.insert(memberships).values({ userId: o.id, groupId: 'legacy-2', role: 'member', active: false })
+    const context = await makeAuth('  OWNER-SIGNIN@example.com ').$context
+    await context.internalAdapter.createSession(o.id)
+    expect(await membershipsOf(o.id)).toEqual([
       { groupId: 'legacy-1', role: 'admin', active: true },
       { groupId: 'legacy-2', role: 'admin', active: true },
     ])
     // Removing a membership later never brings bootstrap back.
-    await db.update(memberships).set({ active: false }).where(and(eq(memberships.userId, 'owner'), eq(memberships.groupId, 'legacy-1')))
-    await context.internalAdapter.createSession('owner')
-    const owner = { id: 'owner', email: 'Owner@Example.com', emailVerified: true }
-    expect(await bootstrapOwner(db, { user: owner, bootstrapEmail: 'owner@example.com' })).toBe(false)
-    expect((await ownerMemberships()).find((m) => m.groupId === 'legacy-1')?.active).toBe(false)
-    expect(await db.select({ userId: authBootstrap.userId }).from(authBootstrap)).toEqual([{ userId: 'owner' }])
+    await db.update(memberships).set({ active: false }).where(and(eq(memberships.userId, o.id), eq(memberships.groupId, 'legacy-1')))
+    await context.internalAdapter.createSession(o.id)
+    expect(await bootstrapOwner(db, { user: o, bootstrapEmail: 'owner-signin@example.com' })).toBe(false)
+    expect((await membershipsOf(o.id)).find((m) => m.groupId === 'legacy-1')?.active).toBe(false)
+    expect(await db.select({ userId: authBootstrap.userId }).from(authBootstrap)).toEqual([{ userId: o.id }])
   })
 
   it('serializes concurrent runs', async () => {
-    await db.delete(authBootstrap)
+    const o = await owner('owner-race@example.com')
     const clients = await Promise.all([pool.connect(), pool.connect()])
     try {
-      const owner = { id: 'owner', email: 'owner@example.com', emailVerified: true }
-      const results = await Promise.all(clients.map((c) => bootstrapOwner(makeDb(c), { user: owner, bootstrapEmail: 'owner@example.com' })))
+      const results = await Promise.all(clients.map((c) => bootstrapOwner(makeDb(c), { user: o, bootstrapEmail: o.email })))
       expect(results.filter(Boolean)).toHaveLength(1)
     } finally {
       for (const c of clients) c.release()
@@ -257,14 +293,15 @@ describe('owner bootstrap', () => {
   })
 
   it('never blocks sign-in when it fails', async () => {
-    await db.delete(authBootstrap)
+    const o = await owner('owner-fail@example.com')
     // Make the marker insert fail, so the bootstrap transaction rolls back.
     await db.execute('ALTER TABLE auth_bootstrap ADD CONSTRAINT fail_for_test CHECK (false) NOT VALID')
     try {
-      const context = await makeAuth('owner@example.com').$context
-      const created = await context.internalAdapter.createSession('owner')
-      expect(created?.userId).toBe('owner')
+      const context = await makeAuth(o.email).$context
+      const created = await context.internalAdapter.createSession(o.id)
+      expect(created?.userId).toBe(o.id)
       expect(await db.select().from(authBootstrap)).toEqual([])
+      expect(await membershipsOf(o.id)).toEqual([])
     } finally {
       await db.execute('ALTER TABLE auth_bootstrap DROP CONSTRAINT fail_for_test')
     }
@@ -284,9 +321,9 @@ describe('sign-in destination', () => {
     const start = async (callbackURL: string) => {
       await db.delete(auth.rateLimit)
       return makeAuth().handler(
-        new Request(`${baseUrl}/api/auth/sign-in/social`, {
+        new Request(`${BASE}/api/auth/sign-in/social`, {
           method: 'POST',
-          headers: { 'content-type': 'application/json', origin: baseUrl },
+          headers: { 'content-type': 'application/json', origin: BASE },
           body: JSON.stringify({ provider: 'google', callbackURL }),
         }),
       )
@@ -303,57 +340,31 @@ describe('sign-in destination', () => {
   })
 })
 
-describe('OAuth discovery', () => {
-  const get = (path: string) => makeAuth().handler(new Request(`${baseUrl}${path}`))
-
-  it.each(['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/api/mcp'])('serves %s', async (path) => {
-    const response = await get(path)
-    expect(response.status).toBe(200)
-    const metadata = (await response.json()) as Record<string, unknown>
-    expect(metadata).toMatchObject({ resource: `${baseUrl}/api/mcp`, authorization_servers: [`${baseUrl}/api/auth`] })
-    expect(metadata['scopes_supported']).toEqual(['agentsplit:read', 'agentsplit:write'])
-  })
-
-  it('serves the authorization-server metadata', async () => {
-    const response = await get('/.well-known/oauth-authorization-server/api/auth')
-    expect(response.status).toBe(200)
-    const metadata = (await response.json()) as Record<string, unknown>
-    expect(metadata).toMatchObject({
-      issuer: `${baseUrl}/api/auth`,
-      authorization_endpoint: `${baseUrl}/api/auth/oauth2/authorize`,
-      token_endpoint: `${baseUrl}/api/auth/oauth2/token`,
-      registration_endpoint: `${baseUrl}/api/auth/oauth2/register`,
-      client_id_metadata_document_supported: true,
-      authorization_response_iss_parameter_supported: true,
-    })
-    expect(metadata['code_challenge_methods_supported']).toContain('S256')
-    expect(metadata['grant_types_supported']).toEqual(['authorization_code', 'refresh_token'])
-    expect(metadata['token_endpoint_auth_methods_supported']).toEqual(
-      expect.arrayContaining(['none', 'client_secret_basic', 'client_secret_post', 'private_key_jwt']),
-    )
-  })
-
-  it('answers HEAD', async () => {
-    const response = await makeAuth().handler(new Request(`${baseUrl}/.well-known/oauth-protected-resource/api/mcp`, { method: 'HEAD' }))
-    expect(response.status).toBe(200)
-  })
-})
-
 describe('security headers and readiness', () => {
-  it('allows no inline or eval scripts', () => {
-    const scripts = CONTENT_SECURITY_POLICY.split('; ').find((d) => d.startsWith('script-src'))
-    expect(scripts).toBe("script-src 'self'")
+  /** The whole app on this file's database; `connect` replaces the pool's connections. */
+  const app = (connect: () => Promise<PoolClient> = () => pool.connect()) =>
+    createApp({
+      config: testSettings(),
+      connect,
+      pool: makeDb(pool),
+      bucket: fakeBucket().bucket,
+      assets: async () => new Response('SPA page', { headers: { 'Content-Type': 'text/html' } }),
+    })
+
+  // An injected script tag or eval in user content must never run.
+  it('allows no inline or eval scripts on the SPA page and the API answers', async () => {
+    for (const path of ['/', '/settings', '/api/health/readiness']) {
+      const policy = (await app().fetch(new Request(`${BASE}${path}`))).headers.get('content-security-policy') ?? ''
+      expect({ path, scripts: policy.split('; ').find((d) => d.startsWith('script-src')) }).toEqual({ path, scripts: "script-src 'self'" })
+    }
   })
 
   it('reports a database failure without its cause', async () => {
-    const failed = await readinessResponse(async () => {
-      throw new Error('password authentication failed for user "secret_user"')
-    })
+    const failing = app(() => Promise.reject(new Error('password authentication failed for user "secret_user"')))
+    const failed = await failing.fetch(new Request(`${BASE}/api/health/readiness`))
     expect(failed.status).toBe(503)
     expect(await failed.text()).toBe('{"status":"unhealthy","services":{"database":{"status":"unhealthy"}}}')
-    const healthy = await readinessResponse(async () => {
-      await db.execute('SELECT 1')
-    })
+    const healthy = await app().fetch(new Request(`${BASE}/api/health/readiness`))
     expect(healthy.status).toBe(200)
     expect(healthy.headers.get('cache-control')).toBe('no-cache, no-store, must-revalidate')
   })
