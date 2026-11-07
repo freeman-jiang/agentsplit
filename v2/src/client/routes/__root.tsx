@@ -1,11 +1,12 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { useQuery } from '@tanstack/react-query'
-import { createRootRouteWithContext, Link, Outlet } from '@tanstack/react-router'
+import { createRootRouteWithContext, Link, Outlet, useRouterState } from '@tanstack/react-router'
 import { Toaster } from 'sonner'
 import { AccountMenu } from '~/client/components/account-menu'
 import { Brand } from '~/client/components/brand'
 import { useDocumentTitle } from '~/client/components/page-title'
 import { meQuery } from '~/client/queries'
+import { cn } from '~/client/cn'
 import { Button } from '~/client/ui/button'
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -15,9 +16,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 function Root() {
   useDocumentTitle()
   const { data: me } = useQuery(meQuery)
+  // Group pages live at /$group, outside /groups, so they mark Groups themselves.
+  const inGroup = useRouterState({ select: (s) => s.matches.some((m) => m.routeId === '/$group') })
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-50 border-b bg-background/95 px-3 py-3 backdrop-blur-sm sm:px-8">
+      <header className="sticky top-0 z-50 border-b bg-background/95 px-4 py-3 backdrop-blur-sm sm:px-8">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
           <Link className="flex items-center gap-2" to="/">
             <Brand />
@@ -31,7 +34,7 @@ function Root() {
                   </Link>
                 </Button>
                 <Button variant="ghost" size="sm" asChild>
-                  <Link to="/groups" activeProps={{ className: 'bg-accent text-accent-foreground' }}>
+                  <Link to="/groups" className={cn(inGroup && 'bg-accent text-accent-foreground')} activeProps={{ className: 'bg-accent text-accent-foreground' }}>
                     Groups
                   </Link>
                 </Button>

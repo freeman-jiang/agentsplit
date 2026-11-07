@@ -47,7 +47,14 @@ const RECURRENCE = [
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { dateStyle: 'medium' })
 
-export function CurrencySelect(props: { id: string; label: string; value: CurrencyCode; onChange: (currency: CurrencyCode) => void; className?: string }) {
+export function CurrencySelect(props: {
+  id: string
+  label: string
+  value: CurrencyCode
+  onChange: (currency: CurrencyCode) => void
+  className?: string
+  selectClassName?: string
+}) {
   const others = (Object.keys(CURRENCIES) as CurrencyCode[]).filter((c) => !(COMMON_CURRENCIES as readonly string[]).includes(c))
   return (
     <NativeSelect
@@ -57,6 +64,7 @@ export function CurrencySelect(props: { id: string; label: string; value: Curren
       displayValue={props.value}
       onChange={(e) => props.onChange(e.target.value as CurrencyCode)}
       wrapperClassName={cn('w-28 shrink-0', props.className)}
+      className={props.selectClassName}
     >
       {[
         ['Common', COMMON_CURRENCIES],
@@ -243,14 +251,20 @@ export function ExpenseForm(props: ExpenseFormProps) {
                 id="amount"
                 inputMode="decimal"
                 placeholder="0.00"
-                className="min-w-0 flex-1"
+                className="h-12 min-w-0 flex-1 text-2xl! font-semibold tabular-nums"
                 value={state.amount}
                 aria-invalid={!!shown('amount')}
                 onFocus={(e) => e.target.select()}
                 onChange={(e) => setAmount(e.target.value)}
                 onBlur={() => touch('amount')}
               />
-              <CurrencySelect id="currency" label={income ? 'Currency of income' : 'Currency of expense'} value={state.currency} onChange={(currency) => set({ currency, edits: {} })} />
+              <CurrencySelect
+                id="currency"
+                label={income ? 'Currency of income' : 'Currency of expense'}
+                value={state.currency}
+                onChange={(currency) => set({ currency, edits: {} })}
+                selectClassName="h-12"
+              />
             </div>
           </Field>
           <Field id="date" label={income ? 'Income date' : 'Expense date'} error={shown('expenseDate')}>

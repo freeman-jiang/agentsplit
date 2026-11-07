@@ -9,11 +9,11 @@ import { Skeleton } from '~/client/ui/skeleton'
 export function DashboardBalance() {
   const summary = useQuery({ ...accountBalancesQuery, refetchOnMount: 'always' })
   return (
-    <section aria-labelledby="dashboard-balance-title" className="border bg-card px-5 py-5 sm:px-6 sm:py-6" data-testid="dashboard-balance">
-      <h2 id="dashboard-balance-title" className="text-sm font-medium text-muted-foreground">
+    <section aria-labelledby="dashboard-balance-title" className="border bg-card p-4 sm:px-6 sm:py-6" data-testid="dashboard-balance">
+      <h2 id="dashboard-balance-title" className="text-sm font-semibold">
         Your total balance
       </h2>
-      <p className="mt-1 text-xs text-muted-foreground">Across all your groups and ungrouped expenses. Filters below don’t change this total.</p>
+      <p className="mt-1 text-xs text-muted-foreground">Across all your groups and ungrouped expenses. Filters don’t change it.</p>
       {summary.error ? (
         <div className="mt-4 space-y-2">
           <p role="alert" className="text-sm">
@@ -35,7 +35,7 @@ export function DashboardBalance() {
           {summary.data.totals.length === 0 ? (
             <p className="mt-5 text-lg">No recorded balance yet.</p>
           ) : (
-            <ul className="mt-5 flex flex-wrap gap-x-12 gap-y-5">
+            <ul className="mt-3 flex flex-wrap gap-x-12 gap-y-5 sm:mt-5">
               {summary.data.totals.map(({ currency, amount }) => {
                 const negative = amount.startsWith('-')
                 const zero = /^-?0(\.0+)?$/.test(amount)
