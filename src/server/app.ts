@@ -251,7 +251,8 @@ export function createApp(platform: Platform) {
     /**
      * The hourly job (src/server/server.ts runs it at minute 7). It creates due
      * recurring expenses, so reads never have to (DECISIONS.md, P-BAL-30 and
-     * P-RECUR-08). A failed occurrence is logged and retried on the next run.
+     * P-RECUR-08). A failed occurrence is logged and skipped, the other links
+     * go on, and the next run tries it again.
      * It also removes stale upload targets, the objects of deleted receipts
      * that are still in storage, and expired DPoP replay rows.
      */
@@ -261,7 +262,7 @@ export function createApp(platform: Platform) {
         const created = await materializeDue({
           today: time.toISOString().slice(0, 10),
           transaction: (work) => db.transaction(work, { isolationLevel: 'serializable' }),
-          onError: (error) => console.error('Recurring expense failed', error),
+          onError: (error, linkId) => console.error('Recurring expense failed; its link waits for the next run', { linkId }, error),
         })
         if (created.length) console.log(`Created ${created.length} recurring expenses`)
         const removed = await removeStaleUploads({ db, bucket })
