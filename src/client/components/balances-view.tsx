@@ -34,7 +34,7 @@ export function BalancesCard(props: { currencies: Currencies; names: Names }) {
               {/* The center line marks zero: debts grow to the left, credits to the right. */}
               <div className="relative">
                 <span aria-hidden="true" className="absolute inset-y-0 left-1/2 w-px bg-border" />
-                <ul className="space-y-1">
+                <ul className="space-y-1.5">
                   {c.balances.map((b) => {
                     const positive = !b.net.startsWith('-') && size(b.net) > 0
                     const width = `${(size(b.net) / largest) * 100}%`
@@ -46,7 +46,7 @@ export function BalancesCard(props: { currencies: Currencies; names: Names }) {
                             <span className="truncate">{props.names.get(b.participantId) ?? 'Unknown'}</span>
                           ) : (
                             <>
-                              {size(b.net) > 0 && <span aria-hidden="true" className="absolute inset-y-1 right-0 bg-owe/8 dark:bg-owe/14" style={{ width }} />}
+                              {size(b.net) > 0 && <span aria-hidden="true" className="absolute inset-y-1 right-0 rounded-s-md bg-owe/15 dark:bg-owe/20" style={{ width }} />}
                               <span className="relative text-owe tabular-nums">{money(b.net, c.currency)}</span>
                             </>
                           )}
@@ -54,7 +54,7 @@ export function BalancesCard(props: { currencies: Currencies; names: Names }) {
                         <div className="relative flex h-8 items-center px-2">
                           {positive ? (
                             <>
-                              <span aria-hidden="true" className="absolute inset-y-1 left-0 bg-owed/8 dark:bg-owed/14" style={{ width }} />
+                              <span aria-hidden="true" className="absolute inset-y-1 left-0 rounded-e-md bg-owed/15 dark:bg-owed/20" style={{ width }} />
                               <span className="relative text-owed tabular-nums">{money(b.net, c.currency)}</span>
                             </>
                           ) : (
