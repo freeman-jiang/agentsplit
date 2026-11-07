@@ -90,7 +90,10 @@ export async function testDatabase(): Promise<TestDatabase> {
     tx: (work) => withDb((db) => serializable(db, work)),
     close: async () => {
       await pool.end()
-      await asAdmin(async (admin) => void (await admin.query(`DROP DATABASE IF EXISTS "${copy}" WITH (FORCE)`)))
+      // pg-pool's end() resolves once it has asked each connection to close, before the server has seen it.
+      // FORCE would terminate such a backend, and its 57P01 reaches the pool as an unhandled error.
+      // Without FORCE, PostgreSQL waits up to 5 seconds for the backends to exit, and fails if one stays.
+      await asAdmin(async (admin) => void (await admin.query(`DROP DATABASE IF EXISTS "${copy}"`)))
     },
   }
 }
