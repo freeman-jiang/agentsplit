@@ -43,7 +43,7 @@ Proofs:
 | 11 | Changed (lead's core) | The v2 search also matches notes (`ledger.ts listExpenses`). |
 | 12–17 | Done | `list` "date headings" (3,000 random dates and week starts). |
 | 18, 19 | Done | `ledger` |
-| 20 | Changed | v2 caches lists for 30 s and drops every money query after each write (`invalidateMoney`), instead of refetching on every visit. This keeps screens fast; a write by another person shows after 30 s or a refresh. |
+| 20 | Done | Every visit reads again, as in the current app (`staleTime: 0` in `main.tsx`), and a write refreshes every view it changes (`afterWrite` in `src/client/queries/keys.ts`). |
 | 21, 23–25, 34, 35 | Done | `browser` |
 | 22 | Deferred | The category icon set is not ported yet. |
 | 26 | Done | `addedBy`/`editedBy` in the list statement. `db` "names who added and who last edited". |
