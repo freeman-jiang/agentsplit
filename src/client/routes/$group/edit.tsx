@@ -181,7 +181,7 @@ function People({ details }: { details: Details }) {
                 <div className="min-w-0 space-y-0.5">
                   <p className="text-sm font-medium break-words">
                     {person.name}
-                    {details.participantId === person.id ? ' (you)' : ''}
+                    {details.participantId === person.id && <span className="font-normal text-muted-foreground"> (you)</span>}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {member ? `Joined · ${member.role === 'admin' ? 'Admin' : 'Member'}` : person.status === 'invited' ? 'Invited' : 'Not joined'}
