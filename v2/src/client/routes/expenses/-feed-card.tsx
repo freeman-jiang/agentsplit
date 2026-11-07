@@ -98,11 +98,13 @@ export function FeedCard({ expense }: { expense: Item }) {
           )}
         </div>
         {/* On narrow screens the paid figure sits under the title, so the right column holds only the viewer's figure. */}
-        <p className="truncate text-xs text-muted-foreground sm:hidden">
+        <p className="truncate text-sm text-muted-foreground sm:hidden">
           {figures.paid.label} <span className="tabular-nums">{figures.paid.amount === null ? '—' : money(figures.paid.amount, expense.currency)}</span>
+          {' · '}
+          {expense.group?.name ?? 'No group'}
         </p>
         {/* The group sits in the metadata line, so the title stays on the first lines of the row. */}
-        <p className="truncate text-xs text-muted-foreground" data-testid="expense-metadata">
+        <p className="truncate text-xs text-muted-foreground max-sm:hidden" data-testid="expense-metadata">
           {expense.group ? (
             <span data-testid="expense-group-badge" title={expense.group.name}>
               {expense.group.name}

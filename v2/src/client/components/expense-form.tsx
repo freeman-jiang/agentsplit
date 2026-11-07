@@ -63,7 +63,7 @@ export function CurrencySelect(props: {
       value={props.value}
       displayValue={props.value}
       onChange={(e) => props.onChange(e.target.value as CurrencyCode)}
-      wrapperClassName={cn('w-28 shrink-0', props.className)}
+      wrapperClassName={cn('w-24 shrink-0', props.className)}
       className={props.selectClassName}
     >
       {[
@@ -248,7 +248,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
                 id="amount"
                 inputMode="decimal"
                 placeholder="0.00"
-                className="h-12 min-w-0 flex-1 text-2xl! font-semibold tabular-nums"
+                className="h-12 min-w-0 flex-1 text-[2rem]! leading-none font-semibold tabular-nums"
                 value={state.amount}
                 aria-invalid={!!shown('amount')}
                 onFocus={(e) => e.target.select()}
@@ -323,7 +323,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
           <Button
             type="button"
             variant="link"
-            className="h-auto p-0"
+            className="h-auto p-0 underline underline-offset-4"
             onClick={() =>
               state.payerMode === 'one'
                 ? set({ payerMode: 'several', payerAmounts: state.payer ? { [state.payer]: state.amount } : {} })
@@ -336,14 +336,14 @@ export function ExpenseForm(props: ExpenseFormProps) {
       </section>
 
       <section className="space-y-3 border bg-card p-4" aria-labelledby="paid-for">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <h3 id="paid-for" className="font-medium">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 id="paid-for" className="text-sm font-semibold">
             {income ? 'Received for' : 'Paid for'}
           </h3>
           <Button
             type="button"
             variant="link"
-            className="h-auto p-0"
+            className="h-auto p-0 underline underline-offset-4"
             onClick={() => set({ selected: Object.fromEntries(order.map((id) => [id, !allSelected])), edits: {} })}
           >
             {allSelected ? 'Select none' : 'Select all'}
