@@ -99,6 +99,13 @@
       "when": 1794077082775,
       "tag": "0013_vocabulary_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794077097290,
+      "tag": "0014_drop_recurring_anchor_trigger",
+      "breakpoints": true
     }
   ]
 }
