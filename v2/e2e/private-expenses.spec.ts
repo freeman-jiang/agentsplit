@@ -9,7 +9,7 @@ async function startPrivateExpense(page: Page) {
   await page.getByLabel('Email', { exact: true }).fill(`dana-${Date.now()}@example.com`)
   await page.getByRole('button', { name: 'Add person' }).click()
   await page.getByRole('button', { name: 'Continue to expense' }).click()
-  await expect(page.getByRole('heading', { name: 'Create expense' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Add expense' })).toBeVisible()
   await page.getByLabel('Description').fill('Concert tickets')
   await page.getByLabel('Amount', { exact: true }).fill('30.00')
 }

@@ -30,7 +30,7 @@ function PaymentsTab() {
           </Link>
         </Button>
       </div>
-      <SuggestedPayments currencies={balances.currencies} names={names} group={group} />
+      <SuggestedPayments currencies={balances.currencies} names={names} group={group} viewer={g.participantId} />
       <section className="border bg-card p-4" aria-labelledby="history-title">
         <h2 id="history-title" className="mb-3 font-medium">
           Payment history

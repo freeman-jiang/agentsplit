@@ -28,7 +28,7 @@ export function LoginButton(props: { label: string; selectAccount: boolean; call
   }
   return (
     <div className="space-y-3">
-      <Button disabled={pending} onClick={() => void start()}>
+      <Button size="lg" disabled={pending} onClick={() => void start()}>
         {pending ? 'Opening Google…' : props.label}
       </Button>
       {error && (
