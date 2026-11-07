@@ -1,6 +1,6 @@
 // Seeds a preview or test database with synthetic people and a year of
 // expenses, written through the ledger like real writes. Never production.
-//   scripts/with-apps-pg.sh agentsplit_preview bun scripts/seed-synthetic.ts <token-file>
+//   DATABASE_URL=postgresql://postgres@127.0.0.1:5437/agentsplit_dev_<area> bun scripts/seed-synthetic.ts <token-file>
 // Writes a session token for alice@example.com to <token-file> (mode 600).
 import { writeFileSync } from 'node:fs'
 import { and, eq } from 'drizzle-orm'
@@ -17,8 +17,6 @@ const database = new URL(url).pathname.slice(1)
 if (!/(_preview$|test|_dev($|_))/.test(database)) throw new Error(`Refusing to seed ${database}: synthetic data goes only to preview, test or dev`)
 
 const pool = new pg.Pool({ connectionString: url, max: 1 })
-const role = process.env['DB_ROLE']
-if (role) pool.on('connect', (client) => void client.query(`SET ROLE "${role}"`))
 const client = await pool.connect()
 const db = makeDb(client)
 
