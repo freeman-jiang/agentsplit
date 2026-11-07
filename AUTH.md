@@ -10,6 +10,7 @@ AgentSplit v2 uses self-hosted Better Auth with Google as the only identity prov
 - Only a verified Google email gives access. A session of an unverified account is refused.
 - The sign-in page keeps the requested page in `next`. The server accepts only same-origin callback paths, so a link such as `/\evil.example` is refused.
 - Better Auth rate-limits its own routes, with the counters in PostgreSQL.
+- A daily cap limits new accounts: at most 200 created in 24 hours, or `SIGN_UP_DAILY_LIMIT` (DEPLOYMENT.md). It runs only when an account is created, so existing accounts always sign in. When the cap is reached, the sign-in page says so. Concurrent sign-ups at the cap can pass it by a few.
 
 ## Sessions
 
@@ -39,13 +40,14 @@ Production ran the bootstrap in the old app. The import copied the `auth_bootstr
 - A key cannot create another key and cannot open a browser session.
 - A key allows 120 requests in 60 seconds. MCP also applies a per-user limit (MCP.md).
 - A user can revoke only their own keys. A revoked key gets 401 at once.
+- An account can have at most 10 keys, a fair-use limit. Revoke one to create another.
 
 ## OAuth for agents
 
 Better Auth's OAuth provider issues tokens for the MCP endpoint (`/api/mcp`). The issuer is `<BASE_URL>/api/auth`.
 
 - **Discovery.** `/.well-known/oauth-protected-resource/api/mcp` gives the protected-resource metadata, with `scopes_supported` `agentsplit:read agentsplit:write offline_access`. Better Auth serves the authorization-server metadata.
-- **Client registration.** A client registers through its Client ID Metadata Document (CIMD), as Claude Code and ChatGPT do. The server fetches the document only from public addresses, refuses redirects, and limits it to 64 KiB and 5 seconds. Older clients can use dynamic client registration. Registration alone grants no access.
+- **Client registration.** A client registers through its Client ID Metadata Document (CIMD), as Claude Code and ChatGPT do. The server fetches the document only from public addresses, refuses redirects, and limits it to 64 KiB and 5 seconds. Older clients can use dynamic client registration, without an account, at most 20 times per IP address per hour. Registration alone grants no access.
 - **Authorization.** Authorization code with PKCE and refresh tokens. The consent page (`/settings/connections/consent`) shows the client and the scopes. Clearing **Allow changes** grants `agentsplit:read` only.
 - **Tokens.** Access tokens are signed JWTs that live 300 seconds. With `offline_access`, the client gets a refresh token that lives 30 days and rotates. The database stores every token as `base64url(sha256(token))`. A token can be bound to a DPoP key; a DPoP proof works once and must match the request URL.
 - **Connections.** Each authorization creates one connection, and each access token names it. Every request checks that the connection, the account, the client and the consent are still live.
