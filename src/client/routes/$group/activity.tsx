@@ -67,7 +67,7 @@ function dateGroup(date: Date, today: Date): DateGroup {
 
 // ---------- summaries (P-HIST-68) ----------
 
-// The server fills `data` with the title of the latest saved state (activityData in server/sql.ts).
+// The server fills `data` with the title of the latest saved state (activityText in server/activity.ts).
 function expenseTitle(activity: ActivityItem) {
   return activity.data ?? ''
 }
