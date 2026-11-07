@@ -1,7 +1,7 @@
 import { queryOptions, type QueryClient } from '@tanstack/react-query'
 import type { Group } from '../../shared/api'
 import { rpc } from '../rpc'
-import { keys } from './keys'
+import { isGroupSummaryKey, keys } from './keys'
 
 /** The group as every group page reads it: name, people, the caller's role and participant. */
 export const groupQuery = (groupId: string) =>
@@ -25,7 +25,7 @@ export const invitationQuery = (token: string) =>
 export async function resolveGroup(data: { queryClient: QueryClient; segment: string }): Promise<typeof Group.Type> {
   const { queryClient, segment } = data
   const cached = queryClient
-    .getQueriesData<typeof Group.Type>({ queryKey: ['group'], predicate: (query) => query.queryKey[2] === 'summary' })
+    .getQueriesData<typeof Group.Type>({ predicate: (query) => isGroupSummaryKey(query.queryKey) })
     .find(([, group]) => group !== undefined && (group.id === segment || group.slug === segment))?.[1]
   if (cached) return queryClient.ensureQueryData(groupQuery(cached.id))
   const group = await rpc((api) => api('groups.get', { groupId: segment }))

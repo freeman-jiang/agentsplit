@@ -41,6 +41,9 @@ export function formatMinor(data: { amount: Minor; currency: CurrencyCode }): De
   return `${negative ? '-' : ''}${whole}${fraction}` as DecimalString
 }
 
+/** The whole part of a decimal with a comma between each group of three digits: "1234567" is "1,234,567". */
+export const groupDigits = (whole: string) => whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+
 export const sumMinor = (values: Iterable<Minor>): Minor => {
   let total = 0n
   for (const value of values) total += value

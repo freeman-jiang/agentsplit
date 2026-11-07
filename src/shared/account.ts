@@ -4,7 +4,8 @@ import { invitationTokenOfPath } from './paths'
 
 export const OAUTH_READ_SCOPE = 'agentsplit:read'
 export const OAUTH_WRITE_SCOPE = 'agentsplit:write'
-export const OAUTH_SCOPES: readonly string[] = ['openid', 'profile', 'email', 'offline_access', OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE]
+export const OAUTH_SCOPES = ['openid', 'profile', 'email', 'offline_access', OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE] as const
+export type OAuthScope = (typeof OAUTH_SCOPES)[number]
 
 export const isInvitationPath = (path: string) => invitationTokenOfPath(path) !== null
 

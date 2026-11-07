@@ -403,7 +403,7 @@ function MonthlyCard({ data }: { data: Overview | undefined }) {
   const c = data?.currency
   // Regrouping uses the loaded data: no new request (P-STATS-35).
   const view = useMemo(() => (data && c ? regroupMonthly({ spending: data.monthly, grouping, currency: c }) : undefined), [data, c, grouping])
-  const visible = useMemo(() => view?.categories.filter((x) => toUnits(x.expense, c ?? 'USD') > 0n) ?? [], [view, c])
+  const visible = useMemo(() => (view && c ? view.categories.filter((x) => toUnits(x.expense, c) > 0n) : []), [view, c])
   const colors = useMemo(() => new Map(visible.map((x, i) => [x.key, chartColor(i)])), [visible])
   const years = new Set(view?.months.map((m) => m.key.slice(0, 4)))
   const controls = (

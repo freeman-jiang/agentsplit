@@ -6,13 +6,22 @@ import { describeError } from '~/client/errors'
 import { consentClientQuery } from '~/client/queries/account'
 import { meQuery } from '~/client/queries/session'
 import { Button } from '~/client/ui/button'
-import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from '~/shared/account'
+import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE, type OAuthScope } from '~/shared/account'
 
 export const Route = createFileRoute('/settings/connections/consent')({
   component: Consent,
 })
 
 type Request = { clientId: string; redirectHost: string; scopes: string[]; claims: string[] }
+
+/** What each scope lets the app do, in the order the screen lists them. The write scope is the "Allow changes" checkbox. */
+const SCOPE_TEXT = {
+  [OAUTH_READ_SCOPE]: 'Read your groups, people, expenses, payments, balances, receipts, exports and full revision history.',
+  profile: 'Read your account name and profile information.',
+  email: 'Read your email address.',
+  openid: 'Identify your AgentSplit account.',
+  offline_access: 'Stay connected using renewable tokens until you revoke access or the connection expires.',
+} as const satisfies Record<Exclude<OAuthScope, typeof OAUTH_WRITE_SCOPE>, string>
 
 /** The claim names of the OIDC claims request, to list them; Better Auth checks the request itself. */
 function requestedClaims(raw: string | null): string[] {
@@ -95,15 +104,7 @@ function ConsentScreen(props: { request: Request; clientName: string | null }) {
         <div className="space-y-4 rounded-2xl border bg-card p-5">
           <h2 className="font-medium">Requested access</h2>
           <ul className="list-disc space-y-3 ps-5 text-sm">
-            {scopes.includes(OAUTH_READ_SCOPE) && (
-              <li>Read your groups, people, expenses, payments, balances, receipts, exports and full revision history.</li>
-            )}
-            {scopes.includes('profile') && <li>Read your account name and profile information.</li>}
-            {scopes.includes('email') && <li>Read your email address.</li>}
-            {scopes.includes('openid') && <li>Identify your AgentSplit account.</li>}
-            {scopes.includes('offline_access') && (
-              <li>Stay connected using renewable tokens until you revoke access or the connection expires.</li>
-            )}
+            {Object.entries(SCOPE_TEXT).map(([scope, text]) => scopes.includes(scope) && <li key={scope}>{text}</li>)}
           </ul>
           {claims.length > 0 && <p className="break-words text-sm">Additional requested profile fields: {claims.join(', ')}.</p>}
           {scopes.includes(OAUTH_WRITE_SCOPE) && (

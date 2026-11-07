@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { authClient } from '~/client/auth-client'
 import { signOut } from '~/client/queries/session'
@@ -12,7 +12,7 @@ import { accountQuery } from '~/client/queries/account'
 import { afterWrite } from '~/client/queries/keys'
 import { storageUsageQuery } from '~/client/queries/storage'
 import { rpc } from '~/client/rpc'
-import { readTheme, saveTheme, type Theme } from '~/client/theme'
+import { readTheme, saveTheme, themeOf, type Theme } from '~/client/theme'
 import { Button } from '~/client/ui/button'
 import { CopyButton } from '~/client/ui/copy-button'
 import { Input } from '~/client/ui/input'
@@ -104,12 +104,7 @@ function Profile(props: { name: string; email: string }) {
 }
 
 function Preferences() {
-  const [mounted, setMounted] = useState(false)
-  const [theme, setTheme] = useState<Theme>('system')
-  useEffect(() => {
-    setTheme(readTheme())
-    setMounted(true)
-  }, [])
+  const [theme, setTheme] = useState<Theme>(readTheme)
   return (
     <section className="space-y-4 border-y py-6">
       <h2 className="text-xl font-medium">Preferences</h2>
@@ -121,9 +116,8 @@ function Preferences() {
           id="appearance-theme"
           wrapperClassName="w-40"
           value={theme}
-          disabled={!mounted}
           onChange={(event) => {
-            const next = event.target.value === 'light' || event.target.value === 'dark' ? event.target.value : 'system'
+            const next = themeOf(event.target.value)
             setTheme(next)
             saveTheme(next)
           }}

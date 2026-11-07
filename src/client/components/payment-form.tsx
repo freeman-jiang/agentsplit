@@ -54,7 +54,7 @@ export function PaymentForm(
   const [from, setFrom] = useState(saved?.payers[0]?.participantId ?? created?.prefill.from ?? created?.viewer ?? '')
   const [to, setTo] = useState(saved?.shares[0]?.participantId ?? created?.prefill.to ?? '')
   const [amount, setAmount] = useState(saved?.amount ?? created?.prefill.amount ?? '')
-  const [currency, setCurrency] = useState<CurrencyCode>(saved?.currency ?? created?.prefill.currencyCode ?? created?.defaultCurrency ?? 'USD')
+  const [currency, setCurrency] = useState<CurrencyCode>(props.mode === 'edit' ? props.detail.expense.currency : (props.prefill.currencyCode ?? props.defaultCurrency))
   // Today where the person recording the payment is (P-BAL-73).
   const [date, setDate] = useState(saved?.expenseDate ?? localDate())
   const [note, setNote] = useState(saved?.notes ?? '')
