@@ -7,13 +7,14 @@ import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '~/client/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '~/client/ui/dialog'
-import { LIMITS, mebibytes } from '~/shared/limits'
+import type { Reference } from '~/shared/api'
+import { mebibytes } from '~/shared/limits'
 import { prepareReceipt, tombstoneText, type Tombstone } from './receipt-files'
 
 /** `deleted` is set for a receipt that was deleted for good: it shows a tombstone, and saving needs it removed. */
 export type FormDocument = { id: string; url: string; width: number; height: number; deleted?: Tombstone | null }
 
-export const receiptSrc = (data: { groupId: string; url: string }) => `/api/receipts?${new URLSearchParams({ groupId: data.groupId, url: data.url })}`
+const receiptSrc = (data: { groupId: string; url: string }) => `/api/receipts?${new URLSearchParams({ groupId: data.groupId, url: data.url })}`
 
 type Uploaded = { id: string; url: string; width: number; height: number }
 
@@ -26,7 +27,8 @@ async function upload(data: { groupId: string; file: File }): Promise<Uploaded> 
   return (await response.json()) as Uploaded
 }
 
-export function ExpenseDocuments(props: { groupId: string; documents: readonly FormDocument[]; onChange: (documents: FormDocument[]) => void }) {
+/** `attachments` are the server's limits for receipts (reference.get). */
+export function ExpenseDocuments(props: { groupId: string; attachments: (typeof Reference.Type)['attachments']; documents: readonly FormDocument[]; onChange: (documents: FormDocument[]) => void }) {
   const input = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
@@ -37,8 +39,9 @@ export function ExpenseDocuments(props: { groupId: string; documents: readonly F
     setUploading(true)
     const file = await prepareReceipt(original)
     setUploading(false)
-    if (file.size > LIMITS.receiptBytes) {
-      toast.error('The file is too big', { description: `The maximum file size you can upload is ${mebibytes(LIMITS.receiptBytes)}. Yours is ${mebibytes(file.size)}.` })
+    const { maxBytes } = props.attachments
+    if (file.size > maxBytes) {
+      toast.error('The file is too big', { description: `The maximum file size you can upload is ${mebibytes(maxBytes)}. Yours is ${mebibytes(file.size)}.` })
       return
     }
     setUploading(true)
@@ -82,7 +85,7 @@ export function ExpenseDocuments(props: { groupId: string; documents: readonly F
       <input
         ref={input}
         type="file"
-        accept="image/jpeg,image/png"
+        accept={props.attachments.contentTypes.join(',')}
         className="hidden"
         aria-label="Attach documents"
         onChange={(event) => {

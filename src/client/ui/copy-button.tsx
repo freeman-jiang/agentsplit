@@ -1,9 +1,10 @@
 import { Check, Copy } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Button } from '~/client/ui/button'
+import { toast } from 'sonner'
+import { Button } from './button'
 
-/** Copies `text` exactly; `title` is also the accessible name. */
-export function CopyButton({ text, title }: { text: string; title: string }) {
+/** Copies `text` exactly and shows a check for a second; `title` is also the accessible name. */
+export function CopyButton(props: { text: string; title: string; variant?: 'secondary' | 'outline'; className?: string }) {
   const [copied, setCopied] = useState(false)
   useEffect(() => {
     if (!copied) return
@@ -13,11 +14,17 @@ export function CopyButton({ text, title }: { text: string; title: string }) {
   return (
     <Button
       size="icon"
-      variant="secondary"
+      variant={props.variant ?? 'secondary'}
       type="button"
-      title={title}
-      aria-label={title}
-      onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
+      title={props.title}
+      aria-label={props.title}
+      className={props.className}
+      onClick={() =>
+        void navigator.clipboard.writeText(props.text).then(
+          () => setCopied(true),
+          () => toast.error('Could not copy. Select the text and copy it yourself.'),
+        )
+      }
     >
       {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
     </Button>

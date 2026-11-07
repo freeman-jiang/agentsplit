@@ -3,64 +3,68 @@
 // of kind 'payment': the sender pays, the recipient is the only share. The
 // server accepts any payment shape (P-BAL-93); this form records the common one.
 // It also records repayments of ungrouped expenses (P-UNGROUP-72).
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from '@tanstack/react-router'
-import { useRef, useState } from 'react'
-import { toast } from 'sonner'
-import { localDate } from '~/client/components/local-date'
+import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
+import { useState } from 'react'
 import { money } from '~/client/components/money'
-import { balancesQuery, invalidateMoney } from '~/client/queries/expenses'
-import { rpc } from '~/client/rpc'
+import { localDate } from '~/client/dates'
+import { balancesQuery } from '~/client/queries/expenses'
 import { Button } from '~/client/ui/button'
+import { CurrencySelect } from '~/client/ui/currency-select'
 import { Input } from '~/client/ui/input'
 import { Label } from '~/client/ui/label'
 import { NativeSelect } from '~/client/ui/native-select'
 import { Textarea } from '~/client/ui/textarea'
-import type { ExpenseDetail } from '~/shared/api'
+import type { ExpenseDetail, Participant } from '~/shared/api'
 import type { CurrencyCode } from '~/shared/currencies'
 import { validateExpense, type ExpenseDraft } from '~/shared/expense-rules'
 import { DECIMAL } from '~/shared/minor'
+import { CATEGORY } from '~/shared/vocabulary'
 import { DeleteDialog } from './delete-dialog'
-import { CurrencySelect, leavePage, type FormGroup, type GroupTarget, type PageTarget } from './expense-form'
-import { toInput } from './expense-form-state'
-import { describeWriteError, type WriteFailure } from './write-error'
+import { toInput, useEntryWrite, type EntryTarget } from './entry-write'
 
 type DetailData = typeof ExpenseDetail.Type
 
 /** A payment the form can edit: one sender and one recipient (P-BAL-89). */
 export const isSimplePayment = (detail: DetailData) => detail.expense.kind === 'payment' && detail.expense.payers.length === 1 && detail.expense.shares.length === 1
 
-export type PaymentPrefill = { from?: string; to?: string; amount?: string; currencyCode?: CurrencyCode }
-
-/** A payment saves in its group or private context, which exists already, so it never needs `create`. */
-export type PaymentTarget = GroupTarget | Omit<PageTarget, 'create' | 'privateExpense'>
-
+type PaymentPrefill = { from?: string; to?: string; amount?: string; currencyCode?: CurrencyCode }
 
 /** A decimal amount without a sign. */
 const unsigned = (text: string) => DECIMAL.test(text) && !text.startsWith('-')
+
+/**
+ * A payment saves in its group or private context, which exists already. A new
+ * payment starts from the viewer, the prefill and the default currency.
+ */
 export function PaymentForm(
-  props: { group: FormGroup; target: PaymentTarget } & ({ mode: 'create'; expenseId: string; prefill: PaymentPrefill } | { mode: 'edit'; detail: DetailData; onReload: () => void }),
+  props: { participants: ReadonlyArray<typeof Participant.Type>; target: EntryTarget & { readonly groupId: string } } & (
+    | { mode: 'create'; expenseId: string; prefill: PaymentPrefill; viewer: string | null; defaultCurrency: CurrencyCode }
+    | { mode: 'edit'; detail: DetailData; onReload: () => void }
+  ),
 ) {
-  const { group, target } = props
-  const queryClient = useQueryClient()
-  const navigate = useNavigate()
+  const { participants, target } = props
+  const write = useEntryWrite({
+    target,
+    entry: props.mode === 'create' ? { mode: 'create', expenseId: props.expenseId } : { mode: 'edit', expenseId: props.detail.expense.id, revision: props.detail.expense.revision },
+    noun: 'payment',
+  })
   const saved = props.mode === 'edit' ? props.detail.expense : null
-  const [from, setFrom] = useState(saved?.payers[0]?.participantId ?? (props.mode === 'create' ? (props.prefill.from ?? group.participantId ?? '') : ''))
-  const [to, setTo] = useState(saved?.shares[0]?.participantId ?? (props.mode === 'create' ? (props.prefill.to ?? '') : ''))
-  const [amount, setAmount] = useState(saved?.amount ?? (props.mode === 'create' ? (props.prefill.amount ?? '') : ''))
-  const [currency, setCurrency] = useState<CurrencyCode>(saved?.currency ?? (props.mode === 'create' ? (props.prefill.currencyCode ?? group.defaultCurrency) : group.defaultCurrency))
+  const created = props.mode === 'create' ? props : null
+  const [from, setFrom] = useState(saved?.payers[0]?.participantId ?? created?.prefill.from ?? created?.viewer ?? '')
+  const [to, setTo] = useState(saved?.shares[0]?.participantId ?? created?.prefill.to ?? '')
+  const [amount, setAmount] = useState(saved?.amount ?? created?.prefill.amount ?? '')
+  const [currency, setCurrency] = useState<CurrencyCode>(saved?.currency ?? created?.prefill.currencyCode ?? created?.defaultCurrency ?? 'USD')
   // Today where the person recording the payment is (P-BAL-73).
   const [date, setDate] = useState(saved?.expenseDate ?? localDate())
   const [note, setNote] = useState(saved?.notes ?? '')
   const [error, setError] = useState<string | null>(null)
-  const [failure, setFailure] = useState<WriteFailure | null>(null)
-  const [busy, setBusy] = useState(false)
-  const keys = useRef(new Map<string, string>())
-  const { data: balances } = useQuery(balancesQuery(target.kind === 'group' ? target.groupParam : group.id))
+  const { busy, failure } = write
+  const { data: balances } = useQuery(balancesQuery(target.groupId))
   const suggestion = balances?.currencies.find((c) => c.currency === currency)?.settlements.find((s) => s.from === from && s.to === to)
 
   const submit = async () => {
-    setFailure(null)
+    write.clearFailure()
     if (!from || !to) return setError('Choose a sender and recipient.')
     if (from === to) return setError('Sender and recipient must be different people.')
     if (!unsigned(amount.trim()) || /^0(?:\.0*)?$/.test(amount.trim())) return setError('Enter an amount greater than zero.')
@@ -69,8 +73,7 @@ export function PaymentForm(
       title: saved?.title ?? 'Payment',
       vendor: saved?.vendor ?? null,
       notes: note,
-      // Payments use the Payment category on every path (DECISIONS.md, P-BAL-92).
-      categoryId: saved?.categoryId ?? 1,
+      categoryId: saved?.categoryId ?? CATEGORY.payment,
       expenseDate: date,
       currency,
       amount: amount.trim(),
@@ -79,40 +82,10 @@ export function PaymentForm(
       shares: [{ participantId: to, weight: '1' }],
       recurrence: saved?.recurrence ?? 'none',
     }
-    const checked = validateExpense({ draft, participantIds: new Set(group.participants.map((p) => p.id)) })
+    const checked = validateExpense({ draft, participantIds: new Set(participants.map((p) => p.id)) })
     if (!checked.ok) return setError(checked.issues.map((i) => i.message).join(' '))
     setError(null)
-    const expense = toInput({ draft, documents: props.mode === 'edit' ? props.detail.documents : [] })
-    const signature = JSON.stringify(expense)
-    const idempotencyKey = keys.current.get(signature) ?? crypto.randomUUID()
-    keys.current.set(signature, idempotencyKey)
-    setBusy(true)
-    try {
-      if (props.mode === 'create') await rpc((api) => api('expenses.create', { groupId: group.id, expenseId: props.expenseId, idempotencyKey, expense }))
-      else
-        await rpc((api) =>
-          api('expenses.update', { groupId: group.id, expenseId: props.detail.expense.id, expectedRevision: props.detail.expense.revision, idempotencyKey, expense }),
-        )
-      if (target.kind === 'page') return await leavePage({ queryClient, navigate, back: target.back })
-      await invalidateMoney({ queryClient, group: target.groupParam })
-      await navigate({ to: '/$group/payments', params: { group: target.groupParam } })
-    } catch (cause) {
-      const described = describeWriteError(cause)
-      // A create whose ID exists here was saved by an earlier attempt (P-BAL-84).
-      if (props.mode === 'create' && described.kind === 'conflict') {
-        if (target.kind === 'page') {
-          toast.success('This payment was already saved.')
-          return await leavePage({ queryClient, navigate, back: target.back })
-        }
-        await invalidateMoney({ queryClient, group: target.groupParam })
-        toast.success('This payment was already saved.')
-        await navigate({ to: '/$group/payments', params: { group: target.groupParam } })
-        return
-      }
-      setFailure(described)
-    } finally {
-      setBusy(false)
-    }
+    await write.submit(toInput({ draft, documents: props.mode === 'edit' ? props.detail.documents : [] }))
   }
 
   const select = (id: string, label: string, value: string, onChange: (value: string) => void) => (
@@ -120,7 +93,7 @@ export function PaymentForm(
       <Label htmlFor={id}>{label}</Label>
       <NativeSelect id={id} value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">Select a participant</option>
-        {group.participants.map((p) => (
+        {participants.map((p) => (
           <option key={p.id} value={p.id}>
             {p.name}
           </option>
@@ -147,7 +120,7 @@ export function PaymentForm(
         <Label htmlFor="amount">Amount</Label>
         <div className="flex gap-2">
           <Input id="amount" inputMode="decimal" placeholder="0.00" className="min-w-0 flex-1" value={amount} onChange={(e) => setAmount(e.target.value)} onFocus={(e) => e.target.select()} />
-          <CurrencySelect id="currency" label="Currency" value={currency} onChange={setCurrency} />
+          <CurrencySelect id="currency" aria-label="Currency" compact value={currency} onChange={setCurrency} wrapperClassName="w-24 shrink-0" />
         </div>
         {suggestion && suggestion.amount !== amount.trim() && (
           <Button type="button" variant="link" className="h-auto p-0" onClick={() => setAmount(suggestion.amount)}>
@@ -179,33 +152,15 @@ export function PaymentForm(
           {busy ? 'Saving…' : props.mode === 'create' ? 'Record payment' : 'Save changes'}
         </Button>
         {props.mode === 'edit' && (
-          <DeleteDialog
-            label="Delete payment"
-            title="Delete this payment?"
-            description="Balances will be recalculated."
-            onConfirm={async () => {
-              await rpc((api) =>
-                api('expenses.delete', { groupId: group.id, expenseId: props.detail.expense.id, expectedRevision: props.detail.expense.revision, idempotencyKey: crypto.randomUUID() }),
-              )
-              if (target.kind === 'page') return await leavePage({ queryClient, navigate, back: target.back })
-              await invalidateMoney({ queryClient, group: target.groupParam })
-              await navigate({ to: '/$group/payments', params: { group: target.groupParam } })
-            }}
-          />
+          <DeleteDialog trigger={<Button variant="destructive">Delete payment</Button>} title="Delete this payment?" description="Balances will be recalculated." onConfirm={write.remove} />
         )}
         <Button type="button" variant="ghost" asChild>
-          {target.kind === 'page' ? (
-            <Link {...target.back}>Cancel</Link>
-          ) : (
-            <Link to="/$group/payments" params={{ group: target.groupParam }}>
-              Cancel
-            </Link>
-          )}
+          <Link {...target.back}>Cancel</Link>
         </Button>
       </div>
       {amount && /^\d/.test(amount) && from && to && from !== to && (
         <p className="text-sm text-muted-foreground">
-          {group.participants.find((p) => p.id === from)?.name} pays {group.participants.find((p) => p.id === to)?.name}{' '}
+          {participants.find((p) => p.id === from)?.name} pays {participants.find((p) => p.id === to)?.name}{' '}
           {unsigned(amount.trim()) ? money(amount.trim(), currency) : ''}
         </p>
       )}

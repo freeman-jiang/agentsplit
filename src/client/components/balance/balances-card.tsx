@@ -1,9 +1,6 @@
-// The Balances card and the suggested payments, ported from the current app's
-// balances-list.tsx and reimbursement-list.tsx. Shared by the Balances and Payments tabs.
-import { Link } from '@tanstack/react-router'
+// The Balances tab's chart, ported from the current app's balances-list.tsx.
 import { cn } from '~/client/cn'
 import { money } from '~/client/components/money'
-import { Button } from '~/client/ui/button'
 import type { CurrencyBalances } from '~/shared/api'
 
 type Currencies = ReadonlyArray<typeof CurrencyBalances.Type>
@@ -75,47 +72,6 @@ export function BalancesCard(props: { currencies: Currencies; names: Names }) {
             </div>
           )
         })
-      )}
-    </section>
-  )
-}
-
-/** "<from> owes <to>" per currency with a "Record payment" link that prefills the payment (P-BAL-47..49). */
-export function SuggestedPayments(props: { currencies: Currencies; names: Names; group: string; viewer: string | null }) {
-  const name = (id: string) => (id === props.viewer ? 'You' : (props.names.get(id) ?? 'Unknown'))
-  const pending = props.currencies.filter((c) => c.settlements.length > 0)
-  return (
-    <section className="rounded-2xl border bg-card p-6" aria-labelledby="suggested-title">
-      <h2 id="suggested-title" className="text-base font-semibold leading-tight">
-        Suggested payments
-      </h2>
-      <p className="mt-1.5 mb-4 text-sm text-muted-foreground">Record these payments to settle the group.</p>
-      {pending.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No payments needed.</p>
-      ) : (
-        pending.map((c) => (
-          <div key={c.currency} className="mb-4 last:mb-0">
-            <h3 className={cn('eyebrow', pending.length === 1 && 'sr-only')}>{c.currency}</h3>
-            <ul className="divide-y">
-              {c.settlements.map((s) => (
-                <li key={`${s.from}-${s.to}`} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm" data-testid="suggestion">
-                  <span>
-                    <span className="font-medium">{name(s.from)}</span> {s.from === props.viewer ? 'owe' : 'owes'}{' '}
-                    <span className="font-medium">{name(s.to)}</span>
-                  </span>
-                  <span className="flex w-full items-center justify-between gap-3 sm:w-auto">
-                    <span className={cn('text-lg font-semibold tabular-nums', s.from === props.viewer && 'text-owe')}>{money(s.amount, c.currency)}</span>
-                    <Button variant={s.from === props.viewer ? 'default' : 'outline'} size="sm" className="min-w-36" asChild>
-                      <Link to="/$group/payments/create" params={{ group: props.group }} search={{ from: s.from, to: s.to, amount: s.amount, currencyCode: c.currency }}>
-                        Record payment
-                      </Link>
-                    </Button>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))
       )}
     </section>
   )

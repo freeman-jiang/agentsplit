@@ -1,42 +1,38 @@
 import { useSuspenseInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Search, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { cn } from '~/client/cn'
-import { groupByDate, weekStartsOn } from '~/client/components/date-groups'
-import { localDate } from '~/client/components/local-date'
-import { expenseRowFigures, type Figure } from '~/client/components/expense-row'
-import { expenseRowClass, RowCategory, RowDate, RowFigure, RowMetadata, RowNarrowLine, RowTitle, RowVendor } from '~/client/components/expense-row-parts'
-import { money } from '~/client/components/money'
-import { expensesQuery, groupQuery } from '~/client/queries'
+import { useEffect, useState } from 'react'
+import { attributionLine } from '~/client/components/expense-row/figures'
+import { ExpenseRow } from '~/client/components/expense-row/row'
+import { localDate, weekStartsOn } from '~/client/dates'
+import { editorLink } from '~/client/editor-link'
+import { useDebounced, useInfiniteScroll } from '~/client/hooks'
+import { expensesQuery } from '~/client/queries/expenses'
+import { groupQuery } from '~/client/queries/groups'
+import { nonEmptyParam, oneOf, searchParams } from '~/client/search'
 import { Button } from '~/client/ui/button'
-import { ExportMenu } from '~/client/components/history/export-menu'
 import { Input } from '~/client/ui/input'
+import { Segmented } from '~/client/ui/segmented'
 import { Skeleton } from '~/client/ui/skeleton'
-import type { Expense } from '~/shared/api'
 import { LIMITS } from '~/shared/limits'
+import { ExportMenu } from './-export-menu'
+import { groupByDate } from './-date-groups'
 
-type Search = { sort?: 'date' | 'updated'; q?: string }
+const SORTS = [
+  { value: 'date', label: 'By date' },
+  { value: 'updated', label: 'Recently changed' },
+] as const
 
-/** Route options stay in the main chunk, so this parses search params without a schema library. */
-const parseSearch = (raw: Record<string, unknown>): Search => ({
-  ...(raw['sort'] === 'date' || raw['sort'] === 'updated' ? { sort: raw['sort'] } : {}),
-  ...(typeof raw['q'] === 'string' && raw['q'] ? { q: raw['q'] } : {}),
-})
+const parseSearch = searchParams({ sort: oneOf(SORTS.map((s) => s.value)), q: nonEmptyParam })
 
 export const Route = createFileRoute('/$group/expenses/')({
   validateSearch: parseSearch,
   loaderDeps: ({ search }) => search,
-  loader: ({ context, params, deps }) =>
-    context.queryClient.ensureInfiniteQueryData(expensesQuery(params.group, { sort: deps.sort ?? 'date', ...(deps.q ? { search: deps.q } : {}) })),
+  loader: ({ context, deps }) =>
+    context.queryClient.ensureInfiniteQueryData(expensesQuery(context.groupId, { sort: deps.sort ?? 'date', ...(deps.q ? { search: deps.q } : {}) })),
   pendingComponent: ListSkeleton,
   component: ExpensesTab,
 })
-
-const SORTS = [
-  ['date', 'By date'],
-  ['updated', 'Recently changed'],
-] as const
 
 function ListSkeleton() {
   return (
@@ -50,33 +46,24 @@ function ListSkeleton() {
 
 function ExpensesTab() {
   const { group } = Route.useParams()
+  const { groupId } = Route.useRouteContext()
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   const sort = search.sort ?? 'date'
   const q = search.q ?? ''
   const [text, setText] = useState(q)
   // Search waits 300 ms after typing stops (P-EXP-09).
+  const typed = useDebounced(text, 300)
   useEffect(() => {
-    if (text === q) return
-    const timer = setTimeout(() => navigate({ search: ({ q: _q, ...rest }) => (text ? { ...rest, q: text } : rest), replace: true }), 300)
-    return () => clearTimeout(timer)
-  }, [text, q, navigate])
-  const { data: g } = useSuspenseQuery(groupQuery(group))
-  const expenses = useSuspenseInfiniteQuery(expensesQuery(group, { sort, ...(q ? { search: q } : {}) }))
+    if (typed !== q) void navigate({ search: ({ q: _q, ...rest }) => (typed ? { ...rest, q: typed } : rest), replace: true })
+  }, [typed, q, navigate])
+  const { data: g } = useSuspenseQuery(groupQuery(groupId))
+  const expenses = useSuspenseInfiniteQuery(expensesQuery(groupId, { sort, ...(q ? { search: q } : {}) }))
   const names = new Map(g.participants.map((p) => [p.id, p.name]))
   const rows = expenses.data.pages.flatMap((p) => p.expenses)
   const sections = sort === 'date' ? groupByDate({ expenses: rows, today: localDate(), weekStartsOn: weekStartsOn(navigator.language) }) : [{ key: 'all', label: '', expenses: rows }]
-
   // The next page loads when the end of the list scrolls into view (P-EXP-07).
-  const end = useRef<HTMLDivElement>(null)
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = expenses
-  useEffect(() => {
-    const target = end.current
-    if (!target || !hasNextPage) return
-    const observer = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && !isFetchingNextPage && void fetchNextPage())
-    observer.observe(target)
-    return () => observer.disconnect()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+  const end = useInfiniteScroll<HTMLDivElement>(expenses)
 
   return (
     <section>
@@ -97,20 +84,13 @@ function ExpensesTab() {
         </p>
       )}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div role="radiogroup" aria-label="Sort expenses" className="inline-flex min-h-10 items-stretch rounded-xl border border-input p-1 text-sm max-sm:grid max-sm:w-full max-sm:grid-cols-2">
-          {SORTS.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={sort === value}
-              onClick={() => navigate({ search: (s) => ({ ...s, sort: value }), replace: true })}
-              className={cn('rounded-[0.5rem] px-3 transition-colors', sort === value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground')}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Sort expenses"
+          value={sort}
+          options={SORTS}
+          onChange={(value) => void navigate({ search: (s) => ({ ...s, sort: value }), replace: true })}
+          className="min-h-10 text-sm max-sm:grid max-sm:w-full max-sm:grid-cols-2"
+        />
         <div className="relative min-w-48 flex-1">
           <Search aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -149,7 +129,15 @@ function ExpensesTab() {
               {section.label && <h3 className="eyebrow">{section.label}</h3>}
               <ul className="divide-y overflow-hidden rounded-2xl border bg-card">
                 {section.expenses.map((e) => (
-                  <ExpenseCard key={e.id} expense={e} group={group} viewer={g.participantId} names={names} />
+                  <li key={e.id}>
+                    <ExpenseRow
+                      expense={e}
+                      link={editorLink({ group, expenseId: e.id, kind: e.kind })}
+                      viewer={g.participantId}
+                      names={names}
+                      attribution={attributionLine(e)}
+                    />
+                  </li>
                 ))}
               </ul>
             </div>
@@ -157,45 +145,7 @@ function ExpensesTab() {
         </div>
       )}
       <div ref={end} />
-      {hasNextPage && <ListSkeleton />}
+      {expenses.hasNextPage && <ListSkeleton />}
     </section>
-  )
-}
-
-const tones: Record<Figure['tone'], string> = { neutral: 'text-muted-foreground', positive: 'text-owed', negative: 'text-owe' }
-
-function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewer: string | null; names: ReadonlyMap<string, string> }) {
-  const { expense: e } = props
-  const figures = expenseRowFigures({ expense: e, viewer: props.viewer, names: props.names })
-  const author = e.editedBy ? `Last edited by ${e.editedBy}` : e.addedBy ? `Added by ${e.addedBy}` : 'Original author unavailable'
-  const paid = money(figures.paid.amount ?? '0', e.currency)
-  const link =
-    e.kind === 'payment'
-      ? ({ to: '/$group/payments/$expenseId/edit', params: { group: props.group, expenseId: e.id } } as const)
-      : ({ to: '/$group/expenses/$expenseId/edit', params: { group: props.group, expenseId: e.id } } as const)
-  return (
-    <li>
-      <Link {...link} className={expenseRowClass}>
-        <RowDate date={e.expenseDate} />
-        <RowCategory categoryId={e.categoryId} />
-        <div className="min-w-0">
-          <RowVendor vendor={e.vendor} />
-          <RowTitle title={e.title} payment={e.kind === 'payment'} documentCount={e.documentCount} />
-          <RowMetadata parts={[e.vendor && { key: 'vendor', node: e.vendor }, { key: 'author', node: author }]} />
-        </div>
-        <RowFigure className="max-sm:hidden" label={figures.paid.label} amount={paid} amountClass="text-sm text-foreground/80" />
-        <RowFigure
-          label={figures.personal.label}
-          amount={figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
-          amountClass={cn('font-semibold', tones[figures.personal.tone])}
-        />
-        {/* On narrow screens the paid figure sits under the title, so the right column holds only the viewer's figure. */}
-        <RowNarrowLine>
-          <span className="min-w-0 truncate">
-            {figures.paid.label} <span className="tabular-nums">{paid}</span>
-          </span>
-        </RowNarrowLine>
-      </Link>
-    </li>
   )
 }

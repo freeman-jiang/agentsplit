@@ -1,17 +1,15 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { LoginButton } from '~/client/components/login-button'
-import { meQuery } from '~/client/queries'
+import { meQuery } from '~/client/queries/account'
+import { searchParams, stringParam } from '~/client/search'
 import { isInvitationPath, safeNextPath } from '~/shared/account'
 import { SIGN_UP_LIMIT_CODE, signUpLimitMessage } from '~/shared/limits'
 
 /** `error` is the code Better Auth adds when Google sign-in fails and returns here. */
-type Search = { next?: string; error?: string }
+const parseSearch = searchParams({ next: stringParam, error: stringParam })
 
 export const Route = createFileRoute('/sign-in')({
-  validateSearch: (search: Record<string, unknown>): Search => ({
-    ...(typeof search['next'] === 'string' ? { next: search['next'] } : {}),
-    ...(typeof search['error'] === 'string' ? { error: search['error'] } : {}),
-  }),
+  validateSearch: parseSearch,
   beforeLoad: async ({ context, search }) => {
     // An agent's authorize request with prompt=login or select_account sends a
     // signed-in user here on purpose; that sign-in must happen.

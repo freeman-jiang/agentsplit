@@ -1,18 +1,17 @@
 // The Stats tab's drill-down list, loaded on demand so the tab itself stays small.
 import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
 import { money } from '~/client/components/money'
+import { formatDay } from '~/client/dates'
+import { editorLink } from '~/client/editor-link'
 import { statsExpensesQuery } from '~/client/queries/history'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/client/ui/dialog'
 import { Skeleton } from '~/client/ui/skeleton'
 import type { CurrencyCode } from '~/shared/currencies'
-import { AppLink, expenseHref } from './app-link'
-
-const dayFormat = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' })
-const formatDay = (date: string) => dayFormat.format(new Date(`${date}T00:00:00Z`))
 
 type Props = {
-  drill: { group: string; range: { from?: string; to?: string } }
+  drill: { group: string; groupId: string; range: { from?: string; to?: string } }
   scope: { currency: CurrencyCode; month?: string; categoryId?: number }
   title: string
   description: string
@@ -23,7 +22,7 @@ type Props = {
 /** The drill-down list: loads when opened, newest first, each row opening its expense (P-STATS-27, P-STATS-31 to P-STATS-33). */
 export default function ExpensesDialog(props: Props) {
   const { drill, scope } = props
-  const { data, isLoading } = useQuery(statsExpensesQuery(drill.group, { ...scope, ...(drill.range.from ? { from: drill.range.from } : {}), ...(drill.range.to ? { to: drill.range.to } : {}) }))
+  const { data, isLoading } = useQuery(statsExpensesQuery(drill.groupId, { ...scope, ...(drill.range.from ? { from: drill.range.from } : {}), ...(drill.range.to ? { to: drill.range.to } : {}) }))
   return (
     <Dialog open onOpenChange={(open) => !open && props.onClose()}>
       <DialogContent className="max-h-[80vh] gap-0 overflow-hidden p-0">
@@ -44,7 +43,7 @@ export default function ExpensesDialog(props: Props) {
             <ul className="divide-y">
               {data.map((e) => (
                 <li key={e.id}>
-                  <AppLink href={expenseHref({ group: drill.group, expenseId: e.id, kind: e.kind })} className="flex items-center justify-between gap-2 px-6 py-3 text-sm hover:bg-accent">
+                  <Link {...editorLink({ group: drill.group, expenseId: e.id, kind: e.kind })} className="flex items-center justify-between gap-2 px-6 py-3 text-sm hover:bg-accent">
                     <div className="min-w-0">
                       {e.vendor && <div className="mb-1 truncate text-xs text-muted-foreground">{e.vendor}</div>}
                       <div className="truncate">{e.title}</div>
@@ -54,7 +53,7 @@ export default function ExpensesDialog(props: Props) {
                       <span className="font-bold tabular-nums">{money(e.amount, e.currency)}</span>
                       <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     </div>
-                  </AppLink>
+                  </Link>
                 </li>
               ))}
             </ul>

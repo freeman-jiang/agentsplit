@@ -13,18 +13,6 @@ export const DATE_GROUPS = [
 ] as const
 export type DateGroup = (typeof DATE_GROUPS)[number][0]
 
-/** The locale's first day of the week (0 = Sunday), with Monday as the fallback (P-EXP-15). */
-export function weekStartsOn(locale: string): number {
-  try {
-    const info = new Intl.Locale(locale) as Intl.Locale & { getWeekInfo?: () => { firstDay: number }; weekInfo?: { firstDay: number } }
-    const firstDay = info.getWeekInfo?.().firstDay ?? info.weekInfo?.firstDay
-    if (firstDay) return firstDay % 7
-  } catch {
-    // An unsupported locale or no week data: use the fallback.
-  }
-  return 1
-}
-
 const parts = (date: string) => {
   const [y = 0, m = 1, d = 1] = date.split('-').map(Number)
   return { y, m, d, day: Date.UTC(y, m - 1, d) / 86_400_000 }

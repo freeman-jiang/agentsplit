@@ -1,20 +1,21 @@
 // The Stats tab, ported from the current app's stats/ components. One request
 // loads every card; the charts are plain elements, so the tab adds no chart
 // library to the bundle.
-import { keepPreviousData, useQuery, useSuspenseQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { Banknote, Bus, ChartBarStacked, ChartColumnStacked, ChevronRight, FerrisWheel, HandHelping, Home, PlugZap, Utensils } from 'lucide-react'
+import { ChartBarStacked, ChartColumnStacked, ChevronRight } from 'lucide-react'
 import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { cn } from '~/client/cn'
-import { localDate } from '~/client/components/local-date'
+import { CategoryIcon } from '~/client/components/category-icon'
 import { money } from '~/client/components/money'
-import { groupQuery } from '~/client/queries'
+import { formatDay, formatMonth, localDate } from '~/client/dates'
 import { statsQuery, type StatsScope } from '~/client/queries/history'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/client/ui/card'
 import { Checkbox } from '~/client/ui/checkbox'
 import { Input } from '~/client/ui/input'
 import { Label } from '~/client/ui/label'
 import { NativeSelect } from '~/client/ui/native-select'
+import { Segmented } from '~/client/ui/segmented'
 import { Skeleton } from '~/client/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/client/ui/table'
 import type { StatsOverview } from '~/shared/api'
@@ -63,17 +64,12 @@ const scopeOf = (data: { currency: CurrencyCode | undefined; range: Range }): St
 })
 
 export const Route = createFileRoute('/$group/stats')({
-  loader: ({ context, params }) => context.queryClient.ensureQueryData(statsQuery(params.group, { today: localDate() })),
+  loader: ({ context }) => context.queryClient.ensureQueryData(statsQuery(context.groupId, { today: localDate() })),
   component: StatsTab,
 })
 
 // ---------- formatting ----------
 
-const dayFormat = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' })
-const formatDay = (date: string) => dayFormat.format(new Date(`${date}T00:00:00Z`))
-const monthFormat = (options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-US', { ...options, timeZone: 'UTC' })
-const shortMonthYear = monthFormat({ month: 'short', year: 'numeric' })
-const formatMonth = (key: string, format: Intl.DateTimeFormat = shortMonthYear) => format.format(new Date(`${key}-01T00:00:00Z`))
 const toUnits = (amount: string, currency: CurrencyCode): bigint => {
   return minorOrNull({ amount, currency }) ?? 0n
 }
@@ -91,16 +87,11 @@ const isNegative = (amount: string) => amount.startsWith('-')
 const abs = (amount: string) => (isNegative(amount) ? amount.slice(1) : amount)
 const chartColor = (index: number) => `hsl(var(--chart-${(index % 5) + 1}))`
 
-function GroupIcon({ grouping, className }: { grouping: string; className?: string }) {
-  const Icon = { Entertainment: FerrisWheel, 'Food and Drink': Utensils, Home, Life: HandHelping, Transportation: Bus, Utilities: PlugZap }[grouping] ?? Banknote
-  return <Icon className={className} aria-hidden="true" />
-}
-
 // ---------- page ----------
 
 function StatsTab() {
   const { group } = Route.useParams()
-  const { data: g } = useSuspenseQuery(groupQuery(group))
+  const { groupId } = Route.useRouteContext()
   const [period, setPeriod] = useState<Period>('all')
   const [custom, setCustom] = useState<Range>({})
   const [currency, setCurrency] = useState<CurrencyCode | undefined>()
@@ -108,9 +99,9 @@ function StatsTab() {
   const range = resolveRange({ period, custom, now })
   const scope = scopeOf({ currency, range })
   // Each filter change is one new request (P-STATS-02); the previous figures stay until it answers.
-  const { data } = useQuery({ ...statsQuery(group, { ...scope, today: localDate(now) }), placeholderData: keepPreviousData })
+  const { data } = useQuery({ ...statsQuery(groupId, { ...scope, today: localDate(now) }), placeholderData: keepPreviousData })
   const c = data?.currency
-  const drill = { group, groupId: g.id, range }
+  const drill = { group, groupId, range }
   return (
     <section>
       <h2 className="sr-only">Totals</h2>
@@ -265,7 +256,7 @@ function Totals({ data, currency }: { data: Overview; currency: CurrencyCode }) 
 type Drill = { group: string; groupId: string; range: Range }
 
 // The drill-down dialog and its library load on the first click, not with the tab.
-const LazyDialog = lazy(() => import('~/client/components/history/stats-dialog'))
+const LazyDialog = lazy(() => import('./-stats-dialog'))
 function ExpensesDialog(props: Parameters<typeof LazyDialog>[0]) {
   return (
     <Suspense fallback={null}>
@@ -372,7 +363,7 @@ function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Dr
               key={x.categoryId}
               columns={BAR_COLUMNS}
               label={x.name}
-              icon={<GroupIcon grouping={x.grouping} className="h-4 w-4 shrink-0 text-muted-foreground" />}
+              icon={<CategoryIcon grouping={x.grouping} className="h-4 w-4 shrink-0 text-muted-foreground" />}
               aria={`Show expenses for ${x.name}`}
               value={Number(x.total)}
               max={max}
@@ -399,7 +390,11 @@ function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Dr
 
 // ---------- monthly spending (P-STATS-34 to P-STATS-40) ----------
 
-type ChartType = 'bars' | 'columns'
+const CHART_TYPES = [
+  { value: 'bars', label: 'Stacked bars', icon: ChartBarStacked },
+  { value: 'columns', label: 'Stacked columns', icon: ChartColumnStacked },
+] as const
+type ChartType = (typeof CHART_TYPES)[number]['value']
 
 function MonthlyCard({ data }: { data: Overview | undefined }) {
   const [grouping, setGrouping] = useState<MonthlyGrouping>('categoryGroup')
@@ -423,30 +418,7 @@ function MonthlyCard({ data }: { data: Overview | undefined }) {
         <option value="categoryGroup">Categories</option>
         <option value="category">Detailed</option>
       </NativeSelect>
-      {/* The same segmented control as the expense list's sort. */}
-      <div role="group" aria-label="Chart type" className="inline-flex h-9 shrink-0 items-stretch rounded-xl border border-input p-1">
-        {(
-          [
-            ['bars', 'Stacked bars', ChartBarStacked],
-            ['columns', 'Stacked columns', ChartColumnStacked],
-          ] as const
-        ).map(([value, label, Icon]) => (
-          <button
-            key={value}
-            type="button"
-            title={label}
-            aria-label={label}
-            aria-pressed={chart === value}
-            onClick={() => setChart(value)}
-            className={cn(
-              'flex items-center rounded-[0.5rem] px-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              chart === value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <Icon className="h-4 w-4" aria-hidden="true" />
-          </button>
-        ))}
-      </div>
+      <Segmented label="Chart type" value={chart} options={CHART_TYPES} onChange={setChart} className="h-9 shrink-0" />
     </div>
   )
   return (
@@ -478,8 +450,6 @@ function MonthlyCard({ data }: { data: Overview | undefined }) {
 
 type ChartProps = { view: MonthlySpending; visible: readonly MonthlyCategory[]; colors: Map<string, string>; currency: CurrencyCode; round: boolean; grouping: MonthlyGrouping; includeYear: boolean }
 
-const longMonth = monthFormat({ month: 'long', year: 'numeric' })
-const shortMonth = monthFormat({ month: 'short' })
 
 /** The month's segments in legend order, only those with spending. */
 function segments(month: MonthlyMonth, visible: readonly MonthlyCategory[], currency: CurrencyCode) {
@@ -490,7 +460,7 @@ function segments(month: MonthlyMonth, visible: readonly MonthlyCategory[], curr
   })
 }
 const hover = (data: { month: MonthlyMonth; category: MonthlyCategory; share: number; currency: CurrencyCode; round: boolean }) =>
-  `${formatMonth(data.month.key, longMonth)} - ${data.category.name}: ${chartMoney({ amount: data.category.expense, currency: data.currency, round: data.round })} (${Math.round(data.share * 100)}%)`
+  `${formatMonth(data.month.key, 'long')} - ${data.category.name}: ${chartMoney({ amount: data.category.expense, currency: data.currency, round: data.round })} (${Math.round(data.share * 100)}%)`
 
 function StackedBars({ view, visible, colors, currency, round, includeYear }: ChartProps) {
   return (
@@ -501,7 +471,7 @@ function StackedBars({ view, visible, colors, currency, round, includeYear }: Ch
         return (
           // The same grammar as "Spending over time": label, a bar on a full-width track, then the amount in a fixed column.
           <div key={month.key} className={cn('grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] items-center gap-x-3 py-1.5 text-sm', BAR_COLUMNS)}>
-            <div>{formatMonth(month.key, includeYear ? shortMonthYear : shortMonth)}</div>
+            <div>{formatMonth(month.key, includeYear ? 'shortYear' : 'short')}</div>
             <div className="h-2 min-w-0 overflow-hidden rounded-full bg-muted">
               <div className="flex h-full overflow-hidden rounded-full" style={{ width: `${units * 100}%` }}>
                 {segments(month, visible, currency).map((x) => {
@@ -539,14 +509,14 @@ function StackedColumns({ view, visible, colors, currency, round, grouping, incl
             <div key={month.key} className="flex min-w-0 flex-col items-center gap-2">
               <div className="flex h-56 w-full flex-col items-center justify-end">
                 <div className="mb-1 max-w-full truncate px-0.5 text-center text-xs leading-none tabular-nums text-muted-foreground">{total}</div>
-                <div className="flex w-full max-w-14 items-end rounded-md bg-muted" style={{ height: percent > 0 ? `calc(12rem * ${percent / 100})` : '0px' }} title={`${formatMonth(month.key, longMonth)}: ${total}`}>
+                <div className="flex w-full max-w-14 items-end rounded-md bg-muted" style={{ height: percent > 0 ? `calc(12rem * ${percent / 100})` : '0px' }} title={`${formatMonth(month.key, 'long')}: ${total}`}>
                   <div className="flex h-full w-full flex-col-reverse overflow-hidden rounded-md">
                     {segments(month, visible, currency).map((x) => {
                       const part = ratio(x.expense, month.expense, currency)
                       const label = hover({ month, category: x, share: part, currency, round })
                       return (
                         <div key={x.key} aria-label={label} title={label} className="flex min-h-[3px] items-center justify-center overflow-hidden px-0.5" style={{ height: `${part * 100}%`, backgroundColor: colors.get(x.key), color: 'hsl(var(--background))' }}>
-                          {part >= 0.08 && <GroupIcon grouping={grouping === 'categoryGroup' ? x.key : x.grouping} className="h-3.5 w-3.5 shrink-0 opacity-80" />}
+                          {part >= 0.08 && <CategoryIcon grouping={grouping === 'categoryGroup' ? x.key : x.grouping} className="h-3.5 w-3.5 shrink-0 opacity-80" />}
                         </div>
                       )
                     })}
@@ -554,7 +524,7 @@ function StackedColumns({ view, visible, colors, currency, round, grouping, incl
                 </div>
               </div>
               <div className="w-full min-w-0 text-center text-xs leading-tight text-muted-foreground">
-                <div className="truncate">{formatMonth(month.key, shortMonth)}</div>
+                <div className="truncate">{formatMonth(month.key, 'short')}</div>
                 {includeYear && <div>{month.key.slice(0, 4)}</div>}
               </div>
             </div>

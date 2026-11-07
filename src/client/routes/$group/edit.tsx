@@ -1,13 +1,18 @@
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, Copy } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { DeleteDialog } from '~/client/components/delete-dialog'
 import { GroupForm } from '~/client/components/group-form'
-import { errorMessage, groupDetailsQuery, newIdempotencyKey, refreshGroups } from '~/client/queries/groups'
-import { rpc } from '~/client/rpc'
+import { formatMoment } from '~/client/dates'
+import { describeError } from '~/client/errors'
+import { groupDetailsQuery } from '~/client/queries/groups'
+import { afterWrite, keys } from '~/client/queries/keys'
+import { newIdempotencyKey, rpc } from '~/client/rpc'
 import { Alert, AlertDescription } from '~/client/ui/alert'
 import { Button } from '~/client/ui/button'
+import { CopyButton } from '~/client/ui/copy-button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/client/ui/dropdown-menu'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
@@ -17,9 +22,9 @@ import { LIMITS } from '~/shared/limits'
 import type { Role } from '~/shared/vocabulary'
 
 export const Route = createFileRoute('/$group/edit')({
-  loader: ({ context, params }) => context.queryClient.ensureQueryData(groupDetailsQuery(params.group)),
+  loader: ({ context }) => context.queryClient.ensureQueryData(groupDetailsQuery(context.groupId)),
   pendingComponent: () => <p role="status">Loading people…</p>,
-  errorComponent: ({ error }) => <p role="alert">{errorMessage(error)}</p>,
+  errorComponent: ({ error }) => <p role="alert">{describeError(error).message}</p>,
   component: Settings,
 })
 
@@ -27,9 +32,11 @@ type Details = typeof GroupDetails.Type
 
 function Settings() {
   const { group } = Route.useParams()
-  const { data } = useSuspenseQuery(groupDetailsQuery(group))
+  const { groupId } = Route.useRouteContext()
+  const { data } = useSuspenseQuery(groupDetailsQuery(groupId))
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const refresh = () => afterWrite({ queryClient, scope: 'group', groupId })
   return (
     <div className="space-y-6">
       {/* Only admins can change settings, so members see only the People section (P-GROUP-59). */}
@@ -46,11 +53,7 @@ function Settings() {
                 idempotencyKey: newIdempotencyKey(),
                 changes: { ...values, slug: values.slug.trim() || null },
               }),
-            ).catch(async (e: unknown) => {
-              await refreshGroups(queryClient)
-              throw new Error(errorMessage(e))
-            })
-            await refreshGroups(queryClient)
+            ).finally(refresh)
             toast.success('Group settings saved')
             // A new or removed slug changes the page's URL (P-GROUP-104).
             if (groupRef(result) !== group) await navigate({ to: '/$group/edit', params: { group: groupRef(result) }, replace: true })
@@ -74,10 +77,10 @@ function useActions(details: Details) {
     try {
       return await work()
     } catch (e) {
-      setError(errorMessage(e))
+      setError(describeError(e).message)
       return null
     } finally {
-      await refreshGroups(queryClient)
+      await afterWrite({ queryClient, scope: 'group', groupId: details.id })
       setBusy(false)
     }
   }
@@ -88,7 +91,7 @@ function useActions(details: Details) {
       run(async () => {
         const result = await rpc((api) => api('groups.access', { idempotencyKey: newIdempotencyKey(), request }))
         if (!result.joined) {
-          queryClient.removeQueries({ queryKey: ['group'] })
+          queryClient.removeQueries({ queryKey: keys.group(details.id) })
           await navigate({ to: '/groups' })
         }
         return result
@@ -102,23 +105,6 @@ function useActions(details: Details) {
   }
 }
 
-async function copy(text: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast.success('Copied')
-  } catch {
-    toast.error('Could not copy. Select the text and copy it yourself.')
-  }
-}
-
-function CopyButton({ text, title }: { text: string; title: string }) {
-  return (
-    <Button type="button" variant="outline" size="icon" className="shrink-0" title={title} aria-label={title} onClick={() => copy(text)}>
-      <Copy className="h-4 w-4" />
-    </Button>
-  )
-}
-
 function People({ details }: { details: Details }) {
   const actions = useActions(details)
   const admin = details.role === 'admin'
@@ -129,6 +115,7 @@ function People({ details }: { details: Details }) {
   const [newName, setNewName] = useState('')
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null)
   const [bindings, setBindings] = useState<Record<string, string>>({})
+  const [removing, setRemoving] = useState<{ userId: string; name: string } | null>(null)
   const people = details.people
   const list = (rename?: { id: string; name: string }) => people.map((p) => ({ id: p.id, name: p.id === rename?.id ? rename.name : p.name }))
 
@@ -147,13 +134,7 @@ function People({ details }: { details: Details }) {
           >
             {member.role === 'admin' ? 'Remove admin role' : 'Make admin'}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={busy}
-            onSelect={() => {
-              if (window.confirm(`Remove ${member.name}'s access? Their expenses will remain.`))
-                void actions.access({ action: 'remove_member', groupId: details.id, userId: member.userId })
-            }}
-          >
+          <DropdownMenuItem disabled={busy} onSelect={() => setRemoving(member)}>
             Remove access
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -224,16 +205,15 @@ function People({ details }: { details: Details }) {
                         )}
                         {/* People in an expense, bound or invited cannot be removed (P-GROUP-84). */}
                         {!person.reserved && !person.inExpenses && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => {
-                              if (window.confirm(`Delete ${person.name} from this group?`)) void actions.savePeople(list().filter((p) => p.id !== person.id))
-                            }}
-                          >
-                            Delete person
-                          </Button>
+                          <DeleteDialog
+                            trigger={
+                              <Button variant="ghost" size="sm" disabled={busy}>
+                                Delete person
+                              </Button>
+                            }
+                            title={`Delete ${person.name} from this group?`}
+                            onConfirm={() => actions.savePeople(list().filter((p) => p.id !== person.id))}
+                          />
                         )}
                       </div>
                     )}
@@ -304,13 +284,15 @@ function People({ details }: { details: Details }) {
                   <p className="text-sm">Send this to {person.name}. AgentSplit does not send an email automatically.</p>
                   <div className="flex items-center gap-3">
                     <code className="min-w-0 flex-1 text-xs break-all">{created.url}</code>
-                    <CopyButton text={created.url} title="Copy invitation" />
+                    <CopyButton variant="outline" className="shrink-0" text={created.url} title="Copy invitation" />
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm">Copy a message with the steps to join</span>
                     <CopyButton
+                      variant="outline"
+                      className="shrink-0"
                       title="Copy invitation message"
-                      text={`Join ${details.name} on AgentSplit:\n${created.url}\n\nOpen the link and sign in with Google using ${created.email}. Your account will be created automatically if you’re new. Then click Accept invitation to join as ${person.name} and see our shared expenses and balances.\n\nYou can use the website, or open Agents after joining to connect ChatGPT or Claude. An agent is optional.\n\nThe invitation expires ${new Date(created.expiresAt).toLocaleString()}.`}
+                      text={`Join ${details.name} on AgentSplit:\n${created.url}\n\nOpen the link and sign in with Google using ${created.email}. Your account will be created automatically if you’re new. Then click Accept invitation to join as ${person.name} and see our shared expenses and balances.\n\nYou can use the website, or open Agents after joining to connect ChatGPT or Claude. An agent is optional.\n\nThe invitation expires ${formatMoment.full(created.expiresAt)}.`}
                     />
                   </div>
                 </div>
@@ -341,18 +323,20 @@ function People({ details }: { details: Details }) {
                       </option>
                     ))}
                 </NativeSelect>
-                <Button
-                  size="sm"
-                  disabled={busy || !bindings[member.userId]}
-                  onClick={() => {
+                <DeleteDialog
+                  trigger={
+                    <Button size="sm" disabled={busy || !bindings[member.userId]}>
+                      Link identity
+                    </Button>
+                  }
+                  title={`Permanently link ${member.email} to ${people.find((p) => p.id === bindings[member.userId])?.name}?`}
+                  description="This identity cannot be switched later."
+                  pending="Linking…"
+                  onConfirm={async () => {
                     const participantId = bindings[member.userId]
-                    const name = people.find((p) => p.id === participantId)?.name
-                    if (participantId && window.confirm(`Permanently link ${member.email} to ${name}? This identity cannot be switched later.`))
-                      void actions.access({ action: 'bind_member', groupId: details.id, userId: member.userId, email: member.email, participantId })
+                    if (participantId) await actions.access({ action: 'bind_member', groupId: details.id, userId: member.userId, email: member.email, participantId })
                   }}
-                >
-                  Link identity
-                </Button>
+                />
               </div>
             )}
             {memberActions(member)}
@@ -390,17 +374,28 @@ function People({ details }: { details: Details }) {
       )}
       {/* Leaving is destructive, so it sits apart from the people actions. */}
       <div className="border-t pt-4">
-        <Button
-          variant="ghost"
-          className="-ms-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
-          disabled={busy}
-          onClick={() => {
-            if (window.confirm('Leave this group? You will need a new invitation to return.')) void actions.access({ action: 'leave', groupId: details.id })
-          }}
-        >
-          Leave group
-        </Button>
+        <DeleteDialog
+          trigger={
+            <Button variant="ghost" className="-ms-4 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={busy}>
+              Leave group
+            </Button>
+          }
+          title="Leave this group?"
+          description="You will need a new invitation to return."
+          pending="Leaving…"
+          onConfirm={() => actions.access({ action: 'leave', groupId: details.id })}
+        />
       </div>
+      <DeleteDialog
+        open={removing !== null}
+        onOpenChange={(open) => !open && setRemoving(null)}
+        title={`Remove ${removing?.name ?? ''}'s access?`}
+        description="Their expenses will remain."
+        pending="Removing…"
+        onConfirm={async () => {
+          if (removing) await actions.access({ action: 'remove_member', groupId: details.id, userId: removing.userId })
+        }}
+      />
     </section>
   )
 }

@@ -2,14 +2,15 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import { LIMITS } from '../../shared/limits'
 import { rpc } from '../rpc'
+import { keys } from './keys'
 
-export const storageUsageQuery = queryOptions({ queryKey: ['storage', 'usage'], queryFn: () => rpc((api) => api('storage.usage', undefined)) })
+export const storageUsageQuery = queryOptions({ queryKey: keys.storageUsage, queryFn: () => rpc((api) => api('storage.usage', undefined)) })
 
 export type ReceiptOrder = 'largest' | 'oldest'
 
 export const ownReceiptsQuery = (order: ReceiptOrder) =>
   infiniteQueryOptions({
-    queryKey: ['storage', 'receipts', order],
+    queryKey: keys.ownReceipts(order),
     initialPageParam: 0,
     queryFn: ({ pageParam }) => rpc((api) => api('storage.receipts', { order, cursor: pageParam, limit: LIMITS.receiptPage })),
     getNextPageParam: (page) => page.nextCursor ?? undefined,

@@ -2,14 +2,17 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '~/client/cn'
 
-/** Put this on the `<details>`, so the summary's chevron turns when it opens. */
-export const disclosure = 'group/disclosure'
+/** The chevron turns when its own `<details>` opens, so a disclosure inside another keeps its state. */
+const OPEN_DOWN = 'transition-transform [details[open]>summary_&]:rotate-180'
+const OPEN_RIGHT = 'transition-transform [details[open]>summary_&]:rotate-90'
 
 /**
  * The one `<summary>` style: no browser marker, and a chevron that turns when
  * the `<details>` opens. `quiet` is the small inline form, with the chevron first.
+ * `hint` is a small muted word beside the chevron, such as "Details".
  */
-export function DisclosureSummary(props: { children: ReactNode; className?: string; quiet?: boolean }) {
+export function DisclosureSummary(props: { children: ReactNode; className?: string; quiet?: boolean; hint?: string }) {
+  const down = <ChevronDown aria-hidden="true" className={cn('h-4 w-4 shrink-0 text-muted-foreground', OPEN_DOWN)} />
   return (
     <summary
       className={cn(
@@ -18,9 +21,17 @@ export function DisclosureSummary(props: { children: ReactNode; className?: stri
         props.className,
       )}
     >
-      {props.quiet && <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 transition-transform group-open/disclosure:rotate-90" />}
+      {props.quiet && <ChevronRight aria-hidden="true" className={cn('h-3.5 w-3.5 shrink-0', OPEN_RIGHT)} />}
       <span className="min-w-0">{props.children}</span>
-      {!props.quiet && <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open/disclosure:rotate-180" />}
+      {!props.quiet &&
+        (props.hint ? (
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            {props.hint}
+            {down}
+          </span>
+        ) : (
+          down
+        ))}
     </summary>
   )
 }

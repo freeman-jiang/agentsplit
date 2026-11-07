@@ -3,10 +3,11 @@
 // amounts of an amount split. Ported from the current app's expense-form.tsx.
 import type { CurrencyCode } from '~/shared/currencies'
 import { validateExpense, type ExpenseDraft, type ExpenseIssue } from '~/shared/expense-rules'
-import { formatMinor, minor, minorOrNull, sumMinor, type DecimalString } from '~/shared/minor'
+import { formatMinor, minor, minorOrNull, sumMinor } from '~/shared/minor'
 import { compareIds } from '~/shared/ids'
 import { apportion, parseWeight, preferredPayer } from '~/shared/split'
-import { SPLIT_MODE_NAMES, SPLIT_MODES, type ExpenseKind, type Recurrence, type SplitMode } from '~/shared/vocabulary'
+import { CATEGORY, SPLIT_MODE_NAMES, SPLIT_MODES, type ExpenseKind, type Recurrence, type SplitMode } from '~/shared/vocabulary'
+import { todayUtc } from '~/shared/dates'
 import type { FormDocument } from './expense-documents'
 
 export type FormState = {
@@ -112,23 +113,6 @@ export function toDraft(state: FormState, order: readonly string[]): ExpenseDraf
     recurrence: state.recurrence,
   }
 }
-
-/**
- * The RPC payload for a draft that validateExpense accepted. Its amounts passed
- * the decimal check there, so they carry the DecimalString brand.
- */
-export function toInput(data: { draft: ExpenseDraft; documents: readonly FormDocument[] }) {
-  const { draft } = data
-  return {
-    ...draft,
-    amount: draft.amount as DecimalString,
-    payers: draft.payers.map((p) => ({ participantId: p.participantId, amount: p.amount as DecimalString })),
-    documents: data.documents.map((d) => ({ id: d.id, url: d.url, width: d.width, height: d.height })),
-  }
-}
-
-/** The RPC payload that toInput builds. */
-export type ExpenseInputData = ReturnType<typeof toInput>
 
 /** Whether each person pays or shares: a private expense keeps all its people (P-UNGROUP-48). */
 export function involvesEveryone(state: FormState, order: readonly string[]) {
@@ -280,9 +264,6 @@ export type Prefill = {
   readonly currencyCode?: CurrencyCode
 }
 
-/** Today as a UTC calendar date, as the current expense form defaults (P-EXP-68). */
-export const utcToday = () => new Date().toISOString().slice(0, 10)
-
 /**
  * A new expense: the saved split defaults, the viewer as payer, and any URL prefill (P-EXP-66, P-EXP-71, P-EXP-96).
  * A new private expense has no group (`groupId: null`), so it starts with everyone, evenly.
@@ -295,8 +276,9 @@ export function newExpenseState(data: { groupId: string | null; participants: re
     title: prefill.title ?? '',
     vendor: prefill.vendor ?? '',
     notes: '',
-    categoryId: prefill.categoryId ?? 0,
-    expenseDate: prefill.date ?? utcToday(),
+    categoryId: prefill.categoryId ?? CATEGORY.general,
+    // Today as a UTC calendar date, as the current expense form defaults (P-EXP-68).
+    expenseDate: prefill.date ?? todayUtc(),
     currency: prefill.currencyCode ?? data.defaultCurrency,
     amount: prefill.amount ?? '',
     payerMode: 'one',

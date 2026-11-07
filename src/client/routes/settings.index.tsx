@@ -1,16 +1,24 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { CopyButton } from '~/client/components/copy-button'
-import { StorageLimits } from '~/client/components/storage-limits'
+import { toast } from 'sonner'
 import { authClient } from '~/client/auth-client'
-import { accountQuery, errorMessage, readTheme, saveTheme, type Theme } from '~/client/queries/account'
+import { signOut } from '~/client/auth-guard'
+import { DeleteDialog } from '~/client/components/delete-dialog'
+import { StorageLimits } from '~/client/components/storage-limits'
+import { formatMoment } from '~/client/dates'
+import { describeError } from '~/client/errors'
+import { accountQuery } from '~/client/queries/account'
+import { afterWrite } from '~/client/queries/keys'
 import { storageUsageQuery } from '~/client/queries/storage'
 import { rpc } from '~/client/rpc'
+import { readTheme, saveTheme, type Theme } from '~/client/theme'
 import { Button } from '~/client/ui/button'
+import { CopyButton } from '~/client/ui/copy-button'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
 import { LIMITS } from '~/shared/limits'
+import { API_KEY_HEADER } from '~/shared/mcp'
 
 export const Route = createFileRoute('/settings/')({
   loader: ({ context }) => Promise.all([context.queryClient.ensureQueryData(accountQuery), context.queryClient.ensureQueryData(storageUsageQuery)]),
@@ -39,9 +47,9 @@ function Profile(props: { name: string; email: string }) {
   const [saved, setSaved] = useState(false)
   const save = useMutation({
     mutationFn: (name: string) => rpc((api) => api('account.updateProfile', { name })),
-    // The name shows in groups, expenses and the header: read everything again.
+    // The name shows in groups, expenses and the header.
     onSuccess: async () => {
-      await queryClient.invalidateQueries()
+      await afterWrite({ queryClient, scope: 'account' })
       setSaved(true)
     },
   })
@@ -78,7 +86,7 @@ function Profile(props: { name: string; email: string }) {
         <Button disabled={save.isPending || !displayName.trim()}>{save.isPending ? 'Saving…' : 'Save display name'}</Button>
         {save.error && (
           <p role="alert" className="text-sm text-destructive">
-            {errorMessage(save.error, 'Could not save your display name.')}
+            {describeError(save.error, 'Could not save your display name.').message}
           </p>
         )}
         {saved && (
@@ -87,14 +95,7 @@ function Profile(props: { name: string; email: string }) {
           </p>
         )}
       </form>
-      <Button
-        variant="outline"
-        onClick={async () => {
-          await authClient.signOut()
-          localStorage.removeItem('recentGroups')
-          window.location.assign('/sign-in')
-        }}
-      >
+      <Button variant="outline" onClick={() => void signOut().catch((cause: unknown) => toast.error(describeError(cause).message))}>
         Sign out
       </Button>
     </section>
@@ -143,7 +144,7 @@ function ApiKeys(props: { keys: readonly Key[] }) {
   const [secret, setSecret] = useState('')
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
-  const reload = () => Promise.all([queryClient.invalidateQueries({ queryKey: accountQuery.queryKey }), queryClient.invalidateQueries({ queryKey: storageUsageQuery.queryKey })])
+  const reload = () => afterWrite({ queryClient, scope: 'account' })
   return (
     <section className="space-y-4">
       <h2 className="text-xl font-medium">Agent API keys</h2>
@@ -160,7 +161,7 @@ function ApiKeys(props: { keys: readonly Key[] }) {
           try {
             // Better Auth creates the key: it owns the prefix, the hash and the rate limit.
             const result = await authClient.apiKey.create({ name: label })
-            if (result.error) setError(errorMessage(result.error, 'Could not create key'))
+            if (result.error) setError(describeError(result.error, 'Could not create key').message)
             else {
               setSecret(result.data.key)
               setLabel('')
@@ -195,7 +196,7 @@ function ApiKeys(props: { keys: readonly Key[] }) {
         <div className="space-y-3 rounded-2xl border bg-card p-4">
           <p className="font-medium">Copy your new key now. It is shown only once.</p>
           <p className="text-sm text-muted-foreground">
-            Paste the key exactly as copied into your client’s API key or X-API-Key header field. No prefix is needed.
+            Paste the key exactly as copied into your client’s API key or {API_KEY_HEADER} header field. No prefix is needed.
           </p>
           <div className="flex items-center gap-3">
             <code className="min-w-0 flex-1 break-all text-sm">{secret}</code>
@@ -212,25 +213,23 @@ function ApiKeys(props: { keys: readonly Key[] }) {
             <div className="min-w-0">
               <p className="break-words font-medium">{key.name ?? 'Agent key'}</p>
               <p className="text-xs text-muted-foreground">
-                {key.start ? `${key.start}… · ` : ''}Created {new Date(key.createdAt).toLocaleDateString()}
+                {key.start ? `${key.start}… · ` : ''}Created {formatMoment.numericDate(key.createdAt)}
               </p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                if (!window.confirm(`Revoke ${key.name ?? 'this key'}? Its agent will lose access.`)) return
+            <DeleteDialog
+              trigger={
+                <Button variant="outline" size="sm">
+                  Revoke
+                </Button>
+              }
+              title={`Revoke ${key.name ?? 'this key'}?`}
+              description="Its agent will lose access."
+              pending="Revoking…"
+              onConfirm={async () => {
                 setError('')
-                try {
-                  await rpc((api) => api('account.revokeApiKey', { keyId: key.id }))
-                } catch (cause) {
-                  setError(errorMessage(cause, 'Unable to revoke key'))
-                }
-                await reload()
+                await rpc((api) => api('account.revokeApiKey', { keyId: key.id })).finally(reload)
               }}
-            >
-              Revoke
-            </Button>
+            />
           </li>
         ))}
       </ul>

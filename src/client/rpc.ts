@@ -1,4 +1,4 @@
-// A small fetch client for the Worker's Effect RPC endpoint. It speaks the same
+// A small fetch client for the server's Effect RPC endpoint. It speaks the same
 // JSON protocol as Effect's RpcClient (RpcSerialization.layerJson over HTTP), and
 // takes its types from the shared contract with type-only imports, so no Effect
 // runtime ships to the browser: that keeps the signed-in shell within budget.
@@ -7,6 +7,7 @@
 // encoded form equals its decoded form (strings, numbers, booleans, arrays and
 // structs; no Date or bigint transforms). The JsonIdentical check below makes
 // the type checker refuse a contract change that breaks this.
+import type { Schema } from 'effect'
 import type { Rpc, RpcGroup } from 'effect/rpc'
 import type { AgentSplitApi } from '../shared/api'
 import { REQUEST_ID_RESPONSE_HEADER } from '../shared/ids'
@@ -24,7 +25,12 @@ type JsonIdentical<T extends Tag> = Rpc.Success<ByTag<T>> extends Rpc.SuccessEnc
 const _jsonIdentical: { [T in Tag]: JsonIdentical<T> } extends { [T in Tag]: true } ? true : never = true
 void _jsonIdentical
 
-/** A failure the server did not declare (a defect or a broken response). */
+/** An error that a procedure of the contract declares, as JSON. */
+export type DeclaredError = Schema.Codec.Encoded<Rpc.ErrorSchema<Rpcs>>
+
+const DECLARED: Readonly<Record<DeclaredError['_tag'], true>> = { Unauthorized: true, Forbidden: true, NotFound: true, Conflict: true, Invalid: true, Unavailable: true }
+
+/** A failure the server did not declare (a defect or a broken response), or no response at all. */
 export class RpcFailure extends Error {
   readonly _tag = 'RpcFailure'
   /** The server's ID of the request, when a response came back. */
@@ -35,21 +41,30 @@ export class RpcFailure extends Error {
   }
 }
 
+/** What rpc() rejects with: a declared error with the server's ID of the request, or an RpcFailure. */
+export type RpcError = (DeclaredError & { readonly requestId: string | null }) | RpcFailure
+
+/** The RpcError a caught value is. rpc() rejects only with these; anything else becomes an RpcFailure. */
+export function rpcError(cause: unknown): RpcError {
+  if (cause instanceof RpcFailure) return cause
+  if (typeof cause === 'object' && cause !== null && '_tag' in cause && typeof cause._tag === 'string' && Object.hasOwn(DECLARED, cause._tag))
+    return cause as RpcError
+  return new RpcFailure(cause instanceof Error ? cause.message : 'The request failed')
+}
+
 /** The server's ID of the request that failed with `error`, or null if no response came back. */
 export function requestIdOf(error: unknown): string | null {
   if (typeof error !== 'object' || error === null || !('requestId' in error)) return null
   return typeof error.requestId === 'string' ? error.requestId : null
 }
 
-/** A declared error with the request's ID added, so the error page can show it. */
-const withRequestId = (error: unknown, requestId: string | null) =>
-  requestId !== null && typeof error === 'object' && error !== null ? { ...error, requestId } : error
-
-type Pending = { readonly id: string; readonly tag: Tag; readonly payload: unknown; resolve: (value: unknown) => void; reject: (error: unknown) => void }
+type Pending = { readonly id: string; readonly tag: Tag; readonly payload: unknown; resolve: (value: unknown) => void; reject: (error: RpcError) => void }
 type ExitMessage = {
   readonly _tag: 'Exit'
   readonly requestId: string
-  readonly exit: { readonly _tag: 'Success'; readonly value: unknown } | { readonly _tag: 'Failure'; readonly cause: ReadonlyArray<{ readonly _tag: string; readonly error?: unknown }> }
+  readonly exit:
+    | { readonly _tag: 'Success'; readonly value: unknown }
+    | { readonly _tag: 'Failure'; readonly cause: ReadonlyArray<{ readonly _tag: string; readonly error?: DeclaredError }> }
 }
 
 let nextId = 0
@@ -80,8 +95,8 @@ async function flush() {
       if (!exit) p.reject(new RpcFailure('The response ended before this call completed', requestId))
       else if (exit._tag === 'Success') p.resolve(exit.value)
       else {
-        const failure = exit.cause.find((c) => c._tag === 'Fail')
-        p.reject(failure ? withRequestId(failure.error, requestId) : new RpcFailure('The server failed unexpectedly', requestId))
+        const failure = exit.cause.find((c) => c._tag === 'Fail')?.error
+        p.reject(failure ? { ...failure, requestId } : new RpcFailure('The server failed unexpectedly', requestId))
       }
     }
   } catch (error) {
@@ -89,17 +104,20 @@ async function flush() {
   }
 }
 
-/** Calls one procedure; rejects with one of its typed errors or an RpcFailure. */
+/** Calls one procedure; rejects with an RpcError. */
 function call<T extends Tag>(tag: T, payload: PayloadOf<T>): Promise<SuccessOf<T>> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, reject: (error: RpcError) => void) => {
     queue.push({ id: String(++nextId), tag, payload: payload ?? null, resolve: resolve as (value: unknown) => void, reject })
     timer ??= setTimeout(flush, BATCH_WINDOW_MS)
   })
 }
 
-export type ApiClient = typeof call
+type ApiClient = typeof call
 
-/** Runs calls on the typed client: `rpc((api) => api("groups.list", undefined))`. */
+/** Runs calls on the typed client: `rpc((api) => api("groups.list", undefined))`. Rejects with an RpcError. */
 export function rpc<A>(work: (api: ApiClient) => Promise<A>): Promise<A> {
   return work(call)
 }
+
+/** A fresh key for one write; a retry of the same request reuses it. */
+export const newIdempotencyKey = () => crypto.randomUUID()
