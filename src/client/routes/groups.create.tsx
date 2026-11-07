@@ -9,6 +9,7 @@ import { newIdempotencyKey, rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '~/client/ui/card'
 import { Input } from '~/client/ui/input'
+import { DEFAULT_CURRENCY } from '~/shared/currencies'
 import { groupRef } from '~/shared/groups'
 import { LIMITS } from '~/shared/limits'
 
@@ -31,7 +32,7 @@ function CreateGroup() {
     <main className="mx-auto w-full max-w-4xl px-3 py-6 sm:px-8">
       <GroupForm
         mode="create"
-        initial={{ name: '', slug: '', information: '', defaultCurrency: 'USD' }}
+        initial={{ name: '', slug: '', information: '', defaultCurrency: DEFAULT_CURRENCY }}
         cancel={
           <Button variant="ghost" asChild>
             <Link to="/groups">Cancel</Link>

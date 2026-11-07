@@ -31,6 +31,9 @@ export const keys = {
   statsExpenses: (groupId: string, scope: object) => ['group', groupId, 'stats-expenses', scope],
 } as const
 
+/** Is `queryKey` some group's groupSummary key? */
+export const isGroupSummaryKey = (queryKey: readonly unknown[]) => queryKey[0] === 'group' && queryKey[2] === 'summary' && queryKey.length === 3
+
 /**
  * `group`: a write in one group or private context (an expense, a payment, its
  * settings or people). `account`: a write that can change every group, such as

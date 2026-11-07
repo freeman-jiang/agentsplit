@@ -2,12 +2,11 @@
 export type Theme = 'system' | 'light' | 'dark'
 const THEME_KEY = 'theme'
 
-export function readTheme(): Theme {
-  const value = localStorage.getItem(THEME_KEY)
-  return value === 'light' || value === 'dark' ? value : 'system'
-}
+/** A stored or chosen value as a theme; anything else is the default, 'system'. */
+export const themeOf = (value: string | null): Theme => (value === 'light' || value === 'dark' ? value : 'system')
 
-/** Saves the theme and applies it at once. */
+export const readTheme = () => themeOf(localStorage.getItem(THEME_KEY))
+
 export function saveTheme(theme: Theme) {
   localStorage.setItem(THEME_KEY, theme)
   const dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)

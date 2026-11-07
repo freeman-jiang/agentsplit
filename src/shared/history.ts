@@ -5,7 +5,7 @@
 // each fits the other.
 // No Effect import: the client bundle uses this module (BUILDING.md).
 import { CURRENCIES, isCurrencyCode, type CurrencyCode } from './currencies'
-import type { DecimalString } from './minor'
+import { groupDigits, type DecimalString } from './minor'
 import { RECURRENCE_LABELS, type ExpenseKind, type Recurrence, type SplitMode } from './vocabulary'
 
 export type Category = { readonly grouping: string; readonly name: string }
@@ -66,7 +66,7 @@ function codeAmount(amount: string, currency: string): string {
   const decimals = isCurrencyCode(currency) ? CURRENCIES[currency].decimals : 2
   const negative = amount.startsWith('-')
   const [whole = '0', fraction = ''] = (negative ? amount.slice(1) : amount).split('.')
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  const grouped = groupDigits(whole)
   const digits = decimals === 0 ? '' : `.${fraction.padEnd(decimals, '0').slice(0, decimals)}`
   return `${negative ? '-' : ''}${grouped}${digits} ${currency}`
 }

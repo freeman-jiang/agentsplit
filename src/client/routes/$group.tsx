@@ -11,6 +11,7 @@ import { groupQuery, resolveGroup } from '~/client/queries/groups'
 import { rpcError } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 import { DisclosureSummary } from '~/client/ui/disclosure'
+import type { FileRoutesById } from '~/client/routeTree.gen'
 import { Skeleton } from '~/client/ui/skeleton'
 import type { CurrencyBalances, Participant } from '~/shared/api'
 import { groupPath, groupRef } from '~/shared/groups'
@@ -111,7 +112,7 @@ function GroupLayout() {
   )
 }
 
-const FORM_ROUTES = new Set(['/$group/expenses/create', '/$group/expenses/$expenseId/edit', '/$group/payments/create', '/$group/payments/$expenseId/edit'])
+const FORM_ROUTES: ReadonlySet<string> = new Set<keyof FileRoutesById>(['/$group/expenses/create', '/$group/expenses/$expenseId/edit', '/$group/payments/create', '/$group/payments/$expenseId/edit'])
 
 type Entry = typeof CurrencyBalances.Type
 

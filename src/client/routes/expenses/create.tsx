@@ -14,6 +14,7 @@ import { DisclosureSummary } from '~/client/ui/disclosure'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
 import type { FeedOptions, Reference, UngroupedResult } from '~/shared/api'
+import { DEFAULT_CURRENCY } from '~/shared/currencies'
 import { EMAIL, groupRef, normalizeEmail } from '~/shared/groups'
 import { randomId } from '~/shared/ids'
 import { LIMITS } from '~/shared/limits'
@@ -206,7 +207,7 @@ function PrivateExpense(props: { id: string; people: readonly Person[]; selfId: 
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const me = people.find((p) => p.userId === props.selfId)
-  const [initial] = useState(() => newExpenseState({ groupId: null, participants: people.map((p) => p.id), viewer: me?.id ?? null, defaultCurrency: 'USD', prefill: {} }))
+  const [initial] = useState(() => newExpenseState({ groupId: null, participants: people.map((p) => p.id), viewer: me?.id ?? null, defaultCurrency: DEFAULT_CURRENCY, prefill: {} }))
   const invitations = useRef<Invitations>([])
   const contextId = useRef<string | null>(null)
   // The private context is created with the expense; until then there is no group for receipts.
