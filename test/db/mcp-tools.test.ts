@@ -229,7 +229,7 @@ describe('list_groups and get_group', () => {
       slug: 'home',
       currency: '$',
       currencyCode: 'USD',
-      revision: 0,
+      revision: 1,
       _count: { participants: 3 },
     })
   })
