@@ -192,7 +192,7 @@ function PrivateRepayments({ data }: { data: Context }) {
         </Button>
       )}
       {context.invitations.map((invitation) => (
-        <div key={invitation.id} className="space-y-2 border p-3 text-sm">
+        <div key={invitation.id} className="space-y-2 rounded-xl bg-muted/50 p-3 text-sm">
           <p>
             Invitation pending: {invitation.participantName} ({invitation.email})
           </p>

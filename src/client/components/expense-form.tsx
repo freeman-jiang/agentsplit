@@ -500,7 +500,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
       </div>
 
       {failure && (
-        <div role="alert" className="space-y-2 border border-destructive/50 p-3 text-sm text-destructive">
+        <div role="alert" className="space-y-2 rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
           <p>{failure.message}</p>
           {failure.kind === 'conflict' && props.mode === 'edit' && (
             <Button type="button" variant="outline" size="sm" onClick={props.onReload}>
