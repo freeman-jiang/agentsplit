@@ -5,6 +5,7 @@
 // src/app/api/receipts/route.ts.
 import { LIMITS, mebibytes } from '../shared/limits'
 import { todayUtc } from '../shared/dates'
+import { RECEIPT_CONTENT_TYPES } from '../shared/vocabulary'
 import type { Principal } from './core/access'
 import { httpReader, type Reader } from './auth/authenticate'
 import type { Bucket } from './bucket'
@@ -41,7 +42,8 @@ export async function downloadReceipt(data: { db: Db; bucket: Bucket; url: URL; 
   if (!object) return jsonError({ status: 404, message: 'Receipt not found' })
   return new Response(object.stream(), {
     headers: {
-      'Content-Type': object.contentType === 'image/png' ? 'image/png' : 'image/jpeg',
+      // Only a receipt type is ever served, whatever the stored object claims.
+      'Content-Type': RECEIPT_CONTENT_TYPES.find((type) => type === object.contentType) ?? 'image/jpeg',
       'Cache-Control': 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "default-src 'none'; sandbox",

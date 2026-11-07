@@ -45,6 +45,14 @@ export const UPLOAD_STATES = ['pending', 'writing', 'stored'] as const
 
 export const RECEIPT_CONTENT_TYPES = ['image/jpeg', 'image/png'] as const
 export type ReceiptContentType = (typeof RECEIPT_CONTENT_TYPES)[number]
+/** Each receipt type: the format that the image header names, and the extension of its object key. */
+export const RECEIPT_FORMATS = {
+  'image/jpeg': { format: 'jpeg', extension: 'jpg' },
+  'image/png': { format: 'png', extension: 'png' },
+} as const satisfies Record<ReceiptContentType, { format: string; extension: string }>
+export type ReceiptFormat = (typeof RECEIPT_FORMATS)[ReceiptContentType]['format']
+/** The receipt type of an image format. */
+export const receiptTypeOf = (format: ReceiptFormat): ReceiptContentType => (format === RECEIPT_FORMATS['image/png'].format ? 'image/png' : 'image/jpeg')
 
 // ---------- the current app's names ----------
 // Its MCP tools, its exports, its history snapshots and its saved form defaults use them.
