@@ -2,9 +2,8 @@
 // a PostgreSQL pool, the receipts bucket on Garage's S3 API, the client build,
 // and the hourly job. Coolify runs it in a container (Dockerfile).
 //   bun dist/server/server.js   (after bun run build)
-import { drizzle } from 'drizzle-orm/node-postgres'
-import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import pg from 'pg'
+import { runMigrations } from '../../../db/migrate'
 import { createApp } from './app'
 import { assetHandler, loadAssets } from '../assets'
 import { readSettings } from '../core/config'
@@ -34,7 +33,7 @@ if (config.perfInstrumentation) instrumentPool(pool)
 // The image sets MIGRATIONS_DIR, so each start applies new migrations before
 // it takes requests, as the current app's container runs prisma migrate deploy.
 if (settings.migrationsDir) {
-  await migrate(drizzle({ client: pool }), { migrationsFolder: settings.migrationsDir })
+  await runMigrations({ pool, dir: settings.migrationsDir })
   console.log('Migrations applied')
 }
 
