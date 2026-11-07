@@ -1,6 +1,8 @@
 // The saved-revision panel of a Log event, as in the current app's
 // activity-revision.tsx: every field, the changes from the revision before,
 // and links to saved attachments.
+import { cn } from '~/client/cn'
+import { disclosure, DisclosureSummary } from '~/client/ui/disclosure'
 import type { Activity } from '~/shared/api'
 import { describeRevision, REVISION_FIELDS } from '~/shared/history'
 import { fieldChanged } from './revision-diff'
@@ -30,13 +32,13 @@ export function ActivityRevision({ activity, groupId }: { activity: ActivityItem
   const state = activity.snapshot ?? activity.previousSnapshot
   // Opening a panel must not follow the event's link (P-HIST-79).
   const stop = (event: React.SyntheticEvent) => event.stopPropagation()
-  if (!state) return <p className="mx-1 text-xs text-muted-foreground">No saved revision details for this event.</p>
+  if (!state) return <p className="mt-1 text-xs text-muted-foreground">No saved revision details for this event.</p>
   if (state._tag === 'group') {
     const g = state.group
     return (
-      <details onClick={stop} className="m-1 text-xs">
-        <summary className="cursor-pointer">View saved group settings</summary>
-        <div className="mt-2 space-y-1 border p-3">
+      <details onClick={stop} className={cn(disclosure, 'mt-1 text-xs')}>
+        <DisclosureSummary quiet>View saved group settings</DisclosureSummary>
+        <div className="mt-2 space-y-1 rounded-xl bg-muted/50 p-3">
           <p>
             {g.name} · {g.currency}
           </p>
@@ -53,12 +55,12 @@ export function ActivityRevision({ activity, groupId }: { activity: ActivityItem
   const previous = activity.snapshot?._tag === 'expense' && activity.previousSnapshot?._tag === 'expense' ? describeRevision(activity.previousSnapshot.expense) : undefined
   const deleted = activity.type === 'delete_expense'
   return (
-    <details onClick={stop} className="m-1 text-xs" data-testid="revision">
-      <summary className="cursor-pointer font-medium">
+    <details onClick={stop} className={cn(disclosure, 'mt-1 text-xs')} data-testid="revision">
+      <DisclosureSummary quiet>
         View saved revision {saved.revision}
         {deleted ? ' · Deleted' : ''}
-      </summary>
-      <div className="mt-2 space-y-2 border p-3">
+      </DisclosureSummary>
+      <div className="mt-2 space-y-2 rounded-xl bg-muted/50 p-3">
         {deleted && <p>Removed from current balances. This saved version remains in history.</p>}
         <p className="text-muted-foreground">{author(activity)}</p>
         {previous && <p className="font-medium">Changes from the preceding revision</p>}
