@@ -100,7 +100,7 @@ export const deleteReceipts = defineTool({
   run: async ({ db, principal, bucket, afterCommit }, input) => {
     const result = await storage.deleteOwnReceipts(db, { principal, receiptIds: input.receiptIds })
     // The objects leave storage once the deletion is committed; the hourly job retries a failure.
-    afterCommit(() => storage.purgeDeletedReceipts({ db, bucket, receiptIds: input.receiptIds }))
+    afterCommit((connection) => storage.purgeDeletedReceipts({ db: connection, bucket, receiptIds: input.receiptIds }))
     return result
   },
 })

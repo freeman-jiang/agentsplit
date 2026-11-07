@@ -83,8 +83,8 @@ export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: s
       async (args: unknown) => {
         try {
           // Work for after the commit. A retried transaction starts the list again.
-          const after: (() => Promise<unknown>)[] = []
-          const afterCommit = (work: () => Promise<unknown>) => void after.push(work)
+          const after: ((db: Db) => Promise<unknown>)[] = []
+          const afterCommit = (work: (db: Db) => Promise<unknown>) => void after.push(work)
           const run = (db: Db) =>
             tool.run({ db, principal: data.principal, baseUrl: data.baseUrl, bucket: data.bucket, documentsEnabled: data.documentsEnabled, afterCommit }, args)
           const write = async (tx: Db) => {
@@ -98,7 +98,7 @@ export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: s
             if (wait > 0) throw new ToolError('TOO_MANY_REQUESTS', tooManyWritesMessage(wait))
           }
           const structuredContent = (tool.kind === 'write' ? await serializable(data.db, write) : await run(data.db)) as Record<string, unknown>
-          for (const work of after) await work().catch((error: unknown) => console.error(`MCP tool ${tool.name}: work after the commit failed`, error))
+          for (const work of after) await work(data.db).catch((error: unknown) => console.error(`MCP tool ${tool.name}: work after the commit failed`, error))
           return { content: [{ type: 'text' as const, text: JSON.stringify(structuredContent) }], structuredContent }
         } catch (error) {
           const body = errorBody({ error, kind: tool.kind })
