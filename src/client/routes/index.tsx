@@ -15,7 +15,7 @@ import { DisclosureSummary } from '~/client/ui/disclosure'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
 import type { FeedFilter, FeedItem } from '~/shared/api'
-import { CALENDAR_DATE } from '~/shared/dates'
+import { isCalendarDate } from '~/shared/dates'
 import { LIMITS } from '~/shared/limits'
 import { DashboardBalance } from './expenses/-dashboard-balance'
 
@@ -83,7 +83,7 @@ function toFilter(s: SearchParams, search: string): { filter: typeof FeedFilter.
   const [from, to] = [text(s.from), text(s.to)]
   if (currency && !currencyCode) return { error: 'Choose a supported currency.' }
   if (category && !/^\d+$/.test(category)) return { error: 'Choose a category from the list.' }
-  if ((from && !CALENDAR_DATE.test(from)) || (to && !CALENDAR_DATE.test(to))) return { error: 'Use a calendar date, YYYY-MM-DD.' }
+  if ((from && !isCalendarDate(from)) || (to && !isCalendarDate(to))) return { error: 'Use a calendar date, YYYY-MM-DD.' }
   if (from && to && from > to) return { error: 'The start date must be on or before the end date.' }
   return {
     filter: {

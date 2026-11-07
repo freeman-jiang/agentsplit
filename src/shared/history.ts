@@ -125,4 +125,11 @@ export function describeRevision(expense: SavedExpense): Record<RevisionField, s
 }
 
 /** The title with its vendor, "<vendor> — <title>", as the current app's expenseTitle. */
+/**
+ * Is a Log event the start of an existing expense's history, not a real create
+ * or edit? The current app stores it with source `baseline`, v2 with revision 0
+ * (P-HIST-09); notBaseline in src/server/activity.ts is the same rule in SQL.
+ */
+export const isBaseline = (event: { readonly expenseRevision: number | null; readonly source: string }) => event.expenseRevision === 0 || event.source === 'baseline'
+
 export const titleWithVendor = (e: { title: string; vendor: string | null }) => (e.vendor ? `${e.vendor} — ${e.title}` : e.title)

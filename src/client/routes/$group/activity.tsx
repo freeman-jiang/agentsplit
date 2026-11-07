@@ -11,6 +11,7 @@ import { useInfiniteScroll } from '~/client/hooks'
 import { activitiesQuery } from '~/client/queries/history'
 import { Skeleton } from '~/client/ui/skeleton'
 import type { Activity } from '~/shared/api'
+import { isBaseline } from '~/shared/history'
 
 type ActivityItem = typeof Activity.Type
 
@@ -69,7 +70,7 @@ function Summary({ activity }: { activity: ActivityItem }) {
   // One weight for the people and expenses in a line, instead of bold and italic.
   const who = <span className="font-medium text-foreground">{name}</span>
   const title = <span className="font-medium text-foreground">“{expenseTitle(activity)}”</span>
-  if (activity.expenseRevision === 0 || activity.source === 'baseline')
+  if (isBaseline(activity))
     return (
       <>
         History begins here for an existing expense: <span className="font-medium text-foreground">{expenseTitle(activity)}</span>
