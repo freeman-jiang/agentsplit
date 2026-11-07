@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { ArrowDown } from 'lucide-react'
 import { cn } from '~/client/cn'
 import { CopyButton } from '~/client/components/copy-button'
 import { requireSignedIn } from '~/client/queries/account'
@@ -45,7 +46,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
   return (
     // The shared page frame, with a narrower reading column on its left edge.
     <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
-      <div className="max-w-3xl space-y-10">
+      <div className="max-w-3xl space-y-10 lg:space-y-8">
         {/* The Dashboard's header rhythm: title, one muted line, then the content at one gap. */}
         <header className="space-y-6">
           <div>
@@ -53,14 +54,16 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
             <p className="mt-2 text-sm text-muted-foreground">Choose one way to connect. Both use your AgentSplit account and current group permissions.</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <a href="#oauth" className="space-y-2 rounded-2xl border bg-card p-4">
-              <h2 className="font-medium">OAuth · Recommended</h2>
+            <a href="#oauth" className="relative space-y-2 rounded-2xl border bg-card p-4 transition-colors hover:bg-accent">
+              <h2 className="pe-6 font-medium">OAuth · Recommended</h2>
+              <ArrowDown aria-hidden="true" className="absolute top-4 right-4 h-4 w-4 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
                 For ChatGPT, Claude, and clients with browser sign-in. Sign in with Google and approve access.
               </p>
             </a>
-            <a href="#api-key" className="space-y-2 rounded-2xl border bg-card p-4">
-              <h2 className="font-medium">API key</h2>
+            <a href="#api-key" className="relative space-y-2 rounded-2xl border bg-card p-4 transition-colors hover:bg-accent">
+              <h2 className="pe-6 font-medium">API key</h2>
+              <ArrowDown aria-hidden="true" className="absolute top-4 right-4 h-4 w-4 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
                 For scripts, automation, or manual client setup. Create a key and paste it into your client’s settings.
               </p>
@@ -77,10 +80,12 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
         </div>
 
         <section id="oauth" className="scroll-mt-6 space-y-4" aria-labelledby="oauth-title">
-          <h2 id="oauth-title" className="font-display text-2xl">
-            Connect with OAuth
-          </h2>
-          <p className="text-sm text-muted-foreground">No API key needed. Your first Google sign-in creates your account automatically.</p>
+          <div className="space-y-1.5">
+            <h2 id="oauth-title" className="font-display text-xl">
+              Connect with OAuth
+            </h2>
+            <p className="text-sm text-muted-foreground">No API key needed. Your first Google sign-in creates your account automatically.</p>
+          </div>
           {/* One divided list: the section's gaps stay outside the rows. */}
           <div className="divide-y border-y">
             <details className={cn(disclosure, 'py-1')}>
@@ -189,12 +194,14 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
         </section>
 
         <section id="api-key" className="scroll-mt-6 space-y-4" aria-labelledby="key-title">
-          <h2 id="key-title" className="font-display text-2xl">
-            Connect with an API key
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Use this when your client needs a fixed credential. Create one key per agent so you can revoke it separately.
-          </p>
+          <div className="space-y-1.5">
+            <h2 id="key-title" className="font-display text-xl">
+              Connect with an API key
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Use this when your client needs a fixed credential. Create one key per agent so you can revoke it separately.
+            </p>
+          </div>
           <Button asChild>
             <Link to="/settings">Create an API key</Link>
           </Button>
@@ -262,13 +269,15 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
         </section>
 
         <section className="space-y-4" aria-labelledby="start-title">
-          <h2 id="start-title" className="font-display text-2xl">
-            Start with your groups
-          </h2>
-          <p className="text-sm">
-            Ask: “Show my AgentSplit groups and balances.” If you’re new, ask your agent to create a group or accept your invitation link.
-            Invitations must match your Google email; you can accept before or after connecting.
-          </p>
+          <div className="space-y-1.5">
+            <h2 id="start-title" className="font-display text-xl">
+              Start with your groups
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Ask: “Show my AgentSplit groups and balances.” If you’re new, ask your agent to create a group or accept your invitation link.
+              Invitations must match your Google email; you can accept before or after connecting.
+            </p>
+          </div>
           <div className="divide-y border-y">
             <details className={cn(disclosure, 'py-1')}>
               <DisclosureSummary>Detailed agent instructions</DisclosureSummary>
