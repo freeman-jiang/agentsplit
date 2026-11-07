@@ -110,6 +110,24 @@ export const ok = (h: Harness, call: Call) => h.mcp.ok(call)
 /** The `{error}` body of a failed call. */
 export const failure = (h: Harness, call: Call) => h.mcp.failure(call)
 
+/** One message of the RPC answer: the call's exit, in Effect RPC's JSON form. */
+export type RpcExit = { _tag: 'Exit'; requestId: string; exit: { _tag: 'Success'; value: unknown } | { _tag: 'Failure'; cause: unknown } }
+
+/** One Effect RPC call to /api/rpc with a web session, as the client sends it. */
+export async function webRpc(h: Harness, data: { tag: string; payload: object; cookie: string }): Promise<{ response: Response; exit: RpcExit['exit'] }> {
+  const response = await h.fetch(
+    new Request(`${BASE}/api/rpc`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: data.cookie, origin: BASE },
+      body: JSON.stringify([{ _tag: 'Request', id: '1', tag: data.tag, payload: data.payload, headers: [] }]),
+    }),
+  )
+  const messages = (await response.clone().json()) as RpcExit[]
+  const exit = messages.find((m) => m._tag === 'Exit')?.exit
+  if (!exit) throw new Error(`${data.tag}: no exit in ${JSON.stringify(messages)}`)
+  return { response, exit }
+}
+
 /** The structured result of a successful call, which must decode with the tool's advertised output schema. */
 export async function checked(h: Harness, call: Call) {
   const result = await h.mcp.ok(call)
