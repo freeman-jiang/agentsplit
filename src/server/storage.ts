@@ -10,6 +10,7 @@ import { LIMITS } from '../shared/limits'
 import { receiptDownloadPath } from '../shared/paths'
 import { RECEIPT_FORMATS, type GroupKind, type Role } from '../shared/vocabulary'
 import type { Bucket } from './bucket'
+import type { AfterCommit } from './calls'
 import type { Db } from './core/db'
 import { myMemberships, requireMember, type Principal } from './core/access'
 import { apiKeyCount } from './auth/api-key'
@@ -160,9 +161,14 @@ export async function deleteReceipts(tx: Db, data: { principal: Principal; recei
   return { deleted, freedBytes: deleted.reduce((sum, d) => sum + d.bytes, 0) }
 }
 
-/** deleteReceipts with the caller's usage after it, for the Settings screen and agents. */
-export async function deleteOwnReceipts(tx: Db, data: { principal: Principal; receiptIds: readonly string[] }) {
+/**
+ * deleteReceipts for the Settings screen and agents: the objects leave
+ * storage once the deletion commits, and the result has the caller's usage
+ * after it. If the removal fails, the hourly job retries it.
+ */
+export async function deleteOwnReceipts(tx: Db, data: { principal: Principal; receiptIds: readonly string[]; bucket: Bucket; afterCommit: AfterCommit }) {
   const result = await deleteReceipts(tx, data)
+  data.afterCommit((db) => purgeDeletedReceipts({ db, bucket: data.bucket, receiptIds: data.receiptIds }))
   return { ...result, usedBytes: await receiptUsage(tx, data.principal.userId) }
 }
 

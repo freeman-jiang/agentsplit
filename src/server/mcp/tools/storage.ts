@@ -101,10 +101,7 @@ export const deleteReceipts = defineTool({
     usedBytes: NonNegativeInt.annotate({ description: 'Your receipt storage use after the deletion.' }),
   }),
   run: async ({ db, principal, bucket, afterCommit }, input) => {
-    const result = await storage.deleteOwnReceipts(db, { principal, receiptIds: input.receiptIds })
-    // The objects leave storage once the deletion is committed; the hourly job retries a failure.
-    afterCommit((connection) => storage.purgeDeletedReceipts({ db: connection, bucket, receiptIds: input.receiptIds }))
-    return result
+    return storage.deleteOwnReceipts(db, { principal, receiptIds: input.receiptIds, bucket, afterCommit })
   },
 })
 
