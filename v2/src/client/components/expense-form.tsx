@@ -230,7 +230,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
       </h2>
       {props.mode === 'edit' && <Attribution detail={props.detail} />}
 
-      <section className="space-y-2 border bg-card p-3 sm:space-y-4 sm:p-4" aria-label={income ? 'Income details' : 'Expense details'}>
+      <section className="space-y-2 border bg-card p-4 sm:space-y-4" aria-label={income ? 'Income details' : 'Expense details'}>
         <Field id="title" label="Description" error={shown('title')}>
           <Input
             id="title"
@@ -268,7 +268,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
             <Input
               id="date"
               type="date"
-              className="block h-12"
+              className="block h-10 sm:h-12"
               value={state.expenseDate}
               aria-invalid={!!shown('expenseDate')}
               onChange={(e) => set({ expenseDate: e.target.value })}
