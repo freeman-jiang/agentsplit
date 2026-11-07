@@ -1,7 +1,8 @@
 // AgentSplit ledger tables. Money columns are integer minor units (bigint).
-// Invariants that span rows (sums, append-only history) live in SQL triggers:
-// see db/migrations/*_invariants.sql. The value lists and limits come from
-// src/shared, and test/db/database-rules.test.ts compares the CHECKs with them.
+// Invariants that span rows (sums, append-only history) live in SQL triggers,
+// which only the migrations hold (0001_invariants.sql and later; Drizzle cannot
+// declare them). The value lists and limits come from src/shared, and
+// test/db/database-rules.test.ts compares the CHECKs with them and tests the triggers.
 import { sql, type SQL } from 'drizzle-orm'
 import {
   type AnyPgColumn,
