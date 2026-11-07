@@ -49,7 +49,7 @@ Status words:
 | P-MCP-24, 26, 27, 28 | covered | The same test. Conversion fields and `saveDefaultSplittingOptions` are not in the schema, and the closed object refuses them (tools "refuses invalid money…", `originalAmount`). |
 | P-MCP-25 | covered | `participantId` is not an input; a call with it fails validation (same test). |
 | — | changed | `expense.payers` and `changes.payers` are new: multiple payers. `paidBy` is no longer required in the schema, because `payers` can replace it. A call needs exactly one of the two. The test allows exactly these differences. |
-| — | changed | The create and update field descriptions carry the recording rules (tools "describes the recording rules"). |
+| — | changed | The create and update field descriptions carry the recording rules (`RECORDING_RULES` in src/server/mcp/tools/expenses.ts). No test copies the text. |
 | — | changed | `list_all_expenses.involvingMe` defaults to true, and its description says so (DECISIONS.md, P-FEED-19). The test does not compare defaults. |
 | — | changed | Tool descriptions: create_expense and get_balances state the payment rules; create_group and update_group say that currencyCode must be a supported code; manage_group_access says that `joined` is true only after a join; list_activity says that agentKeyId is shown only for your own changes; list_all_expenses states the involvingMe default. |
 | — | changed | Outputs: `payers` beside `paidBy` in list_all_expenses rows and in saved snapshots. In historical get_expense, `documents[].width` and `height` are optional, because a saved revision keeps only the receipt pointer. Snapshot unions are not compared by the test (it follows `properties` and `items` only). |

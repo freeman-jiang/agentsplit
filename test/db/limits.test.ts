@@ -14,12 +14,12 @@ let h: Harness
 
 beforeAll(async () => {
   h = await startHarness()
-  for (const id of ['gail', 'hank']) await h.account(id)
 })
 afterAll(() => h.close())
 
 describe('other limits', () => {
   it('allows 60 writes a minute per user, refilled one a second, at a fixed clock', async () => {
+    for (const id of ['gail', 'hank']) await h.account(id)
     const at = new Date('2026-11-05T12:00:00.000Z')
     const take = (userId: string, time: Date) => h.withDb((db) => takeWrite(db, { userId, at: time }))
     for (let i = 0; i < LIMITS.writesPerMinute; i++) expect(await take('gail', at)).toBe(0)
@@ -33,15 +33,16 @@ describe('other limits', () => {
   })
 
   it('refuses a write over the budget through a tool, with the wait, and writes nothing', async () => {
-    const key = { 'x-api-key': await h.apiKey('gail') }
+    await h.account('ines')
+    const key = { 'x-api-key': await h.apiKey('ines') }
     // Spent a minute ahead of the database clock, so the request below sees no refill.
     const ahead = new Date(Date.now() + 60_000)
-    for (let i = 0; i < LIMITS.writesPerMinute; i++) await h.withDb((db) => takeWrite(db, { userId: 'gail', at: ahead }))
+    for (let i = 0; i < LIMITS.writesPerMinute; i++) await h.withDb((db) => takeWrite(db, { userId: 'ines', at: ahead }))
     const refused = await failure(h, { name: 'update_profile', args: { name: 'Too fast' }, headers: key })
     expect(refused).toMatchObject({ code: 'TOO_MANY_REQUESTS', outcomeUnknown: false, recovery: 'retry_later' })
     expect(refused.message).toMatch(/^You're making changes too quickly\. Wait 1 second and try again\./)
-    const [row] = await h.withDb((db) => db.select({ name: user.name }).from(user).where(eq(user.id, 'gail')))
-    expect(row?.name).toBe('gail')
+    const [row] = await h.withDb((db) => db.select({ name: user.name }).from(user).where(eq(user.id, 'ines')))
+    expect(row?.name).toBe('ines')
   })
 
   it('caps new accounts per 24 hours, and older accounts do not count', async () => {
