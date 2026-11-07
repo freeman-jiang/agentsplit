@@ -126,7 +126,7 @@ function LogHeader({ children }: { children: ReactNode }) {
   return (
     <section>
       <h2 className="font-display text-xl">Log</h2>
-      <p className="mb-4 text-sm text-muted-foreground">Changes recorded in this group.</p>
+      <p className="mb-6 text-sm text-muted-foreground">Changes recorded in this group.</p>
       {children}
     </section>
   )
@@ -185,19 +185,21 @@ function LogTab() {
   const byGroup = Map.groupBy(activities, (a) => dateGroup(new Date(a.time), today))
   return (
     <LogHeader>
-      {DATE_GROUPS.map(([key, label]) => {
-        const items = byGroup.get(key)
-        if (!items?.length) return null
-        return (
-          <div key={key}>
-            <h3 className="pb-2 pt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</h3>
-            {items.map((activity) => (
-              <LogItem key={activity.id} group={group} groupId={g.id} activity={activity} showDate={key !== 'today' && key !== 'yesterday'} />
-            ))}
-          </div>
-        )
-      })}
-      {hasNextPage && <Placeholder ref={more} />}
+      <div className="space-y-6">
+        {DATE_GROUPS.map(([key, label]) => {
+          const items = byGroup.get(key)
+          if (!items?.length) return null
+          return (
+            <div key={key}>
+              <h3 className="eyebrow">{label}</h3>
+              {items.map((activity) => (
+                <LogItem key={activity.id} group={group} groupId={g.id} activity={activity} showDate={key !== 'today' && key !== 'yesterday'} />
+              ))}
+            </div>
+          )
+        })}
+        {hasNextPage && <Placeholder ref={more} />}
+      </div>
     </LogHeader>
   )
 }

@@ -141,10 +141,10 @@ function ExpensesTab() {
           </p>
         )
       ) : (
-        <div data-testid="expense-list" className="space-y-4">
+        <div data-testid="expense-list" className="space-y-6">
           {sections.map((section) => (
             <div key={section.key}>
-              {section.label && <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{section.label}</h3>}
+              {section.label && <h3 className="eyebrow">{section.label}</h3>}
               <ul className="divide-y overflow-hidden rounded-2xl border">
                 {section.expenses.map((e) => (
                   <ExpenseCard key={e.id} expense={e} group={group} viewer={g.participantId} names={names} />

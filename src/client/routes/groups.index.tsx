@@ -181,24 +181,26 @@ function Groups() {
           )}
         </div>
       )}
-      {starred.length > 0 && (
-        <section>
-          <h2 className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Starred groups</h2>
-          {list(starred)}
-        </section>
-      )}
-      {recent.length > 0 && (
-        <section>
-          <h2 className="mt-6 mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Recent groups</h2>
-          {list(recent)}
-        </section>
-      )}
-      {archived.length > 0 && (
-        <section className="opacity-50">
-          <h2 className="mt-6 mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Archived groups</h2>
-          {list(archived)}
-        </section>
-      )}
+      <div className="space-y-6 pt-2">
+        {starred.length > 0 && (
+          <section>
+            <h2 className="eyebrow">Starred groups</h2>
+            {list(starred)}
+          </section>
+        )}
+        {recent.length > 0 && (
+          <section>
+            <h2 className="eyebrow">Recent groups</h2>
+            {list(recent)}
+          </section>
+        )}
+        {archived.length > 0 && (
+          <section className="opacity-50">
+            <h2 className="eyebrow">Archived groups</h2>
+            {list(archived)}
+          </section>
+        )}
+      </div>
     </GroupsPage>
   )
 }

@@ -26,7 +26,7 @@ export function BalancesCard(props: { currencies: Currencies; names: Names }) {
           const largest = Math.max(1, ...c.balances.map((b) => size(b.net)))
           return (
             <div key={c.currency} className="mb-4 last:mb-0">
-              <h3 className={cn('mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase', props.currencies.length === 1 && 'sr-only')}>{c.currency}</h3>
+              <h3 className={cn('eyebrow', props.currencies.length === 1 && 'sr-only')}>{c.currency}</h3>
               <div aria-hidden="true" className="grid grid-cols-2 text-xs text-muted-foreground">
                 <span className="px-2 text-right">Owes</span>
                 <span className="px-2">Gets back</span>
@@ -89,7 +89,7 @@ export function SuggestedPayments(props: { currencies: Currencies; names: Names;
       ) : (
         pending.map((c) => (
           <div key={c.currency} className="mb-4 last:mb-0">
-            <h3 className={cn('mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase', pending.length === 1 && 'sr-only')}>{c.currency}</h3>
+            <h3 className={cn('eyebrow', pending.length === 1 && 'sr-only')}>{c.currency}</h3>
             <ul className="divide-y">
               {c.settlements.map((s) => (
                 <li key={`${s.from}-${s.to}`} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm" data-testid="suggestion">
