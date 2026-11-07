@@ -29,7 +29,7 @@ function Settings() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Only admins can change settings, so members see only the People section (P-GROUP-59). */}
       {data.role === 'admin' && (
         <GroupForm
