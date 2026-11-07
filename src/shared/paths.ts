@@ -4,6 +4,16 @@
 // this module.
 import { SECRET_TOKEN } from './ids'
 
+/** The Effect RPC endpoint. Its client joins the base URL with a slash, so the server also answers `${RPC_PATH}/`. */
+export const RPC_PATH = '/api/rpc'
+
+/** Better Auth's base path, its default: sign-in, sessions, API keys and the OAuth provider. */
+export const AUTH_PATH = '/api/auth'
+
+/** The robots file and the sitemap, served by the server, not the SPA. */
+export const ROBOTS_PATH = '/robots.txt'
+export const SITEMAP_PATH = '/sitemap.xml'
+
 /** A link on the app's origin, from a path of this module. */
 export const absoluteUrl = (data: { baseUrl: string; path: string }) => `${new URL(data.baseUrl).origin}${data.path}`
 
@@ -31,7 +41,8 @@ export type ExportFormat = (typeof EXPORT_FORMATS)[number]
 /** A group download, under the group's path (groupPath, or segmentPath on the client). */
 export const exportPath = (data: { groupPath: string; format: ExportFormat }) => `${data.groupPath}/expenses/export/${data.format}`
 
-const EXPORT_ROUTE = new RegExp(`^/(?:groups/)?([^/]+)/expenses/export/(${EXPORT_FORMATS.join('|')})$`)
+const EXPORT_PREFIX = '^/(?:groups/)?([^/]+)/expenses/export/'
+const EXPORT_ROUTE = new RegExp(`${EXPORT_PREFIX}(${EXPORT_FORMATS.join('|')})$`)
 
 /**
  * The group reference and format of a download path: /groups/<id>/… or
@@ -63,3 +74,9 @@ export const invitationTokenOfPath = (path: string) => {
 
 /** The page of one expense, also of an ungrouped expense's private context (P-UNGROUP-39). */
 export const expensePagePath = (expenseId: string) => `/expenses/${encodeURIComponent(expenseId)}`
+
+/**
+ * Every path the server answers instead of the SPA, as Vite's dev proxy keys:
+ * a plain key is a prefix, a key that starts with ^ is a regular expression.
+ */
+export const SERVER_PATHS = ['/api/', '/.well-known/', ROBOTS_PATH, SITEMAP_PATH, EXPORT_PREFIX] as const
