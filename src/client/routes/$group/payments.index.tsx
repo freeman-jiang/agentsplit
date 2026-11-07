@@ -31,8 +31,8 @@ function PaymentsTab() {
         </Button>
       </div>
       <SuggestedPayments currencies={balances.currencies} names={names} group={group} viewer={g.participantId} />
-      <section className="rounded-2xl border bg-card p-4" aria-labelledby="history-title">
-        <h2 id="history-title" className="mb-3 font-medium">
+      <section className="rounded-2xl border bg-card p-6" aria-labelledby="history-title">
+        <h2 id="history-title" className="mb-4 text-base font-semibold leading-tight">
           Payment history
         </h2>
         {rows.length === 0 ? (

@@ -124,7 +124,7 @@ function Summary({ activity }: { activity: ActivityItem }) {
 function LogHeader({ children }: { children: ReactNode }) {
   return (
     <section>
-      <h2 className="font-display text-2xl leading-tight">Log</h2>
+      <h2 className="font-display text-xl">Log</h2>
       <p className="mb-4 text-sm text-muted-foreground">Changes recorded in this group.</p>
       {children}
     </section>

@@ -231,7 +231,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
       </h2>
       {props.mode === 'edit' && <Attribution detail={props.detail} />}
 
-      <section className="space-y-2 rounded-2xl border bg-card p-4 sm:space-y-4" aria-label={income ? 'Income details' : 'Expense details'}>
+      <section className="space-y-2 rounded-2xl border bg-card p-4 sm:space-y-4 sm:p-6" aria-label={income ? 'Income details' : 'Expense details'}>
         <Field id="title" label="Description" error={shown('title')}>
           <Input
             id="title"
@@ -336,9 +336,9 @@ export function ExpenseForm(props: ExpenseFormProps) {
         </fieldset>
       </section>
 
-      <section className="space-y-3 rounded-2xl border bg-card p-4" aria-labelledby="paid-for">
+      <section className="space-y-3 rounded-2xl border bg-card p-4 sm:p-6" aria-labelledby="paid-for">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 id="paid-for" className="text-sm font-semibold">
+          <h3 id="paid-for" className="text-base font-semibold leading-tight">
             {income ? 'Received for' : 'Paid for'}
           </h3>
           <Button
@@ -420,7 +420,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
       </section>
 
       <div className="divide-y rounded-2xl border bg-card">
-        <details className={cn(disclosure, 'px-4 py-1.5')} open={!!state.notes || state.documents.length > 0 || !!shown('notes')}>
+        <details className={cn(disclosure, 'px-4 py-1.5 sm:px-6')} open={!!state.notes || state.documents.length > 0 || !!shown('notes')}>
           <DisclosureSummary>Notes & receipts</DisclosureSummary>
           <div className="space-y-4 pt-2 pb-3">
             <Field id="notes" label="Notes" error={shown('notes')}>
@@ -437,7 +437,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
           </div>
         </details>
 
-        <details className={cn(disclosure, 'px-4 py-1.5')} open={state.kind === 'payment' || state.recurrence !== 'none'}>
+        <details className={cn(disclosure, 'px-4 py-1.5 sm:px-6')} open={state.kind === 'payment' || state.recurrence !== 'none'}>
           <DisclosureSummary>
             More options
             <span className="ml-2 font-normal text-muted-foreground">
