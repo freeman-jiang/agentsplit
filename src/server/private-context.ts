@@ -6,6 +6,9 @@ import { sql, type SQL } from 'drizzle-orm'
 import { Invalid } from '../shared/api'
 import type { ExpenseDraft } from '../shared/expense-rules'
 
+/** The rule for the people of a new ungrouped expense. */
+export const PEOPLE_RULE = 'Include yourself and exactly the people paying for or sharing this expense. Each person must be unique.'
+
 type PrivateWrite = { readonly op: 'create' | 'update'; readonly draft: ExpenseDraft } | { readonly op: 'delete' }
 
 /** The facts of a private context that its write rules need. */
@@ -42,10 +45,12 @@ export function assertPrivateWrite(context: PrivateContext | null, data: { expen
   if (draft.kind === 'expense') {
     const involved = new Set([...draft.payers.map((p) => p.participantId), ...draft.shares.map((s) => s.participantId)])
     if (involved.size !== context.people.length || context.people.some((id) => !involved.has(id)))
-      throw new Invalid({
-        message: 'The people with access to this private expense cannot be changed. Create a new expense for a different set of people.',
-        field: 'shares',
-      })
+      throw data.op === 'create'
+        ? new Invalid({ message: PEOPLE_RULE, field: 'people' })
+        : new Invalid({
+            message: 'The people with access to this private expense cannot be changed. Create a new expense for a different set of people.',
+            field: 'shares',
+          })
   } else if (data.op === 'create' && !context.original_live) {
     throw new Invalid({ message: 'Cannot record a repayment for a deleted expense.' })
   }

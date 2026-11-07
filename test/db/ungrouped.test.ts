@@ -34,7 +34,7 @@ const carol = principal('Carol')
 const outsider = principal('Outsider')
 const guest = principal('Guest')
 let keys = 0
-const key = () => `test-key-${++keys}`.padEnd(12, '0')
+const key = () => `test-key-${String(++keys).padStart(4, '0')}`
 
 const draft = (over: Partial<ExpenseDraft> & Pick<ExpenseDraft, 'payers' | 'shares'>): ExpenseDraft => ({
   kind: 'expense',
@@ -333,11 +333,12 @@ describe('ungrouped expenses', () => {
     await expect(
       create({ people: [...people, { kind: 'email', id: 'twin', name: 'Twin', email: bob.email }], expense: draft({ payers: paid('me'), shares: even(['me', 'friend', 'twin']) }) }),
     ).rejects.toMatchObject({ message: exact })
+    // The private write rules check the new expense, as they check every later write.
     await expect(create({ people, expense: draft({ kind: 'payment', payers: paid('me'), shares: even(['me', 'friend']) }) })).rejects.toMatchObject({
-      message: 'Create the expense first, then attach receipts or record a repayment. Ungrouped expenses do not recur.',
+      message: 'Record repayments separately from the original expense.',
     })
     await expect(create({ people, expense: draft({ recurrence: 'weekly', payers: paid('me'), shares: even(['me', 'friend']) }) })).rejects.toMatchObject({
-      message: 'Create the expense first, then attach receipts or record a repayment. Ungrouped expenses do not recur.',
+      message: 'Ungrouped expenses do not recur.',
     })
     await expect(
       create({ people: [people[0]!, { kind: 'email', id: 'x', name: ' ', email: 'x@example.com' }], expense: draft({ payers: paid('me'), shares: even(['me', 'x']) }) }),

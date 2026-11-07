@@ -357,6 +357,7 @@ export const privateContexts = pgTable('private_contexts', {
   groupId: text()
     .primaryKey()
     .references(() => groups.id, { onDelete: 'restrict' }),
+  // DEFERRABLE INITIALLY DEFERRED (0015), which Drizzle cannot declare: the context is written before its expense.
   expenseId: text()
     .notNull()
     .unique()

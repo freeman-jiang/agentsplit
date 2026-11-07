@@ -636,9 +636,7 @@ export const createExpense = defineTool({
     const duplicate = (error: unknown) => (error instanceof Conflict && error.id === expenseId ? new ToolError('CONFLICT', DUPLICATE_ID) : error)
     const idempotencyKey = null
     if (input.groupId === undefined) {
-      if (input.uploads?.length) throw new ToolError('BAD_REQUEST', 'Save an ungrouped expense first, then attach its receipts.')
-      if (input.expense.documents?.length)
-        throw new ToolError('BAD_REQUEST', 'Create the expense first, then attach receipts or record a repayment. Ungrouped expenses do not recur.')
+      if (input.uploads?.length || input.expense.documents?.length) throw new ToolError('BAD_REQUEST', 'Save an ungrouped expense first, then attach its receipts.')
       const created = await createUngroupedExpense(db, { principal, baseUrl, expenseId, idempotencyKey, people: input.people ?? [], expense: draft }).catch((error: unknown) => {
         throw duplicate(error)
       })

@@ -42,6 +42,18 @@ Each area owns its own files, so areas can be built in parallel:
 6. **Tests:** `test/db/<area>.test.ts` for services against a real database, and the parity record below.
 7. **Parity record:** `docs/v2/parity/<area>.md` lists every PARITY.md item you covered, with the test that proves it, and every item you could not cover, with the reason.
 
+## Server modules
+
+The area services build on these modules in `src/server/`. Use them instead of writing their SQL again:
+
+- `access.ts`: `Principal`, `requireMember` and `memberCte`, the one group membership check.
+- `expense-read.ts`: the expense read model (`expenseColumns`, `toExpense`, `loadExpenses`) and the receipt states.
+- `activity.ts`: the activity writer, the snapshots, the access-change text, attribution and the system actor.
+- `balances.ts`: group balances, the caller's nets across groups, and balances at a recorded change.
+- `invitations.ts`: invitation tokens, expiry, creation, revocation, and when an invitation is open or usable.
+- `people.ts`: display names and the contacts a caller may add to an ungrouped expense.
+- `idempotency.ts`, `private-context.ts` and `sql.ts`: idempotency keys, the private write rules, and small SQL helpers.
+
 ## Rules
 
 ### Correctness

@@ -13,7 +13,7 @@ import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
 import { randomId } from '~/shared/ids'
 import type { FeedOptions, Reference, UngroupedResult } from '~/shared/api'
-import { EMAIL } from '~/shared/groups'
+import { EMAIL, normalizeEmail } from '~/shared/groups'
 import { LIMITS } from '~/shared/limits'
 
 export const Route = createFileRoute('/expenses/create')({
@@ -86,9 +86,9 @@ function ExpenseSetup({ options }: { options: Options }) {
       </div>
     )
   const addInvited = () => {
-    const normalized = email.trim().toLowerCase()
+    const normalized = normalizeEmail(email)
     if (!name.trim() || name.trim().length > LIMITS.nameMax || !EMAIL.test(normalized)) return setError('Enter a name and a valid email address.')
-    if (people.some((p) => p.email.toLowerCase() === normalized)) return setError('That person is already included.')
+    if (people.some((p) => normalizeEmail(p.email) === normalized)) return setError('That person is already included.')
     // A known contact's email links that account, so no invitation is needed.
     const existing = options.people.find((p) => p.email.toLowerCase() === normalized)
     setPeople((current) => [...current, { id: randomId(), name: existing?.name ?? name.trim(), email: normalized, ...(existing ? { userId: existing.id } : {}) }])

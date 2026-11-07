@@ -8,11 +8,11 @@ import { eq, sql } from 'drizzle-orm'
 import { Effect } from 'effect'
 import { accountBalances, listBalances } from '~/server/balances'
 import { makeDb, RequestDb, transaction, type Db } from '~/server/db'
+import { sha256Hex } from '~/server/ids'
 import {
   changeAccess,
   createGroup,
   getGroupDetails,
-  invitationTokenHash,
   listDirectory,
   previewInvitation,
   updateGroup,
@@ -476,7 +476,8 @@ describe('invitations', () => {
     expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
     expect(inv.url).toBe(`${BASE}/invite/${token}`)
     const [row] = await tx((db) => db.select().from(invitations).where(eq(invitations.id, inv.id)))
-    expect(row?.tokenHash).toBe(await invitationTokenHash(token))
+    // Hex SHA-256, as the current app stored it, so imported invitations keep working.
+    expect(row?.tokenHash).toBe(sha256Hex(token))
     expect(JSON.stringify(row)).not.toContain(token)
     const days = (row!.expiresAt.getTime() - row!.createdAt.getTime()) / 86_400_000
     expect(days).toBeCloseTo(7, 2)

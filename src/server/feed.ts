@@ -12,6 +12,7 @@ import { attributionEvents, attributionOf, type AttributionEvent } from './activ
 import { balanceSums, settlementsOf, type BalanceSum } from './balances'
 import type { Db } from './db'
 import { expenseColumns, involves, toExpense, type ExpenseRow } from './expense-read'
+import { listedInvitation } from './invitations'
 import { contactsSql, participantName } from './people'
 import { escapeLike, iso } from './sql'
 
@@ -176,7 +177,7 @@ export async function expenseContext(db: Db, data: { principal: Principal; expen
         SELECT json_agg(json_build_object('id', i.id, 'email', i.email, 'participantId', i.participant_id,
           'participantName', coalesce(i.participant_name, ip.name), 'expiresAt', ${iso(sql`i.expires_at`)}) ORDER BY i.created_at, i.id)
         FROM invitations i JOIN participants ip ON ip.id = i.participant_id
-        WHERE i.group_id = g.id AND i.accepted_at IS NULL AND i.revoked_at IS NULL), '[]') END AS invitations,
+        WHERE i.group_id = g.id AND ${listedInvitation({ i: sql`i`, kind: sql`g.kind` })}), '[]') END AS invitations,
       ${attribution} AS attribution
     FROM expenses e
     JOIN memberships m ON m.group_id = e.group_id AND m.user_id = ${data.principal.userId} AND m.active
