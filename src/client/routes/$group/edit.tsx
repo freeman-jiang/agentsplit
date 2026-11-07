@@ -298,7 +298,7 @@ function People({ details }: { details: Details }) {
               )}
               {/* The link exists only in this page's memory: after a reload the person shows "Invited" (P-ACCESS-24). */}
               {admin && pending && created?.participantId === person.id && (
-                <div className="space-y-3 border p-3">
+                <div className="space-y-3 rounded-xl bg-muted/50 p-3">
                   <p className="text-sm">Send this to {person.name}. AgentSplit does not send an email automatically.</p>
                   <div className="flex items-center gap-3">
                     <code className="min-w-0 flex-1 text-xs break-all">{created.url}</code>
