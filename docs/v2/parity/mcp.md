@@ -334,7 +334,7 @@ The service that owns each behavior is named in the design section above. "code"
 | --- | --- | --- |
 | P-TOOL-REF-01, 02, 04 | covered | more "lists reference data in the current names". |
 | 03 | changed | The same 34 currencies, in code order instead of the current list order. |
-| 05 | covered | `attachments.enabled` is `ENABLE_EXPENSE_DOCUMENTS`, with `image/jpeg`, `image/png` and 5242880 bytes (uploads "reports attachments as enabled…"). |
+| 05 | changed | `attachments.enabled` is always true (receipts are always on), with `image/jpeg`, `image/png` and 5242880 bytes (uploads "reports attachments as enabled…"). |
 
 ### export_group (export.ts)
 
@@ -349,7 +349,7 @@ The service that owns each behavior is named in the design section above. "code"
 
 1. Resolved by the lead: state conflicts (P-TOOL-ACCESS-08, 10, 11, 15, 20, 26, P-TOOL-UPDATEGROUP-07, P-TOOL-DELETEEXP-07) answer CONFLICT again, through `Invalid.reason = 'state'`.
 2. `create_group` and `update_group` refuse a custom currency symbol. An agent that sends only `currency: "$"` gets BAD_REQUEST, because several currencies use that symbol.
-3. Resolved in the third pass: `get_reference_data.attachments.enabled` follows `ENABLE_EXPENSE_DOCUMENTS`, as the web does.
+3. Resolved in the third pass: `get_reference_data.attachments.enabled` follows the web. Since 2026-11-07 receipts are always on, so it is always true.
 
 ## Cost
 

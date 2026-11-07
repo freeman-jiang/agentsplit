@@ -16,8 +16,6 @@ export class AppConfig extends Context.Service<
     readonly secret: string
     readonly googleClientId: string
     readonly googleClientSecret: string
-    /** Receipts on expenses (the current app's ENABLE_EXPENSE_DOCUMENTS). */
-    readonly documentsEnabled: boolean
   }
 >()('agentsplit/AppConfig') {}
 

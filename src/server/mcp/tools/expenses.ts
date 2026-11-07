@@ -675,7 +675,7 @@ export const createExpense = defineTool({
   name: 'create_expense',
   kind: 'write',
   destructive: false,
-  description: `Create a group or ungrouped expense with expense. ${RECORDING_RULES} groupId is optional: when present, use the existing participant IDs from get_group and omit people. When omitted, supply people including yourself: each has a unique local id label (1-42 characters, e.g. me or friend) plus kind=account/userId from get_expense_options, or kind=email/name/email for a new invitee. expense.paidBy and paidFor.participant then refer to these local labels. Labels may be reused across expenses; the result maps them to stored participantId values for later operations. Ungrouped creation returns groupId as a private accounting context and invitation links; it sends no messages, requires isReimbursement=false and recurrenceRule=NONE, and receipts are added after saving. Optional vendor is the merchant; title describes the purchase without repeating vendor. Money is a decimal string at face value in currencyCode. One payer: paidBy. Several payers: payers with each exact amount, adding up to amount. Split modes: EVENLY, BY_SHARES (relative weights), BY_PERCENTAGE (sum 100), BY_AMOUNT (sum amount). ${PAYMENT_RULES} Recurrence uses NONE/DAILY/WEEKLY/MONTHLY. Optional uploads file metadata (JPEG or PNG, at most 5 MiB, at most 10 files, when get_reference_data attachments.enabled) returns PUT targets; you may ignore them. PUT the file bytes once to each target url with exactly its headers, no API key, before expiresAt (300 seconds); a used or expired url is refused. Then attach the uploadIds within 24 hours with update_expense, the current revision and attachUploadIds. No receipt is saved merely by requesting a target or uploading. Supply a stable 21-character expenseId and read it before retrying an uncertain create.`,
+  description: `Create a group or ungrouped expense with expense. ${RECORDING_RULES} groupId is optional: when present, use the existing participant IDs from get_group and omit people. When omitted, supply people including yourself: each has a unique local id label (1-42 characters, e.g. me or friend) plus kind=account/userId from get_expense_options, or kind=email/name/email for a new invitee. expense.paidBy and paidFor.participant then refer to these local labels. Labels may be reused across expenses; the result maps them to stored participantId values for later operations. Ungrouped creation returns groupId as a private accounting context and invitation links; it sends no messages, requires isReimbursement=false and recurrenceRule=NONE, and receipts are added after saving. Optional vendor is the merchant; title describes the purchase without repeating vendor. Money is a decimal string at face value in currencyCode. One payer: paidBy. Several payers: payers with each exact amount, adding up to amount. Split modes: EVENLY, BY_SHARES (relative weights), BY_PERCENTAGE (sum 100), BY_AMOUNT (sum amount). ${PAYMENT_RULES} Recurrence uses NONE/DAILY/WEEKLY/MONTHLY. Optional uploads file metadata (JPEG or PNG, at most 5 MiB, at most 10 files) returns PUT targets; you may ignore them. PUT the file bytes once to each target url with exactly its headers, no API key, before expiresAt (300 seconds); a used or expired url is refused. Then attach the uploadIds within 24 hours with update_expense, the current revision and attachUploadIds. No receipt is saved merely by requesting a target or uploading. Supply a stable 21-character expenseId and read it before retrying an uncertain create.`,
   input: Schema.Struct({
     groupId: optional(
       Schema.String.check(Schema.isMinLength(1)).annotate({
@@ -694,7 +694,7 @@ export const createExpense = defineTool({
     participants: optional(Schema.Array(Schema.Struct({ localId: Id, participantId: Id, name: Schema.String }))),
     invitations: optional(Schema.Array(Schema.Struct({ email: Schema.String, url: Schema.String, expiresAt: DateTime }))),
   }),
-  run: async ({ db, principal, baseUrl, documentsEnabled }, input) => {
+  run: async ({ db, principal, baseUrl }, input) => {
     if (input.groupId === undefined && !input.people) throw new ToolError('BAD_REQUEST', 'Supply groupId for a group expense, or people for an ungrouped expense.')
     if (input.groupId !== undefined && input.people) throw new ToolError('BAD_REQUEST', 'With groupId, use its existing participant IDs and omit people.')
     const expenseId = input.expenseId ?? randomId()
@@ -728,7 +728,7 @@ export const createExpense = defineTool({
       .catch((error: unknown) => {
         throw duplicate(error)
       })
-    const targets = await prepareUploads(db, { principal, groupId: saved.groupId, expenseId: saved.id, requests: input.uploads, baseUrl, enabled: documentsEnabled })
+    const targets = await prepareUploads(db, { principal, groupId: saved.groupId, expenseId: saved.id, requests: input.uploads, baseUrl })
     return { groupId: saved.groupId, expenseId: saved.id, revision: saved.revision, amount: saved.amount, currencyCode: saved.currency, ...targets }
   },
 })
@@ -747,7 +747,7 @@ export const updateExpense = defineTool({
   }),
   strict: ['', 'changes', 'uploads[]'],
   output: Schema.Struct(ExpenseWrite),
-  run: async ({ db, principal, baseUrl, bucket, documentsEnabled }, input) => {
+  run: async ({ db, principal, baseUrl, bucket }, input) => {
     const changes = input.changes ?? {}
     // One read for the tool and the ledger write. Each call is new, so it sends no idempotency key.
     const context = await ledger.loadWriteContext(db, { principal, group: input.groupId, expenseId: input.expenseId, op: 'change', idempotencyKey: null })
@@ -760,7 +760,6 @@ export const updateExpense = defineTool({
       expenseId: current.id,
       uploadIds: input.attachUploadIds ?? [],
       bucket,
-      enabled: documentsEnabled,
     }).catch((error: unknown) => {
       throw uploadFailure(error)
     })
@@ -780,7 +779,7 @@ export const updateExpense = defineTool({
         context,
       })
     }
-    const targets = await prepareUploads(db, { principal, groupId: current.groupId, expenseId: current.id, requests: input.uploads, baseUrl, enabled: documentsEnabled })
+    const targets = await prepareUploads(db, { principal, groupId: current.groupId, expenseId: current.id, requests: input.uploads, baseUrl })
     return { expenseId: saved.id, revision: saved.revision, amount: saved.amount, currencyCode: saved.currency, ...targets }
   },
 })

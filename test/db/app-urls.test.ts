@@ -23,7 +23,7 @@ beforeAll(async () => {
     { id: UNSLUGGED, kind: 'named', slug: null, name: 'Trip', defaultCurrency: 'USD' },
   ])
   app = createApp({
-    config: { baseUrl: BASE, secret: 'app-urls-test-secret-0123456789-0123456789', googleClientId: 'g', googleClientSecret: 'g', documentsEnabled: true, bootstrapEmail: undefined, perfInstrumentation: false },
+    config: { baseUrl: BASE, secret: 'app-urls-test-secret-0123456789-0123456789', googleClientId: 'g', googleClientSecret: 'g', bootstrapEmail: undefined, perfInstrumentation: false },
     connect: () => pool.connect(),
     pool: makeDb(pool),
     bucket: fakeBucket().bucket,

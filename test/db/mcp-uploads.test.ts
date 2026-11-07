@@ -67,7 +67,6 @@ const put = (target: Target, body: Uint8Array<ArrayBuffer>, headers = target.hea
       bucket: h.r2.bucket,
       request: new Request(target.url, { method: 'PUT', headers, body }),
       token: new URL(target.url).pathname.split('/').pop() ?? '',
-      enabled: true,
     }),
   )
 

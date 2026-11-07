@@ -1,6 +1,6 @@
-// The SQL statements of one expense write. On Workers each statement costs
-// about 1.5 ms of CPU in pg and Drizzle, so a change that adds statements
-// to a write makes it slower (docs/v2/BASELINE.md, "Write CPU"). The ceilings
+// The SQL statements of one expense write. Each statement costs CPU in pg and
+// Drizzle, so a change that adds statements to a write makes it slower
+// (docs/v2/BASELINE.md, "Write CPU"). The ceilings
 // are the counts after the statement reduction; raise one only on purpose.
 import { Layer } from 'effect'
 import { HttpRouter } from 'effect/http'
@@ -45,7 +45,7 @@ const rpcHandler = HttpRouter.toWebHandler(
     Layer.provide(AuthMiddlewareLive),
     Layer.provide(RpcSerialization.layerJson),
     Layer.provide(
-      Layer.succeed(AppConfig, { baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret', documentsEnabled: true }),
+      Layer.succeed(AppConfig, { baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret' }),
     ),
     Layer.provide(Layer.succeed(ReceiptBucket, fakeBucket().bucket)),
   ),

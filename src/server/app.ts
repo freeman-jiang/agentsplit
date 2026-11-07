@@ -190,7 +190,7 @@ export function createApp(platform: Platform) {
       return response
     }
     if (url.pathname === '/api/mcp')
-      return withConnection((client) => handleMcp(request, { db: makeDb(client), baseUrl: config.baseUrl, bucket, documentsEnabled: config.documentsEnabled }))
+      return withConnection((client) => handleMcp(request, { db: makeDb(client), baseUrl: config.baseUrl, bucket }))
     // The server serves the protected-resource metadata itself: Better Auth's MCP plugin drops
     // offline_access from it, which left Claude Code without refresh tokens (OAUTH-CLAUDE-CODE.md).
     if (METADATA_PATHS.has(url.pathname))
@@ -210,14 +210,14 @@ export function createApp(platform: Platform) {
         const db = makeDb(client)
         return request.method === 'GET'
           ? downloadReceipt({ db, bucket, principal: await receiptReader(db, { request, baseUrl: config.baseUrl, secret: config.secret }), url })
-          : uploadReceipt({ db, bucket, principal: await requestSession(db, { request, secret: config.secret, baseUrl: config.baseUrl }), request, baseUrl: config.baseUrl, enabled: config.documentsEnabled })
+          : uploadReceipt({ db, bucket, principal: await requestSession(db, { request, secret: config.secret, baseUrl: config.baseUrl }), request, baseUrl: config.baseUrl })
       })
     }
     // An agent's upload target from create_expense or update_expense. The secret in the path is the credential.
     const uploadRoute = /^\/api\/receipt-uploads\/([^/]+)$/.exec(url.pathname)
     if (uploadRoute) {
       if (request.method !== 'PUT') return jsonError({ status: 405, message: 'Method not allowed', headers: { Allow: 'PUT' } })
-      return withClient((client) => putUpload({ db: makeDb(client), bucket, request, token: uploadRoute[1] ?? '', enabled: config.documentsEnabled }))
+      return withClient((client) => putUpload({ db: makeDb(client), bucket, request, token: uploadRoute[1] ?? '' }))
     }
     const receiptsRoute = /^\/(?:groups\/)?([^/]+)\/expenses\/export\/receipts$/.exec(url.pathname)
     if (receiptsRoute && request.method === 'GET') return exportReceipts({ request, group: receiptsRoute[1] ?? '' })

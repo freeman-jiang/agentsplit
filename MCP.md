@@ -155,7 +155,7 @@ The server instructions and the `create_expense` and `update_expense` descriptio
 
 ## Receipt uploads
 
-Receipts are JPEG or PNG, at most 5 MiB each, at most 10 per request. `get_reference_data` tells whether uploads are enabled. Each upload counts against the caller's receipt storage (500 MB).
+Receipts are JPEG or PNG, at most 5 MiB each, at most 10 per request. Uploads are always on: `get_reference_data` reports `attachments.enabled: true`. Each upload counts against the caller's receipt storage (500 MB).
 
 1. Add `uploads` to `create_expense` or `update_expense`, for example `[{ "filename": "receipt.png", "contentType": "image/png", "bytes": 12345 }]`. An `update_expense` with empty `changes` requests targets without a new revision.
 2. Read each target from the response:
