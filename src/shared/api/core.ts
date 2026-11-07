@@ -4,7 +4,7 @@
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { GROUP_DENIED, INVALID_REASONS, NOT_FOUND_ENTITIES } from '../errors'
-import { isRealDate } from '../dates'
+import { CALENDAR_DATE, isRealDate } from '../dates'
 import { GROUP_ID } from '../ids'
 import { LIMITS } from '../limits'
 import { CurrencyCodeSchema, DecimalOutput, DecimalString } from '../money'
@@ -63,7 +63,7 @@ export const PageLimit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum
 export const IdempotencyKey = Schema.String.check(Schema.isMinLength(8), Schema.isMaxLength(128))
 /** A real calendar date, YYYY-MM-DD: 2026-02-29 and 2026-09-31 are refused before they reach SQL. */
 export const CalendarDate = Schema.String.check(
-  Schema.isPattern(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/),
+  Schema.isPattern(CALENDAR_DATE),
   Schema.makeFilter((value: string) => isRealDate(value) || 'Invalid calendar date'),
 )
 /** A calendar date the server produces from a DATE column; not checked again on encode. */

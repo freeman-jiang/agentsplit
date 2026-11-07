@@ -2,7 +2,7 @@
 // MCP tools all call validateExpense. The rules are the current app's
 // (src/lib/schemas.ts expenseFormSchema), plus multiple payers.
 import { CURRENCIES, type CurrencyCode } from './currencies'
-import { isRealDate } from './dates'
+import { isCalendarDate } from './dates'
 import { LIMITS, numberText } from './limits'
 import { DECIMAL, formatMinor, minor, minorOrNull, sumMinor, type Minor } from './minor'
 import { formatWeight, parseWeight, preferredPayer, resolveShares } from './split'
@@ -31,8 +31,6 @@ export type ResolvedExpense = Omit<ExpenseDraft, 'amount' | 'payers' | 'shares' 
 }
 
 export type ExpenseIssue = { readonly field: string; readonly message: string }
-
-const isCalendarDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && isRealDate(value)
 
 // The current app's messages (messages/en-US.json SchemaErrors), in English only.
 const moneyMessage = (text: string, currency: CurrencyCode) =>
