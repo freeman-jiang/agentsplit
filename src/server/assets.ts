@@ -46,8 +46,8 @@ export function loadAssets(dir: string): ReadonlyMap<string, Asset> | null {
   const present = new Set(all)
   for (const file of all) {
     const name = relative(dir, file).split('\\').join('/')
-    // _headers was the Workers asset server's rule file; the copies are variants of their file.
-    if (name === '_headers' || /\.(br|gz)$/.test(name)) continue
+    // The compressed copies are variants of their file.
+    if (/\.(br|gz)$/.test(name)) continue
     const bytes = new Uint8Array(readFileSync(file))
     const variants: Variant[] = []
     if (present.has(`${file}.br`)) variants.push({ bytes: new Uint8Array(readFileSync(`${file}.br`)), encoding: 'br' })

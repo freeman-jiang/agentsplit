@@ -1,43 +1,33 @@
-// The server's half of the current app's group URLs (src/proxy.ts at bb26b78)
-// and the request ID of RPC responses. A wrong redirect or a missing ID fails
-// silently: old links stop working, or a quoted error reference finds no log line.
-import type { Pool } from 'pg'
+// The app's routing that fails silently: the server's half of the current
+// app's group URLs (src/proxy.ts at bb26b78), the request ID of RPC responses,
+// the origin rule and the maintenance switch. A wrong redirect breaks old links,
+// a missing ID leaves a quoted error reference without a log line, and a broken
+// switch lets writes in during a cutover.
+import { count } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { groups } from '../../db/schema/app'
-import { createApp, type App } from '~/server/main/app'
-import { makeDb } from '~/server/core/db'
-import { testSettings } from '../kit/config'
-import { fakeBucket } from './fake-bucket'
-import { testDatabase, type TestDatabase } from '../kit/database'
+import { expenses, groups } from '../../db/schema/app'
+import { createExpense } from '~/server/ledger'
+import { draft } from '../kit/drafts'
+import { principal } from '../kit/people'
+import { BASE, startHarness, type Harness } from './harness'
 
-const BASE = 'http://localhost'
 const SLUGGED = 'AbCdEfGhIjKlMnOpQrS_1'
 const UNSLUGGED = 'ZyXwVuTsRqPoNmLkJiH_2'
 
-let database: TestDatabase
-let pool: Pool
-let app: App
+let h: Harness
 
 beforeAll(async () => {
-  database = await testDatabase()
-  pool = database.pool
-  await makeDb(pool).insert(groups).values([
-    { id: SLUGGED, kind: 'named', slug: 'household', name: 'Household', defaultCurrency: 'USD' },
-    { id: UNSLUGGED, kind: 'named', slug: null, name: 'Trip', defaultCurrency: 'USD' },
-  ])
-  app = createApp({
-    config: testSettings(),
-    connect: () => pool.connect(),
-    pool: makeDb(pool),
-    bucket: fakeBucket().bucket,
-    assets: async () => new Response('spa page', { headers: { 'Content-Type': 'text/html' } }),
-  })
+  h = await startHarness()
+  await h.withDb((db) =>
+    db.insert(groups).values([
+      { id: SLUGGED, kind: 'named', slug: 'household', name: 'Household', defaultCurrency: 'USD' },
+      { id: UNSLUGGED, kind: 'named', slug: null, name: 'Trip', defaultCurrency: 'USD' },
+    ]),
+  )
 })
-afterAll(async () => {
-  await database.close()
-})
+afterAll(() => h.close())
 
-const get = (path: string, method = 'GET') => app.fetch(new Request(`${BASE}${path}`, { method, redirect: 'manual' }))
+const get = (path: string, method = 'GET') => h.fetch(new Request(`${BASE}${path}`, { method, redirect: 'manual' }))
 
 describe('group URLs', () => {
   it('moves /groups/<id>/… of a group with a slug to /<slug>/… with a private, uncached 307, keeping the query', async () => {
@@ -51,7 +41,7 @@ describe('group URLs', () => {
   it('keeps /groups/<id>/… of a group without a slug, and opens /groups/<id> on its expenses', async () => {
     const page = await get(`/groups/${UNSLUGGED}/expenses`)
     expect(page.status).toBe(200)
-    expect(await page.text()).toBe('spa page')
+    expect(await page.text()).toBe('SPA page')
     const root = await get(`/groups/${UNSLUGGED}`)
     expect(root.status).toBe(307)
     expect(root.headers.get('location')).toBe(`/groups/${UNSLUGGED}/expenses`)
@@ -83,7 +73,7 @@ describe('RPC request IDs', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.stubGlobal('Request', StreamingRequest)
     try {
-      const response = await app.fetch(
+      const response = await h.fetch(
         new Request(`${BASE}/api/rpc`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', origin: BASE },
@@ -108,9 +98,37 @@ describe('origins', () => {
   it('refuses RPC calls and receipt uploads from another origin, and from a request without one', async () => {
     for (const path of ['/api/rpc', '/api/receipts'])
       for (const headers of [{ origin: 'https://evil.example' }, {}]) {
-        const response = await app.fetch(new Request(`${BASE}${path}`, { method: 'POST', headers, body: '[]' }))
+        const response = await h.fetch(new Request(`${BASE}${path}`, { method: 'POST', headers, body: '[]' }))
         expect({ path, headers, status: response.status, body: await response.json() }).toEqual({ path, headers, status: 403, body: { error: 'Origin not allowed' } })
       }
   })
 })
 
+describe('maintenance', () => {
+  // The cutover relies on this: users and agents get 503, Coolify's health check passes, and nothing writes.
+  it('answers 503 to pages, RPC, MCP and uploads, lets the health checks through, and pauses the hourly job', async () => {
+    const paused = await startHarness({ maintenance: true })
+    try {
+      for (const path of ['/api/health', '/api/health/readiness', '/api/health/liveness']) expect((await paused.fetch(new Request(`${BASE}${path}`))).status, path).toBe(200)
+      const page = await paused.fetch(new Request(`${BASE}/household`, { headers: { accept: 'text/html,*/*' } }))
+      expect(page.status).toBe(503)
+      expect(page.headers.get('content-type')).toBe('text/html; charset=utf-8')
+      expect(page.headers.get('x-frame-options')).toBe('DENY')
+      for (const path of ['/api/rpc', '/api/mcp', '/api/receipt-uploads/x']) {
+        const response = await paused.fetch(new Request(`${BASE}${path}`, { method: 'POST', headers: { accept: 'application/json' } }))
+        expect({ path, status: response.status, retryAfter: response.headers.get('retry-after') }).toEqual({ path, status: 503, retryAfter: '300' })
+      }
+      // A daily expense due since November: the paused job creates none of its occurrences.
+      await paused.account('owner')
+      await paused.group({ id: 'g-paused', people: ['pa'], members: [['owner', 'pa', 'admin']] })
+      await paused.tx((tx) =>
+        createExpense(tx, { principal: principal('owner'), groupId: 'g-paused', expenseId: 'daily', idempotencyKey: null, expense: draft({ payer: 'pa', people: ['pa'], recurrence: 'daily' }) }),
+      )
+      const before = await paused.withDb(async (db) => (await db.select({ n: count() }).from(expenses))[0]?.n)
+      await paused.app.scheduled(new Date('2026-12-01T00:07:00Z'))
+      expect(await paused.withDb(async (db) => (await db.select({ n: count() }).from(expenses))[0]?.n)).toBe(before)
+    } finally {
+      await paused.close()
+    }
+  })
+})
