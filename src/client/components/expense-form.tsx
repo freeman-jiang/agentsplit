@@ -13,6 +13,7 @@ import { invalidateExpenses } from '~/client/queries/feed'
 import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 import { Checkbox } from '~/client/ui/checkbox'
+import { disclosure, DisclosureSummary } from '~/client/ui/disclosure'
 import { Input } from '~/client/ui/input'
 import { Label } from '~/client/ui/label'
 import { NativeSelect } from '~/client/ui/native-select'
@@ -223,324 +224,334 @@ export function ExpenseForm(props: ExpenseFormProps) {
         e.preventDefault()
         void submit()
       }}
-      className="space-y-4 sm:space-y-6"
+      className="space-y-4"
     >
       <h2 className="font-display text-xl">
         {headingVerb} {noun}
       </h2>
       {props.mode === 'edit' && <Attribution detail={props.detail} />}
 
-      <section className="space-y-2 rounded-2xl border bg-card p-4 sm:space-y-4" aria-label={income ? 'Income details' : 'Expense details'}>
-        <Field id="title" label="Description" error={shown('title')}>
-          <Input
-            id="title"
-            placeholder="Monday evening restaurant"
-            value={state.title}
-            aria-invalid={!!shown('title')}
-            onChange={(e) => set({ title: e.target.value })}
-            onBlur={() => touch('title')}
-          />
-        </Field>
-        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-          <Field id="amount" label="Amount" error={shown('amount')}>
-            <div className="flex gap-2">
-              <Input
-                id="amount"
-                inputMode="decimal"
-                placeholder="0.00"
-                className="h-12 min-w-0 flex-1 text-[2rem]! leading-none font-semibold tabular-nums placeholder:font-normal placeholder:text-muted-foreground/70"
-                value={state.amount}
-                aria-invalid={!!shown('amount')}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => setAmount(e.target.value)}
-                onBlur={() => touch('amount')}
-              />
-              <CurrencySelect
-                id="currency"
-                label={income ? 'Currency of income' : 'Currency of expense'}
-                value={state.currency}
-                onChange={(currency) => set({ currency, edits: {} })}
-                selectClassName="h-12"
-              />
-            </div>
-          </Field>
-          <Field id="date" label={income ? 'Income date' : 'Expense date'} error={shown('expenseDate')}>
+      {/* One 24 px gap between the form's blocks, as between page blocks elsewhere. */}
+      <div className="space-y-6">
+
+        <section className="space-y-2 rounded-2xl border bg-card p-4 sm:space-y-3 sm:px-6 sm:py-5" aria-label={income ? 'Income details' : 'Expense details'}>
+          <Field id="title" label="Description" error={shown('title')}>
             <Input
-              id="date"
-              type="date"
-              className="block h-10 sm:h-12"
-              value={state.expenseDate}
-              aria-invalid={!!shown('expenseDate')}
-              onChange={(e) => set({ expenseDate: e.target.value })}
-              onBlur={() => touch('expenseDate')}
+              id="title"
+              className="h-11"
+              placeholder="Monday evening restaurant"
+              value={state.title}
+              aria-invalid={!!shown('title')}
+              onChange={(e) => set({ title: e.target.value })}
+              onBlur={() => touch('title')}
             />
           </Field>
-        </div>
-        <Field id="vendor" label="Vendor (optional)" error={shown('vendor')}>
-          <Input id="vendor" placeholder="e.g. Costco" maxLength={LIMITS.vendorMax} value={state.vendor} onChange={(e) => set({ vendor: e.target.value })} onBlur={() => touch('vendor')} />
-        </Field>
+          <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
+            <Field id="amount" label="Amount" error={shown('amount')}>
+              <div className="flex gap-2">
+                <Input
+                  id="amount"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  className="h-11 min-w-0 flex-1 text-xl! font-semibold tabular-nums placeholder:font-normal placeholder:text-muted-foreground/70"
+                  value={state.amount}
+                  aria-invalid={!!shown('amount')}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setAmount(e.target.value)}
+                  onBlur={() => touch('amount')}
+                />
+                <CurrencySelect
+                  id="currency"
+                  label={income ? 'Currency of income' : 'Currency of expense'}
+                  value={state.currency}
+                  onChange={(currency) => set({ currency, edits: {} })}
+                  selectClassName="h-11"
+                />
+              </div>
+            </Field>
+            <Field id="date" label={income ? 'Income date' : 'Expense date'} error={shown('expenseDate')}>
+              <Input
+                id="date"
+                type="date"
+                // The browser's calendar glyph is heavier than the other icons: quiet until hovered.
+              className="block h-11 [&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:hover:opacity-100"
+                value={state.expenseDate}
+                aria-invalid={!!shown('expenseDate')}
+                onChange={(e) => set({ expenseDate: e.target.value })}
+                onBlur={() => touch('expenseDate')}
+              />
+            </Field>
+          </div>
+          <Field id="vendor" label="Vendor (optional)" error={shown('vendor')}>
+            <Input id="vendor" className="h-11" placeholder="e.g. Costco" maxLength={LIMITS.vendorMax} value={state.vendor} onChange={(e) => set({ vendor: e.target.value })} onBlur={() => touch('vendor')} />
+          </Field>
 
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">{income ? 'Received by' : 'Paid by'}</legend>
-          {state.payerMode === 'one' ? (
-            <NativeSelect id="payer" aria-label={income ? 'Received by' : 'Paid by'} value={state.payer} aria-invalid={!!payersError} onChange={(e) => set({ payer: e.target.value })}>
-              <option value="">Select a participant</option>
-              {group.participants.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </NativeSelect>
-          ) : (
-            <ul className="divide-y">
-              {group.participants.map((p) => (
-                <li key={p.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <Label htmlFor={`payer-${p.id}`} className="font-normal">
+          <fieldset className="space-y-1.5">
+            <legend className="text-sm leading-none font-medium">{income ? 'Received by' : 'Paid by'}</legend>
+            {state.payerMode === 'one' ? (
+              <NativeSelect id="payer" className="h-11" aria-label={income ? 'Received by' : 'Paid by'} value={state.payer} aria-invalid={!!payersError} onChange={(e) => set({ payer: e.target.value })}>
+                <option value="">Select a participant</option>
+                {group.participants.map((p) => (
+                  <option key={p.id} value={p.id}>
                     {p.name}
-                  </Label>
-                  <div className="text-right">
-                    <Input
-                      id={`payer-${p.id}`}
-                      inputMode="decimal"
-                      placeholder="0"
-                      className="w-32 text-right"
-                      value={state.payerAmounts[p.id] ?? ''}
-                      aria-invalid={!!rowError('payers', p.id)}
-                      onChange={(e) => set({ payerAmounts: { ...state.payerAmounts, [p.id]: e.target.value } })}
-                    />
-                    {rowError('payers', p.id) && <p className="mt-1 text-xs text-destructive">{rowError('payers', p.id)}</p>}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-          {remainder !== null && remainder !== formatZero(state.currency) && (
-            <p className="text-xs text-muted-foreground" data-testid="payer-remainder">
-              {remainder.startsWith('-') ? `Assigned ${money(remainder.slice(1), state.currency)} more than the amount` : `Left to assign: ${money(remainder, state.currency)}`}
-            </p>
-          )}
-          {payersError && <p className="text-sm text-destructive">{payersError}</p>}
-          <Button
-            type="button"
-            variant="link"
-            className="h-auto p-0 underline underline-offset-4"
-            onClick={() =>
-              state.payerMode === 'one'
-                ? set({ payerMode: 'several', payerAmounts: state.payer ? { [state.payer]: state.amount } : {} })
-                : set({ payerMode: 'one', payer: Object.keys(state.payerAmounts).find((id) => state.payerAmounts[id]?.trim()) ?? state.payer })
-            }
-          >
-            {state.payerMode === 'one' ? 'Several people paid' : 'One person paid'}
-          </Button>
-        </fieldset>
-      </section>
-
-      <section className="space-y-3 rounded-2xl border bg-card p-4" aria-labelledby="paid-for">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 id="paid-for" className="text-sm font-semibold">
-            {income ? 'Received for' : 'Paid for'}
-          </h3>
-          <Button
-            type="button"
-            variant="link"
-            className="h-auto p-0 underline underline-offset-4"
-            onClick={() => set({ selected: Object.fromEntries(order.map((id) => [id, !allSelected])), edits: {} })}
-          >
-            {allSelected ? 'Select none' : 'Select all'}
-          </Button>
-        </div>
-        <Field id="split-mode" label="Split mode">
-          <NativeSelect id="split-mode" value={state.splitMode} onChange={(e) => setMode(e.target.value as SplitMode)}>
-            {SPLIT_MODES.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </NativeSelect>
-        </Field>
-        <ul className="divide-y">
-          {group.participants.map((p) => {
-            const selected = !!state.selected[p.id]
-            const input = state.splitMode === 'amount' ? amountInput(state, auto, p.id) : { value: state.weights[p.id] ?? '', placeholder: '' }
-            const error = rowError('shares', p.id)
-            return (
-              <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id={`share-${p.id}`}
-                    checked={selected}
-                    onCheckedChange={(value) => set({ selected: { ...state.selected, [p.id]: value === true }, edits: {} })}
-                  />
-                  <Label htmlFor={`share-${p.id}`} className="font-normal">
-                    {p.name}
-                  </Label>
-                </div>
-                <div className="flex items-center gap-3">
-                  {selected && state.kind !== 'payment' && preview?.get(p.id) !== undefined && (
-                    <span className="text-sm tabular-nums text-muted-foreground" data-testid="share-preview">
-                      {money(preview.get(p.id) ?? '0', state.currency)}
-                    </span>
-                  )}
-                  {state.splitMode !== 'evenly' && (
-                    <div className="flex items-center gap-1">
+                  </option>
+                ))}
+              </NativeSelect>
+            ) : (
+              <ul className="divide-y">
+                {group.participants.map((p) => (
+                  <li key={p.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <Label htmlFor={`payer-${p.id}`} className="font-normal">
+                      {p.name}
+                    </Label>
+                    <div className="text-right">
                       <Input
-                        aria-label={`${p.name} ${state.splitMode === 'amount' ? 'amount' : state.splitMode === 'percentage' ? 'percentage' : 'shares'}`}
+                        id={`payer-${p.id}`}
                         inputMode="decimal"
-                        disabled={!selected}
-                        className="w-24 text-right"
-                        value={selected ? input.value : ''}
-                        placeholder={input.placeholder}
-                        aria-invalid={!!error}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          set({
-                            weights: { ...state.weights, [p.id]: value },
-                            ...(state.splitMode === 'amount' ? { edits: { ...state.edits, [p.id]: value.trim() === '' ? 'cleared' : 'edited' } } : {}),
-                          })
-                        }}
-                        onBlur={() => touch('shares')}
+                        placeholder="0"
+                        className="w-32 text-right"
+                        value={state.payerAmounts[p.id] ?? ''}
+                        aria-invalid={!!rowError('payers', p.id)}
+                        onChange={(e) => set({ payerAmounts: { ...state.payerAmounts, [p.id]: e.target.value } })}
                       />
-                      <span className="w-14 text-xs text-muted-foreground">
-                        {state.splitMode === 'shares' ? 'share(s)' : state.splitMode === 'percentage' ? '%' : CURRENCIES[state.currency].symbol}
-                      </span>
+                      {rowError('payers', p.id) && <p className="mt-1 text-xs text-destructive">{rowError('payers', p.id)}</p>}
                     </div>
-                  )}
-                </div>
-                {error && <p className="w-full text-xs text-destructive">{error}</p>}
-              </li>
-            )
-          })}
-        </ul>
-        {sharesError && (
-          <p role="alert" className="text-sm text-destructive">
-            {sharesError}
-          </p>
-        )}
-      </section>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {remainder !== null && remainder !== formatZero(state.currency) && (
+              <p className="text-xs text-muted-foreground" data-testid="payer-remainder">
+                {remainder.startsWith('-') ? `Assigned ${money(remainder.slice(1), state.currency)} more than the amount` : `Left to assign: ${money(remainder, state.currency)}`}
+              </p>
+            )}
+            {payersError && <p className="text-sm text-destructive">{payersError}</p>}
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto p-0 underline underline-offset-4"
+              onClick={() =>
+                state.payerMode === 'one'
+                  ? set({ payerMode: 'several', payerAmounts: state.payer ? { [state.payer]: state.amount } : {} })
+                  : set({ payerMode: 'one', payer: Object.keys(state.payerAmounts).find((id) => state.payerAmounts[id]?.trim()) ?? state.payer })
+              }
+            >
+              {state.payerMode === 'one' ? 'Several people paid' : 'One person paid'}
+            </Button>
+          </fieldset>
+        </section>
 
-      <details className="rounded-2xl border bg-card p-4" open={!!state.notes || state.documents.length > 0 || !!shown('notes')}>
-        <summary className="cursor-pointer font-medium">Notes & receipts</summary>
-        <div className="mt-4 space-y-4">
-          <Field id="notes" label="Notes" error={shown('notes')}>
-            <Textarea id="notes" rows={4} value={state.notes} onChange={(e) => set({ notes: e.target.value })} onBlur={() => touch('notes')} />
-          </Field>
-          {/* A new private expense has no context to store receipts in yet (P-UNGROUP-14, P-UNGROUP-15). */}
-          {reference.attachments.enabled && !(isPrivate && props.mode === 'create') && (
-            <div className="space-y-1.5">
-              <p className="text-sm font-medium">Receipts</p>
-              <p className="text-xs text-muted-foreground">See and attach receipts to the {noun}.</p>
-              <ExpenseDocuments groupId={group.id} documents={state.documents} onChange={(documents) => set({ documents })} />
-            </div>
-          )}
-        </div>
-      </details>
-
-      <details className="rounded-2xl border bg-card p-4" open={state.kind === 'payment' || state.recurrence !== 'none'}>
-        <summary className="cursor-pointer font-medium">
-          More options
-          <span className="ml-2 text-sm font-normal text-muted-foreground">
-            {category?.name ?? 'General'} · {RECURRENCE.find(([v]) => v === state.recurrence)?.[1]}
-          </span>
-        </summary>
-        <div className="mt-4 space-y-4">
-          <Field id="category" label="Category">
-            <NativeSelect id="category" value={String(state.categoryId)} onChange={(e) => set({ categoryId: Number(e.target.value) })}>
-              {[...new Set(reference.categories.map((c) => c.grouping))].map((grouping) => (
-                <optgroup key={grouping} label={grouping}>
-                  {reference.categories
-                    .filter((c) => c.grouping === grouping)
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                </optgroup>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Field
-            id="recurrence"
-            label="Expense Recurrence"
-            hint={
-              props.mode === 'edit' && props.detail.nextOccurrence
-                ? `The next copy is created on ${props.detail.nextOccurrence}. Choose None to stop the series.`
-                : 'Select how often the expense should repeat.'
-            }
-          >
-            <NativeSelect id="recurrence" disabled={isPrivate} value={state.recurrence} onChange={(e) => set({ recurrence: e.target.value as FormState['recurrence'] })}>
-              {RECURRENCE.map(([value, label]) => (
+        <section className="space-y-3 rounded-2xl border bg-card p-4 sm:px-6 sm:py-5" aria-labelledby="paid-for">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 id="paid-for" className="text-base font-semibold leading-tight">
+              {income ? 'Received for' : 'Paid for'}
+            </h3>
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto p-0 underline underline-offset-4"
+              onClick={() => set({ selected: Object.fromEntries(order.map((id) => [id, !allSelected])), edits: {} })}
+            >
+              {allSelected ? 'Select none' : 'Select all'}
+            </Button>
+          </div>
+          <Field id="split-mode" label="Split mode">
+            <NativeSelect id="split-mode" className="h-11" value={state.splitMode} onChange={(e) => setMode(e.target.value as SplitMode)}>
+              {SPLIT_MODES.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
             </NativeSelect>
           </Field>
-          {!income && !isPrivate && (
-            <div className="flex items-center gap-2">
-              <Checkbox id="is-payment" checked={state.kind === 'payment'} onCheckedChange={(value) => set({ kind: value === true ? 'payment' : 'expense' })} />
-              <Label htmlFor="is-payment" className="font-normal">
-                This is a payment
-              </Label>
-            </div>
-          )}
-          {/* Each private expense has its own people, so a saved default would never apply again. */}
-          {!isPrivate && (
-            <div className="flex items-center gap-2">
-              <Checkbox id="save-default" checked={state.saveDefault} onCheckedChange={(value) => set({ saveDefault: value === true })} />
-              <Label htmlFor="save-default" className="font-normal">
-                Save as default splitting options
-              </Label>
-            </div>
-          )}
-        </div>
-      </details>
-
-      <Summary state={state} names={names} hint={isPrivate ? PRIVATE_HINT : 'Edits stay in the group’s log.'} />
-
-      {failure && (
-        <div role="alert" className="space-y-2 border border-destructive/50 p-3 text-sm text-destructive">
-          <p>{failure.message}</p>
-          {failure.kind === 'conflict' && props.mode === 'edit' && (
-            <Button type="button" variant="outline" size="sm" onClick={props.onReload}>
-              Load the latest version
-            </Button>
-          )}
-        </div>
-      )}
-      {submitted && issues.length > 0 && !failure && (
-        <p role="alert" className="text-sm text-destructive">
-          Fix the fields marked above, then save again.
-        </p>
-      )}
-
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={busy}>
-          {props.mode === 'create' ? (busy ? 'Creating…' : 'Create') : busy ? 'Saving…' : 'Save changes'}
-        </Button>
-        {props.mode === 'edit' && (
-          <DeleteDialog
-            label="Delete"
-            title="Delete this expense?"
-            description={isPrivate ? 'It leaves the expense list and the balances. This expense’s private log keeps its history.' : "It leaves the expense list and the balances. The group's log keeps its history."}
-            onConfirm={async () => {
-              await rpc((api) =>
-                api('expenses.delete', { groupId: group.id, expenseId: props.detail.expense.id, expectedRevision: props.detail.expense.revision, idempotencyKey: crypto.randomUUID() }),
+          <ul className="divide-y">
+            {group.participants.map((p) => {
+              const selected = !!state.selected[p.id]
+              const input = state.splitMode === 'amount' ? amountInput(state, auto, p.id) : { value: state.weights[p.id] ?? '', placeholder: '' }
+              const error = rowError('shares', p.id)
+              return (
+                <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 sm:py-2">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id={`share-${p.id}`}
+                      checked={selected}
+                      onCheckedChange={(value) => set({ selected: { ...state.selected, [p.id]: value === true }, edits: {} })}
+                    />
+                    <Label htmlFor={`share-${p.id}`} className="font-normal">
+                      {p.name}
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {selected && state.kind !== 'payment' && preview?.get(p.id) !== undefined && (
+                      <span className="text-sm tabular-nums text-muted-foreground" data-testid="share-preview">
+                        {money(preview.get(p.id) ?? '0', state.currency)}
+                      </span>
+                    )}
+                    {state.splitMode !== 'evenly' && (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          aria-label={`${p.name} ${state.splitMode === 'amount' ? 'amount' : state.splitMode === 'percentage' ? 'percentage' : 'shares'}`}
+                          inputMode="decimal"
+                          disabled={!selected}
+                          className="w-24 text-right"
+                          value={selected ? input.value : ''}
+                          placeholder={input.placeholder}
+                          aria-invalid={!!error}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            set({
+                              weights: { ...state.weights, [p.id]: value },
+                              ...(state.splitMode === 'amount' ? { edits: { ...state.edits, [p.id]: value.trim() === '' ? 'cleared' : 'edited' } } : {}),
+                            })
+                          }}
+                          onBlur={() => touch('shares')}
+                        />
+                        <span className="w-14 text-xs text-muted-foreground">
+                          {state.splitMode === 'shares' ? 'share(s)' : state.splitMode === 'percentage' ? '%' : CURRENCIES[state.currency].symbol}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {error && <p className="w-full text-xs text-destructive">{error}</p>}
+                </li>
               )
-              if (target.kind === 'page') return await leavePage({ queryClient, navigate, back: target.back })
-              await invalidateMoney({ queryClient, group: target.groupParam })
-              await navigate({ to: '/$group/expenses', params: { group: target.groupParam } })
-            }}
-          />
-        )}
-        <Button type="button" variant="ghost" asChild>
-          {target.kind === 'page' ? (
-            <Link {...target.back}>Cancel</Link>
-          ) : (
-            <Link to="/$group/expenses" params={{ group: target.groupParam }}>
-              Cancel
-            </Link>
+            })}
+          </ul>
+          {sharesError && (
+            <p role="alert" className="text-sm text-destructive">
+              {sharesError}
+            </p>
           )}
-        </Button>
+        </section>
+
+        <div className="divide-y rounded-2xl border bg-card">
+          <details className={cn(disclosure, 'px-4 py-1.5 sm:px-6')} open={!!state.notes || state.documents.length > 0 || !!shown('notes')}>
+            <DisclosureSummary>Notes & receipts</DisclosureSummary>
+            <div className="space-y-4 pt-2 pb-3">
+              <Field id="notes" label="Notes" error={shown('notes')}>
+                <Textarea id="notes" rows={4} value={state.notes} onChange={(e) => set({ notes: e.target.value })} onBlur={() => touch('notes')} />
+              </Field>
+              {/* A new private expense has no context to store receipts in yet (P-UNGROUP-14, P-UNGROUP-15). */}
+              {reference.attachments.enabled && !(isPrivate && props.mode === 'create') && (
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium">Receipts</p>
+                  <p className="text-xs text-muted-foreground">See and attach receipts to the {noun}.</p>
+                  <ExpenseDocuments groupId={group.id} documents={state.documents} onChange={(documents) => set({ documents })} />
+                </div>
+              )}
+            </div>
+          </details>
+
+          <details className={cn(disclosure, 'px-4 py-1.5 sm:px-6')} open={state.kind === 'payment' || state.recurrence !== 'none'}>
+            <DisclosureSummary>
+              More options
+              <span className="ml-2 font-normal text-muted-foreground">
+                {category?.name ?? 'General'} · {RECURRENCE.find(([v]) => v === state.recurrence)?.[1]}
+              </span>
+            </DisclosureSummary>
+            <div className="space-y-4 pt-2 pb-3">
+              <Field id="category" label="Category">
+                <NativeSelect id="category" className="h-11" value={String(state.categoryId)} onChange={(e) => set({ categoryId: Number(e.target.value) })}>
+                  {[...new Set(reference.categories.map((c) => c.grouping))].map((grouping) => (
+                    <optgroup key={grouping} label={grouping}>
+                      {reference.categories
+                        .filter((c) => c.grouping === grouping)
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <Field
+                id="recurrence"
+                label="Expense Recurrence"
+                hint={
+                  props.mode === 'edit' && props.detail.nextOccurrence
+                    ? `The next copy is created on ${props.detail.nextOccurrence}. Choose None to stop the series.`
+                    : 'Select how often the expense should repeat.'
+                }
+              >
+                <NativeSelect id="recurrence" className="h-11" disabled={isPrivate} value={state.recurrence} onChange={(e) => set({ recurrence: e.target.value as FormState['recurrence'] })}>
+                  {RECURRENCE.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </Field>
+              {!income && !isPrivate && (
+                <div className="flex items-center gap-2">
+                  <Checkbox id="is-payment" checked={state.kind === 'payment'} onCheckedChange={(value) => set({ kind: value === true ? 'payment' : 'expense' })} />
+                  <Label htmlFor="is-payment" className="font-normal">
+                    This is a payment
+                  </Label>
+                </div>
+              )}
+              {/* Each private expense has its own people, so a saved default would never apply again. */}
+              {!isPrivate && (
+                <div className="flex items-center gap-2">
+                  <Checkbox id="save-default" checked={state.saveDefault} onCheckedChange={(value) => set({ saveDefault: value === true })} />
+                  <Label htmlFor="save-default" className="font-normal">
+                    Save as default splitting options
+                  </Label>
+                </div>
+              )}
+            </div>
+          </details>
+        </div>
+
+        {failure && (
+          <div role="alert" className="space-y-2 rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+            <p>{failure.message}</p>
+            {failure.kind === 'conflict' && props.mode === 'edit' && (
+              <Button type="button" variant="outline" size="sm" onClick={props.onReload}>
+                Load the latest version
+              </Button>
+            )}
+          </div>
+        )}
+        {submitted && issues.length > 0 && !failure && (
+          <p role="alert" className="text-sm text-destructive">
+            Fix the fields marked above, then save again.
+          </p>
+        )}
+
+        {/* On wide screens the total and the actions share one bar at the end of the form. */}
+        <div className="flex flex-wrap items-center justify-between gap-4 sm:rounded-2xl sm:border sm:bg-card sm:py-4 sm:ps-6 sm:pe-4">
+          <Summary state={state} names={names} hint={isPrivate ? PRIVATE_HINT : 'Edits stay in the group’s log.'} />
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" disabled={busy}>
+              {props.mode === 'create' ? (busy ? 'Creating…' : 'Create') : busy ? 'Saving…' : 'Save changes'}
+            </Button>
+            {props.mode === 'edit' && (
+              <DeleteDialog
+                label="Delete"
+                title="Delete this expense?"
+                description={isPrivate ? 'It leaves the expense list and the balances. This expense’s private log keeps its history.' : "It leaves the expense list and the balances. The group's log keeps its history."}
+                onConfirm={async () => {
+                  await rpc((api) =>
+                    api('expenses.delete', { groupId: group.id, expenseId: props.detail.expense.id, expectedRevision: props.detail.expense.revision, idempotencyKey: crypto.randomUUID() }),
+                  )
+                  if (target.kind === 'page') return await leavePage({ queryClient, navigate, back: target.back })
+                  await invalidateMoney({ queryClient, group: target.groupParam })
+                  await navigate({ to: '/$group/expenses', params: { group: target.groupParam } })
+                }}
+              />
+            )}
+            <Button type="button" variant="ghost" asChild>
+              {target.kind === 'page' ? (
+                <Link {...target.back}>Cancel</Link>
+              ) : (
+                <Link to="/$group/expenses" params={{ group: target.groupParam }}>
+                  Cancel
+                </Link>
+              )}
+            </Button>
+          </div>
+        </div>
       </div>
     </form>
   )
@@ -557,7 +568,9 @@ const formatZero = (currency: CurrencyCode) => (CURRENCIES[currency].decimals ? 
 /** The wide-screen summary (P-EXP-48). */
 function Summary(props: { state: FormState; names: ReadonlyMap<string, string>; hint: string }) {
   const { state } = props
-  const amount = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(state.amount.trim()) ? money(state.amount.trim(), state.currency) : '—'
+  const valid = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(state.amount.trim())
+  // Without a valid amount the total shows a muted zero, like the field's placeholder.
+  const amount = money(valid ? state.amount.trim() : formatZero(state.currency), state.currency)
   const payers =
     state.payerMode === 'one'
       ? props.names.get(state.payer)
@@ -567,8 +580,8 @@ function Summary(props: { state: FormState; names: ReadonlyMap<string, string>; 
           .join(', ')
   const people = Object.values(state.selected).filter(Boolean).length
   return (
-    <aside className="hidden rounded-2xl border bg-muted/40 p-4 text-sm sm:block" aria-label="Expense total">
-      <p className="text-2xl tabular-nums">{amount}</p>
+    <aside className="hidden min-w-0 text-sm sm:block" aria-label="Expense total">
+      <p className={cn('text-xl font-semibold tabular-nums', !valid && 'text-muted-foreground')}>{amount}</p>
       <p className="text-muted-foreground">
         {state.currency} · {payers || 'No payer yet'} · {people} {people === 1 ? 'person' : 'people'}
       </p>

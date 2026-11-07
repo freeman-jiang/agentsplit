@@ -1,12 +1,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
+import { cn } from '~/client/cn'
 import { ExpenseForm, type PageTarget } from '~/client/components/expense-form'
 import { newExpenseState } from '~/client/components/expense-form-state'
 import { rpc } from '~/client/rpc'
 import { referenceQuery } from '~/client/queries/expenses'
 import { errorMessage, expenseContextQuery, feedOptionsQuery, invalidateExpenses } from '~/client/queries/feed'
 import { Button } from '~/client/ui/button'
+import { disclosure, DisclosureSummary } from '~/client/ui/disclosure'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
 import { randomId } from '~/shared/ids'
@@ -156,9 +158,9 @@ function ExpenseSetup({ options }: { options: Options }) {
                 ))}
             </NativeSelect>
           </label>
-          <details className="rounded-2xl border p-4">
-            <summary className="cursor-pointer text-sm font-medium">Invite someone new by email</summary>
-            <div className="mt-4 space-y-3">
+          <details className={cn(disclosure, 'rounded-2xl border px-4 py-1')}>
+            <DisclosureSummary>Invite someone new by email</DisclosureSummary>
+            <div className="space-y-3 pt-2 pb-3">
               <label className="block space-y-2 text-sm">
                 <span>Name</span>
                 <Input value={name} maxLength={50} onChange={(e) => setName(e.target.value)} />

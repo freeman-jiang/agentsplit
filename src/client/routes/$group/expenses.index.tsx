@@ -1,12 +1,12 @@
 import { useSuspenseInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Paperclip, X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '~/client/cn'
-import { CategoryIcon } from '~/client/components/category-icon'
 import { groupByDate, weekStartsOn } from '~/client/components/date-groups'
 import { localDate } from '~/client/components/local-date'
 import { expenseRowFigures, type Figure } from '~/client/components/expense-row'
+import { expenseRowClass, RowCategory, RowDate, RowFigure, RowMetadata, RowNarrowLine, RowTitle, RowVendor } from '~/client/components/expense-row-parts'
 import { money } from '~/client/components/money'
 import { expensesQuery, groupQuery } from '~/client/queries'
 import { Button } from '~/client/ui/button'
@@ -96,7 +96,7 @@ function ExpensesTab() {
         </p>
       )}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div role="radiogroup" aria-label="Sort expenses" className="inline-flex min-h-10 items-stretch rounded-full bg-muted p-1 text-sm max-sm:grid max-sm:w-full max-sm:grid-cols-2">
+        <div role="radiogroup" aria-label="Sort expenses" className="inline-flex min-h-10 items-stretch rounded-xl border border-input p-1 text-sm max-sm:grid max-sm:w-full max-sm:grid-cols-2">
           {SORTS.map(([value, label]) => (
             <button
               key={value}
@@ -104,13 +104,14 @@ function ExpensesTab() {
               role="radio"
               aria-checked={sort === value}
               onClick={() => navigate({ search: (s) => ({ ...s, sort: value }), replace: true })}
-              className={cn('rounded-full px-4 transition-colors', sort === value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+              className={cn('rounded-[0.5rem] px-3 transition-colors', sort === value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground')}
             >
               {label}
             </button>
           ))}
         </div>
         <div className="relative min-w-48 flex-1">
+          <Search aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
             placeholder="Search for an expense…"
@@ -118,7 +119,7 @@ function ExpensesTab() {
             maxLength={200}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            className="pe-9"
+            className="ps-9 pe-9"
           />
           {text && (
             <button type="button" aria-label="Clear search" onClick={() => setText('')} className="absolute inset-y-0 end-2 flex items-center text-muted-foreground">
@@ -141,11 +142,11 @@ function ExpensesTab() {
           </p>
         )
       ) : (
-        <div data-testid="expense-list" className="space-y-4">
+        <div data-testid="expense-list" className="space-y-6">
           {sections.map((section) => (
             <div key={section.key}>
-              {section.label && <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{section.label}</h3>}
-              <ul className="divide-y overflow-hidden rounded-2xl border">
+              {section.label && <h3 className="eyebrow">{section.label}</h3>}
+              <ul className="divide-y overflow-hidden rounded-2xl border bg-card">
                 {section.expenses.map((e) => (
                   <ExpenseCard key={e.id} expense={e} group={group} viewer={g.participantId} names={names} />
                 ))}
@@ -165,55 +166,34 @@ const tones: Record<Figure['tone'], string> = { neutral: 'text-muted-foreground'
 function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewer: string | null; names: ReadonlyMap<string, string> }) {
   const { expense: e } = props
   const figures = expenseRowFigures({ expense: e, viewer: props.viewer, names: props.names })
-  const [year, month, day] = e.expenseDate.split('-')
-  const monthName = new Date(Date.UTC(Number(year), Number(month) - 1, 1)).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
   const author = e.editedBy ? `Last edited by ${e.editedBy}` : e.addedBy ? `Added by ${e.addedBy}` : 'Original author unavailable'
+  const paid = money(figures.paid.amount ?? '0', e.currency)
   const link =
     e.kind === 'payment'
       ? ({ to: '/$group/payments/$expenseId/edit', params: { group: props.group, expenseId: e.id } } as const)
       : ({ to: '/$group/expenses/$expenseId/edit', params: { group: props.group, expenseId: e.id } } as const)
   return (
     <li>
-      <Link {...link} className="flex items-start gap-3 px-3 py-3 hover:bg-accent/50 sm:px-4">
-        <div className="w-10 shrink-0 text-center leading-tight">
-          <div className="text-xs uppercase text-muted-foreground">{monthName}</div>
-          <div className="text-lg tabular-nums">{Number(day)}</div>
-          <span className="sr-only">{year}</span>
+      <Link {...link} className={expenseRowClass}>
+        <RowDate date={e.expenseDate} />
+        <RowCategory categoryId={e.categoryId} />
+        <div className="min-w-0">
+          <RowVendor vendor={e.vendor} />
+          <RowTitle title={e.title} payment={e.kind === 'payment'} documentCount={e.documentCount} />
+          <RowMetadata parts={[e.vendor && { key: 'vendor', node: e.vendor }, { key: 'author', node: author }]} />
         </div>
-        <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground sm:flex">
-          <CategoryIcon categoryId={e.categoryId} className="h-5 w-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          {e.vendor && <div className="truncate text-xs text-muted-foreground">{e.vendor}</div>}
-          <div className={cn('flex items-center gap-1.5', e.kind === 'payment' && 'italic')}>
-            <span className="truncate font-medium">{e.title}</span>
-            {e.documentCount > 0 && (
-              <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground" aria-label={`${e.documentCount} documents`}>
-                <Paperclip className="h-3 w-3" aria-hidden="true" />
-                {e.documentCount}
-              </span>
-            )}
-          </div>
-          {/* On narrow screens the paid figure sits under the title, so the right column holds only the viewer's figure. */}
-          <div className="truncate text-sm text-muted-foreground sm:hidden">
-            {figures.paid.label} <span className="tabular-nums">{money(figures.paid.amount ?? '0', e.currency)}</span>
-          </div>
-          <div className="truncate text-xs text-muted-foreground max-sm:hidden">{author}</div>
-        </div>
-        <div className="shrink-0 text-right text-sm">
-          <div className={cn('text-xs sm:hidden', tones[figures.personal.tone])}>{figures.personal.label}</div>
-          <div className={cn('text-base font-semibold tabular-nums sm:hidden', tones[figures.personal.tone])}>
-            {figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
-          </div>
-          <div className="hidden text-xs text-muted-foreground sm:block">{figures.paid.label}</div>
-          <div className="hidden tabular-nums sm:block">{money(figures.paid.amount ?? '0', e.currency)}</div>
-        </div>
-        <div className="hidden w-28 shrink-0 text-right text-sm sm:block">
-          <div className={cn('text-xs', tones[figures.personal.tone])}>{figures.personal.label}</div>
-          <div className={cn('text-base font-semibold tabular-nums', tones[figures.personal.tone])}>
-            {figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
-          </div>
-        </div>
+        <RowFigure className="max-sm:hidden" label={figures.paid.label} amount={paid} amountClass="text-sm text-foreground/80" />
+        <RowFigure
+          label={figures.personal.label}
+          amount={figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
+          amountClass={cn('font-semibold', tones[figures.personal.tone])}
+        />
+        {/* On narrow screens the paid figure sits under the title, so the right column holds only the viewer's figure. */}
+        <RowNarrowLine>
+          <span className="min-w-0 truncate">
+            {figures.paid.label} <span className="tabular-nums">{paid}</span>
+          </span>
+        </RowNarrowLine>
       </Link>
     </li>
   )
