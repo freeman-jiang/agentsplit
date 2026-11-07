@@ -10,7 +10,7 @@ import type { ExpenseDraft } from '../shared/expense-rules'
 import { EMAIL, normalizeEmail, trimmedName } from '../shared/groups'
 import { LIMITS, participantLimitMessage } from '../shared/limits'
 import { requireMember, type Principal } from './core/access'
-import { groupSnapshot, recordGroupEvent } from './activity'
+import { groupSnapshot, PRIVATE_CONTEXT_TEXT, PRIVATE_INVITATION_RENEWED, recordGroupEvent } from './activity'
 import type { Db } from './core/db'
 import { createInvitation, revokeInvitations } from './invitations'
 import { createExpense } from './ledger'
@@ -90,7 +90,7 @@ export async function createUngroupedExpense(
     groupId,
     type: 'create_group',
     principal: data.principal,
-    data: 'Private expense',
+    data: PRIVATE_CONTEXT_TEXT,
     snapshot: groupSnapshot({ group: { ...group, information: '' }, participants: stored }),
   })
   const toStored = new Map(stored.map((p) => [p.localId, p.id]))
@@ -154,6 +154,6 @@ export async function renewPrivateInvitation(tx: Db, data: { principal: Principa
     createdBy: data.principal.userId,
     baseUrl: data.baseUrl,
   })
-  await recordGroupEvent(tx, { groupId, type: 'update_group', principal: data.principal, data: 'Private expense invitation renewed' })
+  await recordGroupEvent(tx, { groupId, type: 'update_group', principal: data.principal, data: PRIVATE_INVITATION_RENEWED })
   return { groupId, ...invitation }
 }
