@@ -56,14 +56,14 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
           <div className="grid gap-4 sm:grid-cols-2">
             <a href="#oauth" className="relative space-y-2 rounded-2xl border bg-card p-4 transition-colors hover:bg-accent">
               <h2 className="pe-6 font-medium">OAuth · Recommended</h2>
-              <ArrowDown aria-hidden="true" className="absolute top-4 right-4 h-4 w-4 text-muted-foreground" />
+              <ArrowDown aria-hidden="true" className="absolute top-5 right-4 h-4 w-4 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
                 For ChatGPT, Claude, and clients with browser sign-in. Sign in with Google and approve access.
               </p>
             </a>
             <a href="#api-key" className="relative space-y-2 rounded-2xl border bg-card p-4 transition-colors hover:bg-accent">
               <h2 className="pe-6 font-medium">API key</h2>
-              <ArrowDown aria-hidden="true" className="absolute top-4 right-4 h-4 w-4 text-muted-foreground" />
+              <ArrowDown aria-hidden="true" className="absolute top-5 right-4 h-4 w-4 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
                 For scripts, automation, or manual client setup. Create a key and paste it into your client’s settings.
               </p>
