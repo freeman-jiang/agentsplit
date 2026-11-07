@@ -11,7 +11,7 @@ import { readSnapshot, savedEntry, type Category, type SavedExpense, type SavedS
 import { formatMinor } from '../shared/money'
 import type { Db } from './db'
 import type { Principal } from './ledger'
-import { activityData, activitySource, iso } from './sql'
+import { activityData, activitySource, iso, tombstonesJson, type Tombstone } from './sql'
 
 export type ActivityType = 'create_group' | 'join_group' | 'leave_group' | 'update_group' | 'create_expense' | 'update_expense' | 'delete_expense'
 export type Boundary = { readonly asOf?: string; readonly atActivityId?: string }
@@ -97,6 +97,15 @@ export function publicData(data: { type: ActivityType; data: string | null }): s
 
 const read = (raw: unknown, categories: ReadonlyMap<number, Category>): SavedState | null => (raw === null ? null : readSnapshot({ raw, categories }))
 
+type Tombstones = Record<string, Tombstone> | null
+
+/** The saved expense with each receipt that was deleted for good since marked by its tombstone. */
+const withTombstones = (expense: SavedExpense, tombstones: Tombstones): SavedExpense =>
+  tombstones === null ? expense : { ...expense, documents: expense.documents.map((d) => ({ ...d, deleted: tombstones[d.url] ?? null })) }
+
+const marked = (state: SavedState | null, tombstones: Tombstones): SavedState | null =>
+  state?._tag === 'expense' ? { _tag: 'expense', expense: withTombstones(state.expense, tombstones) } : state
+
 // ---------- the Log ----------
 
 type ActivityRow = {
@@ -152,7 +161,7 @@ export async function listActivities(db: Db, data: { principal: Principal; group
   if (data.to) where.push(sql`a.time < ((${data.to}::date + 1)::timestamp AT TIME ZONE 'UTC')`)
   if (data.recordedFrom) where.push(sql`${ms(sql`a.time`)} >= ${data.recordedFrom}::timestamptz`)
   if (data.recordedTo) where.push(sql`${ms(sql`a.time`)} <= ${data.recordedTo}::timestamptz`)
-  const result = await db.execute<Head & { activities: ActivityRow[] }>(sql`
+  const result = await db.execute<Head & { activities: ActivityRow[]; tombstones: Tombstones }>(sql`
     WITH ${memberCte(data)}, ${boundaryCte(data)},
     page AS (
       SELECT a.* FROM activities a, g WHERE ${sql.join(where, sql` AND `)}
@@ -173,6 +182,7 @@ export async function listActivities(db: Db, data: { principal: Principal; group
         LEFT JOIN activities prev ON prev.group_id = p.group_id AND prev.expense_id = p.expense_id AND prev.expense_revision = p.expense_revision - 1
         LEFT JOIN participants who ON who.id = p.participant_id AND who.group_id = p.group_id
       ), '[]') AS activities,
+      ${tombstonesJson(sql`g.id`)} AS tombstones,
       ${categoriesColumn}
     FROM g
   `)
@@ -195,8 +205,8 @@ export async function listActivities(db: Db, data: { principal: Principal; group
       actorName: a.actorName,
       verified: a.verified,
       agent: a.agent,
-      snapshot: read(a.snapshot, categories),
-      previousSnapshot: read(a.previous, categories),
+      snapshot: marked(read(a.snapshot, categories), head.tombstones),
+      previousSnapshot: marked(read(a.previous, categories), head.tombstones),
       expense: a.live,
       // Only on request (MCP list_activity): the Log never shows user or key IDs (P-ACCESS-30, P-EXPORT-14).
       ...(data.withActors ? { actor: { userId: a.actorUserId, agentKeyId: a.agentKeyId } } : {}),
@@ -218,7 +228,7 @@ type EventRow = { id: string; time: string; type: ActivityType; revision: number
 export async function getSavedExpense(db: Db, data: { principal: Principal; group: string; expenseId: string; revision?: number } & Boundary) {
   checkBoundary(data)
   const byRevision = data.revision !== undefined
-  const result = await db.execute<Head & { event: EventRow | null }>(sql`
+  const result = await db.execute<Head & { event: EventRow | null; tombstones: Tombstones }>(sql`
     WITH ${memberCte(data)}, ${boundaryCte(data)},
     ev AS (
       SELECT a.* FROM activities a, g
@@ -232,6 +242,7 @@ export async function getSavedExpense(db: Db, data: { principal: Principal; grou
         'saved', (SELECT s.snapshot FROM activities s WHERE s.group_id = ev.group_id AND s.expense_id = ev.expense_id
           AND s.expense_revision IS NOT NULL AND s.sequence < ev.sequence AND s.snapshot IS NOT NULL ORDER BY s.sequence DESC LIMIT 1))
         FROM ev) AS event,
+      ${tombstonesJson(sql`g.id`)} AS tombstones,
       ${categoriesColumn}
     FROM g
   `)
@@ -245,7 +256,7 @@ export async function getSavedExpense(db: Db, data: { principal: Principal; grou
   if (state._tag !== 'expense') throw new Invalid({ message: 'This event saved a group, not an expense' })
   const deleted = event.type === 'delete_expense'
   return {
-    expense: state.expense,
+    expense: withTombstones(state.expense, head.tombstones),
     deletedAt: deleted ? event.time : null,
     history: { activityId: event.id, recordedAt: event.time, revision: event.revision, deleted },
   }

@@ -80,12 +80,18 @@ export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: s
       { description: tool.description, inputSchema: schemas.input, outputSchema: schemas.output, annotations: annotations(tool) },
       async (args: unknown) => {
         try {
-          const run = (db: Db) => tool.run({ db, principal: data.principal, baseUrl: data.baseUrl, bucket: data.bucket, documentsEnabled: data.documentsEnabled }, args)
+          // Work for after the commit. A retried transaction starts the list again.
+          const after: (() => Promise<unknown>)[] = []
+          const afterCommit = (work: () => Promise<unknown>) => void after.push(work)
+          const run = (db: Db) =>
+            tool.run({ db, principal: data.principal, baseUrl: data.baseUrl, bucket: data.bucket, documentsEnabled: data.documentsEnabled, afterCommit }, args)
           const write = async (tx: Db) => {
+            after.length = 0
             await assertOAuthWrite(tx, data.principal)
             return run(tx)
           }
           const structuredContent = (tool.kind === 'write' ? await serializable(data.db, write) : await run(data.db)) as Record<string, unknown>
+          for (const work of after) await work().catch((error: unknown) => console.error(`MCP tool ${tool.name}: work after the commit failed`, error))
           return { content: [{ type: 'text' as const, text: JSON.stringify(structuredContent) }], structuredContent }
         } catch (error) {
           const body = errorBody({ error, kind: tool.kind })

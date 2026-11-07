@@ -4,6 +4,7 @@ import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
 import { Balance, CalendarDate, CalendarDateOutput, Id, Participant, ReadError, SplitModeSchema } from './core'
+import { ReceiptTombstone } from './storage'
 
 export const ActivityType = Schema.Literals(['create_group', 'join_group', 'leave_group', 'update_group', 'create_expense', 'update_expense', 'delete_expense'])
 
@@ -43,7 +44,8 @@ export const SavedExpense = Schema.Struct({
   originalAmount: Schema.NullOr(Schema.String),
   originalCurrency: Schema.NullOr(Schema.String),
   conversionRate: Schema.NullOr(Schema.String),
-  documents: Schema.Array(Schema.Struct({ id: Schema.String, url: Schema.String })),
+  /** `deleted` is set when the receipt was deleted for good: show it instead of a link. */
+  documents: Schema.Array(Schema.Struct({ id: Schema.String, url: Schema.String, deleted: Schema.optionalKey(Schema.NullOr(ReceiptTombstone)) })),
   documentCount: Schema.Number,
 })
 

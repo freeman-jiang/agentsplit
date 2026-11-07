@@ -9,7 +9,7 @@ export const getReferenceData = defineTool({
   name: 'get_reference_data',
   kind: 'read',
   description:
-    'Discover category IDs, supported currencies and decimal precision, split modes, recurrence rules, and whether receipt uploads are enabled with their MIME/size limits.',
+    'Discover category IDs, supported currencies and decimal precision, split modes, recurrence rules, whether receipt uploads are enabled with their MIME/size limits, and the fair-use limits: receipt storage per uploader, receipts per request, groups you can create, people per group, API keys, writes per minute, and OAuth client registrations per IP per hour.',
   input: NoArguments,
   strict: [''],
   output: Schema.Struct({
@@ -18,6 +18,17 @@ export const getReferenceData = defineTool({
     splitModes: Schema.Array(SplitModeInput),
     recurrenceRules: Schema.Array(RecurrenceInput),
     attachments: Schema.Struct({ enabled: Schema.Boolean, contentTypes: Schema.Array(Schema.String), maxBytes: Schema.Int }),
+    limits: Schema.Struct({
+      receiptStorageBytes: NonNegativeInt.annotate({ description: 'Receipt storage per uploader, in bytes; see get_storage_usage.' }),
+      receiptBytes: NonNegativeInt,
+      receiptsPerRequest: NonNegativeInt,
+      groupsCreated: NonNegativeInt,
+      participantsPerGroup: NonNegativeInt,
+      apiKeys: NonNegativeInt,
+      writesPerMinute: NonNegativeInt,
+      clientRegistrationsPerHour: NonNegativeInt,
+      fairUse: Schema.String,
+    }),
   }),
   run: async ({ db, documentsEnabled }) => {
     const reference = await expenses.getReference(db, { documentsEnabled })
@@ -27,6 +38,7 @@ export const getReferenceData = defineTool({
       splitModes: reference.splitModes.map((m) => MODE_NAMES[m]),
       recurrenceRules: reference.recurrence.map((r) => RULE_NAMES[r]),
       attachments: { enabled: reference.attachments.enabled, contentTypes: [...reference.attachments.contentTypes], maxBytes: reference.attachments.maxBytes },
+      limits: reference.limits,
     }
   },
 })
