@@ -8,12 +8,15 @@ import { Skeleton } from '~/client/ui/skeleton'
 /** The caller's own balance across every group and ungrouped expense. The feed filters never change it. */
 export function DashboardBalance() {
   const summary = useQuery({ ...accountBalancesQuery, refetchOnMount: 'always' })
-  // One left-aligned stack: the title, each amount under its label, then the note.
+  // One left-aligned stack: the title row with its note, then each amount under its label.
   return (
-    <section aria-labelledby="dashboard-balance-title" className="rounded-2xl border bg-card p-4 sm:p-6" data-testid="dashboard-balance">
-      <h2 id="dashboard-balance-title" className="text-sm font-semibold">
-        Your total balance
-      </h2>
+    <section aria-labelledby="dashboard-balance-title" className="rounded-2xl border bg-card p-4 sm:px-6 sm:py-5" data-testid="dashboard-balance">
+      <div className="flex items-baseline justify-between gap-4">
+        <h2 id="dashboard-balance-title" className="text-sm font-semibold">
+          Your total balance
+        </h2>
+        <p className="hidden text-xs text-muted-foreground sm:block">Across all your groups and ungrouped expenses. Filters don’t change it.</p>
+      </div>
       {summary.error ? (
         <div className="mt-4 space-y-2">
           <p role="alert" className="text-sm">
@@ -35,7 +38,7 @@ export function DashboardBalance() {
           {summary.data.totals.length === 0 ? (
             <p className="mt-4 text-lg">No recorded balance yet.</p>
           ) : (
-            <ul className="mt-3 flex flex-wrap gap-x-12 gap-y-5 sm:mt-4">
+            <ul className="mt-3 flex flex-wrap gap-x-12 gap-y-5 sm:mt-2">
               {summary.data.totals.map(({ currency, amount }) => {
                 const negative = amount.startsWith('-')
                 const zero = /^-?0(\.0+)?$/.test(amount)
@@ -60,7 +63,6 @@ export function DashboardBalance() {
           )}
         </>
       )}
-      <p className="mt-4 hidden text-xs text-muted-foreground sm:block">Across all your groups and ungrouped expenses. Filters don’t change it.</p>
     </section>
   )
 }

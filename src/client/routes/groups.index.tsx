@@ -267,8 +267,11 @@ function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
   const outstanding = now.totals.filter((t) => !/^-?0(\.0+)?$/.test(t.net))
   // The same left-aligned stack as the dashboard balance.
   return (
-    <Card className="p-4 sm:p-6">
-      <CardTitle className="text-sm">Your balance in groups</CardTitle>
+    <Card className="p-4 sm:px-6 sm:py-5">
+      <div className="flex items-baseline justify-between gap-4">
+        <CardTitle className="text-sm">Your balance in groups</CardTitle>
+        <CardDescription className="hidden text-xs sm:block">Your combined balance across all your groups. Ungrouped expenses are on the dashboard.</CardDescription>
+      </div>
       {now.unboundGroupCount > 0 && (
         <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
           Link your participant identity in {now.unboundGroupCount} {now.unboundGroupCount === 1 ? 'group' : 'groups'} to see a complete total. Only linked
@@ -280,7 +283,7 @@ function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
           {now.unboundGroupCount ? 'No outstanding balance in linked groups.' : 'You are all settled up across your groups.'}
         </p>
       ) : (
-        <ul className="mt-3 flex flex-wrap gap-x-12 gap-y-5 sm:mt-4">
+        <ul className="mt-3 flex flex-wrap gap-x-12 gap-y-5 sm:mt-2">
           {outstanding.map(({ currency, net }) => {
             const owed = !net.startsWith('-')
             return (
@@ -296,7 +299,6 @@ function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
           })}
         </ul>
       )}
-      <CardDescription className="mt-4 hidden text-xs sm:block">Your combined balance across all your groups. Ungrouped expenses are on the dashboard.</CardDescription>
     </Card>
   )
 }
