@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Alert, AlertDescription } from '~/client/ui/alert'
 import { Button } from '~/client/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '~/client/ui/card'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/client/ui/card'
 import { Input } from '~/client/ui/input'
 import { Label } from '~/client/ui/label'
 import { NativeSelect } from '~/client/ui/native-select'
@@ -50,6 +50,20 @@ export function GroupForm(props: {
       </p>
     ) : null
 
+  const alert = error && (
+    <Alert variant="destructive">
+      <AlertDescription>{error}</AlertDescription>
+    </Alert>
+  )
+  const actions = (
+    <>
+      <Button type="submit" disabled={saving}>
+        {props.mode === 'edit' ? (saving ? 'Saving…' : 'Save') : saving ? 'Creating…' : 'Create'}
+      </Button>
+      {props.cancel}
+    </>
+  )
+
   return (
     <form
       noValidate
@@ -68,7 +82,7 @@ export function GroupForm(props: {
         }
       }}
     >
-      <Card className="mb-4">
+      <Card className={props.mode === 'create' ? 'mb-4' : undefined}>
         <CardHeader>
           <CardTitle>Group information</CardTitle>
         </CardHeader>
@@ -77,7 +91,6 @@ export function GroupForm(props: {
             <Label htmlFor="group-name">Group name</Label>
             <Input
               id="group-name"
-              className="text-base"
               placeholder="Summer vacations"
               maxLength={50}
               value={values.name}
@@ -94,7 +107,6 @@ export function GroupForm(props: {
             <Label htmlFor="group-slug">Custom URL (optional)</Label>
             <Input
               id="group-slug"
-              className="text-base"
               placeholder="macademia"
               autoCapitalize="none"
               autoCorrect="off"
@@ -134,7 +146,6 @@ export function GroupForm(props: {
             <Textarea
               id="group-information"
               rows={2}
-              className="text-base"
               maxLength={10_000}
               placeholder="What information is relevant to group participants?"
               value={values.information}
@@ -142,19 +153,21 @@ export function GroupForm(props: {
             />
           </div>
         </CardContent>
+        {/* On Settings the card saves itself, so Save sits in its footer. */}
+        {props.mode === 'edit' && (
+          <CardFooter className="flex-col items-stretch gap-4 border-t py-4">
+            {alert}
+            <div className="flex justify-end gap-2">{actions}</div>
+          </CardFooter>
+        )}
       </Card>
       {props.children}
-      {error && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+      {props.mode === 'create' && (
+        <>
+          {alert && <div className="mb-4">{alert}</div>}
+          <div className="mt-4 flex gap-2">{actions}</div>
+        </>
       )}
-      <div className="mt-4 flex gap-2">
-        <Button type="submit" disabled={saving}>
-          {props.mode === 'edit' ? (saving ? 'Saving…' : 'Save') : saving ? 'Creating…' : 'Create'}
-        </Button>
-        {props.cancel}
-      </div>
     </form>
   )
 }
