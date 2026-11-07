@@ -1,6 +1,6 @@
 // Pure account rules shared by the client and the server. No Effect import here:
 // the client bundle must stay free of the Effect runtime (BUILDING.md).
-import { invitationTokenOfPath } from './groups'
+import { invitationTokenOfPath } from './paths'
 
 export const OAUTH_READ_SCOPE = 'agentsplit:read'
 export const OAUTH_WRITE_SCOPE = 'agentsplit:write'

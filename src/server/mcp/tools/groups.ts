@@ -7,6 +7,7 @@ import { Id as IdInput, Invalid, NewId } from '../../../shared/api'
 import { AccessRequest, Email, GroupName, Information, PersonName, ShareUrl, SlugInput, type GroupChanges, type GroupCreateInput } from '../../../shared/api/groups'
 import { CURRENCIES, type CurrencyCode } from '../../../shared/currencies'
 import { groupPath } from '../../../shared/groups'
+import { absoluteUrl, expensePagePath, exportPath } from '../../../shared/paths'
 import { compareIds } from '../../../shared/ids'
 import { LIMITS } from '../../../shared/limits'
 import { ROLES } from '../../../shared/vocabulary'
@@ -16,7 +17,7 @@ import type { Principal } from '../../core/access'
 import { renewPrivateInvitation } from '../../ungrouped'
 import { defineTool } from './registry'
 import { PageLimit, trimmed } from './inputs'
-import { DateTime, GroupFields, groupFields, GroupParticipant, Id, isCurrencyCode, NonNegativeInt, NullableString, optional, origin } from './wire'
+import { DateTime, GroupFields, groupFields, GroupParticipant, Id, isCurrencyCode, NonNegativeInt, NullableString, optional } from './wire'
 
 export const listGroups = defineTool({
   name: 'list_groups',
@@ -74,9 +75,9 @@ export const getGroup = defineTool({
   }),
   run: async ({ db, principal, baseUrl }, { groupId }) => {
     const g = await readGroup(db, { principal, groupId })
-    const path = `${origin(baseUrl)}${groupPath(g)}`
+    const link = (path: string) => absoluteUrl({ baseUrl, path })
     // A private context has no group page: people open its expense (P-UNGROUP-39).
-    const share = g.contextExpenseId ? `${origin(baseUrl)}/expenses/${g.contextExpenseId}` : path
+    const share = link(g.contextExpenseId ? expensePagePath(g.contextExpenseId) : groupPath(g))
     const ids = (people: readonly { id: string }[]) => people.map((p) => p.id).sort(compareIds)
     return {
       context: { kind: g.contextExpenseId ? ('ungrouped' as const) : ('group' as const), expenseId: g.contextExpenseId },
@@ -89,7 +90,7 @@ export const getGroup = defineTool({
       },
       group: g.wire,
       participantsWithExpenses: ids(g.people.filter((p) => p.inExpenses)),
-      links: { share, csv: `${path}/expenses/export/csv`, json: `${path}/expenses/export/json` },
+      links: { share, csv: link(exportPath({ groupPath: groupPath(g), format: 'csv' })), json: link(exportPath({ groupPath: groupPath(g), format: 'json' })) },
     }
   },
 })

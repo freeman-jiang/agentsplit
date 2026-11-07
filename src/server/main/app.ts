@@ -9,6 +9,7 @@ import type pg from 'pg'
 import { todayUtc } from '../../shared/dates'
 import { REQUEST_ID_RESPONSE_HEADER } from '../../shared/ids'
 import { MCP_PATH } from '../../shared/mcp'
+import { exportRouteOf, RECEIPTS_PATH, receiptUploadTokenOf } from '../../shared/paths'
 import { createAuth, type Auth } from '../auth/auth'
 import { httpReader } from '../auth/authenticate'
 import { METADATA_PATHS, protectedResourceMetadata } from '../auth/challenge'
@@ -151,7 +152,7 @@ export function createApp(platform: Platform) {
     if (HEALTH_PATHS.has(url.pathname)) return url.pathname === '/api/health/liveness' ? livenessResponse() : readinessResponse(checkDatabase)
     if (url.pathname === '/robots.txt') return robotsTxt(baseUrl)
     if (url.pathname === '/sitemap.xml') return sitemapXml(baseUrl)
-    if (url.pathname === '/api/receipts') {
+    if (url.pathname === RECEIPTS_PATH) {
       // Not withConnection: the image streams from the bucket after the database work is done, with its own headers.
       if (request.method === 'GET')
         return withDb(async (db) =>
@@ -165,17 +166,16 @@ export function createApp(platform: Platform) {
       return jsonError({ status: 405, message: 'Method not allowed' })
     }
     // An agent's upload target from create_expense or update_expense. The secret in the path is the credential.
-    const uploadRoute = /^\/api\/receipt-uploads\/([^/]+)$/.exec(url.pathname)
-    if (uploadRoute) {
+    const uploadToken = receiptUploadTokenOf(url.pathname)
+    if (uploadToken !== null) {
       if (request.method !== 'PUT') return jsonError({ status: 405, message: 'Method not allowed', headers: { Allow: 'PUT' } })
-      return withDb((db) => putUpload({ db, bucket, request, token: uploadRoute[1] ?? '' }))
+      return withDb((db) => putUpload({ db, bucket, request, token: uploadToken }))
     }
-    const receiptsRoute = /^\/(?:groups\/)?([^/]+)\/expenses\/export\/receipts$/.exec(url.pathname)
-    if (receiptsRoute && request.method === 'GET') return downloadReceiptArchive({ withDb, bucket, request, group: receiptsRoute[1] ?? '', baseUrl, secret })
-    const exportRoute = /^\/(?:groups\/)?([^/]+)\/expenses\/export\/(csv|json)$/.exec(url.pathname)
-    if (exportRoute && request.method === 'GET') {
-      const [, group = '', format] = exportRoute
-      return withConnection((db) => downloadExport({ db, request, group, format: format === 'json' ? 'json' : 'csv', baseUrl, secret }), 'private, no-store')
+    const download = request.method === 'GET' ? exportRouteOf(url.pathname) : null
+    if (download) {
+      const { group, format } = download
+      if (format === 'receipts') return downloadReceiptArchive({ withDb, bucket, request, group, baseUrl, secret })
+      return withConnection((db) => downloadExport({ db, request, group, format, baseUrl, secret }), 'private, no-store')
     }
     // The current app's presigned upload route is gone for good (P-RECEIPT-28).
     if (url.pathname === '/api/s3-upload') return jsonError({ status: 410, message: 'Use the authenticated receipt upload flow' })

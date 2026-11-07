@@ -13,7 +13,7 @@ import { mainPayer, weightText } from '../../../shared/split'
 import { ACTIVITY_TYPE_LIST, RECURRENCE_LIST, RECURRENCE_NAMES, SPLIT_MODE_LIST, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
 import { attributionOf, type AttributionEvent } from '../../activity'
 import type { DocumentState, ReadExpense } from '../../expense-read'
-import { receiptDownloadPath } from '../../receipts'
+import { absoluteUrl, receiptDownloadPath } from '../../../shared/paths'
 
 /** An optional key: absent, never undefined. */
 export const optional = <S extends Schema.Top>(schema: S) => Schema.optionalKey(schema)
@@ -46,11 +46,8 @@ export const money = (amount: string, currency: string) => (isCurrencyCode(curre
 /** The current app's `currency` field: the symbol. v2 stores only the code. */
 export const symbolOf = (code: string) => (isCurrencyCode(code) ? CURRENCIES[code].symbol : code)
 
-/** The app origin, without a trailing slash, for links. */
-export const origin = (baseUrl: string) => new URL(baseUrl).origin
-
 /** The authenticated receipt URL of a stored receipt pointer. */
-const downloadUrl = (data: { baseUrl: string; groupId: string; url: string }) => `${origin(data.baseUrl)}${receiptDownloadPath(data)}`
+const downloadUrl = (data: { baseUrl: string; groupId: string; url: string }) => absoluteUrl({ baseUrl: data.baseUrl, path: receiptDownloadPath(data) })
 
 // ---------- output schemas ----------
 

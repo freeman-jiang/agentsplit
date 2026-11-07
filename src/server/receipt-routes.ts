@@ -5,7 +5,6 @@
 // src/app/api/receipts/route.ts.
 import { LIMITS, mebibytes } from '../shared/limits'
 import { todayUtc } from '../shared/dates'
-import { GROUP_DENIED } from '../shared/errors'
 import type { Principal } from './core/access'
 import { httpReader, type Reader } from './auth/authenticate'
 import type { Bucket } from './bucket'
@@ -111,9 +110,8 @@ export async function downloadReceiptArchive(data: {
     const reader = await httpReader(db, { request: data.request, baseUrl: data.baseUrl, secret: data.secret, signIn: 'Sign in required' })
     if ('response' in reader) return reader.response
     try {
-      return await receiptArchive(db, { principal: reader.principal, groupId: decodeURIComponent(data.group) })
+      return await receiptArchive(db, { principal: reader.principal, groupId: data.group })
     } catch (error) {
-      if (error instanceof URIError) return jsonError({ status: 403, message: GROUP_DENIED })
       return domainErrorResponse(error)
     }
   })

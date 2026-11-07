@@ -8,11 +8,11 @@ import { afterWrite } from '~/client/queries/keys'
 import { newIdempotencyKey, rpc } from '~/client/rpc'
 import { Alert, AlertDescription } from '~/client/ui/alert'
 import { Button } from '~/client/ui/button'
-import { INVITATION_TOKEN } from '~/shared/groups'
+import { SECRET_TOKEN } from '~/shared/ids'
 
 export const Route = createFileRoute('/invite/$token')({
   beforeLoad: async ({ context, params, location }) => {
-    if (!INVITATION_TOKEN.test(params.token)) throw redirect({ to: '/groups', replace: true })
+    if (!SECRET_TOKEN.test(params.token)) throw redirect({ to: '/groups', replace: true })
     // Signed out, or a session the server does not accept: sign in, then come back here (P-ACCESS-32, P-ACCESS-33).
     await requireSignedIn({ queryClient: context.queryClient, location })
   },

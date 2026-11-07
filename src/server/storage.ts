@@ -7,6 +7,7 @@ import { eq, sql, type SQL } from 'drizzle-orm'
 import { deletedReceipts, groups } from '../../db/schema/app'
 import { Forbidden, NotFound } from '../shared/api'
 import { LIMITS } from '../shared/limits'
+import { absoluteUrl, receiptDownloadPath } from '../shared/paths'
 import type { GroupKind, Role } from '../shared/vocabulary'
 import type { Bucket } from './bucket'
 import type { Db } from './core/db'
@@ -14,7 +15,7 @@ import { myMemberships, requireMember, type Principal } from './core/access'
 import { apiKeyCount } from './auth/api-key'
 import { removeDocuments } from './ledger'
 import { receiptUsage } from './receipt-quota'
-import { receiptDownloadPath, receiptKey } from './receipts'
+import { receiptKey } from './receipts'
 import { groupsCreated } from './groups'
 import { iso } from './sql'
 
@@ -76,7 +77,7 @@ export async function listReceipts(
     groupId?: string | undefined
     olderThan?: string | undefined
     minBytes?: number | undefined
-    baseUrl?: string | undefined
+    baseUrl: string
   },
 ) {
   const where: SQL[] = [sql`r.created_by = ${data.principal.userId}`, sql`NOT EXISTS (SELECT 1 FROM deleted_receipts d WHERE d.receipt_id = r.id)`]
@@ -99,7 +100,6 @@ export async function listReceipts(
     ORDER BY ${data.order === 'largest' ? sql`r.bytes DESC, r.created_at, r.id` : sql`r.created_at, r.id`}
     LIMIT ${data.limit + 1} OFFSET ${data.cursor}
   `)
-  const origin = data.baseUrl === undefined ? '' : new URL(data.baseUrl).origin
   return {
     receipts: result.rows.slice(0, data.limit).map((r) => ({
       id: r.id,
@@ -108,7 +108,7 @@ export async function listReceipts(
       expense: r.expense,
       bytes: r.bytes,
       createdAt: r.created_at,
-      downloadUrl: `${origin}${receiptDownloadPath({ groupId: r.group_id, url: r.url })}`,
+      downloadUrl: absoluteUrl({ baseUrl: data.baseUrl, path: receiptDownloadPath({ groupId: r.group_id, url: r.url }) }),
     })),
     nextCursor: result.rows.length > data.limit ? data.cursor + data.limit : null,
   }

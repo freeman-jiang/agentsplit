@@ -6,11 +6,11 @@ import { categories } from '../../db/schema/app'
 import { NotFound } from '../shared/api'
 import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
 import { FAIR_USE, FAIR_USE_LIMITS, LIMITS } from '../shared/limits'
+import { receiptDownloadPath } from '../shared/paths'
 import { RECEIPT_CONTENT_TYPES, RECURRENCES, SPLIT_MODES, type ExpenseKind } from '../shared/vocabulary'
 import { myMemberships, requireMember, type Principal } from './core/access'
 import type { Db } from './core/db'
 import { expenseColumns, toExpense, type ExpenseRow } from './expense-read'
-import { receiptDownloadPath } from './receipts'
 import { iso } from './sql'
 
 /** Every category, ordered by ID (P-EXP-102: the current app has no order). */

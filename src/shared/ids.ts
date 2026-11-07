@@ -13,5 +13,8 @@ export const compareIds = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 /** A 21-character ID, the format of randomId() and of the current app's nanoid() IDs. */
 export const GROUP_ID = /^[A-Za-z0-9_-]{21}$/
 
+/** A secret of 32 random bytes in base64url (randomToken in src/server/core/ids.ts): invitation tokens (P-ACCESS-14) and upload targets. */
+export const SECRET_TOKEN = /^[A-Za-z0-9_-]{43}$/
+
 /** The response header with the ID of an RPC request. The server logs failed calls with it, and the error page shows it. */
 export const REQUEST_ID_RESPONSE_HEADER = 'X-Request-Id'
