@@ -2,7 +2,8 @@
 // src/lib/expense-row.ts, for several payers. Presentation only: the amounts
 // come from the stored, resolved parts.
 import type { CurrencyCode } from '~/shared/currencies'
-import { formatMinor, minor, minorOrNull } from '~/shared/minor'
+import { unitsOf } from '~/client/components/money'
+import { formatMinor, minor } from '~/shared/minor'
 import type { ExpenseKind } from '~/shared/vocabulary'
 
 type Part = { readonly participantId: string; readonly amount: string }
@@ -16,7 +17,6 @@ export type RowExpense = {
 export type Tone = 'neutral' | 'positive' | 'negative'
 type Figure = { readonly label: string; readonly amount: string | null; readonly tone: Tone }
 
-const units = (amount: string, currency: CurrencyCode) => minorOrNull({ amount, currency }) ?? 0n
 const abs = (value: bigint) => (value < 0n ? -value : value)
 
 /** "Alice and Bob", "Alice, Bob and Cara", with "you" for the viewer. */
@@ -30,7 +30,7 @@ export function expenseRowFigures(data: { expense: RowExpense; viewer: string | 
   const { expense, viewer } = data
   const { currency } = expense
   const text = (value: bigint) => formatMinor({ amount: minor(value), currency })
-  const amount = units(expense.amount, currency)
+  const amount = unitsOf(expense.amount, currency)
   const income = amount < 0n
   const payer = viewer !== null && expense.payers.some((p) => p.participantId === viewer)
   const paid: Figure = {
@@ -39,10 +39,10 @@ export function expenseRowFigures(data: { expense: RowExpense; viewer: string | 
     tone: 'neutral',
   }
   if (!viewer) return { paid, personal: { label: 'identity not linked', amount: null, tone: 'neutral' } }
-  const paidByViewer = expense.payers.filter((p) => p.participantId === viewer).reduce((sum, p) => sum + units(p.amount, currency), 0n)
+  const paidByViewer = expense.payers.filter((p) => p.participantId === viewer).reduce((sum, p) => sum + unitsOf(p.amount, currency), 0n)
   const shareRow = expense.shares.find((s) => s.participantId === viewer)
   if (!payer && !shareRow) return { paid, personal: { label: 'not involved', amount: null, tone: 'neutral' } }
-  const share = shareRow ? units(shareRow.amount, currency) : 0n
+  const share = shareRow ? unitsOf(shareRow.amount, currency) : 0n
   const net = paidByViewer - share
   if (expense.kind === 'payment')
     return { paid, personal: { label: payer !== income ? 'you repaid' : 'you received', amount: text(payer ? abs(net) : abs(share)), tone: 'neutral' } }

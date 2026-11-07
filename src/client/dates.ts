@@ -1,7 +1,6 @@
-// Dates in the client: the two "today" rules, the app's formatters and the
+// Dates in the client: the viewer's "today", the app's formatters and the
 // first day of the week. The app formats in English (en-US), as the current
 // app does. Route loaders in the main chunk import this module, so it stays small.
-export { todayUtc } from '~/shared/dates'
 
 /** The calendar date of `when` where the viewer is; today by default (P-BAL-73, the stats periods). */
 export function localDate(when = new Date()) {

@@ -1,5 +1,6 @@
 // The Balances tab's chart, ported from the current app's balances-list.tsx.
 import { cn } from '~/client/cn'
+import { netTone } from '~/client/components/balance/net'
 import { money } from '~/client/components/money'
 import type { CurrencyBalances } from '~/shared/api'
 
@@ -45,18 +46,18 @@ export function BalancesCard(props: { currencies: Currencies; names: Names }) {
                 </div>
                 <ul className="space-y-1.5">
                   {c.balances.map((b) => {
-                    const positive = !b.net.startsWith('-') && size(b.net) > 0
+                    const tone = netTone(b.net)
                     const width = `${(size(b.net) / largest) * 100}%`
                     return (
                       <li key={b.participantId} className={cn(columns, 'items-center text-sm')} data-testid="balance-row">
                         <span className="truncate">{props.names.get(b.participantId) ?? 'Unknown'}</span>
                         <span className="grid grid-cols-2">
                           <span className="relative flex h-8 items-center justify-end px-2">
-                            {!positive && size(b.net) > 0 && <span aria-hidden="true" className="absolute inset-y-1 right-0 rounded-s-md bg-owe/15 dark:bg-owe/20" style={{ width }} />}
-                            {!positive && <span className="relative text-owe tabular-nums">{money(b.net, c.currency)}</span>}
+                            {tone === 'owe' && <span aria-hidden="true" className="absolute inset-y-1 right-0 rounded-s-md bg-owe/15 dark:bg-owe/20" style={{ width }} />}
+                            {tone !== 'owed' && <span className="relative text-owe tabular-nums">{money(b.net, c.currency)}</span>}
                           </span>
                           <span className="relative flex h-8 items-center px-2">
-                            {positive && (
+                            {tone === 'owed' && (
                               <>
                                 <span aria-hidden="true" className="absolute inset-y-1 left-0 rounded-e-md bg-owed/15 dark:bg-owed/20" style={{ width }} />
                                 <span className="relative text-owed tabular-nums">{money(b.net, c.currency)}</span>
