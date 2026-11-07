@@ -38,16 +38,16 @@ export function BalancesCard(props: { currencies: Currencies; names: Names }) {
                           <span className="truncate">{props.names.get(b.participantId) ?? 'Unknown'}</span>
                         ) : (
                           <>
-                            {size(b.net) > 0 && <span aria-hidden="true" className="absolute inset-y-1 right-0 bg-destructive/20" style={{ width }} />}
-                            <span className="relative tabular-nums">{money(b.net, c.currency)}</span>
+                            {size(b.net) > 0 && <span aria-hidden="true" className="absolute inset-y-1 right-0 bg-owe/15" style={{ width }} />}
+                            <span className="relative text-owe tabular-nums">{money(b.net, c.currency)}</span>
                           </>
                         )}
                       </div>
                       <div className="relative flex h-8 items-center px-2">
                         {positive ? (
                           <>
-                            <span aria-hidden="true" className="absolute inset-y-1 left-0 bg-primary/20" style={{ width }} />
-                            <span className="relative tabular-nums">{money(b.net, c.currency)}</span>
+                            <span aria-hidden="true" className="absolute inset-y-1 left-0 bg-owed/15" style={{ width }} />
+                            <span className="relative text-owed tabular-nums">{money(b.net, c.currency)}</span>
                           </>
                         ) : (
                           <span className="truncate">{props.names.get(b.participantId) ?? 'Unknown'}</span>

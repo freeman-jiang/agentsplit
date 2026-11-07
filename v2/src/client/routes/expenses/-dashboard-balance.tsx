@@ -47,8 +47,8 @@ export function DashboardBalance() {
                     <p
                       className={cn(
                         'text-3xl font-semibold tabular-nums sm:text-4xl',
-                        !zero && !negative && 'text-green-700 dark:text-green-400',
-                        negative && 'text-red-700 dark:text-red-400',
+                        !zero && !negative && 'text-owed',
+                        negative && 'text-owe',
                       )}
                     >
                       {money(negative ? amount.slice(1) : amount, currency)}

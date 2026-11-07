@@ -239,7 +239,7 @@ function Totals({ data, currency }: { data: Overview; currency: CurrencyCode }) 
     <div>
       <div className="text-muted-foreground">{label}</div>
       {/* Negative personal amounts are earnings: green; spending is red (P-STATS-22). */}
-      <div className={cn('text-lg tabular-nums', isNegative(amount) ? 'text-green-600' : 'text-red-600')}>{money(abs(amount), currency)}</div>
+      <div className={cn('text-lg tabular-nums', isNegative(amount) ? 'text-owed' : 'text-owe')}>{money(abs(amount), currency)}</div>
     </div>
   )
   return (

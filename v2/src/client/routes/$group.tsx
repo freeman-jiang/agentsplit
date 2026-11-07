@@ -69,13 +69,13 @@ function GroupLayout() {
           </Link>
         </Button>
       </div>
-      <nav aria-label="Group" className="mb-4 flex flex-wrap gap-x-2 gap-y-1 border-b sm:gap-x-4">
+      <nav aria-label="Group" className="-mx-3 mb-4 flex gap-x-1 overflow-x-auto border-b px-3 [scrollbar-width:none] sm:mx-0 sm:gap-x-4 sm:px-0">
         {TABS.map(({ to, label, Icon }) => (
           <Link
             key={to}
             to={to}
             params={{ group }}
-            className="inline-flex min-h-11 items-center gap-2 border-b-2 border-transparent px-2 py-3 text-xs text-muted-foreground sm:text-sm"
+            className="inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 border-transparent px-2 py-3 text-sm whitespace-nowrap text-muted-foreground"
             activeProps={{ className: 'border-primary! text-primary!' }}
           >
             <Icon className="hidden h-4 w-4 lg:block" aria-hidden="true" />
@@ -107,7 +107,7 @@ function netLabel(amount: string, personal = false) {
 
 function amountClass(amount: string) {
   if (isZero(amount)) return 'text-muted-foreground'
-  return amount.startsWith('-') ? 'text-red-700 dark:text-red-400' : 'text-green-700 dark:text-green-400'
+  return amount.startsWith('-') ? 'text-owe' : 'text-owed'
 }
 
 /**
@@ -126,7 +126,7 @@ function BalanceRail({ group }: { group: string }) {
     <aside
       aria-label="Group balances"
       data-testid="group-balance-summary"
-      className="z-20 h-fit self-start border bg-card p-4 md:sticky md:top-24 md:col-start-2 md:row-start-1 md:max-h-[calc(100dvh-7rem)] md:overflow-y-auto"
+      className="z-20 h-fit self-start border bg-card p-3 md:sticky md:p-4 md:top-24 md:col-start-2 md:row-start-1 md:max-h-[calc(100dvh-7rem)] md:overflow-y-auto"
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">Group balances</h2>
@@ -134,7 +134,7 @@ function BalanceRail({ group }: { group: string }) {
           <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} aria-hidden="true" />
         </Button>
       </div>
-      <p className="mb-4 text-xs text-muted-foreground">Net across all group expenses</p>
+      <p className="mb-4 hidden text-xs text-muted-foreground md:block">Net across all group expenses</p>
       {isError ? (
         <p role="alert" className="text-sm">
           Could not load balances. Try refreshing.
@@ -181,7 +181,7 @@ function BalanceRail({ group }: { group: string }) {
           })}
         </div>
       )}
-      <Link to="/$group/balances" params={{ group }} className="mt-4 inline-block text-xs underline underline-offset-4">
+      <Link to="/$group/balances" params={{ group }} className="mt-4 hidden text-xs underline underline-offset-4 md:inline-block">
         Balance details
       </Link>
     </aside>
