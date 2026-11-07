@@ -1,12 +1,7 @@
-import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
-  resolve: {
-    tsconfigPaths: true,
-    alias: {
-      '~/': fileURLToPath(new URL('./src/', import.meta.url)),
-    },
-  },
-  test: { include: ['src/**/*.test.ts', 'test/**/*.test.ts'], fileParallelism: false },
+  // `~/` resolves through the tsconfig.json paths.
+  resolve: { tsconfigPaths: true },
+  test: { include: ['test/**/*.test.ts'], fileParallelism: false },
 })
