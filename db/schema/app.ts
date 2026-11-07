@@ -266,7 +266,7 @@ export const receipts = pgTable(
     createdAt: now(),
     /**
      * The stored object's size, which counts against the uploader's storage.
-     * Receipts stored before this column have 0 until scripts/backfill-receipt-bytes.ts reads their size.
+     * Receipts stored before this column keep 0 and count against no quota.
      */
     bytes: integer().notNull().default(0),
   },

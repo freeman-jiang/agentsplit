@@ -69,19 +69,9 @@ The fair-use limits are constants in `src/shared/limits.ts`. Only the daily sign
 
 Better Auth limits sign-in and client registration per IP address from `X-Forwarded-For`. It uses the address only when the header holds exactly one, as Traefik sends it when it does not trust incoming forwarding headers. With more than one address, Better Auth counts all such requests together, so the limits still hold, for everyone at once.
 
-### Receipt sizes after migration 0012
+### Receipt sizes before migration 0012
 
-Migration 0012 adds `receipts.bytes` with 0 for the receipts stored before it, because only Garage knows their sizes. The migration needs no network. Until the backfill runs, those receipts count as 0 bytes against their uploaders. Run the backfill once, after the first deploy that contains the migration.
-
-1. Get Freeman's approval. Take a verified backup.
-2. Deploy, and check `/api/health`.
-3. On the Oracle host, find the app container: `sudo docker ps --format '{{.Names}}' | grep 6xpohwok1yiguyk3syzqgumj | grep app`.
-4. Run the report: `sudo docker exec <app container> bun dist/server/backfill-receipt-bytes.js`. It lists each receipt without a size, its size in Garage and its uploader, and writes nothing. It uses the container's own database and Garage settings. Production held 13 receipt objects when this was written, so expect about 13.
-5. Read the report. A receipt whose object is missing stays at 0 and is named at the end; the command then exits with status 1. Investigate each missing object before you go on.
-6. Write the sizes: `sudo docker exec <app container> bun dist/server/backfill-receipt-bytes.js --apply`.
-7. Check that the same command without `--apply` reports 0 receipts without a size, other than the missing ones.
-
-The receipts trigger allows exactly this change: `bytes` from 0 to the real size, once. Running the backfill again changes nothing.
+Migration 0012 adds `receipts.bytes`. The receipts stored before it keep 0, so they count against no quota. They were 13 objects, about 10 MB, in November 2026. The receipts trigger refuses every change to a receipt row, so their sizes are not filled in later.
 
 ## Maintenance switch
 

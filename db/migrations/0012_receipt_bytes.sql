@@ -2,8 +2,8 @@
 -- quota, permanent receipt deletion, and the per-user write budget. Adding a
 -- column with a constant default rewrites no row and fires no trigger, so the
 -- receipts and the history stay as they are. Receipts stored before this
--- migration have bytes = 0 until scripts/backfill-receipt-bytes.ts reads their
--- sizes from storage; the migration itself needs no network.
+-- migration keep bytes = 0 and count against no quota; they were about 10 MB
+-- in production, and the receipts trigger (0009) stays as it is.
 CREATE TABLE "deleted_receipts" (
 	"receipt_id" text PRIMARY KEY NOT NULL,
 	"deleted_by" text NOT NULL,
@@ -16,24 +16,6 @@ ALTER TABLE "deleted_receipts" ADD CONSTRAINT "deleted_receipts_receipt_id_recei
 ALTER TABLE "deleted_receipts" ADD CONSTRAINT "deleted_receipts_deleted_by_user_id_fk" FOREIGN KEY ("deleted_by") REFERENCES "public"."user"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "receipts_created_by_index" ON "receipts" USING btree ("created_by");--> statement-breakpoint
 ALTER TABLE "receipts" ADD CONSTRAINT "receipts_bytes_nonnegative" CHECK ("receipts"."bytes" >= 0);
---> statement-breakpoint
-
--- Receipts stay permanent (0009). The one change allowed is the size of a
--- receipt stored before this migration: 0 (not known) becomes its real size,
--- once, from scripts/backfill-receipt-bytes.ts. No other column can change,
--- and no row can be deleted. Statement-level triggers never reach OLD.
-CREATE OR REPLACE FUNCTION agentsplit_keep_receipts() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  IF TG_OP = 'UPDATE' THEN
-    IF OLD."bytes" = 0 AND NEW."bytes" > 0
-      AND (NEW."id", NEW."group_id", NEW."url", NEW."created_by", NEW."created_at")
-        IS NOT DISTINCT FROM (OLD."id", OLD."group_id", OLD."url", OLD."created_by", OLD."created_at") THEN
-      RETURN NEW;
-    END IF;
-  END IF;
-  RAISE EXCEPTION 'Receipts are permanent; history refers to them' USING ERRCODE = '23514';
-END;
-$$;
 --> statement-breakpoint
 
 -- A deletion is permanent: its object is gone, so the receipt can never come
