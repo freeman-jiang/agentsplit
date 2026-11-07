@@ -4,7 +4,7 @@
 import { sql } from 'drizzle-orm'
 import { groupPath, isIdSegment } from '../shared/groups'
 import { GROUP_ID } from '../shared/ids'
-import type { Db } from './db'
+import type { Db } from './core/db'
 
 export type IdPath = {
   readonly id: string

@@ -2,9 +2,9 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { idempotencyKeys } from '../../db/schema/app'
 import { Invalid } from '../shared/api'
-import type { Principal } from './access'
-import type { Db } from './db'
-import { sha256Hex } from './ids'
+import type { Principal } from './core/access'
+import type { Db } from './core/db'
+import { sha256Hex } from './core/ids'
 
 /** The principal column of a key: a person on the web and each of their agent credentials keep separate keys. */
 export const idempotencyPrincipal = (principal: Principal) => `${principal.userId}:${principal.agentKeyId ?? 'web'}`

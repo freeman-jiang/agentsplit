@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:server": "bun --watch src/server/server.ts",
+    "dev:server": "bun --watch src/server/main/server.ts",
     "build": "vite build && bun scripts/build-server.ts",
     "start": "bun dist/server/server.js",
     "check-types": "tsc --noEmit -p tsconfig.json",

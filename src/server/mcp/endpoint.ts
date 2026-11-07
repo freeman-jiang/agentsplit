@@ -3,9 +3,9 @@
 // authentication, the rate limit, the scope step-up, the protocol header, then
 // the JSON-RPC call.
 import { createMcpHandler, isLegacyRequest } from '@modelcontextprotocol/server'
-import type { Db } from '../db'
+import type { Db } from '../core/db'
 import { authenticate, type McpPrincipal } from '../auth/authenticate'
-import { jsonError, noStore } from '../http-errors'
+import { jsonError, noStore } from '../core/errors'
 import { challenge } from '../auth/challenge'
 import { OAUTH_WRITE_SCOPE } from '../auth/constants'
 import { originAllowed } from '../auth/origin'

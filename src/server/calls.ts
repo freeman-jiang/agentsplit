@@ -3,20 +3,16 @@
 // SERIALIZABLE transaction after the fair-use budget, and every failure turned
 // into a declared answer. The cause of a failure that is not an answer is
 // logged here and never sent.
-import { Conflict, Forbidden, Invalid, NotFound, Unavailable } from '../shared/api'
+import { Conflict, Invalid, Unavailable } from '../shared/api'
 import { UNAVAILABLE } from '../shared/errors'
 import { tooManyWritesMessage } from '../shared/limits'
-import type { Principal } from './access'
-import { serializable, sqlState, type Db } from './db'
+import type { Principal } from './core/access'
+import { serializable, sqlState, type Db } from './core/db'
+import { isDomainError, type DomainError } from './core/errors'
 import { takeWrite } from './rate-limit'
 
-/** Errors the domain code throws on purpose. */
-export type DomainError = Forbidden | NotFound | Conflict | Invalid
 /** What a call fails with: a domain error, or Unavailable for everything else. */
 export type CallError = DomainError | Unavailable
-
-export const isDomainError = (error: unknown): error is DomainError =>
-  error instanceof Forbidden || error instanceof NotFound || error instanceof Conflict || error instanceof Invalid
 
 /** Queues work for after the write commits, on the request's connection. A failure is logged. */
 export type AfterCommit = (work: (db: Db) => Promise<unknown>) => void

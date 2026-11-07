@@ -4,9 +4,9 @@ import { groups, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { listBalances } from '~/server/balances'
-import { makeDb, type Db } from '~/server/db'
+import { makeDb, type Db } from '~/server/core/db'
 import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense } from '~/server/ledger'
-import { type Principal } from '~/server/access'
+import { type Principal } from '~/server/core/access'
 import { resetTestDatabase, testUsers } from './setup'
 
 let pool: Pool

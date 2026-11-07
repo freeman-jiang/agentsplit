@@ -7,9 +7,9 @@ import type { McpPrincipal } from '../auth/authenticate'
 import { assertOAuthWrite } from '../auth/oauth-connections'
 import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from '../auth/constants'
 import { answerOf, runRead, runWrite, type AfterCommit } from '../calls'
-import type { Db } from '../db'
-import { INSTRUCTIONS } from './instructions'
-import { errorBody, type McpTool } from './registry'
+import type { Db } from '../core/db'
+import { INSTRUCTIONS } from './tools/instructions'
+import { errorBody, type McpTool } from './tools/registry'
 import { MCP_TOOLS } from './tools'
 
 export const SERVER_INFO = { name: 'agentsplit', version: '0.4.0' } as const

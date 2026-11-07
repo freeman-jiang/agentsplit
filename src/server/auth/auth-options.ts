@@ -7,7 +7,7 @@ import { mcp } from '@better-auth/mcp'
 import type { OAuthProviderExtension } from '@better-auth/oauth-provider'
 import { jwt } from 'better-auth/plugins/jwt'
 import { LIMITS } from '../../shared/limits'
-import { sha256Base64url } from '../ids'
+import { sha256Base64url } from '../core/ids'
 import { mcpResource, OAUTH_SCOPES, oauthIssuer } from './constants'
 
 export type ClientMetadataResourceFetch = Parameters<typeof cimd>[0]['fetchClientMetadataResource']

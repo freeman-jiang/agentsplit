@@ -6,8 +6,8 @@ import { activities, groups, invitations, memberships } from '../../db/schema/ap
 import { user } from '../../db/schema/auth'
 import { eq, sql } from 'drizzle-orm'
 import { accountBalances, listBalances } from '~/server/balances'
-import { makeDb, serializable, type Db } from '~/server/db'
-import { sha256Hex } from '~/server/ids'
+import { makeDb, serializable, type Db } from '~/server/core/db'
+import { sha256Hex } from '~/server/core/ids'
 import {
   changeAccess,
   createGroup,
@@ -20,7 +20,7 @@ import { exportJson } from '~/server/export'
 import { listFeed } from '~/server/feed'
 import { listActivities } from '~/server/history'
 import { createExpense, getGroup } from '~/server/ledger'
-import { requireMember, type Principal } from '~/server/access'
+import { requireMember, type Principal } from '~/server/core/access'
 import { statsOverview } from '~/server/stats'
 import { createUngroupedExpense } from '~/server/ungrouped'
 import { resetTestDatabase } from './setup'

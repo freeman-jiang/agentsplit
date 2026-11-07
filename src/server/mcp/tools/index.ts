@@ -1,7 +1,7 @@
 // Every MCP tool, in the order tools/list advertises them: the current app's
 // order (src/lib/mcp/registry.ts), then the v2 storage tools. MCP.md's tool
 // table follows this list (test/mcp-docs.test.ts).
-import type { McpTool } from '../registry'
+import type { McpTool } from './registry'
 import { updateProfile } from './account'
 import { getBalances, getParticipantBalances, processRecurringExpenses } from './balances'
 import { createExpense, deleteExpense, getExpense, listExpenses, updateExpense } from './expenses'

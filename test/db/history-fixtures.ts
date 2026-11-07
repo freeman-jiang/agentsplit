@@ -3,8 +3,8 @@
 // makeExpenseSnapshot: Prisma's expense with decimal strings, stripped to the
 // snapshot schema's keys.
 import { activities, expensePayers, expenses, expenseShares } from '../../db/schema/app'
-import type { Db } from '~/server/db'
-import { randomId } from '~/server/ids'
+import type { Db } from '~/server/core/db'
+import { randomId } from '~/server/core/ids'
 import { minor } from '~/shared/minor'
 import type { StoredActivitySource } from '~/shared/vocabulary'
 

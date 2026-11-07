@@ -1,9 +1,9 @@
 // Who is calling the MCP endpoint: an API key or an OAuth access token, with
 // the current app's rules (src/lib/mcp/authenticate.ts, src/lib/api-key-header.ts).
-import type { Db } from '../db'
-import type { Principal } from '../access'
+import type { Db } from '../core/db'
+import type { Principal } from '../core/access'
 import { verifyApiKey } from './api-key'
-import { jsonError, noStore } from '../http-errors'
+import { jsonError, noStore } from '../core/errors'
 import { requestSession } from './session'
 import { challenge } from './challenge'
 import { verifyOAuthRequest } from './oauth'

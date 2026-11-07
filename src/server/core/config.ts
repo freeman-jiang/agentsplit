@@ -1,7 +1,7 @@
 // Every setting of the server process, read and checked once at start
 // (server.ts). A missing or malformed setting stops the server with its name.
 // DEPLOYMENT.md lists them.
-import { LIMITS } from '../shared/limits'
+import { LIMITS } from '../../shared/limits'
 
 /** What sign-in and Better Auth need (auth/auth.ts). */
 export type AuthSettings = {

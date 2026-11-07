@@ -1,13 +1,13 @@
-// The MCP tool registry. Each area defines its tools in its own file under
-// tools/ with defineTool, and adds the list to tools/index.ts. A tool maps its
-// public input onto the shared domain services in src/server/; it never
-// checks access itself (the services do) and never reads arguments as identity.
+// The MCP tool registry. Each area defines its tools in its own file in this
+// folder with defineTool, and index.ts lists them. A tool maps its public
+// input onto the shared domain services in src/server/; it never checks
+// access itself (the services do) and never reads arguments as identity.
 import { Result, Schema } from 'effect'
-import { ERROR_ANSWERS, errorKind, errorText, MCP_INTERNAL } from '../../shared/errors'
-import type { Bucket } from '../bucket'
-import type { AfterCommit, CallError } from '../calls'
-import type { Db } from '../db'
-import type { McpPrincipal } from '../auth/authenticate'
+import { ERROR_ANSWERS, errorKind, errorText, MCP_INTERNAL } from '../../../shared/errors'
+import type { Bucket } from '../../bucket'
+import type { AfterCommit, CallError } from '../../calls'
+import type { Db } from '../../core/db'
+import type { McpPrincipal } from '../../auth/authenticate'
 
 export type ToolContext = {
   readonly db: Db

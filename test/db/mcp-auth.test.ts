@@ -7,7 +7,7 @@ import { apikey } from '../../db/schema/auth'
 import { verifyApiKey } from '~/server/auth/api-key'
 import { readApiKey } from '~/server/auth/authenticate'
 import { DPOP_ALGORITHMS, protectedResourceMetadata } from '~/server/auth/challenge'
-import { sha256Base64url } from '~/server/ids'
+import { sha256Base64url } from '~/server/core/ids'
 import { BASE, startHarness, type Harness } from './mcp-harness'
 
 // These tests create many API keys for one account; the fair-use cap has its own test (test/db/limits.test.ts).

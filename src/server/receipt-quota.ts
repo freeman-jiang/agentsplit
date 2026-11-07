@@ -3,7 +3,7 @@
 // without a known uploader (imported from before accounts) count against no one.
 import { sql } from 'drizzle-orm'
 import { LIMITS, storageFullMessage } from '../shared/limits'
-import type { Db } from './db'
+import type { Db } from './core/db'
 
 /** The bytes that count against `userId`. */
 export async function receiptUsage(db: Db, userId: string): Promise<number> {

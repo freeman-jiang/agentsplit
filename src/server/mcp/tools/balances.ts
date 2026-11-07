@@ -11,7 +11,7 @@ import { LIMITS } from '../../../shared/limits'
 import { formatMinor, minor, type Minor } from '../../../shared/minor'
 import * as balances from '../../balances'
 import * as recurring from '../../recurring'
-import { defineTool } from '../registry'
+import { defineTool } from './registry'
 import { boundaryOf, CurrencyCodeInput, HistoryFields } from './inputs'
 import { HistoryView, Id, Money, optional, symbolOf } from './wire'
 

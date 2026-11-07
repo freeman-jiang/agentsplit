@@ -1,5 +1,5 @@
 // The server half of `bun run build`, after `vite build` wrote dist/client:
-// bundles src/server/server.ts and its dependencies into dist/server, so the
+// bundles src/server/main/server.ts and its dependencies into dist/server, so the
 // image needs no node_modules, copies the SQL migrations and their journal to
 // dist/migrations, and writes .br and .gz copies of the client's text files for src/server/assets.ts.
 import { cpSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -8,7 +8,7 @@ import { brotliCompressSync, constants, gzipSync } from 'node:zlib'
 
 rmSync('dist/server', { recursive: true, force: true })
 const result = await Bun.build({
-  entrypoints: ['src/server/server.ts'],
+  entrypoints: ['src/server/main/server.ts'],
   outdir: 'dist/server',
   target: 'bun',
   minify: true,

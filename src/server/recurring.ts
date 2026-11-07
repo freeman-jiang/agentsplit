@@ -7,11 +7,11 @@ import { expenseDocuments, groups, participants, recurringLinks } from '../../db
 import { todayUtc } from '../shared/dates'
 import { idOfBytes } from '../shared/ids'
 import type { Recurrence } from '../shared/vocabulary'
-import { requireMember, type Principal } from './access'
+import { requireMember, type Principal } from './core/access'
 import { recordExpenseEvent } from './activity'
-import { serializable, type Db } from './db'
+import { serializable, type Db } from './core/db'
 import { isActiveSeries, loadExpenses } from './expense-read'
-import { randomId } from './ids'
+import { randomId } from './core/ids'
 import { textList } from './sql'
 
 const daysIn = (year: number, month: number) => new Date(Date.UTC(year, month + 1, 0)).getUTCDate()

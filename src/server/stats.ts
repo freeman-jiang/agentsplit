@@ -6,8 +6,8 @@ import type { CurrencyCode } from '../shared/currencies'
 import { todayUtc } from '../shared/dates'
 import { formatMinor, minor, minorOf, type Minor } from '../shared/minor'
 import * as stats from '../shared/stats'
-import { memberCte, requireActive, type Principal } from './access'
-import type { Db } from './db'
+import { memberCte, requireActive, type Principal } from './core/access'
+import type { Db } from './core/db'
 import { expenseColumns, isActiveSeries, toExpense, type ExpenseRow } from './expense-read'
 
 type Head = {

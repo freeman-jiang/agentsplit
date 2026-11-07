@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto'
 import fc from 'fast-check'
 import { expect, it } from 'vitest'
-import { sha256Base64url } from '~/server/ids'
+import { sha256Base64url } from '~/server/core/ids'
 
 it('hashes OAuth tokens exactly as the current app does', async () => {
   await fc.assert(

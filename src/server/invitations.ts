@@ -5,8 +5,8 @@ import { and, eq, isNull, sql, type SQL } from 'drizzle-orm'
 import { invitations } from '../../db/schema/app'
 import { INVITATION_TOKEN, invitationTokenOfPath, normalizeEmail } from '../shared/groups'
 import { LIMITS } from '../shared/limits'
-import type { Db } from './db'
-import { randomId, randomToken, sha256Hex } from './ids'
+import type { Db } from './core/db'
+import { randomId, randomToken, sha256Hex } from './core/ids'
 
 export type Invitation = typeof invitations.$inferSelect
 

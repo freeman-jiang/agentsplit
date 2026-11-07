@@ -5,7 +5,7 @@ import { FAIR_USE_LIMITS } from '../../../shared/limits'
 import { CurrencyCodeSchema } from '../../../shared/money'
 import { RECEIPT_CONTENT_TYPES, RECURRENCE_NAMES, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
 import * as expenses from '../../expenses'
-import { defineTool } from '../registry'
+import { defineTool } from './registry'
 import { NoArguments } from './inputs'
 import { NonNegativeInt, RecurrenceName, SplitModeName } from './wire'
 

@@ -1,6 +1,13 @@
-// The JSON error answers of the plain HTTP routes, as the current app answers.
-import { ERROR_ANSWERS, errorKind, errorText } from '../shared/errors'
-import { isDomainError } from './calls'
+// The errors the domain code throws on purpose, and their JSON answers on the
+// plain HTTP routes, as the current app answers.
+import { Conflict, Forbidden, Invalid, NotFound } from '../../shared/api'
+import { ERROR_ANSWERS, errorKind, errorText } from '../../shared/errors'
+
+/** Errors the domain code throws on purpose. */
+export type DomainError = Forbidden | NotFound | Conflict | Invalid
+
+export const isDomainError = (error: unknown): error is DomainError =>
+  error instanceof Forbidden || error instanceof NotFound || error instanceof Conflict || error instanceof Invalid
 
 export const noStore = { 'Cache-Control': 'no-store' } as const
 

@@ -7,9 +7,9 @@ import type { CurrencyCode } from '../shared/currencies'
 import { titleWithVendor } from '../shared/history'
 import type { V2ExpenseSnapshot, V2GroupSnapshot } from '../shared/snapshots'
 import type { ActivityType, ExpenseKind, Recurrence, SplitMode } from '../shared/vocabulary'
-import type { Principal } from './access'
-import type { Db } from './db'
-import { randomId } from './ids'
+import type { Principal } from './core/access'
+import type { Db } from './core/db'
+import { randomId } from './core/ids'
 import { iso } from './sql'
 
 // ---------- actors ----------

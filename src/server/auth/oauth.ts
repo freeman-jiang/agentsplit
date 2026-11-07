@@ -14,8 +14,8 @@ import {
 } from 'better-auth/oauth2'
 import { sql } from 'drizzle-orm'
 import type { JWTPayload } from 'jose'
-import type { Db } from '../db'
-import { sha256Base64url } from '../ids'
+import type { Db } from '../core/db'
+import { sha256Base64url } from '../core/ids'
 import { mcpResource, OAUTH_CONNECTION_CLAIM, oauthIssuer } from './constants'
 import { verifyConnection, type OAuthResult } from './oauth-connections'
 
