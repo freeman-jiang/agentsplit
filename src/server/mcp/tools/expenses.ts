@@ -10,17 +10,18 @@ import type { ExpenseDraft } from '../../../shared/expense-rules'
 import { LIMITS, mebibytes } from '../../../shared/limits'
 import { formatMinor, minorOf } from '../../../shared/minor'
 import { CATEGORY, RECEIPT_CONTENT_TYPES, RECURRENCE_BY_NAME, RECURRENCE_LIST, RECURRENCE_NAMES, SPLIT_MODE_BY_NAME, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
+import { randomId } from '../../../shared/ids'
+import { attributionOf } from '../../activity'
 import type { ExpenseFilter } from '../../expense-read'
 import * as history from '../../history'
-import { randomId } from '../../core/ids'
 import * as ledger from '../../ledger'
 import { attachUploads, prepareUploads } from '../../receipt-uploads'
 import { createUngroupedExpense } from '../../ungrouped'
 import { PAYMENT_RULES, RECORDING_RULES } from './instructions'
+import { CurrencyCodeSchema, DecimalString } from '../../../shared/money'
 import { defineTool } from './registry'
-import { boundaryOf, CalendarDate, CurrencyCodeInput, Decimal, HistoryFields, PageLimit } from './inputs'
+import { boundaryOf, CalendarDate, HistoryFields, PageLimit } from './inputs'
 import {
-  attributionOfEvents,
   DateTime,
   ExpenseDetail,
   expenseDetail,
@@ -45,7 +46,7 @@ import {
 
 /** Every expense field, each optional; create requires some of them. */
 const expenseFields = {
-  currencyCode: CurrencyCodeInput,
+  currencyCode: CurrencyCodeSchema,
   expenseDate: CalendarDate.annotate({ description: 'Calendar date in YYYY-MM-DD format' }),
   title: ExpenseInput.fields.title.annotate({
     description: 'A short title for the purchase, such as "Dinner at Nopa". Keep it short; put the calculation in notes.',
@@ -55,18 +56,18 @@ const expenseFields = {
       'Optional merchant name, e.g. Costco. Keep the purchase description in title without repeating vendor. Set null or empty string to clear.',
   }),
   category: CategoryId,
-  amount: Decimal.annotate({
+  amount: DecimalString.annotate({
     description:
       'The full amount paid, as an exact decimal string in currencyCode, including the payer’s own share. A negative amount records income. Never record only what other people owe.',
   }),
   paidBy: IdInput.annotate({ description: 'The participant ID of the one person who paid the whole amount. Use payers instead when several people paid.' }),
-  payers: Schema.Array(Schema.Struct({ participant: IdInput, amount: Decimal }))
+  payers: Schema.Array(Schema.Struct({ participant: IdInput, amount: DecimalString }))
     .check(Schema.isBetweenLength(1, LIMITS.participantsPerGroup))
     .annotate({
       description:
         'Instead of paidBy, when several people paid: each payer’s participant ID and exact amount. The amounts add up to amount.',
     }),
-  paidFor: Schema.Array(Schema.Struct({ participant: IdInput, shares: Decimal }))
+  paidFor: Schema.Array(Schema.Struct({ participant: IdInput, shares: DecimalString }))
     .check(Schema.isBetweenLength(1, LIMITS.participantsPerGroup))
     .annotate({
       description: `Everyone who shares the cost, with their share. Include the payer with their share, unless the payer paid only for other people. shares: "1" each for ${SPLIT_MODE_NAMES.evenly}, relative weights for ${SPLIT_MODE_NAMES.shares}, percentages summing to "100" for ${SPLIT_MODE_NAMES.percentage}, exact amounts summing to amount for ${SPLIT_MODE_NAMES.amount}.`,
@@ -158,7 +159,7 @@ export const listExpenses = defineTool({
     limit: optional(PageLimit(LIMITS.agentExpensePage)),
     filter: optional(SearchText),
     vendor: optional(SearchText.annotate({ description: 'Exact merchant name, case-insensitive.' })),
-    currencyCode: optional(CurrencyCodeInput),
+    currencyCode: optional(CurrencyCodeSchema),
     categoryId: optional(CategoryId),
     paidById: optional(IdInput),
     participantId: optional(IdInput),
@@ -195,7 +196,7 @@ export const listExpenses = defineTool({
     }
     const page = await ledger.listExpenses(db, { principal, groupId: input.groupId, filter, cursor: null, offset, limit, parts: { names: true, attribution: true } })
     return {
-      expenses: page.expenses.map((e) => expenseSummary(liveSource(e), { attribution: attributionOfEvents(e.attributionEvents, principal.userId) })),
+      expenses: page.expenses.map((e) => expenseSummary(liveSource(e), { attribution: attributionOf({ events: e.attributionEvents ?? [], viewer: principal.userId }) })),
       hasMore: page.nextCursor !== null,
       nextCursor: offset + limit,
     }
@@ -233,7 +234,7 @@ export const getExpense = defineTool({
           groupId,
           revision: saved.history.revision,
           baseUrl,
-          attribution: attributionOfEvents(saved.attributionEvents, viewer),
+          attribution: attributionOf({ events: saved.attributionEvents ?? [], viewer: viewer }),
           documents: expense.documents,
           link: null,
           deletedAt: saved.deletedAt,
@@ -246,7 +247,7 @@ export const getExpense = defineTool({
         groupId: e.groupId,
         revision: e.revision,
         baseUrl,
-        attribution: attributionOfEvents(e.attributionEvents, viewer),
+        attribution: attributionOf({ events: e.attributionEvents ?? [], viewer: viewer }),
         documents: e.documents ?? [],
         link: e.link,
         deletedAt: null,

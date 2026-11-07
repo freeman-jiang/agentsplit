@@ -20,7 +20,7 @@ export const withPerfCounters = <A>(counters: PerfCounters, work: () => Promise<
  * Counts each statement of `client` into the request in scope. Call it once
  * for each new connection (instrumentPool).
  */
-export function countQueries(client: pg.PoolClient): void {
+function countQueries(client: pg.PoolClient): void {
   // pg's overloads cannot be named in one signature; arguments and results pass through unchanged.
   type Query = (...args: unknown[]) => unknown
   const query = client.query.bind(client) as Query

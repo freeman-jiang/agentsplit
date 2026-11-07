@@ -68,7 +68,7 @@ async function load(db: Db, data: { principal: Principal; groupId: string; activ
 
 // ---------- file names ----------
 
-export const exportFileName = (data: { group: string; format: 'csv' | 'json'; date: string }) => `AgentSplit Export - ${data.group} - ${data.date}.${data.format}`
+const exportFileName = (data: { group: string; format: 'csv' | 'json'; date: string }) => `AgentSplit Export - ${data.group} - ${data.date}.${data.format}`
 
 // ---------- JSON ----------
 
@@ -126,7 +126,7 @@ export async function exportJson(db: Db, data: { principal: Principal; groupId: 
 // ---------- CSV ----------
 
 /** Spreadsheets run a cell that starts with = + - @ tab or CR as a formula (CWE-1236); a leading ' stops that. */
-export const escapeFormula = (value: string) => (/^[=+\-@\t\r]/.test(value) ? `'${value}` : value)
+const escapeFormula = (value: string) => (/^[=+\-@\t\r]/.test(value) ? `'${value}` : value)
 /** json2csv's default: every value quoted, quotes doubled, empty for null. */
 const cell = (value: string | null) => (value === null ? '' : `"${value.replace(/"/g, '""')}"`)
 

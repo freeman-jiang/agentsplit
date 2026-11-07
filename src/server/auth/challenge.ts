@@ -2,7 +2,8 @@
 // metadata and the 401 and 403 WWW-Authenticate challenges.
 import { MCP_PATH } from '../../shared/mcp'
 import { jsonError } from '../core/errors'
-import { mcpResource, oauthIssuer, OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
+import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from '../../shared/account'
+import { mcpResource, oauthIssuer } from './constants'
 
 /**
  * The scopes every challenge asks for. MCP clients take the scope from the
@@ -11,14 +12,14 @@ import { mcpResource, oauthIssuer, OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from '.
  * minutes (docs/v2/OAUTH-CLAUDE-CODE.md). The consent page still lets the user
  * refuse write access.
  */
-export const CHALLENGE_SCOPES = [OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE, 'offline_access'] as const
+const CHALLENGE_SCOPES = [OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE, 'offline_access'] as const
 
 /** Better Auth's DPOP_SIGNING_ALGORITHMS, copied so this route loads no auth code (test/db/mcp-auth.test.ts pins it). */
 export const DPOP_ALGORITHMS = ['EdDSA', 'ES256', 'ES512', 'PS256', 'RS256'] as const
 
 const METADATA_PATH = '/.well-known/oauth-protected-resource'
 
-export const metadataUrl = (baseUrl: string) => new URL(`${METADATA_PATH}${MCP_PATH}`, baseUrl).href
+const metadataUrl = (baseUrl: string) => new URL(`${METADATA_PATH}${MCP_PATH}`, baseUrl).href
 
 /** The two RFC 9728 paths: the root form and the form with the resource path. */
 export const METADATA_PATHS = new Set([METADATA_PATH, `${METADATA_PATH}${MCP_PATH}`])

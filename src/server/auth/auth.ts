@@ -21,7 +21,7 @@ import { connectionClaims } from './oauth-connections'
  * DNS answer is a public address and pins the connection to it, as in the
  * current app. This adds the remaining rules: no redirects, and limits on time and size.
  */
-export const cimdFetch: ClientMetadataResourceFetch = async (input, init) => {
+const cimdFetch: ClientMetadataResourceFetch = async (input, init) => {
   const response = await fetchClientMetadataResource(input, { ...init, signal: AbortSignal.timeout(5_000), headers: { accept: 'application/json' } })
   if (response.status >= 300 && response.status < 400) throw new Error('Client metadata redirects are not followed')
   const body = await response.arrayBuffer()

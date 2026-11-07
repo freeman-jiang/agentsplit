@@ -230,7 +230,7 @@ export function recurring(expenses: readonly StatsExpense[]) {
     const list = spending(expenses).filter((e) => e.recurrence === period)
     return { period, count: list.length, total: sumMinor(list.map((e) => e.amount)) }
   })
-  const [daily, weekly, monthly] = periods.map((p) => p.total as bigint)
+  const [daily, weekly, monthly] = periods.map((p) => p.total)
   // 365.25 = 36525 / 100, so daily·365.25/12 = daily·36525·7/8400 and weekly·365.25/84 = weekly·36525/8400.
   const numerator = (daily ?? 0n) * 36525n * 7n + (weekly ?? 0n) * 36525n + (monthly ?? 0n) * 8400n
   return {

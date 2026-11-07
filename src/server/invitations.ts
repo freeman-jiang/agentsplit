@@ -4,16 +4,14 @@
 import { and, eq, isNull, sql, type SQL } from 'drizzle-orm'
 import { invitations } from '../../db/schema/app'
 import { normalizeEmail } from '../shared/groups'
-import { SECRET_TOKEN } from '../shared/ids'
+import { randomId, SECRET_TOKEN } from '../shared/ids'
 import { absoluteUrl, invitationPath, invitationTokenOfPath } from '../shared/paths'
 import { LIMITS } from '../shared/limits'
 import type { Db } from './core/db'
-import { randomId, randomToken, sha256Hex } from './core/ids'
+import { randomToken, sha256Hex } from './core/ids'
 
 export type Invitation = typeof invitations.$inferSelect
 
-/** The stored form of a token: hex SHA-256, as in the current app, so imported invitations keep working. */
-const tokenHash = (token: string) => sha256Hex(token)
 
 /** Not accepted and not revoked, on invitation row `i`. */
 const pending = (i: SQL) => sql`${i}.accepted_at IS NULL AND ${i}.revoked_at IS NULL`
@@ -43,7 +41,7 @@ export function invitationProblem(data: { invitation: Invitation; email: string 
 /** The invitation of a token, or null for a malformed or unknown one. */
 export async function findInvitation(db: Db, token: string): Promise<Invitation | null> {
   if (!SECRET_TOKEN.test(token)) return null
-  const [row] = await db.select().from(invitations).where(eq(invitations.tokenHash, tokenHash(token)))
+  const [row] = await db.select().from(invitations).where(eq(invitations.tokenHash, sha256Hex(token)))
   return row ?? null
 }
 
@@ -74,7 +72,8 @@ export async function createInvitation(
     email: normalizeEmail(data.email),
     participantId: data.participantId,
     participantName: data.participantName,
-    tokenHash: tokenHash(token),
+    // Hex SHA-256, as the current app stores it, so imported invitations keep working.
+    tokenHash: sha256Hex(token),
     createdBy: data.createdBy,
     expiresAt: new Date(Date.now() + LIMITS.invitationDays * 86_400_000),
   }

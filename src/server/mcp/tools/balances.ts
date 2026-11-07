@@ -11,8 +11,9 @@ import { LIMITS } from '../../../shared/limits'
 import { formatMinor, minor, type Minor } from '../../../shared/minor'
 import * as balances from '../../balances'
 import * as recurring from '../../recurring'
+import { CurrencyCodeSchema } from '../../../shared/money'
 import { defineTool } from './registry'
-import { boundaryOf, CurrencyCodeInput, HistoryFields } from './inputs'
+import { boundaryOf, HistoryFields } from './inputs'
 import { HistoryView, Id, Money, optional, symbolOf } from './wire'
 
 type Transfer = { from: string; to: string; amount: Minor }
@@ -55,7 +56,7 @@ export const getBalances = defineTool({
   input: Schema.Struct({
     ...HistoryFields,
     groupId: IdInput,
-    currencyCode: optional(CurrencyCodeInput),
+    currencyCode: optional(CurrencyCodeSchema),
   }),
   strict: [''],
   output: Schema.Struct({

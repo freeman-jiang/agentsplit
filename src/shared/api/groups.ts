@@ -7,7 +7,7 @@ import { EMAIL } from '../groups'
 import { SECRET_TOKEN } from '../ids'
 import { LIMITS } from '../limits'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
-import { EmailInput, GroupKindSchema, Id, IdempotencyKey, NewId, Offset, ReadError, Timestamp, RoleSchema as Role, WriteError } from './core'
+import { EmailInput, GroupKindSchema, Id, IdempotencyKey, NewId, Offset, ReadError, Timestamp, RoleSchema, WriteError } from './core'
 
 export const GroupName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(LIMITS.groupNameMin, LIMITS.nameMax))
 export const Information = Schema.String.check(Schema.isMaxLength(LIMITS.informationMax))
@@ -45,7 +45,7 @@ export const Person = Schema.Struct({
   status: Schema.Literals(['joined', 'invited', 'none']),
   /** The member's or the invitee's email. */
   email: Schema.NullOr(Schema.String),
-  role: Schema.NullOr(Role),
+  role: Schema.NullOr(RoleSchema),
   userId: Schema.NullOr(Schema.String),
   /** Pays or shares in any expense, deleted ones included: the person cannot be removed. */
   inExpenses: Schema.Boolean,
@@ -69,11 +69,11 @@ export const GroupDetails = Schema.Struct({
   information: Schema.String,
   defaultCurrency: CurrencyCodeSchema,
   revision: Schema.Number,
-  role: Role,
+  role: RoleSchema,
   participantId: Schema.NullOr(Schema.String),
   people: Schema.Array(Person),
   /** Active members with no participant yet (legacy memberships). */
-  unboundMembers: Schema.Array(Schema.Struct({ userId: Schema.String, name: Schema.String, email: Schema.String, role: Role })),
+  unboundMembers: Schema.Array(Schema.Struct({ userId: Schema.String, name: Schema.String, email: Schema.String, role: RoleSchema })),
   /** Pending invitations, for admins only; members get an empty list. */
   invitations: Schema.Array(Invitation),
 })
@@ -110,7 +110,7 @@ export const AccessRequest = Schema.Union([
   Schema.Struct({ action: Schema.Literal('invite'), groupId: Id, email: Email, participantId: Id }),
   Schema.Struct({ action: Schema.Literal('revoke_invitation'), groupId: Id, invitationId: Id }),
   Schema.Struct({ action: Schema.Literal('remove_member'), groupId: Id, userId: Id }),
-  Schema.Struct({ action: Schema.Literal('set_role'), groupId: Id, userId: Id, role: Role }),
+  Schema.Struct({ action: Schema.Literal('set_role'), groupId: Id, userId: Id, role: RoleSchema }),
   /** Links an active member without a participant to an unclaimed participant, permanently. */
   Schema.Struct({ action: Schema.Literal('bind_member'), groupId: Id, userId: Id, email: Email, participantId: Id }),
 ])

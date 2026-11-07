@@ -14,7 +14,6 @@ import { EXPENSE_KINDS, RECURRENCE_BY_NAME, RECURRENCE_LIST, RECURRENCES, SPLIT_
 
 // ---------- stored formats ----------
 
-const Currency = CurrencyCodeSchema
 const Person = Schema.Struct({ id: Schema.String, name: Schema.String })
 
 /** The current app's snapshot (src/lib/expense-history.ts expenseSnapshotSchema). */
@@ -30,7 +29,7 @@ const V1Expense = Schema.Struct({
     title: Schema.String,
     vendor: Schema.optional(Schema.NullOr(Schema.String)),
     amount: Schema.String,
-    currencyCode: Currency,
+    currencyCode: CurrencyCodeSchema,
     expenseDate: Schema.String,
     createdAt: Schema.String,
     categoryId: Schema.Number,
@@ -76,7 +75,7 @@ export const V2ExpenseSnapshot = Schema.Struct({
     notes: Schema.String,
     categoryId: Schema.Number,
     expenseDate: Schema.String,
-    currency: Currency,
+    currency: CurrencyCodeSchema,
     amount: Schema.String,
     splitMode: Schema.Literals(SPLIT_MODES),
     payers: Schema.Array(Schema.Struct({ participantId: Schema.String, amount: Schema.String, name: Schema.String })),
@@ -105,7 +104,7 @@ export const V2GroupSnapshot = Schema.Struct({
     id: Schema.String,
     name: Schema.String,
     slug: Schema.NullOr(Schema.String),
-    currency: Currency,
+    currency: CurrencyCodeSchema,
     information: Schema.String,
     revision: Schema.Number,
     participants: Schema.Array(Person),
@@ -125,7 +124,7 @@ const V2PrivateGroupRow = Schema.Struct({
     kind: Schema.Literal('private'),
     name: Schema.String,
     slug: Schema.Null,
-    defaultCurrency: Currency,
+    defaultCurrency: CurrencyCodeSchema,
     information: Schema.String,
     revision: Schema.Number,
     participants: Schema.Array(Person),

@@ -1,8 +1,5 @@
-// IDs, secrets and their stored hashes. The client imports src/shared/ids.ts
-// instead: this module uses node:crypto.
+// Secrets and stored hashes, with node:crypto. Random IDs are in src/shared/ids.ts.
 import { createHash, randomBytes } from 'node:crypto'
-
-export { randomId } from '../../shared/ids'
 
 /** SHA-256 of the UTF-8 text, as lowercase hex. */
 export const sha256Hex = (text: string) => createHash('sha256').update(text).digest('hex')

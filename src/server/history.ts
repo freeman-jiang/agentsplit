@@ -26,7 +26,7 @@ const ms = (column: SQL) => sql`date_trunc('milliseconds', ${column})`
 
 /** All categories as one JSON object, `{ "<id>": [grouping, name] }`; 44 fixed rows. */
 const categoriesColumn = sql`(SELECT json_object_agg(c.id, json_build_array(c.grouping, c.name)) FROM categories c) AS categories`
-export const categoryMap = (json: Record<string, [string, string]> | null): ReadonlyMap<number, Category> =>
+const categoryMap = (json: Record<string, [string, string]> | null): ReadonlyMap<number, Category> =>
   new Map(Object.entries(json ?? {}).map(([id, [grouping, name]]) => [Number(id), { grouping, name }]))
 
 /** Checks a boundary selection before it reaches SQL. */
@@ -59,7 +59,7 @@ const boundaryCte = (selection: Boundary) => sql`b AS (
 const withinBoundary = (selection: Boundary, alias: SQL) =>
   sql`${alias}.sequence <= coalesce((SELECT sequence FROM b), 0) ${selection.asOf !== undefined ? sql`AND ${ms(sql`${alias}.time`)} <= ${selection.asOf}::timestamptz` : sql``}`
 
-type Head = { active: boolean | null; group_id: string; boundary_id: string | null; boundary_time: string | null; group_created: string; categories: Record<string, [string, string]> | null }
+type Head = { active: boolean | null; group_id: string; boundary_id: string | null; boundary_time: string | null; categories: Record<string, [string, string]> | null }
 
 function requireBoundaryFound(data: { selection: Boundary; head: Head }) {
   if (data.selection.atActivityId !== undefined && data.head.boundary_id === null)
@@ -132,7 +132,7 @@ export async function listActivities(db: Db, data: { principal: Principal; group
       SELECT a.* FROM activities a, g WHERE ${sql.join(where, sql` AND `)}
       ORDER BY a.sequence ${order} OFFSET ${cursor} LIMIT ${limit + 1}
     )
-    SELECT g.active, g.id AS group_id, g.created_at::text AS group_created,
+    SELECT g.active, g.id AS group_id,
       (SELECT id FROM b) AS boundary_id, (SELECT ${iso(sql`time`)} FROM b) AS boundary_time,
       coalesce((
         SELECT json_agg(json_build_object(
@@ -209,7 +209,7 @@ export async function getSavedExpense(
         AND ${byRevision ? sql`a.expense_revision = ${data.revision ?? 0}` : sql`a.expense_revision IS NOT NULL AND ${withinBoundary(data, sql`a`)}`}
       ORDER BY a.sequence DESC LIMIT 1
     )
-    SELECT g.active, g.id AS group_id, g.created_at::text AS group_created,
+    SELECT g.active, g.id AS group_id,
       (SELECT id FROM b) AS boundary_id, (SELECT ${iso(sql`time`)} FROM b) AS boundary_time,
       (SELECT json_build_object('id', ev.id, 'time', ${iso(sql`ev.time`)}, 'type', ev.type, 'revision', ev.expense_revision, 'snapshot', ev.snapshot,
         'saved', (SELECT s.snapshot FROM activities s WHERE s.group_id = ev.group_id AND s.expense_id = ev.expense_id
@@ -261,7 +261,7 @@ export async function historicalLedger(db: Db, data: { principal: Principal; gro
       ORDER BY a.expense_id, a.sequence DESC
     ),
     at_time AS (SELECT coalesce(${data.asOf ?? null}::timestamptz, (SELECT time FROM b), now()) AS t)
-    SELECT g.active, g.id AS group_id, g.created_at::text AS group_created, ${ms(sql`g.created_at`)} > (SELECT t FROM at_time) AS before_group,
+    SELECT g.active, g.id AS group_id, ${ms(sql`g.created_at`)} > (SELECT t FROM at_time) AS before_group,
       (SELECT id FROM b) AS boundary_id, (SELECT ${iso(sql`time`)} FROM b) AS boundary_time,
       coalesce((SELECT json_agg(json_build_object('id', l.id, 'expenseId', l.expense_id, 'type', l.type, 'snapshot', l.snapshot) ORDER BY l.expense_id)
         FROM latest l WHERE l.type <> 'delete_expense'), '[]') AS saved,
@@ -301,7 +301,7 @@ export async function historicalLedger(db: Db, data: { principal: Principal; gro
  * (ledger.ts listExpenses), then sorts by saved expense date, creation time and
  * ID, newest first. The filter's sort does not apply.
  */
-export function filterSaved(expenses: readonly SavedExpense[], f: ExpenseFilter): SavedExpense[] {
+function filterSaved(expenses: readonly SavedExpense[], f: ExpenseFilter): SavedExpense[] {
   return expenses
     .filter((e) => passesFilter(e, f))
     .sort((a, b) => compareIds(b.expenseDate, a.expenseDate) || compareIds(b.createdAt, a.createdAt) || compareIds(b.id, a.id))

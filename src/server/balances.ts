@@ -45,7 +45,7 @@ export const balanceSums = (data: { group: SQL; currency?: CurrencyCode | undefi
   ) s), '[]')`
 
 /** Balances per currency and person from balanceSums, with the zero-sum check of computeBalances. */
-export const balancesOf = (sums: readonly BalanceSum[]) =>
+const balancesOf = (sums: readonly BalanceSum[]) =>
   computeBalances(
     sums.map((s) => ({
       currency: s.currency,

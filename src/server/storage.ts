@@ -19,7 +19,7 @@ import { receiptKey } from './receipts'
 import { groupsCreated } from './groups'
 import { iso, textList } from './sql'
 
-export const DELETE_DENIED = 'Only the person who uploaded a receipt, or an admin of its group, can delete it.'
+const DELETE_DENIED = 'Only the person who uploaded a receipt, or an admin of its group, can delete it.'
 
 /** The caller's usage against each fair-use limit that counts per account. */
 export async function storageUsage(db: Db, data: { principal: Principal }) {

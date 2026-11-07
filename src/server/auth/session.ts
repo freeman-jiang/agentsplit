@@ -24,7 +24,7 @@ const keyFor = (secret: string) => {
 }
 
 /** The session token if the cookie carries a valid signature, else null. */
-export async function verifiedSessionToken(data: { cookie: string | null; secret: string; baseUrl: string }): Promise<string | null> {
+async function verifiedSessionToken(data: { cookie: string | null; secret: string; baseUrl: string }): Promise<string | null> {
   if (!data.cookie) return null
   const cookies = parseCookies(data.cookie)
   const value = cookies.get(sessionCookieName(data.baseUrl))

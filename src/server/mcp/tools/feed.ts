@@ -8,8 +8,9 @@ import { FeedCursor } from '../../../shared/api/feed'
 import { legacyDateTime } from '../../../shared/dates'
 import { LIMITS } from '../../../shared/limits'
 import * as feed from '../../feed'
+import { CurrencyCodeSchema } from '../../../shared/money'
 import { defineTool } from './registry'
-import { CalendarDate, CurrencyCodeInput, NoArguments, PageLimit } from './inputs'
+import { CalendarDate, NoArguments, PageLimit } from './inputs'
 import { DateTime, FeedRow, feedRow, Id, NullableString, optional } from './wire'
 
 /** The last row of a page. createdAt keeps microseconds, so rows created in the same millisecond are not skipped. */
@@ -37,7 +38,7 @@ export const listAllExpenses = defineTool({
     ),
     personId: optional(IdInput),
     paidByUserId: optional(IdInput),
-    currencyCode: optional(CurrencyCodeInput),
+    currencyCode: optional(CurrencyCodeSchema),
     categoryId: optional(CategoryId),
     isReimbursement: optional(Schema.Boolean),
     from: optional(CalendarDate),
