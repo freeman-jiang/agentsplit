@@ -5,7 +5,7 @@
 import { Schema } from 'effect'
 import { Id as IdInput, Invalid, NewId } from '../../../shared/api'
 import { AccessRequest, Email, GroupName, Information, PersonName, ShareUrl, SlugInput, type GroupChanges, type GroupCreateInput } from '../../../shared/api/groups'
-import { CURRENCIES, type CurrencyCode } from '../../../shared/currencies'
+import { CURRENCIES, CURRENCY_CODES, isCurrencyCode, type CurrencyCode } from '../../../shared/currencies'
 import { groupPath } from '../../../shared/groups'
 import { absoluteUrl, expensePagePath, exportPath } from '../../../shared/paths'
 import { compareIds } from '../../../shared/ids'
@@ -17,7 +17,7 @@ import type { Principal } from '../../core/access'
 import { renewPrivateInvitation } from '../../ungrouped'
 import { defineTool } from './registry'
 import { PageLimit, trimmed } from './inputs'
-import { DateTime, GroupFields, groupFields, GroupParticipant, Id, isCurrencyCode, NonNegativeInt, NullableString, optional } from './wire'
+import { DateTime, GroupFields, groupFields, GroupParticipant, Id, NonNegativeInt, NullableString, optional } from './wire'
 
 export const listGroups = defineTool({
   name: 'list_groups',
@@ -118,8 +118,9 @@ function currencyOf(data: { currency: string | undefined; currencyCode: string |
     return data.currencyCode
   }
   const text = data.currency?.trim() ?? ''
-  if (isCurrencyCode(text.toUpperCase())) return text.toUpperCase() as CurrencyCode
-  const bySymbol = (Object.keys(CURRENCIES) as CurrencyCode[]).filter((code) => CURRENCIES[code].symbol === text)
+  const upper = text.toUpperCase()
+  if (isCurrencyCode(upper)) return upper
+  const bySymbol = CURRENCY_CODES.filter((code) => CURRENCIES[code].symbol === text)
   const [only] = bySymbol
   if (bySymbol.length !== 1 || !only) throw new Invalid({ message: NO_CUSTOM_CURRENCY })
   return only

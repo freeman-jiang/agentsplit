@@ -4,7 +4,7 @@
 import { asc, sql } from 'drizzle-orm'
 import { categories } from '../../db/schema/app'
 import { NotFound } from '../shared/api'
-import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
+import { CURRENCIES, CURRENCY_CODES } from '../shared/currencies'
 import { FAIR_USE, FAIR_USE_LIMITS, LIMITS } from '../shared/limits'
 import { receiptDownloadPath } from '../shared/paths'
 import { RECEIPT_CONTENT_TYPES, RECURRENCES, SPLIT_MODES, type ExpenseKind } from '../shared/vocabulary'
@@ -67,7 +67,7 @@ export async function getExpenseContext(db: Db, data: { principal: Principal; ex
 export async function getReference(db: Db) {
   return {
     categories: await listCategories(db),
-    currencies: (Object.keys(CURRENCIES) as CurrencyCode[]).map((code) => ({ code, ...CURRENCIES[code] })),
+    currencies: CURRENCY_CODES.map((code) => ({ code, ...CURRENCIES[code] })),
     splitModes: SPLIT_MODES,
     recurrence: RECURRENCES,
     attachments: { enabled: true, contentTypes: RECEIPT_CONTENT_TYPES, maxBytes: LIMITS.receiptBytes },
