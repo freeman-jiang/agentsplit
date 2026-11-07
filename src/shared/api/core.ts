@@ -15,6 +15,10 @@ export const RecurrenceSchema = Schema.Literals(RECURRENCES)
 export const ExpenseKindSchema = Schema.Literals(EXPENSE_KINDS)
 export const RoleSchema = Schema.Literals(ROLES)
 export const GroupKindSchema = Schema.Literals(GROUP_KINDS)
+/** A name as typed, which the server trims and checks (trimmedName in src/shared/groups.ts). */
+export const NameInput = Schema.String.check(Schema.isMaxLength(LIMITS.nameInputMax))
+/** An email as typed, which the server trims and lowercases (normalizeEmail). */
+export const EmailInput = Schema.String.check(Schema.isMaxLength(LIMITS.emailMax))
 /** Search text in a list filter. */
 export const SearchText = Schema.String.check(Schema.isMaxLength(LIMITS.searchMax))
 

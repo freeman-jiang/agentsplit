@@ -7,7 +7,7 @@ import { and, eq } from 'drizzle-orm'
 import { expenses, groups, memberships, participants, privateContexts, privatePeople } from '../../db/schema/app'
 import { Conflict, Forbidden, Invalid, Unauthorized } from '../shared/api'
 import type { ExpenseDraft } from '../shared/expense-rules'
-import { EMAIL, normalizeEmail } from '../shared/groups'
+import { EMAIL, normalizeEmail, trimmedName } from '../shared/groups'
 import { LIMITS, participantLimitMessage } from '../shared/limits'
 import { requireMember, type Principal } from './core/access'
 import { groupSnapshot, recordGroupEvent } from './activity'
@@ -53,9 +53,9 @@ export async function createUngroupedExpense(
       if (!account) throw new Invalid({ message: 'Choose an existing contact or invite someone by email.', field: 'people' })
       return { localId: person.id, name: account.name, email: normalizeEmail(account.email), userId: account.id as string | null }
     }
-    const name = person.name.trim()
+    const name = trimmedName(person.name)
     const email = normalizeEmail(person.email)
-    if (!name || name.length > LIMITS.nameMax || !EMAIL.test(email)) throw new Invalid({ message: 'Enter a name and a valid email address.', field: 'people' })
+    if (name === null || !EMAIL.test(email)) throw new Invalid({ message: 'Enter a name and a valid email address.', field: 'people' })
     // An email that belongs to a known contact links that account; nobody needs an invitation then.
     const account = known.find((c) => normalizeEmail(c.email) === email)
     return { localId: person.id, name: account?.name ?? name, email, userId: account?.id ?? null }
