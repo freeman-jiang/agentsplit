@@ -1,15 +1,19 @@
 // Receipts on an expense, ported from the current app's
 // src/components/expense-documents-input.tsx. Images upload to
 // /api/receipts and always load through it, never from storage directly.
+// Photos shrink in the browser first (receipt-files.ts).
 import { Loader2, Paperclip, X } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '~/client/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '~/client/ui/dialog'
+import { LIMITS } from '~/shared/limits'
+import { prepareReceipt, tombstoneText, type Tombstone } from './receipt-files'
 
-export type FormDocument = { id: string; url: string; width: number; height: number }
+/** `deleted` is set for a receipt that was deleted for good: it shows a tombstone, and saving needs it removed. */
+export type FormDocument = { id: string; url: string; width: number; height: number; deleted?: Tombstone | null }
 
-const MAX_BYTES = 5 * 1024 * 1024
+const MAX_BYTES = LIMITS.receiptBytes
 const mib = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1).replace(/\.0$/, '')} MiB`
 export const receiptSrc = (data: { groupId: string; url: string }) => `/api/receipts?${new URLSearchParams({ groupId: data.groupId, url: data.url })}`
 
@@ -31,7 +35,10 @@ export function ExpenseDocuments(props: { groupId: string; documents: readonly F
   const latest = useRef(props.documents)
   latest.current = props.documents
 
-  const send = async (file: File) => {
+  const send = async (original: File) => {
+    setUploading(true)
+    const file = await prepareReceipt(original)
+    setUploading(false)
     if (file.size > MAX_BYTES) {
       toast.error('The file is too big', { description: `The maximum file size you can upload is ${mib(MAX_BYTES)}. Yours is ${mib(file.size)}.` })
       return
@@ -43,27 +50,37 @@ export function ExpenseDocuments(props: { groupId: string; documents: readonly F
     } catch (error) {
       toast.error('Error while uploading document', {
         description: error instanceof Error ? error.message : 'Something wrong happened when uploading the document. Please retry later or select a different file.',
-        action: { label: 'Retry', onClick: () => void send(file) },
+        action: { label: 'Retry', onClick: () => void send(original) },
       })
     } finally {
       setUploading(false)
     }
   }
 
-  const shown = open === null ? undefined : props.documents[open]
+  const opened = open === null ? undefined : props.documents[open]
+  const shown = opened?.deleted ? undefined : opened
   return (
     <div className="flex flex-wrap gap-3">
-      {props.documents.map((doc, index) => (
-        <button
-          key={doc.id}
-          type="button"
-          onClick={() => setOpen(index)}
-          className="h-20 w-20 overflow-hidden border bg-muted"
-          aria-label={`Open document ${index + 1}`}
-        >
-          <img src={receiptSrc({ groupId: props.groupId, url: doc.url })} alt="" width={doc.width} height={doc.height} className="h-full w-full object-cover" loading="lazy" />
-        </button>
-      ))}
+      {props.documents.map((doc, index) =>
+        doc.deleted ? (
+          <div key={doc.id} className="flex h-20 w-40 flex-col justify-between border bg-muted p-2 text-xs text-muted-foreground">
+            <p>{tombstoneText(doc.deleted)}</p>
+            <button type="button" className="self-start underline" onClick={() => props.onChange(props.documents.filter((d) => d.id !== doc.id))}>
+              Remove
+            </button>
+          </div>
+        ) : (
+          <button
+            key={doc.id}
+            type="button"
+            onClick={() => setOpen(index)}
+            className="h-20 w-20 overflow-hidden border bg-muted"
+            aria-label={`Open document ${index + 1}`}
+          >
+            <img src={receiptSrc({ groupId: props.groupId, url: doc.url })} alt="" width={doc.width} height={doc.height} className="h-full w-full object-cover" loading="lazy" />
+          </button>
+        ),
+      )}
       <input
         ref={input}
         type="file"
