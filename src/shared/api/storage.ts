@@ -4,7 +4,7 @@
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { LIMITS } from '../limits'
-import { Id, ReadError, WriteError } from './core'
+import { Id, Offset, PageLimit, ReadError, WriteError } from './core'
 
 /** A receipt deleted for good: readers show who deleted it and when, instead of the image. */
 export const ReceiptTombstone = Schema.Struct({ by: Schema.String, at: Schema.String })
@@ -40,8 +40,8 @@ export class StorageApi extends RpcGroup.make(
   Rpc.make('storage.receipts', {
     payload: {
       order: ReceiptOrder,
-      cursor: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-      limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax })),
+      cursor: Offset,
+      limit: PageLimit,
     },
     success: Schema.Struct({ receipts: Schema.Array(OwnReceipt), nextCursor: Schema.NullOr(Schema.Number) }),
     error: ReadError,

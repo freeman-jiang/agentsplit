@@ -7,7 +7,7 @@ import { EMAIL } from '../groups'
 import { SECRET_TOKEN } from '../ids'
 import { LIMITS } from '../limits'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
-import { EmailInput, GroupKindSchema, Id, IdempotencyKey, NewId, ReadError, RoleSchema as Role, WriteError } from './core'
+import { EmailInput, GroupKindSchema, Id, IdempotencyKey, NewId, Offset, ReadError, RoleSchema as Role, WriteError } from './core'
 
 export const GroupName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(LIMITS.groupNameMin, LIMITS.nameMax))
 export const Information = Schema.String.check(Schema.isMaxLength(LIMITS.informationMax))
@@ -138,7 +138,7 @@ export const InvitationPreview = Schema.Union([
 // ---------- procedures ----------
 
 export class GroupsApi extends RpcGroup.make(
-  Rpc.make('groups.directory', { payload: { offset: Schema.Number }, success: Directory, error: ReadError }),
+  Rpc.make('groups.directory', { payload: { offset: Offset }, success: Directory, error: ReadError }),
   Rpc.make('groups.details', { payload: { groupId: Id }, success: GroupDetails, error: ReadError }),
   Rpc.make('groups.create', {
     payload: {

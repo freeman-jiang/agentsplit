@@ -168,7 +168,7 @@ describe('slugs', () => {
     await database.tx((db) => createExpense(db, { principal: alice, groupId: g.id, expenseId: `exp-${g.id}`, idempotencyKey: key(), expense }))
     await update(alice, g.id, 1, { slug: 'new-flat' })
     const ref = 'OLD-Flat'
-    const activity = await database.tx((db) => listActivities(db, { principal: alice, groupId: ref }))
+    const activity = await database.tx((db) => listActivities(db, { principal: alice, groupId: ref, limit: 10 }))
     expect(activity.groupId).toBe(g.id)
     expect((await database.tx((db) => statsOverview(db, { principal: alice, groupId: ref }))).total).toBe('10.00')
     expect(JSON.parse((await database.tx((db) => exportJson(db, { principal: alice, groupId: ref }))).content).id).toBe(g.id)
@@ -292,7 +292,7 @@ describe('group history', () => {
   it('lists a group edit in the Log with the snapshot the history reader accepts', async () => {
     const group = await create(alice, { name: 'Logged' })
     await update(alice, group.id, 1, { name: 'Logged renamed' })
-    const page = await database.tx((db) => listActivities(db, { principal: alice, groupId: group.id }))
+    const page = await database.tx((db) => listActivities(db, { principal: alice, groupId: group.id, limit: 10 }))
     const json = JSON.stringify(page)
     expect(json).toContain('Logged renamed')
     expect(json).toContain('"currency":"USD"')

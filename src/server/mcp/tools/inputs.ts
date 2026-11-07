@@ -3,8 +3,7 @@
 // (src/shared/limits.ts). A tool decodes its arguments once, against the same
 // rules that the web app's call meets.
 import { Schema, SchemaTransformation } from 'effect'
-import { CalendarDate as ContractDate, Id } from '../../../shared/api'
-import { LIMITS } from '../../../shared/limits'
+import { CalendarDate as ContractDate, Id, PageLimit as ContractPageLimit } from '../../../shared/api'
 import { CurrencyCodeSchema, DecimalString } from '../../../shared/money'
 import { optional, RecordedTime } from './wire'
 
@@ -20,7 +19,7 @@ export const CurrencyCodeInput = CurrencyCodeSchema
 export const Decimal = DecimalString
 
 /** A page size, with the tool's default when it is left out. */
-export const PageLimit = (fallback: number) => Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax })).annotate({ default: fallback })
+export const PageLimit = (fallback: number) => ContractPageLimit.annotate({ default: fallback })
 
 /**
  * Text that the current app trimmed (z.string().trim()): the raw text within

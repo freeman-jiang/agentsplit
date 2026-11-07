@@ -99,7 +99,7 @@ export async function listExpenses(
   },
 ) {
   const f = data.filter
-  const limit = Math.min(Math.max(Math.trunc(data.limit) || 50, 1), 200)
+  const { limit } = data
   // The membership check is part of the statement: rows come only from a group the caller belongs to.
   const member = sql`WITH ${memberCte(data)}`
   const where: SQL[] = [sql`e.group_id = (SELECT id FROM g WHERE active)`, sql`e.deleted_at IS NULL`]
@@ -133,7 +133,7 @@ export async function listExpenses(
     FROM expenses e
     WHERE ${sql.join(where, sql` AND `)}
     ORDER BY ${byUpdated ? sql`e.updated_at DESC, e.id DESC` : sql`e.expense_date DESC, e.created_at DESC, e.id DESC`}
-    LIMIT ${limit + 1} OFFSET ${Math.max(Math.trunc(data.offset ?? 0), 0)}
+    LIMIT ${limit + 1} OFFSET ${data.offset ?? 0}
   `)
   const rows = result.rows
   // No rows: an empty page, or not a member. Only then is the separate check needed.
