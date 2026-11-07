@@ -99,6 +99,9 @@ export const fieldProblemsText = (problems: ReadonlyArray<{ readonly field: stri
 export const withoutField = (data: { message: string; field: string | undefined }) =>
   data.field !== undefined && data.message.startsWith(`${data.field}: `) ? data.message.slice(data.field.length + 2) : data.message
 
+/** The JSON body of a refused request on a plain HTTP route (receipts, uploads, exports). */
+export type HttpErrorBody = { readonly error: string }
+
 /** The text a caller sees for a declared error. */
 export function errorText(error: DeclaredError): string {
   switch (error._tag) {

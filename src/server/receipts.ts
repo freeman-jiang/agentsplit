@@ -4,7 +4,7 @@
 // Rules from the current app: src/lib/receipt-storage.ts, src/app/api/receipts/route.ts.
 import { sql } from 'drizzle-orm'
 import { receipts } from '../../db/schema/app'
-import { groupAccessDenied, Invalid, NotFound } from '../shared/api'
+import { groupAccessDenied, Invalid, NotFound, type DocumentInput } from '../shared/api'
 import { LIMITS, mebibytes } from '../shared/limits'
 import { RECEIPT_FORMATS, receiptTypeOf, type ReceiptFormat } from '../shared/vocabulary'
 import { randomId } from '../shared/ids'
@@ -119,7 +119,8 @@ export const RECEIPT_REFUSED = `Could not upload receipt. Use a JPEG or PNG imag
  * the upload and again, under the uploader's quota lock, when the receipt is
  * registered; a full quota is a precondition Invalid.
  */
-export async function storeReceipt(db: Db, data: { bucket: Bucket; principal: Principal; groupId: string; file: Blob }) {
+/** The answer of POST /api/receipts is the stored receipt as an expense attaches it. */
+export async function storeReceipt(db: Db, data: { bucket: Bucket; principal: Principal; groupId: string; file: Blob }): Promise<typeof DocumentInput.Type> {
   const { groupId } = await member(db, data)
   const bytes = new Uint8Array(await data.file.arrayBuffer())
   const info = bytes.length && bytes.length <= LIMITS.receiptBytes ? imageInfo(bytes) : null

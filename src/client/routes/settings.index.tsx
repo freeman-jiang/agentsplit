@@ -18,6 +18,7 @@ import { CopyButton } from '~/client/ui/copy-button'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
 import { LIMITS } from '~/shared/limits'
+import type { ApiKeySummary } from '~/shared/api'
 import { API_KEY_HEADER } from '~/shared/mcp'
 
 export const Route = createFileRoute('/settings/')({
@@ -136,9 +137,7 @@ function Preferences() {
   )
 }
 
-type Key = { id: string; name: string | null; start: string | null; createdAt: string }
-
-function ApiKeys(props: { keys: readonly Key[] }) {
+function ApiKeys(props: { keys: ReadonlyArray<typeof ApiKeySummary.Type> }) {
   const queryClient = useQueryClient()
   const [label, setLabel] = useState('')
   const [secret, setSecret] = useState('')

@@ -6,10 +6,11 @@ import { useState } from 'react'
 import { cn } from '~/client/cn'
 import { formatMoment } from '~/client/dates'
 import { afterWrite } from '~/client/queries/keys'
-import { ownReceiptsQuery, storageUsageQuery, type ReceiptOrder } from '~/client/queries/storage'
+import { ownReceiptsQuery, storageUsageQuery } from '~/client/queries/storage'
 import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 import { NativeSelect } from '~/client/ui/native-select'
+import type { ReceiptOrder } from '~/shared/api'
 import { FAIR_USE, LIMITS, megabytes } from '~/shared/limits'
 import { DeleteDialog } from './delete-dialog'
 
@@ -79,7 +80,7 @@ function Limit(props: { label: string; value: string }) {
 
 function Receipts() {
   const queryClient = useQueryClient()
-  const [order, setOrder] = useState<ReceiptOrder>('largest')
+  const [order, setOrder] = useState<typeof ReceiptOrder.Type>('largest')
   const pages = useInfiniteQuery(ownReceiptsQuery(order))
   const receipts = pages.data?.pages.flatMap((page) => page.receipts) ?? []
   return (
