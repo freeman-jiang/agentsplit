@@ -59,8 +59,8 @@ function GroupLayout() {
   // The Balances tab shows every balance itself, so the rail keeps only the viewer's summary there.
   const onBalances = useRouterState({ select: (s) => s.matches.some((m) => m.routeId === '/$group/balances') })
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-8">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="mx-auto w-full max-w-6xl px-4 py-3 sm:px-8 md:py-6">
+      <div className="mb-2 flex items-center justify-between gap-3 md:mb-3">
         <h1 className="min-w-0 truncate font-display text-2xl sm:text-3xl">
           <Link to="/$group" params={{ group }}>
             {g.name}

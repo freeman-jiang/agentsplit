@@ -230,7 +230,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
       </h2>
       {props.mode === 'edit' && <Attribution detail={props.detail} />}
 
-      <section className="space-y-3 border bg-card p-4 sm:space-y-4" aria-label={income ? 'Income details' : 'Expense details'}>
+      <section className="space-y-2 border bg-card p-3 sm:space-y-4 sm:p-4" aria-label={income ? 'Income details' : 'Expense details'}>
         <Field id="title" label="Description" error={shown('title')}>
           <Input
             id="title"
@@ -248,7 +248,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
                 id="amount"
                 inputMode="decimal"
                 placeholder="0.00"
-                className="h-12 min-w-0 flex-1 text-[2rem]! leading-none font-semibold tabular-nums"
+                className="h-12 min-w-0 flex-1 text-[2rem]! leading-none font-semibold tabular-nums placeholder:font-normal placeholder:text-muted-foreground/70"
                 value={state.amount}
                 aria-invalid={!!shown('amount')}
                 onFocus={(e) => e.target.select()}

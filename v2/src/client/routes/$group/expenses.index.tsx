@@ -96,7 +96,7 @@ function ExpensesTab() {
         </p>
       )}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div role="radiogroup" aria-label="Sort expenses" className="inline-flex border p-0.5 text-sm">
+        <div role="radiogroup" aria-label="Sort expenses" className="inline-flex min-h-10 items-stretch border text-sm max-sm:grid max-sm:w-full max-sm:grid-cols-2">
           {SORTS.map(([value, label]) => (
             <button
               key={value}
@@ -104,7 +104,7 @@ function ExpensesTab() {
               role="radio"
               aria-checked={sort === value}
               onClick={() => navigate({ search: (s) => ({ ...s, sort: value }), replace: true })}
-              className={cn('px-3 py-1', sort === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
+              className={cn('px-3', sort === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
             >
               {label}
             </button>

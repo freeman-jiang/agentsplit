@@ -97,12 +97,6 @@ export function FeedCard({ expense }: { expense: Item }) {
             </span>
           )}
         </div>
-        {/* On narrow screens the paid figure sits under the title, so the right column holds only the viewer's figure. */}
-        <p className="truncate text-sm text-muted-foreground sm:hidden">
-          {figures.paid.label} <span className="tabular-nums">{figures.paid.amount === null ? '—' : money(figures.paid.amount, expense.currency)}</span>
-          {' · '}
-          {expense.group?.name ?? 'No group'}
-        </p>
         {/* The group sits in the metadata line, so the title stays on the first lines of the row. */}
         <p className="truncate text-xs text-muted-foreground max-sm:hidden" data-testid="expense-metadata">
           {expense.group ? (
@@ -143,6 +137,13 @@ export function FeedCard({ expense }: { expense: Item }) {
           </div>
         ))}
       </div>
+      {/* On narrow screens the paid figure and the group sit under the title and use the width under the viewer's figure too. */}
+      <p className="col-span-2 col-start-2 flex min-w-0 gap-1 text-sm text-muted-foreground sm:hidden">
+        <span className="shrink-0">
+          {figures.paid.label} <span className="tabular-nums">{figures.paid.amount === null ? '—' : money(figures.paid.amount, expense.currency)}</span>
+        </span>
+        <span className="min-w-0 truncate">· {expense.group?.name ?? 'No group'}</span>
+      </p>
     </Link>
   )
 }
