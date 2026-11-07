@@ -27,7 +27,7 @@ function EditPayment() {
   // Any other shape keeps every detail in the expense editor (P-BAL-89).
   if (!isSimplePayment(detail))
     return (
-      <div className="space-y-3 border bg-card p-4">
+      <div className="space-y-3 rounded-2xl border bg-card p-4">
         <p>This entry uses the expense editor.</p>
         <Button asChild>
           <Link

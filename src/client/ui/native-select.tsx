@@ -14,7 +14,7 @@ export const NativeSelect = forwardRef<HTMLSelectElement, Props>(
       <select
         ref={ref}
         className={cn(
-          'h-10 w-full min-w-0 appearance-none rounded-none border border-input bg-card ps-3 pe-10 text-base text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm [&_option]:bg-card [&_option]:text-foreground [&_optgroup]:bg-card [&_optgroup]:text-foreground',
+          'h-10 w-full min-w-0 appearance-none rounded-xl border border-input bg-transparent ps-3 pe-10 text-base text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm [&_option]:bg-card [&_option]:text-foreground [&_optgroup]:bg-card [&_optgroup]:text-foreground',
           displayValue !== undefined && 'text-transparent',
           className,
         )}

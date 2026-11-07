@@ -47,7 +47,7 @@ function Connections() {
         {account.connections.length === 0 ? (
           <p>No connected apps yet.</p>
         ) : (
-          <ul className="divide-y border bg-card px-5">
+          <ul className="divide-y rounded-2xl border bg-card px-5">
             {account.connections.map((c) => (
               <li key={c.clientId} className="flex flex-wrap items-center justify-between gap-4 py-4">
                 <div className="min-w-0 flex-1">

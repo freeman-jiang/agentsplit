@@ -88,7 +88,7 @@ function ExpensesTab() {
         </Button>
       </div>
       {!g.participantId && (
-        <p className="mb-4 border bg-card p-3 text-sm">
+        <p className="mb-4 rounded-2xl border bg-card p-3 text-sm">
           Your account is not linked to a participant in this group, so amounts are not shown from your side.{' '}
           <Link to="/$group/edit" params={{ group }} hash="members" className="underline underline-offset-4">
             Choose your participant
@@ -96,7 +96,7 @@ function ExpensesTab() {
         </p>
       )}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div role="radiogroup" aria-label="Sort expenses" className="inline-flex min-h-10 items-stretch border text-sm max-sm:grid max-sm:w-full max-sm:grid-cols-2">
+        <div role="radiogroup" aria-label="Sort expenses" className="inline-flex min-h-10 items-stretch rounded-full bg-muted p-1 text-sm max-sm:grid max-sm:w-full max-sm:grid-cols-2">
           {SORTS.map(([value, label]) => (
             <button
               key={value}
@@ -104,7 +104,7 @@ function ExpensesTab() {
               role="radio"
               aria-checked={sort === value}
               onClick={() => navigate({ search: (s) => ({ ...s, sort: value }), replace: true })}
-              className={cn('px-3', sort === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
+              className={cn('rounded-full px-4 transition-colors', sort === value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
             >
               {label}
             </button>
@@ -145,7 +145,7 @@ function ExpensesTab() {
           {sections.map((section) => (
             <div key={section.key}>
               {section.label && <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{section.label}</h3>}
-              <ul className="divide-y border">
+              <ul className="divide-y overflow-hidden rounded-2xl border">
                 {section.expenses.map((e) => (
                   <ExpenseCard key={e.id} expense={e} group={group} viewer={g.participantId} names={names} />
                 ))}
@@ -180,7 +180,7 @@ function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewe
           <div className="text-lg tabular-nums">{Number(day)}</div>
           <span className="sr-only">{year}</span>
         </div>
-        <span className="hidden h-10 w-10 shrink-0 items-center justify-center bg-muted text-primary sm:flex">
+        <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground sm:flex">
           <CategoryIcon categoryId={e.categoryId} className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">

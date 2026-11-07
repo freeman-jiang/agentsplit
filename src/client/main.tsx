@@ -6,6 +6,9 @@ import { ErrorState } from './components/error-state'
 import { groupUrls } from './group-urls'
 import { addAppleSplashImages, registerServiceWorker } from './pwa'
 import { routeTree } from './routeTree.gen'
+// Geist, self-hosted: the browser fetches only the subsets a page uses (Latin is 29 KB).
+import '@fontsource-variable/geist'
+import '@fontsource-variable/geist-mono'
 import './styles.css'
 
 // Every visit refetches its data, as the current app does (P-EXP-20, Freeman 2026-11-05).

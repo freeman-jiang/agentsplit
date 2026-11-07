@@ -116,7 +116,7 @@ function ExpenseSetup({ options }: { options: Options }) {
       {!groupId && (
         <section className="space-y-4" aria-label="Expense participants">
           <h2 className="font-display text-xl">Who’s involved?</h2>
-          <ul className="divide-y border px-4">
+          <ul className="divide-y overflow-hidden rounded-2xl border px-4">
             {people.map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-4 py-3">
                 <div>
@@ -156,7 +156,7 @@ function ExpenseSetup({ options }: { options: Options }) {
                 ))}
             </NativeSelect>
           </label>
-          <details className="border p-4">
+          <details className="rounded-2xl border p-4">
             <summary className="cursor-pointer text-sm font-medium">Invite someone new by email</summary>
             <div className="mt-4 space-y-3">
               <label className="block space-y-2 text-sm">
