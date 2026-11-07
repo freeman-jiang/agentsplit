@@ -6,7 +6,7 @@ AgentSplit serves its ledger to agents at one MCP Streamable HTTP endpoint:
 https://agentsplit.freemanjiang.com/api/mcp
 ```
 
-The endpoint is stateless and answers with JSON. It accepts 2025 clients and 2026-07-28 requests; a modern request must send `MCP-Protocol-Version`. The tools call the same domain services as the web app, so membership, validation, splits and history are the same for people and agents. The code is in `v2/src/server/mcp/`.
+The endpoint is stateless and answers with JSON. It accepts 2025 clients and 2026-07-28 requests; a modern request must send `MCP-Protocol-Version`. The tools call the same domain services as the web app, so membership, validation, splits and history are the same for people and agents. The code is in `src/server/mcp/`.
 
 The signed-in `/agents` page shows the endpoint, client setup steps and copyable instructions.
 
@@ -107,6 +107,8 @@ The 23 tools, in the order that `tools/list` gives them. Read tools need `agents
 
 A `groupId` argument takes the group's ID or its slug: the current slug in any case, or a slug the group used before. Every result names the group by its ID.
 
+`list_groups`, `list_expenses`, `list_activity` and `list_receipts` page by offset, as the current app did: `cursor` is the number of rows to skip (0 by default), and the next page starts at the returned `nextCursor` while `hasMore` is true. `list_all_expenses` pages by key instead: give back its `nextCursor` object unchanged, so a new expense never shifts a later page.
+
 | Tool | Kind | Purpose |
 | --- | --- | --- |
 | `list_all_expenses` | read | The feed of expenses and payments across named groups and private ungrouped expenses, newest first. `involvingMe` defaults to true. |
@@ -117,7 +119,7 @@ A `groupId` argument takes the group's ID or its slug: the current slug in any c
 | `create_group` | write | Create a group. The creator becomes admin and a participant. |
 | `update_group` | write | Admins: change settings, the slug or participants, with the current `expectedRevision`. |
 | `manage_group_access` | write | Join with an invitation, leave, and (admins) invite, revoke, remove members, set roles, bind a legacy member, or renew a private invitation. |
-| `list_expenses` | read | A group's expenses, with filters and pagination, now or at a past point in history. |
+| `list_expenses` | read | A group's expenses, with filters and pagination, now or at a past point in history. `filter` matches the title, the vendor or the notes. |
 | `get_expense` | read | One expense with payers, splits, attribution and receipt download URLs, now or at a past revision. A receipt that was deleted for good has `deleted` and no download URL. |
 | `create_expense` | write | Create a group or ungrouped expense, a payment, or a recurring expense. Can request receipt upload targets. |
 | `update_expense` | write | Change only the given fields, with `expectedRevision`. Attaches uploaded receipts or removes receipt references. |
