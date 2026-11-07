@@ -10,9 +10,10 @@ import { localDate } from '~/client/components/local-date'
 import { money } from '~/client/components/money'
 import { groupQuery } from '~/client/queries'
 import { statsQuery, type StatsScope } from '~/client/queries/history'
-import { Button } from '~/client/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/client/ui/card'
+import { Checkbox } from '~/client/ui/checkbox'
 import { Input } from '~/client/ui/input'
+import { Label } from '~/client/ui/label'
 import { NativeSelect } from '~/client/ui/native-select'
 import { Skeleton } from '~/client/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/client/ui/table'
@@ -112,8 +113,8 @@ function StatsTab() {
   const drill = { group, groupId: g.id, range }
   return (
     <section>
-      <h2 className="mb-4 font-display text-2xl leading-tight">Totals</h2>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-4" aria-label="Statistics filters">
+      <h2 className="sr-only">Totals</h2>
+      <div className="mb-4 flex flex-wrap items-start gap-3" aria-label="Statistics filters">
         {data && data.currencies.length > 0 && (
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             Currency
@@ -126,7 +127,7 @@ function StatsTab() {
             </NativeSelect>
           </label>
         )}
-        <div className="flex max-w-full flex-col items-start gap-3 sm:items-end">
+        <div className="flex max-w-full flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             Period
             <NativeSelect aria-label="Period" data-testid="stats-period" value={period} onChange={(e) => setPeriod(e.target.value as Period)} wrapperClassName="w-44">
@@ -151,26 +152,29 @@ function StatsTab() {
           )}
         </div>
       </div>
-      <SummaryCard data={data} />
-      <StatsCard title="Totals" description="Spending summary of the entire group.">
-        {!data || !c ? <Lines rows={3} /> : <Totals data={data} currency={c} />}
-      </StatsCard>
-      <OverTimeCard data={data} drill={drill} />
-      <MonthlyCard data={data} />
-      <ParticipantsCard data={data} />
-      <CategoriesCard data={data} drill={drill} />
-      <RecurringCard data={data} />
+      {/* On wide screens Summary and Totals share a row; the wide cards span both columns. */}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <SummaryCard data={data} />
+        <StatsCard title="Totals" description="Spending summary of the entire group.">
+          {!data || !c ? <Lines rows={3} /> : <Totals data={data} currency={c} />}
+        </StatsCard>
+        <OverTimeCard data={data} drill={drill} />
+        <MonthlyCard data={data} />
+        <ParticipantsCard data={data} />
+        <CategoriesCard data={data} drill={drill} />
+        <RecurringCard data={data} />
+      </div>
     </section>
   )
 }
 
-function StatsCard({ title, description, children, actions }: { title: string; description: string; children: ReactNode; actions?: ReactNode }) {
+function StatsCard({ title, description, children, actions, wide }: { title: string; description: string; children: ReactNode; actions?: ReactNode; wide?: boolean }) {
   return (
-    <Card className="mb-4">
+    <Card className={cn('min-w-0', wide && 'xl:col-span-2')}>
       <CardHeader>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="shrink-0">
-            <CardTitle className="text-xl">{title}</CardTitle>
+          <div className="shrink-0 xl:min-w-0 xl:shrink">
+            <CardTitle>{title}</CardTitle>
             <CardDescription>{description}</CardDescription>
           </div>
           {actions}
@@ -209,7 +213,7 @@ function SummaryCard({ data }: { data: Overview | undefined }) {
       ) : s.count === 0 ? (
         <Empty>There are no expenses yet.</Empty>
       ) : (
-        <div className="grid grid-cols-2 gap-x-6 gap-y-6">
+        <div className="grid grid-cols-2 gap-6 sm:grid-cols-4 xl:grid-cols-2">
           <Metric label="Expenses">{s.count}</Metric>
           <Metric label="Average expense">{money(s.average, c)}</Metric>
           <Metric label="Largest expense">
@@ -217,7 +221,7 @@ function SummaryCard({ data }: { data: Overview | undefined }) {
             {s.largest && <div className="truncate text-xs text-muted-foreground">{s.largest.title}</div>}
           </Metric>
           <Metric label="Active period">
-            <span className="text-sm">{span}</span>
+            <span className="block text-sm leading-snug">{span}</span>
           </Metric>
         </div>
       )}
@@ -225,29 +229,25 @@ function SummaryCard({ data }: { data: Overview | undefined }) {
   )
 }
 
-function Metric({ label, children }: { label: string; children: ReactNode }) {
+function Metric({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
     <div className="min-w-0">
       <div className="text-xs font-medium text-muted-foreground">{label}</div>
-      <div className="mt-1 text-2xl font-medium tabular-nums">{children}</div>
+      <div className={cn('mt-1 text-2xl font-medium tabular-nums', className)}>{children}</div>
     </div>
   )
 }
 
 function Totals({ data, currency }: { data: Overview; currency: CurrencyCode }) {
   const personal = (label: string, amount: string) => (
-    <div>
-      <div className="text-muted-foreground">{label}</div>
-      {/* Negative personal amounts are earnings: green; spending is red (P-STATS-22). */}
-      <div className={cn('text-lg tabular-nums', isNegative(amount) ? 'text-owed' : 'text-owe')}>{money(abs(amount), currency)}</div>
-    </div>
+    // Negative personal amounts are earnings: green; spending is red (P-STATS-22).
+    <Metric label={label} className={isNegative(amount) ? 'text-owed' : 'text-owe'}>
+      {money(abs(amount), currency)}
+    </Metric>
   )
   return (
-    <div className="flex flex-col space-y-4">
-      <div>
-        <div className="text-muted-foreground">{isNegative(data.total) ? 'Total group earnings' : 'Total group spendings'}</div>
-        <div className="text-lg tabular-nums">{money(abs(data.total), currency)}</div>
-      </div>
+    <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 xl:grid-cols-2">
+      <Metric label={isNegative(data.total) ? 'Total group earnings' : 'Total group spendings'}>{money(abs(data.total), currency)}</Metric>
       {data.yourPaid !== null && personal(isNegative(data.yourPaid) ? 'Your total earnings' : 'Your total spendings', data.yourPaid)}
       {data.yourShare !== null && personal('Your total share', data.yourShare)}
     </div>
@@ -276,25 +276,30 @@ function Bar({ value, max, color }: { value: number; max: number; color: string 
   )
 }
 
-function BarRow({ label, value, max, color, amount, onClick, aria, icon }: { label: ReactNode; value: number; max: number; color: string; amount: string; onClick: () => void; aria: string; icon?: ReactNode }) {
+/**
+ * One drill-down row. On wide screens the label, bar and amount share one
+ * line; `columns` sets that grid, so every row of a card starts its bar at the same place.
+ */
+function BarRow(props: { label: ReactNode; value: number; max: number; color: string; amount: string; onClick: () => void; aria: string; icon?: ReactNode; columns: string }) {
   return (
     <button
       type="button"
-      onClick={onClick}
-      aria-label={aria}
-      className="group -mx-2 flex w-full cursor-pointer flex-col gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onClick={props.onClick}
+      aria-label={props.aria}
+      className={cn(
+        'group -mx-2 grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_1rem] items-center gap-x-3 gap-y-1.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        props.columns,
+      )}
     >
-      <div className="flex items-center justify-between gap-2 text-sm">
-        <div className="flex min-w-0 items-center gap-2">
-          {icon}
-          <span className="truncate">{label}</span>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <span className="tabular-nums text-muted-foreground">{amount}</span>
-          <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-muted-foreground" aria-hidden="true" />
-        </div>
-      </div>
-      <Bar value={value} max={max} color={color} />
+      <span className="flex min-w-0 items-center gap-2">
+        {props.icon}
+        <span className="truncate">{props.label}</span>
+      </span>
+      <span className="col-span-full row-start-2 lg:col-span-1 lg:col-start-2 lg:row-start-1">
+        <Bar value={props.value} max={props.max} color={props.color} />
+      </span>
+      <span className="text-right tabular-nums text-muted-foreground">{props.amount}</span>
+      <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-muted-foreground" aria-hidden="true" />
     </button>
   )
 }
@@ -304,15 +309,25 @@ function OverTimeCard({ data, drill }: { data: Overview | undefined; drill: Dril
   const c = data?.currency
   const max = data ? Math.max(0, ...data.months.map((m) => Number(m.total))) : 0
   return (
-    <StatsCard title="Spending over time" description="Total group spending per month. Select a month to see its expenses.">
+    <StatsCard wide title="Spending over time" description="Total group spending per month. Select a month to see its expenses.">
       {!data || !c ? (
         <Lines rows={4} />
       ) : data.months.length === 0 ? (
         <Empty>There are no expenses yet.</Empty>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-0.5">
           {data.months.map((m) => (
-            <BarRow key={m.month} label={formatMonth(m.month)} aria={`Show expenses for ${formatMonth(m.month)}`} value={Number(m.total)} max={max} color={chartColor(0)} amount={money(m.total, c)} onClick={() => setMonth(m.month)} />
+            <BarRow
+              key={m.month}
+              columns="lg:grid-cols-[5.5rem_minmax(0,1fr)_7rem_1rem]"
+              label={formatMonth(m.month)}
+              aria={`Show expenses for ${formatMonth(m.month)}`}
+              value={Number(m.total)}
+              max={max}
+              color={chartColor(0)}
+              amount={money(m.total, c)}
+              onClick={() => setMonth(m.month)}
+            />
           ))}
         </div>
       )}
@@ -335,16 +350,17 @@ function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Dr
   const c = data?.currency
   const max = data ? Math.max(0, ...data.categories.map((x) => Number(x.total))) : 0
   return (
-    <StatsCard title="Spending by category" description="Total amount spent in each category. Select a category to see its expenses.">
+    <StatsCard wide title="Spending by category" description="Total amount spent in each category. Select a category to see its expenses.">
       {!data || !c ? (
         <Lines rows={4} />
       ) : data.categories.length === 0 ? (
         <Empty>There are no expenses yet.</Empty>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-0.5">
           {data.categories.map((x, i) => (
             <BarRow
               key={x.categoryId}
+              columns="lg:grid-cols-[11rem_minmax(0,1fr)_9.5rem_1rem]"
               label={x.name}
               icon={<GroupIcon grouping={x.grouping} className="h-4 w-4 shrink-0 text-muted-foreground" />}
               aria={`Show expenses for ${x.name}`}
@@ -386,31 +402,45 @@ function MonthlyCard({ data }: { data: Overview | undefined }) {
   const colors = useMemo(() => new Map(visible.map((x, i) => [x.key, chartColor(i)])), [visible])
   const years = new Set(view?.months.map((m) => m.key.slice(0, 4)))
   const controls = (
-    <div className="flex flex-wrap items-center gap-2 sm:min-w-0 sm:justify-end">
-      <label className="flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-input px-2 text-xs text-muted-foreground">
-        <input type="checkbox" className="h-3.5 w-3.5 accent-primary" checked={round} onChange={(e) => setRound(e.target.checked)} />
-        Round amounts
-      </label>
-      <NativeSelect aria-label="Category grouping" value={grouping} onChange={(e) => setGrouping(e.target.value as MonthlyGrouping)} wrapperClassName="w-32" className="h-8">
+    <div className="flex flex-wrap items-center gap-2 sm:min-w-0 sm:justify-end xl:shrink-0">
+      <div className="flex h-9 shrink-0 items-center gap-2 rounded-full border border-input px-3 text-sm">
+        <Checkbox id="round-amounts" checked={round} onCheckedChange={(value) => setRound(value === true)} />
+        <Label htmlFor="round-amounts" className="font-normal">
+          Round amounts
+        </Label>
+      </div>
+      <NativeSelect aria-label="Category grouping" value={grouping} onChange={(e) => setGrouping(e.target.value as MonthlyGrouping)} wrapperClassName="w-36 sm:w-32" className="h-9 sm:text-sm">
         <option value="categoryGroup">Categories</option>
         <option value="category">Detailed</option>
       </NativeSelect>
-      <div role="group" aria-label="Chart type" className="inline-flex h-8 shrink-0 rounded-md border border-input bg-background">
+      {/* The same segmented control as the expense list's sort. */}
+      <div role="group" aria-label="Chart type" className="inline-flex h-9 shrink-0 items-stretch rounded-full bg-muted p-1">
         {(
           [
             ['bars', 'Stacked bars', ChartBarStacked],
             ['columns', 'Stacked columns', ChartColumnStacked],
           ] as const
         ).map(([value, label, Icon]) => (
-          <Button key={value} type="button" variant="ghost" title={label} aria-label={label} aria-pressed={chart === value} onClick={() => setChart(value)} className={cn('h-7 w-8 border-0 px-2', chart === value && 'bg-accent text-accent-foreground')}>
-            <Icon className="h-4 w-4" />
-          </Button>
+          <button
+            key={value}
+            type="button"
+            title={label}
+            aria-label={label}
+            aria-pressed={chart === value}
+            onClick={() => setChart(value)}
+            className={cn(
+              'flex items-center rounded-full px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              chart === value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Icon className="h-4 w-4" aria-hidden="true" />
+          </button>
         ))}
       </div>
     </div>
   )
   return (
-    <StatsCard title="Monthly spending" description="Spending by month and category for the selected period." actions={controls}>
+    <StatsCard wide title="Monthly spending" description="Spending by month and category for the selected period." actions={controls}>
       {!view || !c ? (
         <Lines rows={3} />
       ) : view.months.length === 0 ? (
@@ -425,9 +455,7 @@ function MonthlyCard({ data }: { data: Overview | undefined }) {
           <div className={cn('text-xs text-muted-foreground', chart === 'columns' ? 'mt-4 space-y-2 lg:mb-7 lg:mt-0' : 'mt-3 flex flex-wrap gap-x-4 gap-y-2')}>
             {visible.map((x) => (
               <div key={x.key} className="flex min-w-0 items-center gap-2">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border" style={{ backgroundColor: colors.get(x.key), color: 'hsl(var(--background))' }}>
-                  <GroupIcon grouping={x.grouping} className="h-3.5 w-3.5" />
-                </span>
+                <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colors.get(x.key) }} />
                 <span className="truncate">{x.name}</span>
               </div>
             ))}
@@ -454,7 +482,7 @@ function segments(month: MonthlyMonth, visible: readonly MonthlyCategory[], curr
 const hover = (data: { month: MonthlyMonth; category: MonthlyCategory; share: number; currency: CurrencyCode; round: boolean }) =>
   `${formatMonth(data.month.key, longMonth)} - ${data.category.name}: ${chartMoney({ amount: data.category.expense, currency: data.currency, round: data.round })} (${Math.round(data.share * 100)}%)`
 
-function StackedBars({ view, visible, colors, currency, round, grouping, includeYear }: ChartProps) {
+function StackedBars({ view, visible, colors, currency, round, includeYear }: ChartProps) {
   return (
     <div className="max-h-[32rem] space-y-2 overflow-y-auto pr-1">
       {view.months.map((month) => {
@@ -464,20 +492,14 @@ function StackedBars({ view, visible, colors, currency, round, grouping, include
           <div key={month.key} className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2 text-sm sm:grid-cols-[6rem_minmax(0,1fr)]">
             <div className="text-muted-foreground">{formatMonth(month.key, includeYear ? shortMonthYear : shortMonth)}</div>
             <div className="grid items-center gap-2" style={{ gridTemplateColumns: `${units}fr max-content ${Math.max(0, 1 - units)}fr` }}>
-              <div className="h-7 min-w-0 overflow-hidden rounded-md bg-muted">
-                <div className="flex h-full">
-                  {segments(month, visible, currency).map((x) => {
-                    const part = ratio(x.expense, month.expense, currency)
-                    const label = hover({ month, category: x, share: part, currency, round })
-                    return (
-                      <div key={x.key} aria-label={label} title={label} className="flex h-full min-w-[2px] items-center gap-1 overflow-hidden px-1.5" style={{ width: `${part * 100}%`, backgroundColor: colors.get(x.key), color: 'hsl(var(--background))' }}>
-                        {part >= 0.06 && <GroupIcon grouping={grouping === 'categoryGroup' ? x.key : x.grouping} className="h-3.5 w-3.5 shrink-0 opacity-80" />}
-                      </div>
-                    )
-                  })}
-                </div>
+              <div className="flex h-2.5 min-w-0 overflow-hidden rounded-full">
+                {segments(month, visible, currency).map((x) => {
+                  const part = ratio(x.expense, month.expense, currency)
+                  const label = hover({ month, category: x, share: part, currency, round })
+                  return <div key={x.key} aria-label={label} title={label} className="h-full min-w-[2px]" style={{ width: `${part * 100}%`, backgroundColor: colors.get(x.key) }} />
+                })}
               </div>
-              <div className="text-left text-xs text-muted-foreground">{chartMoney({ amount: month.expense, currency, round })}</div>
+              <div className="text-left text-xs tabular-nums text-muted-foreground">{chartMoney({ amount: month.expense, currency, round })}</div>
             </div>
           </div>
         )
@@ -503,7 +525,7 @@ function StackedColumns({ view, visible, colors, currency, round, grouping, incl
           return (
             <div key={month.key} className="flex min-w-0 flex-col items-center gap-2">
               <div className="flex h-56 w-full flex-col items-center justify-end">
-                <div className="mb-1 max-w-full truncate px-0.5 text-center text-[10px] leading-none text-muted-foreground">{total}</div>
+                <div className="mb-1 max-w-full truncate px-0.5 text-center text-xs leading-none tabular-nums text-muted-foreground">{total}</div>
                 <div className="flex w-full max-w-14 items-end rounded-md bg-muted" style={{ height: percent > 0 ? `calc(12rem * ${percent / 100})` : '0px' }} title={`${formatMonth(month.key, longMonth)}: ${total}`}>
                   <div className="flex h-full w-full flex-col-reverse overflow-hidden rounded-md">
                     {segments(month, visible, currency).map((x) => {
@@ -518,7 +540,7 @@ function StackedColumns({ view, visible, colors, currency, round, grouping, incl
                   </div>
                 </div>
               </div>
-              <div className="w-full min-w-0 text-center text-[10px] leading-tight text-muted-foreground">
+              <div className="w-full min-w-0 text-center text-xs leading-tight text-muted-foreground">
                 <div className="truncate">{formatMonth(month.key, shortMonth)}</div>
                 {includeYear && <div>{month.key.slice(0, 4)}</div>}
               </div>
@@ -535,7 +557,7 @@ function StackedColumns({ view, visible, colors, currency, round, grouping, incl
 function ParticipantsCard({ data }: { data: Overview | undefined }) {
   const c = data?.currency
   return (
-    <StatsCard title="Spending by participant" description="How much each participant paid and their share of the expenses.">
+    <StatsCard wide title="Spending by participant" description="How much each participant paid and their share of the expenses.">
       {!data || !c ? (
         <Lines rows={3} />
       ) : data.participants.length === 0 ? (
@@ -573,7 +595,7 @@ function RecurringCard({ data }: { data: Overview | undefined }) {
   // Hidden for groups without active recurring expenses in this currency (P-STATS-41).
   if (data && data.recurring.count === 0) return null
   return (
-    <StatsCard title="Recurring expenses" description="Estimated cost of the group's active recurring expenses.">
+    <StatsCard wide title="Recurring expenses" description="Estimated cost of the group's active recurring expenses.">
       {!data || !c ? (
         <Lines rows={2} />
       ) : (
