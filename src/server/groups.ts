@@ -10,14 +10,13 @@ import type { AccessRequest, GroupChanges, GroupCreateInput } from '../shared/ap
 import type { CurrencyCode } from '../shared/currencies'
 import { normalizeEmail, normalizeSlug, slugProblem } from '../shared/groups'
 import { groupLimitMessage, LIMITS, participantLimitMessage } from '../shared/limits'
-import { formatMinor, minor } from '../shared/minor'
 import type { GroupKind, Role } from '../shared/vocabulary'
 import type { Db } from './core/db'
 import { randomId } from './core/ids'
 import { createInvitation, findInvitation, invitationProblem, listedInvitation, openInvitation, revokeInvitations, tokenOfLink } from './invitations'
 import { groupIdOf, memberCte, myMemberships, requireActive, requireMember, type Principal } from './core/access'
 import { accessText, groupSnapshot, recordGroupEvent } from './activity'
-import { netsCte } from './balances'
+import { formatTotals, netsCte, totalsJson } from './balances'
 import { idempotent } from './idempotency'
 import { displayNames } from './people'
 import { iso } from './sql'
@@ -63,12 +62,11 @@ export async function listDirectory(db: Db, data: { principal: Principal; offset
   const result = await db.execute<DirectoryRow>(sql`
     WITH mine AS ${myMemberships(data.principal.userId)},
     ${groupPage({ principal: data.principal, offset, limit: LIMITS.directoryPage })},
-    ${netsCte},
-    totals AS (SELECT currency, sum(net) AS net FROM nets GROUP BY currency)
+    ${netsCte}
     SELECT
       coalesce((SELECT json_agg(json_build_object('id', id, 'slug', slug, 'name', name, 'participantCount', participant_count,
         'createdAt', ${iso(sql`created_at`)}) ORDER BY created_at DESC, id DESC) FROM page), '[]') AS groups,
-      coalesce((SELECT json_agg(json_build_object('currency', currency, 'net', net::text) ORDER BY currency) FROM totals), '[]') AS totals,
+      ${totalsJson} AS totals,
       (SELECT count(*)::int FROM mine WHERE participant_id IS NULL) AS unbound
   `)
   const [row] = result.rows
@@ -76,7 +74,7 @@ export async function listDirectory(db: Db, data: { principal: Principal; offset
   return {
     groups: row.groups.slice(0, LIMITS.directoryPage),
     nextOffset: row.groups.length > LIMITS.directoryPage ? offset + LIMITS.directoryPage : null,
-    totals: row.totals.map((t) => ({ currency: t.currency, net: formatMinor({ amount: minor(BigInt(t.net)), currency: t.currency }) })),
+    totals: formatTotals(row.totals),
     unboundGroupCount: row.unbound,
   }
 }

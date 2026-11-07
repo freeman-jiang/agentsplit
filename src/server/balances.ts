@@ -18,21 +18,30 @@ import { participantName } from './people'
 export type BalanceSum = { currency: CurrencyCode; participantId: string; paid: string; owed: string }
 
 /**
- * Each participant's paid and owed sums per currency over the live expenses
- * of group `group`, as a JSON array of BalanceSum. Minor units travel as text.
- * `where` adds a condition on the expense row `x`.
+ * What each payer paid and each sharer owes, as rows `(expense_id, group_id,
+ * participant_id, paid, owed)` of live expenses `x`: the one rule of what a
+ * balance counts. `group` limits it to one group.
  */
-export const balanceSums = (data: { group: SQL; where?: SQL }) => sql`coalesce((SELECT json_agg(json_build_object('currency', s.currency, 'participantId', s.participant_id, 'paid', s.paid::text, 'owed', s.owed::text))
-  FROM (
-    SELECT x.currency, parts.participant_id, sum(parts.paid) AS paid, sum(parts.owed) AS owed
-    FROM expenses x
-    JOIN (
-      SELECT expense_id, participant_id, amount AS paid, 0::bigint AS owed FROM expense_payers WHERE group_id = ${data.group}
+const ledgerParts = (group?: SQL) => {
+  const where = group ? sql`WHERE group_id = ${group}` : sql``
+  return sql`(
+    SELECT x.currency, parts.* FROM (
+      SELECT expense_id, group_id, participant_id, amount AS paid, 0::bigint AS owed FROM expense_payers ${where}
       UNION ALL
-      SELECT expense_id, participant_id, 0::bigint, amount FROM expense_shares WHERE group_id = ${data.group}
-    ) parts ON parts.expense_id = x.id
-    WHERE x.group_id = ${data.group} AND x.deleted_at IS NULL ${data.where ? sql`AND ${data.where}` : sql``}
-    GROUP BY x.currency, parts.participant_id
+      SELECT expense_id, group_id, participant_id, 0::bigint, amount FROM expense_shares ${where}
+    ) parts JOIN expenses x ON x.id = parts.expense_id AND x.deleted_at IS NULL)`
+}
+
+/**
+ * Each participant's paid and owed sums per currency in group `group`, as a
+ * JSON array of BalanceSum. Minor units travel as text. `currency` keeps one currency.
+ */
+export const balanceSums = (data: { group: SQL; currency?: CurrencyCode | undefined }) => sql`coalesce((SELECT json_agg(json_build_object('currency', s.currency, 'participantId', s.participant_id, 'paid', s.paid::text, 'owed', s.owed::text))
+  FROM (
+    SELECT p.currency, p.participant_id, sum(p.paid) AS paid, sum(p.owed) AS owed
+    FROM ${ledgerParts(data.group)} p
+    ${data.currency ? sql`WHERE p.currency = ${data.currency}` : sql``}
+    GROUP BY p.currency, p.participant_id
   ) s), '[]')`
 
 /** Balances per currency and person from balanceSums, with the zero-sum check of computeBalances. */
@@ -53,22 +62,21 @@ export const settlementsOf = (sums: readonly BalanceSum[]) =>
   [...balancesOf(sums)].map(([currency, byPerson]) => ({ currency, transfers: transfersOf({ currency, byPerson }) }))
 
 /**
- * The caller's net per group, currency and participant over live expenses,
- * as the CTE `nets(group_id, currency, participant_id, net)`: what the
- * caller's participant paid minus their share. It reads the CTE `mine` of
- * (group_id, participant_id) rows; a row without a participant counts nothing.
+ * The caller's net per group, currency and participant, as the CTE
+ * `nets(group_id, currency, participant_id, net)`: what the caller's
+ * participant paid minus their share; and their sum per currency, as the CTE
+ * `totals(currency, net)`. It reads the CTE `mine` of (group_id,
+ * participant_id) rows; a row without a participant counts nothing.
  */
 export const netsCte = sql`nets AS (
-  SELECT parts.group_id, e.currency, parts.participant_id, sum(parts.amount) AS net
-  FROM mine
-  JOIN (
-    SELECT expense_id, group_id, participant_id, amount FROM expense_payers
-    UNION ALL
-    SELECT expense_id, group_id, participant_id, -amount FROM expense_shares
-  ) parts ON parts.group_id = mine.group_id AND parts.participant_id = mine.participant_id
-  JOIN expenses e ON e.id = parts.expense_id AND e.deleted_at IS NULL
-  GROUP BY parts.group_id, e.currency, parts.participant_id
-)`
+  SELECT p.group_id, p.currency, p.participant_id, sum(p.paid - p.owed) AS net
+  FROM mine JOIN ${ledgerParts()} p ON p.group_id = mine.group_id AND p.participant_id = mine.participant_id
+  GROUP BY p.group_id, p.currency, p.participant_id
+),
+totals AS (SELECT currency, sum(net) AS net FROM nets GROUP BY currency)`
+
+/** The CTE `totals` as a JSON array of `{currency, net}`, by currency code. */
+export const totalsJson = sql`coalesce((SELECT json_agg(json_build_object('currency', currency, 'net', net::text) ORDER BY currency COLLATE "C") FROM totals), '[]')`
 
 // ---------- one group ----------
 
@@ -78,7 +86,7 @@ export async function groupBalances(db: Db, data: { principal: Principal; groupI
     WITH ${memberCte(data)}
     SELECT g.active,
       coalesce((SELECT json_agg(p.id ORDER BY p.name, p.id) FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
-      ${balanceSums({ group: sql`g.id`, ...(data.currency ? { where: sql`x.currency = ${data.currency}` } : {}) })} AS sums
+      ${balanceSums({ group: sql`g.id`, currency: data.currency })} AS sums
     FROM g
   `)
   const [row] = result.rows
@@ -111,8 +119,14 @@ export async function listBalances(db: Db, data: { principal: Principal; groupId
 
 // ---------- the caller across groups ----------
 
+type NetTotal = { currency: CurrencyCode; net: string }
+
+/** The rows of totalsJson, each net formatted in its currency. */
+export const formatTotals = (totals: readonly NetTotal[]) => totals.map((t) => ({ currency: t.currency, net: formatMinor({ amount: minor(BigInt(t.net)), currency: t.currency }) }))
+
 type AccountRow = {
   rows: { groupId: string; groupName: string; kind: GroupKind; currency: CurrencyCode; participantId: string; participantName: string; amount: string }[]
+  totals: NetTotal[]
   unbound: string[]
   denied: string[]
   foreign: string[]
@@ -143,26 +157,19 @@ export async function accountBalances(db: Db, data: { principal: Principal; scop
       'rows', coalesce((SELECT json_agg(json_build_object('groupId', g.id, 'groupName', g.name, 'kind', g.kind, 'currency', n.currency,
           'participantId', p.id, 'participantName', ${participantName}, 'amount', n.net::text) ORDER BY g.name, g.id, n.currency)
         FROM nets n JOIN groups g ON g.id = n.group_id JOIN participants p ON p.id = n.participant_id), '[]'),
+      'totals', ${totalsJson},
       'unbound', coalesce((SELECT json_agg(group_id) FROM mine WHERE participant_id IS NULL), '[]'),
       'denied', coalesce((SELECT json_agg(s.group_id) FROM s WHERE NOT EXISTS (SELECT 1 FROM mine WHERE mine.group_id = s.group_id)), '[]'),
       'foreign', coalesce((SELECT json_agg(s.group_id) FROM s WHERE s.participant_id IS NOT NULL
         AND NOT EXISTS (SELECT 1 FROM participants p WHERE p.id = s.participant_id AND p.group_id = s.group_id)), '[]')
     ) AS result
   `)
-  const row = result.rows[0]?.result ?? { rows: [], unbound: [], denied: [], foreign: [] }
+  const row = result.rows[0]?.result ?? { rows: [], totals: [], unbound: [], denied: [], foreign: [] }
   if (row.denied.length) throw groupAccessDenied()
   if (row.foreign.length) throw new Invalid({ message: 'Participant does not belong to this group.', field: 'participantId' })
-  const totals = new Map<CurrencyCode, bigint>()
-  const balances = row.rows.map((r) => {
-    const amount = BigInt(r.amount)
-    totals.set(r.currency, (totals.get(r.currency) ?? 0n) + amount)
-    return { ...r, amount: formatMinor({ amount: minor(amount), currency: r.currency }) }
-  })
   return {
-    balances,
-    totals: [...totals]
-      .sort(([a], [b]) => compareIds(a, b))
-      .map(([currency, amount]) => ({ currency, amount: formatMinor({ amount: minor(amount), currency }) })),
+    balances: row.rows.map((r) => ({ ...r, amount: formatMinor({ amount: minor(BigInt(r.amount)), currency: r.currency }) })),
+    totals: formatTotals(row.totals).map((t) => ({ currency: t.currency, amount: t.net })),
     unboundGroupIds: [...row.unbound].sort(compareIds),
   }
 }
