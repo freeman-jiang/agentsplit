@@ -258,8 +258,7 @@ function GroupCard({ group, starred, archived, marks }: { group: Group; starred:
 
 /** The caller's balance across every membership, one amount per currency (P-BAL-102..105). */
 function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
-  const now = directory
-  const outstanding = now.totals.filter((t) => !isZero(t.net))
+  const outstanding = directory.totals.filter((t) => !isZero(t.net))
   // The same left-aligned stack as the dashboard balance.
   return (
     <Card className="p-4 sm:px-6 sm:py-5">
@@ -267,15 +266,15 @@ function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
         <CardTitle className="text-sm">Your balance in groups</CardTitle>
         <CardDescription className="hidden text-xs sm:block">Your combined balance across all your groups. Ungrouped expenses are on the dashboard.</CardDescription>
       </div>
-      {now.unboundGroupCount > 0 && (
+      {directory.unboundGroupCount > 0 && (
         <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-          Link your participant identity in {now.unboundGroupCount} {now.unboundGroupCount === 1 ? 'group' : 'groups'} to see a complete total. Only linked
+          Link your participant identity in {directory.unboundGroupCount} {directory.unboundGroupCount === 1 ? 'group' : 'groups'} to see a complete total. Only linked
           groups are included below.
         </p>
       )}
       {outstanding.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">
-          {now.unboundGroupCount ? 'No outstanding balance in linked groups.' : 'You are all settled up across your groups.'}
+          {directory.unboundGroupCount ? 'No outstanding balance in linked groups.' : 'You are all settled up across your groups.'}
         </p>
       ) : (
         <TotalAmounts totals={outstanding} />

@@ -4,7 +4,7 @@ import { ChevronRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '~/client/cn'
 import { ActivityRevision } from '~/client/components/log/revision'
-import { formatMoment, weekStartsOn } from '~/client/dates'
+import { formatMoment } from '~/client/dates'
 import { editorLink } from '~/client/editor-link'
 import { describeError } from '~/client/errors'
 import { useInfiniteScroll } from '~/client/hooks'
@@ -37,7 +37,7 @@ const DATE_GROUPS = [
 type DateGroup = (typeof DATE_GROUPS)[number][0]
 
 /** The Log's weeks start as the app's locale (en-US) starts them: on Sunday. */
-const WEEK_START = weekStartsOn('en-US')
+const WEEK_START = 0
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
 const addDays = (d: Date, days: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + days)
@@ -60,20 +60,18 @@ function dateGroup(date: Date, today: Date): DateGroup {
 
 // ---------- summaries (P-HIST-68) ----------
 
-// The server fills `data` with the title of the latest saved state (activityText in server/activity.ts).
-function expenseTitle(activity: ActivityItem) {
-  return activity.data ?? ''
-}
 
 function Summary({ activity }: { activity: ActivityItem }) {
   const name = activity.actorName ?? 'Someone'
   // One weight for the people and expenses in a line, instead of bold and italic.
   const who = <span className="font-medium text-foreground">{name}</span>
-  const title = <span className="font-medium text-foreground">“{expenseTitle(activity)}”</span>
+  // The server fills an expense event's `data` with the title of its latest saved state (activityText in server/activity.ts).
+  const expenseTitle = activity.data ?? ''
+  const title = <span className="font-medium text-foreground">“{expenseTitle}”</span>
   if (isBaseline(activity))
     return (
       <>
-        History begins here for an existing expense: <span className="font-medium text-foreground">{expenseTitle(activity)}</span>
+        History begins here for an existing expense: <span className="font-medium text-foreground">{expenseTitle}</span>
       </>
     )
   switch (activity.type) {

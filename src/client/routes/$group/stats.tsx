@@ -7,7 +7,8 @@ import { ChartBarStacked, ChartColumnStacked, ChevronRight } from 'lucide-react'
 import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { cn } from '~/client/cn'
 import { CategoryIcon } from '~/client/components/category-icon'
-import { money } from '~/client/components/money'
+import { magnitude } from '~/client/components/balance/net'
+import { money, unitsOf } from '~/client/components/money'
 import { formatDay, formatMonth, localDate } from '~/client/dates'
 import { statsQuery, type StatsScope } from '~/client/queries/history'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/client/ui/card'
@@ -20,7 +21,6 @@ import { Skeleton } from '~/client/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/client/ui/table'
 import type { StatsOverview } from '~/shared/api'
 import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
-import { minorOrNull } from '~/shared/minor'
 import { divRound, regroupMonthly, type MonthlyCategory, type MonthlyGrouping, type MonthlyMonth, type MonthlySpending } from '~/shared/stats'
 
 type Overview = typeof StatsOverview.Type
@@ -70,21 +70,17 @@ export const Route = createFileRoute('/$group/stats')({
 
 // ---------- formatting ----------
 
-const toUnits = (amount: string, currency: CurrencyCode): bigint => {
-  return minorOrNull({ amount, currency }) ?? 0n
-}
 /** Chart amounts: whole units when "Round amounts" is on (P-STATS-40). */
 function chartMoney(data: { amount: string; currency: CurrencyCode; round: boolean }) {
   if (!data.round) return money(data.amount, data.currency)
-  const whole = divRound(toUnits(data.amount, data.currency), 10n ** BigInt(CURRENCIES[data.currency].decimals))
+  const whole = divRound(unitsOf(data.amount, data.currency), 10n ** BigInt(CURRENCIES[data.currency].decimals))
   return money(whole.toString(), data.currency)
 }
 const ratio = (part: string, whole: string, currency: CurrencyCode) => {
-  const w = toUnits(whole, currency)
-  return w <= 0n ? 0 : Number(toUnits(part, currency)) / Number(w)
+  const w = unitsOf(whole, currency)
+  return w <= 0n ? 0 : Number(unitsOf(part, currency)) / Number(w)
 }
 const isNegative = (amount: string) => amount.startsWith('-')
-const abs = (amount: string) => (isNegative(amount) ? amount.slice(1) : amount)
 const chartColor = (index: number) => `hsl(var(--chart-${(index % 5) + 1}))`
 
 // ---------- page ----------
@@ -239,12 +235,12 @@ function Totals({ data, currency }: { data: Overview; currency: CurrencyCode }) 
   const personal = (label: string, amount: string) => (
     // Negative personal amounts are earnings: green; spending is red (P-STATS-22).
     <Metric label={label} className={isNegative(amount) ? 'text-owed' : 'text-owe'}>
-      {money(abs(amount), currency)}
+      {money(magnitude(amount), currency)}
     </Metric>
   )
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 xl:grid-cols-2">
-      <Metric label={isNegative(data.total) ? 'Total group earnings' : 'Total group spendings'}>{money(abs(data.total), currency)}</Metric>
+      <Metric label={isNegative(data.total) ? 'Total group earnings' : 'Total group spendings'}>{money(magnitude(data.total), currency)}</Metric>
       {data.yourPaid !== null && personal(isNegative(data.yourPaid) ? 'Your total earnings' : 'Your total spendings', data.yourPaid)}
       {data.yourShare !== null && personal('Your total share', data.yourShare)}
     </div>
@@ -403,7 +399,7 @@ function MonthlyCard({ data }: { data: Overview | undefined }) {
   const c = data?.currency
   // Regrouping uses the loaded data: no new request (P-STATS-35).
   const view = useMemo(() => (data && c ? regroupMonthly({ spending: data.monthly, grouping, currency: c }) : undefined), [data, c, grouping])
-  const visible = useMemo(() => (view && c ? view.categories.filter((x) => toUnits(x.expense, c) > 0n) : []), [view, c])
+  const visible = useMemo(() => (view && c ? view.categories.filter((x) => unitsOf(x.expense, c) > 0n) : []), [view, c])
   const colors = useMemo(() => new Map(visible.map((x, i) => [x.key, chartColor(i)])), [visible])
   const years = new Set(view?.months.map((m) => m.key.slice(0, 4)))
   const controls = (
@@ -456,7 +452,7 @@ function segments(month: MonthlyMonth, visible: readonly MonthlyCategory[], curr
   const byKey = new Map(month.categories.map((x) => [x.key, x]))
   return visible.flatMap((v) => {
     const x = byKey.get(v.key)
-    return x && toUnits(x.expense, currency) > 0n ? [x] : []
+    return x && unitsOf(x.expense, currency) > 0n ? [x] : []
   })
 }
 const hover = (data: { month: MonthlyMonth; category: MonthlyCategory; share: number; currency: CurrencyCode; round: boolean }) =>
@@ -467,7 +463,7 @@ function StackedBars({ view, visible, colors, currency, round, includeYear }: Ch
     <div className="flex max-h-[32rem] flex-col gap-0.5 overflow-y-auto">
       {view.months.map((month) => {
         const share = ratio(month.expense, view.maxExpense, currency)
-        const units = toUnits(month.expense, currency) > 0n ? Math.max(share, 0.03) : 0
+        const units = unitsOf(month.expense, currency) > 0n ? Math.max(share, 0.03) : 0
         return (
           // The same grammar as "Spending over time": label, a bar on a full-width track, then the amount in a fixed column.
           <div key={month.key} className={cn('grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] items-center gap-x-3 py-1.5 text-sm', BAR_COLUMNS)}>
