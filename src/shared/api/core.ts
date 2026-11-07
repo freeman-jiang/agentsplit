@@ -55,6 +55,10 @@ export const WriteError = Schema.Union([Unauthorized, Forbidden, NotFound, Confl
 export const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))
 /** A caller-chosen ID for a new record: 21 URL-safe characters, the format of randomId(). */
 export const NewId = Schema.String.check(Schema.isPattern(GROUP_ID))
+/** The offset of a page: the number of rows before it. */
+export const Offset = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+/** The rows of one page. */
+export const PageLimit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax }))
 /** A client-chosen key that makes a write safe to retry. */
 export const IdempotencyKey = Schema.String.check(Schema.isMinLength(8), Schema.isMaxLength(128))
 /** A real calendar date, YYYY-MM-DD: 2026-02-29 and 2026-09-31 are refused before they reach SQL. */
@@ -199,7 +203,7 @@ export class CoreApi extends RpcGroup.make(
   Rpc.make('groups.list', { success: Schema.Array(GroupSummary), error: ReadError }),
   Rpc.make('groups.get', { payload: { groupId: Id }, success: Group, error: ReadError }),
   Rpc.make('expenses.list', {
-    payload: { groupId: Id, filter: ExpenseFilter, cursor: Schema.NullOr(Schema.String), limit: Schema.Number },
+    payload: { groupId: Id, filter: ExpenseFilter, cursor: Schema.NullOr(Schema.String), limit: PageLimit },
     success: ExpensePage,
     error: ReadError,
   }),

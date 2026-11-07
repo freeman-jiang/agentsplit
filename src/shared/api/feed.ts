@@ -17,6 +17,7 @@ import {
   IdempotencyKey,
   NameInput,
   NewId,
+  PageLimit,
   Participant,
   ReadError,
   RoleSchema,
@@ -182,7 +183,7 @@ export class FeedApi extends RpcGroup.make(
     payload: {
       filter: FeedFilter,
       cursor: Schema.NullOr(FeedCursor),
-      limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax })),
+      limit: PageLimit,
     },
     success: FeedPage,
     error: ReadError,

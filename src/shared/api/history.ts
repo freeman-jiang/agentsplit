@@ -5,7 +5,7 @@ import { Rpc, RpcGroup } from 'effect/rpc'
 import { LIMITS } from '../limits'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
 import { ACTIVITY_TYPES, RECURRING_PERIODS } from '../vocabulary'
-import { Balance, CalendarDate, CalendarDateOutput, ExpenseFilter, ExpenseKindSchema, Id, Participant, ReadError, RecurrenceSchema, SplitModeSchema } from './core'
+import { Balance, CalendarDate, CalendarDateOutput, ExpenseFilter, ExpenseKindSchema, Id, Offset, PageLimit, Participant, ReadError, RecurrenceSchema, SplitModeSchema } from './core'
 import { ReceiptTombstone } from './storage'
 
 export const ActivityType = Schema.Literals(ACTIVITY_TYPES)
@@ -108,8 +108,6 @@ const { sort: _sort, ...savedFilter } = ExpenseFilter.fields
 /** The live list's filter without its sort: saved expenses are always newest first. */
 export const HistoricalExpenseFilter = Schema.Struct(savedFilter)
 
-const Offset = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
-const PageLimit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax }))
 
 const Amount = DecimalOutput
 const StatsRow = Schema.Struct({ id: Schema.String, kind: ExpenseKindSchema, title: Schema.String, vendor: Schema.NullOr(Schema.String), amount: Amount, expenseDate: CalendarDateOutput, currency: CurrencyCodeSchema })
@@ -167,7 +165,7 @@ export class HistoryApi extends RpcGroup.make(
       groupId: Id,
       ...Boundary,
       cursor: Schema.optionalKey(Offset),
-      limit: Schema.optionalKey(PageLimit),
+      limit: PageLimit,
       expenseId: Schema.optionalKey(Id),
       type: Schema.optionalKey(ActivityType),
       /** UTC calendar days of recording, inclusive. */
@@ -191,7 +189,7 @@ export class HistoryApi extends RpcGroup.make(
     error: ReadError,
   }),
   Rpc.make('history.expenses', {
-    payload: { groupId: Id, ...Boundary, filter: HistoricalExpenseFilter, cursor: Schema.optionalKey(Offset), limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.historyPageMax }))) },
+    payload: { groupId: Id, ...Boundary, filter: HistoricalExpenseFilter, cursor: Schema.optionalKey(Offset), limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.historyPageMax })) },
     success: Schema.Struct({ history: HistoryView, expenses: Schema.Array(SavedExpense), hasMore: Schema.Boolean, nextCursor: Schema.Number }),
     error: ReadError,
   }),

@@ -53,7 +53,7 @@ type FeedRow = ExpenseRow & {
 export async function listFeed(db: Db, data: { principal: Principal; filter: FeedFilter; cursor: FeedCursor | null; limit: number }) {
   const f = data.filter
   if (f.from && f.to && f.from > f.to) throw new Invalid({ message: 'The start date must be on or before the end date.', field: 'to' })
-  const limit = Math.min(Math.max(Math.trunc(data.limit) || 30, 1), 100)
+  const { limit } = data
   const where: SQL[] = [sql`e.deleted_at IS NULL`]
   if (f.scope === 'grouped') where.push(sql`g.kind = 'named'`)
   if (f.scope === 'ungrouped') where.push(sql`g.kind = 'private'`)

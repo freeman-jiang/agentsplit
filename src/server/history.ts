@@ -104,7 +104,7 @@ type ActivityRow = {
 
 export type ActivityQuery = Boundary & {
   readonly cursor?: number
-  readonly limit?: number
+  readonly limit: number
   readonly expenseId?: string
   readonly type?: ActivityType
   readonly from?: string
@@ -125,7 +125,7 @@ export async function listActivities(db: Db, data: { principal: Principal; group
     throw new Invalid({ message: 'recordedFrom must be on or before recordedTo', field: 'recordedFrom' })
   if (data.from && data.to && data.from > data.to) throw new Invalid({ message: 'from must be on or before to', field: 'to' })
   const cursor = data.cursor ?? 0
-  const limit = data.limit ?? 5
+  const { limit } = data
   const historical = data.asOf !== undefined || data.atActivityId !== undefined
   const order = data.order === 'asc' ? sql`ASC` : sql`DESC`
   const where: SQL[] = [sql`a.group_id = g.id`, withinBoundary(data, sql`a`)]
@@ -333,11 +333,11 @@ export function filterSaved(expenses: readonly SavedExpense[], f: ExpenseFilter)
 
 export async function listSavedExpenses(
   db: Db,
-  data: { principal: Principal; groupId: string; filter: ExpenseFilter; cursor?: number; limit?: number } & Boundary,
+  data: { principal: Principal; groupId: string; filter: ExpenseFilter; cursor?: number; limit: number } & Boundary,
 ) {
   const ledger = await historicalLedger(db, data)
   const cursor = data.cursor ?? 0
-  const limit = data.limit ?? 50
+  const { limit } = data
   const list = filterSaved(ledger.expenses, data.filter)
   return { history: ledger.history, expenses: list.slice(cursor, cursor + limit), hasMore: list.length > cursor + limit, nextCursor: cursor + limit }
 }

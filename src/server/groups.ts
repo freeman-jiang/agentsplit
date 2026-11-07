@@ -59,7 +59,7 @@ type DirectoryRow = {
  * membership, private expenses included, so it matches the home total.
  */
 export async function listDirectory(db: Db, data: { principal: Principal; offset: number }) {
-  const offset = Math.max(Math.trunc(data.offset) || 0, 0)
+  const { offset } = data
   const result = await db.execute<DirectoryRow>(sql`
     WITH mine AS ${myMemberships(data.principal.userId)},
     ${groupPage({ principal: data.principal, offset, limit: LIMITS.directoryPage })},
