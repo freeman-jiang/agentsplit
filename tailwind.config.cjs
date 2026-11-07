@@ -70,7 +70,9 @@ module.exports = {
         'accordion-up': 'accordion-up 0.2s ease-out',
       },
       fontFamily: {
-        display: ['Georgia', 'Times New Roman', 'serif'],
+        sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Inter', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+        // The system UI face: SF Pro on Apple devices, Segoe UI on Windows, Inter or Roboto elsewhere.
+        display: ['ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Inter', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
         rounded: [
           'ui-rounded',
           'Hiragino Maru Gothic ProN',

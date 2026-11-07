@@ -54,16 +54,13 @@ function Root() {
       <div className="flex flex-1 flex-col">
         <Outlet />
       </div>
-      <footer className="mt-12 flex flex-col gap-4 border-t px-4 py-6 text-xs text-muted-foreground sm:flex-row sm:items-end sm:justify-between sm:px-8">
-        <div className="space-y-2">
-          <Link to="/" className="text-foreground">
-            <Brand className="text-xl" />
-          </Link>
-          <p>A little less keeping track.</p>
+      <footer className="mt-16 flex flex-col gap-2 px-4 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-8">
+        <p>
+          <span className="font-medium text-foreground">AgentSplit</span> · A little less keeping track. ·{' '}
           <Link to="/privacy" className="underline underline-offset-4">
             Privacy
           </Link>
-        </div>
+        </p>
         <p>Built on Spliit, by Sebastien Castiel and contributors.</p>
       </footer>
       <Toaster position="bottom-center" />

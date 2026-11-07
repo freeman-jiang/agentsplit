@@ -159,7 +159,7 @@ function People({ details }: { details: Details }) {
     )
 
   return (
-    <section className="scroll-mt-24 space-y-6 border bg-card p-5 sm:p-6" id="members" aria-labelledby="people-heading">
+    <section className="scroll-mt-24 space-y-6 rounded-2xl border bg-card p-5 sm:p-6" id="members" aria-labelledby="people-heading">
       <div className="space-y-2">
         <h2 id="people-heading" className="font-display text-2xl">
           People
