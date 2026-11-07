@@ -12,7 +12,7 @@ import { actorName, attributionEvents, type AttributionEvent } from './activity'
 import type { Db } from './core/db'
 import { randomId } from './core/ids'
 import { displayName } from './people'
-import { escapeLike, iso, textList } from './sql'
+import { escapeLike, iso, isoMicro, textList } from './sql'
 
 /** The expense row's own fields: what a write sets, an unchanged edit compares and a recurring occurrence copies. */
 export const EXPENSE_FIELDS = ['kind', 'title', 'vendor', 'notes', 'categoryId', 'expenseDate', 'currency', 'amount', 'splitMode', 'recurrence'] as const
@@ -54,6 +54,29 @@ export const documentStatesJson = (expense: SQL) => sql`(SELECT json_agg(json_bu
 export const tombstonesJson = (group: SQL) => sql`(SELECT json_object_agg(r.url, json_build_object('by', u.name, 'at', ${iso(sql`d.deleted_at`)}))
   FROM deleted_receipts d JOIN receipts r ON r.id = d.receipt_id JOIN "user" u ON u.id = d.deleted_by
   WHERE r.group_id = ${group})`
+
+/** The exact keys of a row of an expense list, after its ID: the next page starts right after them. */
+export type OrderKeys = { readonly a: string; readonly b: string; readonly id: string }
+type ExpenseOrder = { readonly by: SQL; readonly keys: SQL; readonly after: (keys: OrderKeys) => SQL }
+
+/**
+ * The orders of expense lists on row `e`, newest first. `keys` selects
+ * `key_a` and `key_b` with microseconds, so rows created in the same
+ * millisecond are never skipped.
+ */
+export const EXPENSE_ORDERS: { readonly date: ExpenseOrder; readonly updated: ExpenseOrder } = {
+  date: {
+    by: sql`e.expense_date DESC, e.created_at DESC, e.id DESC`,
+    keys: sql`e.expense_date::text AS key_a, ${isoMicro(sql`e.created_at`)} AS key_b`,
+    after: (k) => sql`(e.expense_date, e.created_at, e.id) < (${k.a}::date, ${k.b}::timestamptz, ${k.id})`,
+  },
+  updated: {
+    by: sql`e.updated_at DESC, e.id DESC`,
+    keys: sql`${isoMicro(sql`e.updated_at`)} AS key_a, '' AS key_b`,
+    after: (k) => sql`(e.updated_at, e.id) < (${k.a}::timestamptz, ${k.id})`,
+  },
+}
+export type OrderedRow = { key_a: string; key_b: string }
 
 /** Is expense `e` paid for or shared by participant `who`? */
 export const involves = (who: SQL) => sql`(EXISTS (SELECT 1 FROM expense_payers ip WHERE ip.expense_id = e.id AND ip.participant_id = ${who})
