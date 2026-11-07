@@ -10,7 +10,7 @@ import { groupIdOf, myMemberships, type Principal } from './core/access'
 import { attributionOf } from './activity'
 import { balanceSums, settlementsOf, type BalanceSum } from './balances'
 import type { Db } from './core/db'
-import { expenseColumns, involves, toExpense, type ExpenseRow } from './expense-read'
+import { EXPENSE_ORDERS, expenseColumns, involves, toExpense, type ExpenseRow, type OrderedRow } from './expense-read'
 import { listedInvitation } from './invitations'
 import { contactsSql, participantName, participantsJson } from './people'
 import { escapeLike, iso } from './sql'
@@ -20,14 +20,13 @@ export type FeedCursor = typeof FeedCursorSchema.Type
 
 // ---------- feed ----------
 
-type FeedRow = ExpenseRow & {
+type FeedRow = ExpenseRow & OrderedRow & {
   group_kind: GroupKind
   group_name: string
   group_slug: string | null
   context_expense_id: string | null
   context_expense_title: string | null
   viewer_participant_id: string | null
-  cursor_created: string
   people: { id: string; name: string }[]
 }
 
@@ -63,15 +62,15 @@ export async function listFeed(db: Db, data: { principal: Principal; filter: Fee
   if (f.payerUserId)
     where.push(sql`EXISTS (SELECT 1 FROM expense_payers pp JOIN memberships pm ON pm.group_id = pp.group_id AND pm.participant_id = pp.participant_id
       WHERE pp.expense_id = e.id AND pm.user_id = ${f.payerUserId})`)
-  if (data.cursor)
-    where.push(sql`(e.expense_date, e.created_at, e.id) < (${data.cursor.date}::date, ${data.cursor.createdAt}::timestamptz, ${data.cursor.id})`)
+  const order = EXPENSE_ORDERS.date
+  if (data.cursor) where.push(order.after({ a: data.cursor.date, b: data.cursor.createdAt, id: data.cursor.id }))
 
   const result = await db.execute<FeedRow>(sql`
     SELECT ${expenseColumns({ attribution: true })},
       g.kind AS group_kind, g.name AS group_name, g.slug AS group_slug,
       pc.expense_id AS context_expense_id, ce.title AS context_expense_title,
       m.participant_id AS viewer_participant_id,
-      to_char(e.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_created,
+      ${order.keys},
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${participantName}) ORDER BY p.id) FROM participants p
         WHERE p.id IN (SELECT participant_id FROM expense_payers WHERE expense_id = e.id
           UNION SELECT participant_id FROM expense_shares WHERE expense_id = e.id)), '[]') AS people
@@ -81,7 +80,7 @@ export async function listFeed(db: Db, data: { principal: Principal; filter: Fee
     LEFT JOIN private_contexts pc ON pc.group_id = g.id
     LEFT JOIN expenses ce ON ce.id = pc.expense_id
     WHERE ${sql.join(where, sql` AND `)}
-    ORDER BY e.expense_date DESC, e.created_at DESC, e.id DESC
+    ORDER BY ${order.by}
     LIMIT ${limit + 1}
   `)
   const page = result.rows.slice(0, limit)
@@ -96,7 +95,7 @@ export async function listFeed(db: Db, data: { principal: Principal; filter: Fee
       participantId: r.viewer_participant_id,
       attribution: attributionOf({ events: r.events ?? [], viewer: data.principal.userId }),
     })),
-    nextCursor: result.rows.length > limit && last ? { date: last.expense_date, createdAt: last.cursor_created, id: last.id } : null,
+    nextCursor: result.rows.length > limit && last ? { date: last.key_a, createdAt: last.key_b, id: last.id } : null,
   }
 }
 

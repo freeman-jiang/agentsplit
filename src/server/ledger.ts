@@ -12,7 +12,7 @@ import type { Role } from '../shared/vocabulary'
 import { memberCte, myMemberships, requireActive, requireMember, type Membership, type Principal } from './core/access'
 import { recordExpenseEvent, type SnapshotGroup } from './activity'
 import type { Db } from './core/db'
-import { documentRows, EXPENSE_FIELDS, expenseColumns, filterConditions, loadExpenses, toExpense, type ExpenseField, type ExpenseFilter, type ExpenseParts, type ExpenseRow, type ReadExpense, type StoredDocument } from './expense-read'
+import { documentRows, EXPENSE_FIELDS, EXPENSE_ORDERS, expenseColumns, filterConditions, loadExpenses, toExpense, type ExpenseField, type ExpenseFilter, type ExpenseParts, type ExpenseRow, type OrderedRow, type ReadExpense, type StoredDocument } from './expense-read'
 import { idempotent, storedRequestJson, type StoredRequest } from './idempotency'
 import { participantsJson } from './people'
 import { assertPrivateWrite, privateContextOf, type PrivateContext } from './private-context'
@@ -101,22 +101,17 @@ export async function listExpenses(
   // The membership check is part of the statement: rows come only from a group the caller belongs to.
   const member = sql`WITH ${memberCte(data)}`
   const where: SQL[] = [sql`e.group_id = (SELECT id FROM g WHERE active)`, sql`e.deleted_at IS NULL`, ...filterConditions(f)]
-  const byUpdated = f.sort === 'updated'
+  const order = EXPENSE_ORDERS[f.sort ?? 'date']
   if (data.cursor) {
     const c = decodeCursor(data.cursor)
-    where.push(
-      byUpdated
-        ? sql`(e.updated_at, e.id) < (${c.k}::timestamptz, ${c.i})`
-        : sql`(e.expense_date, e.created_at, e.id) < (${c.k}::date, ${c.c}::timestamptz, ${c.i})`,
-    )
+    where.push(order.after({ a: c.k, b: c.c, id: c.i }))
   }
-  // The exact PostgreSQL timestamps (microseconds) are the cursor keys.
-  const result = await db.execute<ExpenseRow & { created_key: string; updated_key: string }>(sql`
+  const result = await db.execute<ExpenseRow & OrderedRow>(sql`
     ${member}
-    SELECT ${expenseColumns(data.parts)}, e.created_at::text AS created_key, e.updated_at::text AS updated_key
+    SELECT ${expenseColumns(data.parts)}, ${order.keys}
     FROM expenses e
     WHERE ${sql.join(where, sql` AND `)}
-    ORDER BY ${byUpdated ? sql`e.updated_at DESC, e.id DESC` : sql`e.expense_date DESC, e.created_at DESC, e.id DESC`}
+    ORDER BY ${order.by}
     LIMIT ${limit + 1} OFFSET ${data.offset ?? 0}
   `)
   const rows = result.rows
@@ -126,10 +121,7 @@ export async function listExpenses(
   const last = page.at(-1)
   return {
     expenses: page.map(toExpense),
-    nextCursor:
-      rows.length > limit && last
-        ? encodeCursor(byUpdated ? { k: last.updated_key, c: '', i: last.id } : { k: last.expense_date, c: last.created_key, i: last.id })
-        : null,
+    nextCursor: rows.length > limit && last ? encodeCursor({ k: last.key_a, c: last.key_b, i: last.id }) : null,
   }
 }
 
