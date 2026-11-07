@@ -12,7 +12,7 @@ import { EMAIL, groupPath } from '../../../shared/groups'
 import { GROUP_ID } from '../../../shared/ids'
 import { LIMITS } from '../../../shared/limits'
 import { ROLES, type Role } from '../../../shared/vocabulary'
-import { memberCte, requireActive } from '../../access'
+import { groupIdOf, memberCte, requireActive } from '../../access'
 import { listedInvitation } from '../../invitations'
 import type { Db } from '../../db'
 import * as groups from '../../groups'
@@ -81,14 +81,14 @@ export const listGroups = defineTool({
     if (refs) {
       const denied = await db.execute<{ n: number }>(sql`
         SELECT count(*)::int AS n FROM ${refs}
-        WHERE NOT EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = ${principal.userId} AND m.group_id = agentsplit_group_id(r.ref) AND m.active)`)
+        WHERE NOT EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = ${principal.userId} AND m.group_id = ${groupIdOf(sql`r.ref`)} AND m.active)`)
       if (denied.rows[0]?.n !== 0) throw groupAccessDenied()
     }
     const result = await db.execute<GroupRow & { participants: number }>(sql`
       SELECT ${groupColumns}, (SELECT count(*)::int FROM participants p WHERE p.group_id = g.id) AS participants
       FROM memberships m JOIN groups g ON g.id = m.group_id
       WHERE m.user_id = ${principal.userId} AND m.active AND g.kind = 'named'
-        ${requested ? (refs ? sql`AND g.id IN (SELECT agentsplit_group_id(r.ref) FROM ${refs})` : sql`AND false`) : sql``}
+        ${requested ? (refs ? sql`AND g.id IN (SELECT ${groupIdOf(sql`r.ref`)} FROM ${refs})` : sql`AND false`) : sql``}
       ORDER BY g.created_at DESC, g.id DESC
       LIMIT ${limit + 1} OFFSET ${cursor}
     `)

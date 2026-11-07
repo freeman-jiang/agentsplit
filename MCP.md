@@ -105,6 +105,8 @@ A receipt counts against the account that uploaded it until someone deletes it f
 
 The 23 tools, in the order that `tools/list` gives them. Read tools need `agentsplit:read`; write tools also need `agentsplit:write`.
 
+A `groupId` argument takes the group's ID or its slug: the current slug in any case, or a slug the group used before. Every result names the group by its ID.
+
 | Tool | Kind | Purpose |
 | --- | --- | --- |
 | `list_all_expenses` | read | The feed of expenses and payments across named groups and private ungrouped expenses, newest first. `involvingMe` defaults to true. |

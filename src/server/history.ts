@@ -11,7 +11,7 @@ import { compareIds } from '../shared/ids'
 import { readSnapshot } from '../shared/snapshots'
 import type { ActivityType, ExpenseKind, Recurrence } from '../shared/vocabulary'
 import { memberCte, requireActive, type Principal } from './access'
-import { activitySource, activityText, savedTitle } from './activity'
+import { activitySource, activityText, notBaseline, savedTitle } from './activity'
 import type { Db } from './db'
 import { tombstonesJson, type Tombstone } from './expense-read'
 import { iso } from './sql'
@@ -270,7 +270,7 @@ export async function historicalLedger(db: Db, data: { principal: Principal; gro
         WHERE e.group_id = g.id AND ${ms(sql`e.created_at`)} <= (SELECT t FROM at_time)
           AND NOT EXISTS (SELECT 1 FROM latest l WHERE l.expense_id = e.id)
           -- An expense whose real creation is recorded was created after the boundary.
-          AND NOT EXISTS (SELECT 1 FROM activities a WHERE a.group_id = g.id AND a.expense_id = e.id AND a.type = 'create_expense' AND a.expense_revision = 1 AND a.source <> 'baseline')
+          AND NOT EXISTS (SELECT 1 FROM activities a WHERE a.group_id = g.id AND a.expense_id = e.id AND a.type = 'create_expense' AND a.expense_revision = 1 AND ${notBaseline(sql`a`)})
       ), '[]') AS missing,
       ${categoriesColumn}
     FROM g

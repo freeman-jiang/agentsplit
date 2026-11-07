@@ -1,7 +1,7 @@
 // Who is calling, and the one group membership check. Every service and MCP
 // tool resolves a group reference here, so an ID, a current slug in any case
 // and a retired slug name the same group everywhere (agentsplit_group_id, 0004).
-import { sql } from 'drizzle-orm'
+import { sql, type SQL } from 'drizzle-orm'
 import { Forbidden, groupAccessDenied } from '../shared/api'
 import type { ActivitySource, Role } from '../shared/vocabulary'
 import type { Db } from './db'
@@ -18,6 +18,9 @@ export type Principal = {
 
 export type Membership = { groupId: string; role: Role; participantId: string | null }
 
+/** The ID of the group that reference `ref` names, or NULL: its ID, its current slug in any case, or a slug it used before. */
+export const groupIdOf = (ref: SQL) => sql`agentsplit_group_id(${ref})`
+
 /**
  * The caller's membership of group `group` as the CTE `g`: the group's columns
  * with the member's `role`, `participant_id` and `active`. No row, or an
@@ -27,7 +30,7 @@ export type Membership = { groupId: string; role: Role; participantId: string | 
 export const memberCte = (data: { principal: Principal; group: string }) => sql`g AS (
   SELECT g.*, m.role, m.participant_id, m.active
   FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
-  WHERE g.id = agentsplit_group_id(${data.group}))`
+  WHERE g.id = ${groupIdOf(sql`${data.group}`)})`
 
 /** The row of a statement built on memberCte, or the denial. A group that does not exist and one the caller cannot see look the same. */
 export function requireActive<T extends { active: boolean | null }>(row: T | undefined): T {
