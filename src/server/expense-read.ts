@@ -9,11 +9,23 @@ import { formatMinor, minor } from '../shared/minor'
 import type { ExpenseKind, Recurrence, SplitMode } from '../shared/vocabulary'
 import { actorName, attributionEvents, type AttributionEvent } from './activity'
 import type { Db } from './core/db'
+import { randomId } from './core/ids'
 import { displayName } from './people'
 import { iso, textList } from './sql'
 
+/** The expense row's own fields: what a write sets, an unchanged edit compares and a recurring occurrence copies. */
+export const EXPENSE_FIELDS = ['kind', 'title', 'vendor', 'notes', 'categoryId', 'expenseDate', 'currency', 'amount', 'splitMode', 'recurrence'] as const
+export type ExpenseField = (typeof EXPENSE_FIELDS)[number]
+
+/** The column of a field: the snake_case of its name, as Drizzle's casing names it. */
+export const fieldColumn = (field: string) => sql.identifier(field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`))
+
 /** A receipt pointer of an expense, in its saved order. */
 export type StoredDocument = { id: string; url: string; width: number; height: number }
+
+/** The expense_documents rows of `documents` for expense `expenseId`, in order. A row keeps its ID only when `keep` has it. */
+export const documentRows = (data: { expenseId: string; documents: readonly StoredDocument[]; keep: ReadonlySet<string> }) =>
+  data.documents.map((d, position) => ({ id: data.keep.has(d.id) ? d.id : randomId(), expenseId: data.expenseId, url: d.url, width: d.width, height: d.height, position }))
 
 /** Who deleted a receipt and when, as readers show it in place of the image. */
 export type Tombstone = { by: string; at: string }

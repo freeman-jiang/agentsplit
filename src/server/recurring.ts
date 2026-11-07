@@ -10,7 +10,7 @@ import type { Recurrence } from '../shared/vocabulary'
 import { requireMember, type Principal } from './core/access'
 import { recordExpenseEvent } from './activity'
 import { serializable, type Db } from './core/db'
-import { isActiveSeries, loadExpenses } from './expense-read'
+import { documentRows, EXPENSE_FIELDS, fieldColumn, isActiveSeries, loadExpenses } from './expense-read'
 import { randomId } from './core/ids'
 import { textList } from './sql'
 
@@ -110,9 +110,13 @@ async function materialize(tx: Db, data: { link: DueLink; principal: Principal |
   const id = await occurrenceId(link.id)
   const date = link.next_expense_date
   // The copy keeps every stored part exactly, so its sums hold as the frame's do (P-RECUR-15).
+  const copied = sql.join(
+    EXPENSE_FIELDS.filter((field) => field !== 'expenseDate').map(fieldColumn),
+    sql`, `,
+  )
   await tx.execute(sql`
-    INSERT INTO expenses (id, group_id, revision, kind, title, vendor, notes, category_id, expense_date, currency, amount, split_mode, recurrence)
-    SELECT ${id}, group_id, 1, kind, title, vendor, notes, category_id, ${date}::date, currency, amount, split_mode, recurrence FROM expenses WHERE id = ${frame.id}
+    INSERT INTO expenses (id, group_id, revision, expense_date, ${copied})
+    SELECT ${id}, group_id, 1, ${date}::date, ${copied} FROM expenses WHERE id = ${frame.id}
   `)
   await tx.execute(sql`INSERT INTO expense_payers (expense_id, group_id, participant_id, amount, weight)
     SELECT ${id}, group_id, participant_id, amount, weight FROM expense_payers WHERE expense_id = ${frame.id}`)
@@ -120,8 +124,7 @@ async function materialize(tx: Db, data: { link: DueLink; principal: Principal |
     SELECT ${id}, group_id, participant_id, amount, weight FROM expense_shares WHERE expense_id = ${frame.id}`)
   // Receipt pointers are copied as new rows; the frame keeps its own (P-RECUR-16).
   const documents = frame.documents ?? []
-  if (documents.length)
-    await tx.insert(expenseDocuments).values(documents.map((d, position) => ({ id: randomId(), expenseId: id, url: d.url, width: d.width, height: d.height, position })))
+  if (documents.length) await tx.insert(expenseDocuments).values(documentRows({ expenseId: id, documents, keep: new Set() }))
   await tx.update(recurringLinks).set({ nextExpenseCreatedAt: new Date() }).where(eq(recurringLinks.id, link.id))
   await tx.insert(recurringLinks).values({
     id: randomId(),

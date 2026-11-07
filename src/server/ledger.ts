@@ -12,9 +12,8 @@ import type { Role } from '../shared/vocabulary'
 import { memberCte, myMemberships, requireActive, requireMember, type Membership, type Principal } from './core/access'
 import { recordExpenseEvent, type SnapshotGroup } from './activity'
 import type { Db } from './core/db'
-import { expenseColumns, involves, loadExpenses, toExpense, type ExpenseFilter, type ExpenseParts, type ExpenseRow, type ReadExpense, type StoredDocument } from './expense-read'
+import { documentRows, EXPENSE_FIELDS, expenseColumns, involves, loadExpenses, toExpense, type ExpenseField, type ExpenseFilter, type ExpenseParts, type ExpenseRow, type ReadExpense, type StoredDocument } from './expense-read'
 import { idempotent, storedRequestJson, type StoredRequest } from './idempotency'
-import { randomId } from './core/ids'
 import { displayNames } from './people'
 import { assertPrivateWrite, privateContextOf, type PrivateContext } from './private-context'
 import { stopRecurrence, syncRecurrence, type LinkState } from './recurring'
@@ -296,12 +295,8 @@ async function writeDocuments(tx: Db, data: { groupId: string; expenseId: string
 
 /** Writes the expense's receipt rows in the given order. */
 async function replaceDocuments(tx: Db, data: { expenseId: string; documents: readonly StoredDocument[]; saved: readonly StoredDocument[] }) {
-  const own = new Set(data.saved.map((d) => d.id))
   if (data.saved.length) await tx.delete(expenseDocuments).where(eq(expenseDocuments.expenseId, data.expenseId))
-  if (data.documents.length)
-    await tx.insert(expenseDocuments).values(
-      data.documents.map((d, position) => ({ id: own.has(d.id) ? d.id : randomId(), expenseId: data.expenseId, url: d.url, width: d.width, height: d.height, position })),
-    )
+  if (data.documents.length) await tx.insert(expenseDocuments).values(documentRows({ ...data, keep: new Set(data.saved.map((d) => d.id)) }))
 }
 
 function requireCategory(context: WriteContext, categoryId: number) {
@@ -340,18 +335,19 @@ async function writeExpense(tx: Db, data: { expenseId: string; groupId: string; 
     ${shares.upsert}`)
 }
 
-const columns = (e: ResolvedExpense) => ({
-  kind: e.kind,
-  title: e.title,
-  vendor: e.vendor,
-  notes: e.notes,
-  categoryId: e.categoryId,
-  expenseDate: e.expenseDate,
-  currency: e.currency,
-  amount: e.amount as Minor,
-  splitMode: e.splitMode,
-  recurrence: e.recurrence,
-})
+const columns = (e: ResolvedExpense) =>
+  ({
+    kind: e.kind,
+    title: e.title,
+    vendor: e.vendor,
+    notes: e.notes,
+    categoryId: e.categoryId,
+    expenseDate: e.expenseDate,
+    currency: e.currency,
+    amount: e.amount,
+    splitMode: e.splitMode,
+    recurrence: e.recurrence,
+  }) satisfies Record<ExpenseField, unknown>
 
 /** True when an update would store exactly what is saved. */
 function unchanged(data: { before: ReadExpense; after: ResolvedExpense; documentsBefore: readonly StoredDocument[]; documentsAfter: readonly StoredDocument[] | undefined }) {
@@ -362,8 +358,8 @@ function unchanged(data: { before: ReadExpense; after: ResolvedExpense; document
   const docs = (list: readonly StoredDocument[]) => list.map((d) => [d.url, d.width, d.height]).sort()
   return (
     same(
-      [before.kind, before.title, before.vendor, before.notes, before.categoryId, before.expenseDate, before.currency, before.amount, before.splitMode, before.recurrence],
-      [after.kind, after.title, after.vendor, after.notes, after.categoryId, after.expenseDate, after.currency, money(after.amount), after.splitMode, after.recurrence],
+      EXPENSE_FIELDS.map((field) => before[field]),
+      EXPENSE_FIELDS.map((field) => (field === 'amount' ? money(after.amount) : after[field])),
     ) &&
     same(
       byId(before.payers.map((p) => ({ participantId: p.participantId, amount: p.amount }))),
