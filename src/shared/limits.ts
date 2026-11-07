@@ -53,6 +53,10 @@ export const LIMITS = {
   // Names and group settings.
   /** Group, person and profile names. */
   nameMax: 50,
+  /** The text of a name that the server trims before it checks nameMax. */
+  nameInputMax: 200,
+  /** An email address (RFC 5321). */
+  emailMax: 254,
   groupNameMin: 2,
   apiKeyNameMax: 32,
   informationMax: 10_000,

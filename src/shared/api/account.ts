@@ -3,7 +3,7 @@
 // owns the key format and hash; listing and revoking them run here.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
-import { Id, ReadError, WriteError } from './core'
+import { Id, NameInput, ReadError, WriteError } from './core'
 
 export const Profile = Schema.Struct({
   id: Schema.String,
@@ -38,8 +38,7 @@ export const ConsentClient = Schema.Struct({ clientId: Schema.String, name: Sche
 export class AccountApi extends RpcGroup.make(
   Rpc.make('account.get', { success: Account, error: ReadError }),
   Rpc.make('account.updateProfile', {
-    // The server trims the name and checks its length, so MCP gets the same rule.
-    payload: { name: Schema.String.check(Schema.isMaxLength(200)) },
+    payload: { name: NameInput },
     success: Schema.Struct({ profile: Profile }),
     error: WriteError,
   }),

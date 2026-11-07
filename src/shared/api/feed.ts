@@ -8,12 +8,14 @@ import { CurrencyCodeSchema, DecimalOutput } from '../money'
 import {
   CalendarDate,
   CategoryId,
+  EmailInput,
   Expense,
   ExpenseInput,
   ExpenseKindSchema,
   GroupKindSchema,
   Id,
   IdempotencyKey,
+  NameInput,
   NewId,
   Participant,
   ReadError,
@@ -154,10 +156,8 @@ export const PrivatePerson = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal('email'),
     id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(42)),
-    /** Trimmed by the server; then 1 to LIMITS.nameMax characters. */
-    name: Schema.String.check(Schema.isMaxLength(200)),
-    /** Trimmed and lowercased by the server. */
-    email: Schema.String.check(Schema.isMaxLength(320)).annotate({ format: 'email' }),
+    name: NameInput,
+    email: EmailInput.annotate({ format: 'email' }),
   }),
 ])
 

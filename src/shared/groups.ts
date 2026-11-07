@@ -62,6 +62,12 @@ export const isIdSegment = (segment: string) => segment !== '' && !SLUG_PATTERN.
 /** The URL path of the group that a route segment names. */
 export const segmentPath = (segment: string) => (isIdSegment(segment) ? `/groups/${encodeURIComponent(segment)}` : `/${encodeURIComponent(segment)}`)
 
+/** A name as the server stores it: trimmed, 1 to LIMITS.nameMax characters; null for any other text. */
+export const trimmedName = (text: string) => {
+  const name = text.trim()
+  return name.length >= 1 && name.length <= LIMITS.nameMax ? name : null
+}
+
 /** An invitation email: something@something.something, without spaces. */
 export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 /** The form of an email that invitations and accounts compare: trimmed and lowercase. */
