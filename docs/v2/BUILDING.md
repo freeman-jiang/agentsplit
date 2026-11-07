@@ -51,7 +51,7 @@ The folders of `src/server/` depend in one direction only: `main/` → `handlers
 
 The area services build on these modules in `src/server/`. Use them instead of writing their SQL again:
 
-- `expense-read.ts`: the expense read model (`expenseColumns`, `toExpense`, `loadExpenses`), what a read adds to it (`ExpenseParts`: names, receipts, attribution events), the list filter (`ExpenseFilter`) and the receipt states.
+- `expense-read.ts`: the expense read model (`expenseColumns`, `toExpense`, `loadExpenses`), what a read adds to it (`ExpenseParts`: names, receipts, attribution events), the list filter (`ExpenseFilter`) with each filter's rule for the live list (SQL) and the historical one (saved revisions), the expense row's fields (`EXPENSE_FIELDS`) and the receipt states.
 - `activity.ts`: the activity writer, the snapshots, the access-change text, attribution and the system actor.
 - `balances.ts`: group balances, the caller's nets across groups, and balances at a recorded change.
 - `invitations.ts`: invitation tokens, expiry, creation, revocation, and when an invitation is open or usable.
