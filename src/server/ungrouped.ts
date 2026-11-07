@@ -5,7 +5,7 @@
 // src/lib/ungrouped-access.ts; the write rules are in private-context.ts.
 import { and, eq } from 'drizzle-orm'
 import { expenses, groups, memberships, participants, privateContexts, privatePeople } from '../../db/schema/app'
-import { Conflict, Forbidden, Invalid, Unauthorized } from '../shared/api'
+import { Conflict, Forbidden, Invalid, Unauthorized, type PrivatePerson as PrivatePersonSchema } from '../shared/api'
 import type { ExpenseDraft } from '../shared/expense-rules'
 import { EMAIL, normalizeEmail, trimmedName } from '../shared/groups'
 import { LIMITS, participantLimitMessage } from '../shared/limits'
@@ -17,9 +17,7 @@ import { createExpense } from './ledger'
 import { contacts } from './people'
 import { PEOPLE_RULE } from './private-context'
 
-export type PrivatePerson =
-  | { readonly kind: 'account'; readonly id: string; readonly userId: string }
-  | { readonly kind: 'email'; readonly id: string; readonly name: string; readonly email: string }
+export type PrivatePerson = typeof PrivatePersonSchema.Type
 
 /**
  * Creates an ungrouped expense with two or more people: existing contacts by

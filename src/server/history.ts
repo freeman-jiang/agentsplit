@@ -4,7 +4,7 @@
 // expense state to a historical answer. Stored snapshots are read as stored,
 // in either format (src/shared/snapshots.ts).
 import { sql, type SQL } from 'drizzle-orm'
-import { Invalid, NotFound } from '../shared/api'
+import { Invalid, NotFound, type ActivityQuery as ActivityQuerySchema, type Boundary as BoundarySchema } from '../shared/api'
 import type { Category, SavedExpense, SavedState } from '../shared/history'
 import { compareIds } from '../shared/ids'
 import { readSnapshot } from '../shared/snapshots'
@@ -15,7 +15,7 @@ import type { Db } from './core/db'
 import { tombstonesJson, type ExpenseFilter, type Tombstone } from './expense-read'
 import { iso } from './sql'
 
-export type Boundary = { readonly asOf?: string; readonly atActivityId?: string }
+export type Boundary = typeof BoundarySchema.Type
 
 /**
  * Recording times as the API shows them, in whole milliseconds. Times are
@@ -102,17 +102,7 @@ type ActivityRow = {
   live: { kind: ExpenseKind } | null
 }
 
-export type ActivityQuery = Boundary & {
-  readonly cursor?: number
-  readonly limit: number
-  readonly expenseId?: string
-  readonly type?: ActivityType
-  readonly from?: string
-  readonly to?: string
-  readonly recordedFrom?: string
-  readonly recordedTo?: string
-  readonly order?: 'asc' | 'desc'
-}
+export type ActivityQuery = typeof ActivityQuerySchema.Type
 
 /**
  * One page of a group's history, pinned to a boundary (the latest event when

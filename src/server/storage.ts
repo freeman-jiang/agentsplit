@@ -5,7 +5,7 @@
 // the deletion, readers show a tombstone, and the object leaves storage.
 import { eq, sql, type SQL } from 'drizzle-orm'
 import { deletedReceipts, groups } from '../../db/schema/app'
-import { Forbidden, NotFound } from '../shared/api'
+import { Forbidden, NotFound, type ReceiptOrder as ReceiptOrderSchema } from '../shared/api'
 import { LIMITS } from '../shared/limits'
 import { absoluteUrl, receiptDownloadPath } from '../shared/paths'
 import type { GroupKind, Role } from '../shared/vocabulary'
@@ -49,7 +49,7 @@ export async function storageUsage(db: Db, data: { principal: Principal }) {
   }
 }
 
-export type ReceiptOrder = 'largest' | 'oldest'
+export type ReceiptOrder = typeof ReceiptOrderSchema.Type
 
 type ReceiptRow = {
   id: string
