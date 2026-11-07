@@ -1,8 +1,13 @@
-// Signing in and out. Route guards import this module and are not code-split,
-// so it stays small and does not load the Better Auth client.
-import type { QueryClient } from '@tanstack/react-query'
+// The session: who is signed in, the guard of signed-in pages, and signing
+// out. Route guards import this module and are not code-split, so it stays
+// small: the Better Auth client is in src/client/auth-client.ts, which only
+// screen components import.
+import { queryOptions, type QueryClient } from '@tanstack/react-query'
 import { redirect } from '@tanstack/react-router'
-import { meQuery } from './queries/account'
+import { rpc } from '../rpc'
+import { keys } from './keys'
+
+export const meQuery = queryOptions({ queryKey: keys.me, queryFn: () => rpc((api) => api('session.me', undefined)) })
 
 /** The sign-in page, returning to `next` (a same-origin path) afterwards. */
 const signInHref = (next?: string) => (next ? `/sign-in?${new URLSearchParams({ next })}` : '/sign-in')

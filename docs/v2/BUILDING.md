@@ -74,7 +74,7 @@ The client reaches the server only through `rpc()` (`src/client/rpc.ts`), which 
 - `errors.ts`: `describeError`, the one text for a failed call, from the error table in `src/shared/errors.ts`.
 - `components/entry-write.ts`: saving and deleting an expense or a payment. A target (`useGroupTarget`, `usePageTarget`, or one with its own `save`) says where the entry lives and where the form goes afterwards; the hook keeps one idempotency key per draft and treats a failed create whose entry exists as already saved.
 - `components/expense-row/` (the one expense row, its figures and attribution line), `components/balance/` (net labels and tones, the totals, the balance chart and the settlement lists), `components/log/` (the revision panel and the expense log), and `editor-link.ts` (the typed link to an entry's editor).
-- `dates.ts` (the two "today" rules, the formatters, the first day of the week), `search.ts` (search-param parsers for `validateSearch`), `auth-guard.ts` (`requireSignedIn`, `signOut`), `theme.ts` and `hooks.ts` (`useDebounced`, `useInfiniteScroll`).
+- `dates.ts` (the two "today" rules, the formatters, the first day of the week), `search.ts` (search-param parsers for `validateSearch`), `queries/session.ts` (`meQuery`, `requireSignedIn`, `signOut`), `theme.ts` and `hooks.ts` (`useDebounced`, `useInfiniteScroll`).
 - `ui/`: the UI kit, including `CurrencySelect`, `Segmented`, `CopyButton` and `DisclosureSummary`. Confirm a destructive action with `components/delete-dialog.tsx`, never `window.confirm`.
 - A route's own parts sit beside it in files that start with `-`, such as `routes/$group/-stats-dialog.tsx`; the router ignores them.
 

@@ -1,7 +1,7 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, Outlet, redirect, useRouterState } from '@tanstack/react-router'
 import { RefreshCw, Users } from 'lucide-react'
-import { requireSignedIn } from '~/client/auth-guard'
+import { requireSignedIn } from '~/client/queries/session'
 import { cn } from '~/client/cn'
 import { isZero, magnitude, NET_CLASS, netLabel, netTone } from '~/client/components/balance/net'
 import { RailSettlements } from '~/client/components/balance/settlements'

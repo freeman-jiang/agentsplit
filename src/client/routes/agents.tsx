@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowDown } from 'lucide-react'
-import { requireSignedIn } from '~/client/auth-guard'
+import { requireSignedIn } from '~/client/queries/session'
 import { Button } from '~/client/ui/button'
 import { CopyButton } from '~/client/ui/copy-button'
 import { DisclosureSummary } from '~/client/ui/disclosure'
