@@ -8,7 +8,7 @@ import { todayUtc } from '../shared/dates'
 import { RECEIPT_CONTENT_TYPES } from '../shared/vocabulary'
 import type { Principal } from './core/access'
 import { httpReader, type Reader } from './auth/authenticate'
-import type { Bucket } from './bucket'
+import { storageUnavailable, type Bucket, type StoredObject } from './bucket'
 import type { Db } from './core/db'
 import { contentDisposition } from './headers'
 import { domainErrorResponse, jsonError } from './core/errors'
@@ -38,7 +38,12 @@ export async function downloadReceipt(data: { db: Db; bucket: Bucket; url: URL; 
     return domainErrorResponse(error)
   }
   if ('deleted' in receipt) return jsonError({ status: 410, message: `Receipt deleted by ${receipt.deleted.by} on ${receipt.deleted.at}` })
-  const object = await data.bucket.get(receipt.key).catch(() => null)
+  let object: StoredObject | null
+  try {
+    object = await data.bucket.get(receipt.key)
+  } catch (error) {
+    return domainErrorResponse(storageUnavailable({ what: 'Reading a receipt', error }))
+  }
   if (!object) return jsonError({ status: 404, message: 'Receipt not found' })
   return new Response(object.stream(), {
     headers: {

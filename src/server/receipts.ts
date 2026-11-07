@@ -8,7 +8,7 @@ import { groupAccessDenied, Invalid, NotFound } from '../shared/api'
 import { LIMITS, mebibytes } from '../shared/limits'
 import { RECEIPT_FORMATS, receiptTypeOf, type ReceiptFormat } from '../shared/vocabulary'
 import { randomId } from '../shared/ids'
-import type { Bucket } from './bucket'
+import { removeOrphans, storageUnavailable, type Bucket } from './bucket'
 import type { Db } from './core/db'
 import { requireMember, type Principal } from './core/access'
 import { spaceFor } from './receipt-quota'
@@ -140,12 +140,11 @@ export async function storeReceipt(db: Db, data: { bucket: Bucket; principal: Pr
       return message
     })
   } catch (error) {
-    await data.bucket.delete(key).catch(() => {})
-    console.error('Receipt upload failed', error)
-    throw new Invalid({ message: RECEIPT_REFUSED })
+    await removeOrphans(data.bucket, [key])
+    throw storageUnavailable({ what: 'Receipt upload', error })
   }
   if (refused) {
-    await data.bucket.delete(key).catch(() => {})
+    await removeOrphans(data.bucket, [key])
     throw new Invalid({ message: refused, reason: 'precondition' })
   }
   return { id, url, width: info.width, height: info.height }
