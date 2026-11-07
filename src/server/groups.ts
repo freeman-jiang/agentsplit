@@ -15,7 +15,7 @@ import type { GroupKind, Role } from '../shared/vocabulary'
 import type { Db } from './db'
 import { randomId } from './ids'
 import { createInvitation, findInvitation, invitationProblem, listedInvitation, openInvitation, revokeInvitations, tokenOfLink } from './invitations'
-import { memberCte, requireActive, requireMember, type Principal } from './access'
+import { groupIdOf, memberCte, requireActive, requireMember, type Principal } from './access'
 import { accessText, groupSnapshot, recordGroupEvent } from './activity'
 import { netsCte } from './balances'
 import { idempotent } from './idempotency'
@@ -364,7 +364,7 @@ async function applyAccess(
   const input = data.request
   const me = data.principal
   const pendingInvitation = input.action === 'join' ? await invitationOfLink(tx, { shareUrl: input.shareUrl, baseUrl: data.baseUrl }) : null
-  const groupId = pendingInvitation?.groupId ?? (input.action === 'join' ? null : (await groupIdOf(tx, input.groupId)))
+  const groupId = pendingInvitation?.groupId ?? (input.action === 'join' ? null : (await resolveGroup(tx, input.groupId)))
   if (!groupId) throw groupAccessDenied()
   const group = await lockGroup(tx, groupId)
   const [membership] = await tx.select().from(memberships).where(and(eq(memberships.userId, me.userId), eq(memberships.groupId, groupId)))
@@ -492,8 +492,8 @@ async function applyAccess(
   return done()
 }
 
-async function groupIdOf(tx: Db, ref: string) {
-  const result = await tx.execute<{ id: string | null }>(sql`SELECT agentsplit_group_id(${ref}) AS id`)
+async function resolveGroup(tx: Db, ref: string) {
+  const result = await tx.execute<{ id: string | null }>(sql`SELECT ${groupIdOf(sql`${ref}`)} AS id`)
   return result.rows[0]?.id ?? null
 }
 

@@ -11,7 +11,7 @@ import { compareIds } from '../shared/ids'
 import { formatMinor, minor } from '../shared/minor'
 import { savedEntry } from '../shared/snapshots'
 import type { GroupKind } from '../shared/vocabulary'
-import { memberCte, requireMember, type Principal } from './access'
+import { groupIdOf, memberCte, requireMember, type Principal } from './access'
 import type { Db } from './db'
 import { historicalLedger, type Boundary } from './history'
 import { participantName } from './people'
@@ -134,7 +134,7 @@ export type BalanceScope = ReadonlyArray<{ readonly groupId: string; readonly pa
 export async function accountBalances(db: Db, data: { principal: Principal; scope?: BalanceScope }) {
   const scope = data.scope ? JSON.stringify(data.scope.map((s) => ({ ref: s.groupId, participant_id: s.participantId ?? null }))) : null
   const result = await db.execute<{ result: AccountRow }>(sql`
-    WITH s AS (SELECT DISTINCT agentsplit_group_id(s.ref) AS group_id, s.participant_id FROM json_to_recordset(${scope ?? '[]'}::json) AS s(ref text, participant_id text)),
+    WITH s AS (SELECT DISTINCT ${groupIdOf(sql`s.ref`)} AS group_id, s.participant_id FROM json_to_recordset(${scope ?? '[]'}::json) AS s(ref text, participant_id text)),
     mine AS (
       SELECT m.group_id, ${scope ? sql`coalesce(s.participant_id, m.participant_id)` : sql`m.participant_id`} AS participant_id
       FROM memberships m ${scope ? sql`JOIN s ON s.group_id = m.group_id` : sql``}
