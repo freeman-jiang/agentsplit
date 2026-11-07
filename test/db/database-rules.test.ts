@@ -1,8 +1,13 @@
 // The rules of migration 0009 (docs/v2/parity/AUDIT.md, gaps 12 to 17). A
 // missing constraint fails silently, so each test proves a refusal.
 // Runs against a disposable local database: TEST_DATABASE_URL (default agentsplit_test).
+import { is } from 'drizzle-orm'
+import { getTableConfig, PgTable } from 'drizzle-orm/pg-core'
 import { Pool, type PoolClient } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import * as app from '../../db/schema/app'
+import { CURRENCIES } from '~/shared/currencies'
+import { LIMITS } from '~/shared/limits'
 import { resetTestDatabase } from './setup'
 
 let pool: Pool
@@ -138,6 +143,38 @@ describe('foreign keys', () => {
 })
 
 describe('value lists', () => {
+  type Check = { table: string; name: string; columns: string[]; definition: string }
+  const checks = async () =>
+    (
+      await pool.query<Check>(`
+        SELECT c.conrelid::regclass::text AS table, c.conname AS name, pg_get_constraintdef(c.oid) AS definition,
+          array(SELECT a.attname::text FROM pg_attribute a WHERE a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)) AS columns
+        FROM pg_constraint c WHERE c.contype = 'c' AND c.connamespace = 'public'::regnamespace`)
+    ).rows
+  const listed = (definition: string) => [...new Set([...definition.matchAll(/'([^']*)'::text/g)].map((m) => m[1]))].sort()
+  const snake = (name: string) => name.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
+
+  // The lists come from src/shared; an old migration that disagrees with them fails silently until a write is refused, or accepted.
+  it('checks every Drizzle enum column with exactly the shared list', async () => {
+    const all = await checks()
+    const columns = Object.values(app)
+      .filter((value) => is(value, PgTable))
+      .flatMap((table) => getTableConfig(table).columns.filter((c) => c.enumValues?.length).map((c) => ({ table: getTableConfig(table).name, column: snake(c.name), values: c.enumValues ?? [] })))
+    expect(columns.length).toBeGreaterThanOrEqual(9)
+    for (const { table, column, values } of columns) {
+      const found = all.filter((c) => c.table === table && c.columns.includes(column) && listed(c.definition).length > 0)
+      expect(found.map((c) => listed(c.definition)), `${table}.${column}`).toEqual([[...values].sort()])
+    }
+  })
+
+  it('checks the currencies with the shared registry, and the upload size with the receipt limit', async () => {
+    const all = await checks()
+    const codes = Object.keys(CURRENCIES).sort()
+    for (const name of ['expenses_currency_supported', 'expenses_original_currency_supported', 'groups_currency_supported'])
+      expect(listed(all.find((c) => c.name === name)?.definition ?? ''), name).toEqual(codes)
+    expect(all.find((c) => c.name === 'receipt_uploads_bytes')?.definition).toBe(`CHECK (((bytes >= 1) AND (bytes <= ${LIMITS.receiptBytes})))`)
+  })
+
   const insertExpense = (column: 'split_mode' | 'recurrence', value: string) =>
     tx(async (c) => {
       const e = id('e')
