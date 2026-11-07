@@ -14,11 +14,11 @@ const size = (amount: string) => Math.abs(Number(amount.replace('.', '')))
 
 export function BalancesCard(props: { currencies: Currencies; names: Names }) {
   return (
-    <section className="rounded-2xl border bg-card p-4" aria-labelledby="balances-title">
-      <h2 id="balances-title" className="text-sm font-semibold">
+    <section className="rounded-2xl border bg-card p-6" aria-labelledby="balances-title">
+      <h2 id="balances-title" className="text-base font-semibold leading-tight">
         Balances
       </h2>
-      <p className="mb-3 text-sm text-muted-foreground">Net balance per person, across all group expenses.</p>
+      <p className="mt-1.5 mb-4 text-sm text-muted-foreground">Net balance per person, across all group expenses.</p>
       {props.currencies.length === 0 ? (
         <p className="text-sm text-muted-foreground">No expenses yet. Your balances will appear here.</p>
       ) : (
@@ -79,11 +79,11 @@ export function SuggestedPayments(props: { currencies: Currencies; names: Names;
   const name = (id: string) => (id === props.viewer ? 'You' : (props.names.get(id) ?? 'Unknown'))
   const pending = props.currencies.filter((c) => c.settlements.length > 0)
   return (
-    <section className="rounded-2xl border bg-card p-4" aria-labelledby="suggested-title">
-      <h2 id="suggested-title" className="text-sm font-semibold">
+    <section className="rounded-2xl border bg-card p-6" aria-labelledby="suggested-title">
+      <h2 id="suggested-title" className="text-base font-semibold leading-tight">
         Suggested payments
       </h2>
-      <p className="mb-3 text-sm text-muted-foreground">Record these payments to settle the group.</p>
+      <p className="mt-1.5 mb-4 text-sm text-muted-foreground">Record these payments to settle the group.</p>
       {pending.length === 0 ? (
         <p className="text-sm text-muted-foreground">No payments needed.</p>
       ) : (
