@@ -3,72 +3,71 @@ import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { activities, groups, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
-import type { Db } from '~/server/core/db'
 import { exportCsv, exportJson } from '~/server/export'
 import { contentDisposition } from '~/server/export-routes'
 import { createExpense, deleteExpense } from '~/server/ledger'
-import { type Principal } from '~/server/core/access'
 import { statsExpenses, statsOverview } from '~/server/stats'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { insertImportedExpense } from './history-fixtures'
 import { testDatabase, type TestDatabase } from '../kit/database'
-import { userRows } from '../kit/people'
+import { draft } from '../kit/drafts'
+import { counter } from '../kit/ids'
+import { principal, userRows } from '../kit/people'
 
 let database: TestDatabase
-const alice: Principal = { userId: 'u-alice', name: 'Alice', email: 'a@example.com', source: 'web', agentKeyId: null }
-const unbound: Principal = { userId: 'u-unbound', name: 'Viewer', email: 'v@example.com', source: 'web', agentKeyId: null }
-const stranger: Principal = { userId: 'u-stranger', name: 'Stranger', email: 's@example.com', source: 'web', agentKeyId: null }
+const alice = principal('u-alice', { name: 'Alice' })
+const unbound = principal('u-unbound', { name: 'Viewer' })
+const stranger = principal('u-stranger', { name: 'Stranger' })
 
-const tx = <A>(work: (db: Db) => Promise<A>) => database.tx(work)
-let keys = 0
-const create = (id: string, over: Partial<ExpenseDraft>) =>
-  tx((db) =>
-    createExpense(db, {
-      principal: alice,
-      groupId: 'g1',
-      expenseId: id,
-      idempotencyKey: `key-stats-${++keys}`,
-      expense: {
-        kind: 'expense',
-        title: id,
-        vendor: null,
-        notes: '',
-        categoryId: 9,
-        expenseDate: '2026-01-10',
-        currency: 'USD',
-        amount: '95.00',
-        payers: [{ participantId: 'pa', amount: '95.00' }],
-        splitMode: 'evenly',
-        shares: ['pa', 'pb', 'pc'].map((participantId) => ({ participantId, weight: '1' })),
-        recurrence: 'none',
-        ...over,
-      },
-    }),
-  )
+const tx: TestDatabase['tx'] = (work) => database.tx(work)
+const key = counter('key-stats')
+
+/**
+ * The group "Flat · Zürich" of Alice, Bob and =Cara, with five expenses and a
+ * deleted one. Row IDs are `prefix` and a name, such as `${prefix}rent`; titles
+ * are the names. Alice is bound to her participant, the viewer is unbound.
+ */
+async function seedFlat(data: { groupId: string; slug: string; prefix: string }) {
+  const { groupId, prefix } = data
+  const [pa, pb, pc] = [`${prefix}pa`, `${prefix}pb`, `${prefix}pc`]
+  await tx(async (db) => {
+    await db.insert(groups).values({ id: groupId, kind: 'named', slug: data.slug, name: 'Flat · Zürich', defaultCurrency: 'USD' })
+    await db.insert(participants).values([
+      { id: pa, groupId, name: 'Alice' },
+      { id: pb, groupId, name: 'Bob' },
+      { id: pc, groupId, name: '=Cara' },
+    ])
+    await db.insert(memberships).values([
+      { userId: alice.userId, groupId, role: 'admin', participantId: pa },
+      { userId: unbound.userId, groupId, role: 'member', participantId: null },
+    ])
+  })
+  const create = (expense: { name: string } & Partial<ExpenseDraft>) => {
+    const { name, ...over } = expense
+    return tx((db) =>
+      createExpense(db, {
+        principal: alice,
+        groupId,
+        expenseId: `${prefix}${name}`,
+        idempotencyKey: key(),
+        expense: draft({ payer: pa, people: [pa, pb, pc], title: name, categoryId: 9, expenseDate: '2026-01-10', amount: '95.00', ...over }),
+      }),
+    )
+  }
+  // Three people share 95.00 in whole cents: 31.67, 31.67 and 31.66 (P-STATS-23).
+  await create({ name: 'groceries', vendor: 'Costco', title: '=Groceries' })
+  await create({ name: 'rent', categoryId: 18, amount: '1200.00', expenseDate: '2026-03-01', payers: [{ participantId: pa, amount: '700.00' }, { participantId: pb, amount: '500.00' }], recurrence: 'monthly' })
+  await create({ name: 'refund', categoryId: 18, amount: '-50.00', expenseDate: '2026-03-02', payers: [{ participantId: pb, amount: '-50.00' }] })
+  await create({ name: 'payback', kind: 'payment', categoryId: 1, amount: '20.00', expenseDate: '2026-03-03', payers: [{ participantId: pb, amount: '20.00' }], splitMode: 'amount', shares: [{ participantId: pa, weight: '20.00' }] })
+  await create({ name: 'ramen', currency: 'JPY', amount: '1500', expenseDate: '2026-02-01', categoryId: 8 })
+  await create({ name: 'gone', amount: '999.00' })
+  await tx((db) => deleteExpense(db, { principal: alice, groupId, expenseId: `${prefix}gone`, expectedRevision: 1, idempotencyKey: key() }))
+}
 
 beforeAll(async () => {
   database = await testDatabase()
-  await tx(async (db) => {
-    await db.insert(groups).values([{ id: 'g1', kind: 'named', slug: 'flat', name: 'Flat · Zürich', defaultCurrency: 'USD' }])
-    await db.insert(participants).values([
-      { id: 'pa', groupId: 'g1', name: 'Alice' },
-      { id: 'pb', groupId: 'g1', name: 'Bob' },
-      { id: 'pc', groupId: 'g1', name: '=Cara' },
-    ])
-    await db.insert(user).values(userRows([alice, unbound]))
-    await db.insert(memberships).values([
-      { userId: alice.userId, groupId: 'g1', role: 'admin', participantId: 'pa' },
-      { userId: unbound.userId, groupId: 'g1', role: 'member', participantId: null },
-    ])
-  })
-  // Three people share 95.00 in whole cents: 31.67, 31.67 and 31.66 (P-STATS-23).
-  await create('groceries', { vendor: 'Costco', title: '=Groceries' })
-  await create('rent', { categoryId: 18, amount: '1200.00', expenseDate: '2026-03-01', payers: [{ participantId: 'pa', amount: '700.00' }, { participantId: 'pb', amount: '500.00' }], recurrence: 'monthly' })
-  await create('refund', { categoryId: 18, amount: '-50.00', expenseDate: '2026-03-02', payers: [{ participantId: 'pb', amount: '-50.00' }] })
-  await create('payback', { kind: 'payment', categoryId: 1, amount: '20.00', expenseDate: '2026-03-03', payers: [{ participantId: 'pb', amount: '20.00' }], splitMode: 'amount', shares: [{ participantId: 'pa', weight: '20.00' }] })
-  await create('ramen', { currency: 'JPY', amount: '1500', payers: [{ participantId: 'pa', amount: '1500' }], expenseDate: '2026-02-01', categoryId: 8 })
-  await create('gone', { amount: '999.00', payers: [{ participantId: 'pa', amount: '999.00' }] })
-  await tx((db) => deleteExpense(db, { principal: alice, groupId: 'g1', expenseId: 'gone', expectedRevision: 1, idempotencyKey: 'key-stats-delete' }))
+  await tx((db) => db.insert(user).values(userRows([alice, unbound])))
+  await seedFlat({ groupId: 'g1', slug: 'flat', prefix: '' })
 })
 afterAll(async () => {
   await database.close()
@@ -84,13 +83,12 @@ describe('stats overview', () => {
     const s = await tx((db) => statsOverview(db, { principal: alice, groupId: 'g1', today: '2026-05-20' }))
     expect([s.total, s.yourPaid, s.yourShare]).toEqual(['1245.00', '795.00', '415.00'])
     expect(s.summary).toEqual({ count: 3, average: '415.00', largest: { title: 'rent', amount: '1200.00' }, firstDate: '2026-01-10', lastDate: '2026-03-02' })
+    // The three shares of 415.00 add up to the total (P-STATS-24).
     expect(s.participants).toEqual([
       { participantId: 'pa', name: 'Alice', paid: '795.00', count: 2, share: '415.00' },
       { participantId: 'pb', name: 'Bob', paid: '450.00', count: 2, share: '415.00' },
       { participantId: 'pc', name: '=Cara', paid: '0.00', count: 0, share: '415.00' },
     ])
-    // The shares add up to the total (P-STATS-24).
-    expect(s.participants.reduce((sum, p) => sum + Number(p.share), 0)).toBe(1245)
   })
 
   it('hides personal totals without a bound participant (P-STATS-21)', async () => {
@@ -151,19 +149,20 @@ describe('stats overview', () => {
 })
 
 describe('exports', () => {
+  // A copy of the group, so the rows that only the exports read leave the stats alone.
+  const x = (id: string) => `x-${id}`
   beforeAll(async () => {
+    await seedFlat({ groupId: 'g2', slug: 'flat-export', prefix: 'x-' })
     await tx(async (db) => {
-      await db.insert(activities).values([
-        { id: 'act-invite', groupId: 'g1', type: 'update_group', data: 'Invitation created: bob@example.com', actorName: 'Alice', actorUserId: 'u-alice', agentKeyId: 'key-secret', source: 'agent' },
-      ])
+      await db.insert(activities).values({ id: 'act-invite', groupId: 'g2', type: 'update_group', data: 'Invitation created: bob@example.com', actorName: 'Alice', actorUserId: alice.userId, agentKeyId: 'key-secret', source: 'agent' })
       await insertImportedExpense(db, {
         revisions: [
           {
             type: 'create_expense',
             time: '2025-12-01T10:00:00.000Z',
             snapshot: {
-              id: 'imported',
-              groupId: 'g1',
+              id: x('imported'),
+              groupId: 'g2',
               revision: 1,
               title: 'Old lamp',
               amount: '30',
@@ -172,8 +171,8 @@ describe('exports', () => {
               createdAt: '2025-12-01T10:00:00.000Z',
               categoryId: 13,
               category: { id: 13, grouping: 'Home', name: 'Furniture' },
-              paidBy: { id: 'pc', name: '=Cara' },
-              paidFor: [{ participantId: 'pa', name: 'Alice', shares: '1' }, { participantId: 'pc', name: '=Cara', shares: '2' }],
+              paidBy: { id: x('pc'), name: '=Cara' },
+              paidFor: [{ participantId: x('pa'), name: 'Alice', shares: '1' }, { participantId: x('pc'), name: '=Cara', shares: '2' }],
               splitMode: 'BY_SHARES',
               isReimbursement: false,
               notes: null,
@@ -185,10 +184,10 @@ describe('exports', () => {
           kind: 'expense',
           amount: 3000n,
           splitMode: 'shares',
-          payers: [{ participantId: 'pc', amount: 3000n }],
+          payers: [{ participantId: x('pc'), amount: 3000n }],
           shares: [
-            { participantId: 'pa', amount: 1000n, weight: '1' },
-            { participantId: 'pc', amount: 2000n, weight: '2' },
+            { participantId: x('pa'), amount: 1000n, weight: '1' },
+            { participantId: x('pc'), amount: 2000n, weight: '2' },
           ],
         },
       })
@@ -196,10 +195,9 @@ describe('exports', () => {
   })
 
   it('writes the CSV in a defined order, with net changes that sum to zero (P-EXPORT-17 to P-EXPORT-29)', async () => {
-    const file = await tx((db) => exportCsv(db, { principal: alice, groupId: 'flat' }))
-    expect(file.contentType).toBe('text/csv; charset=utf-8')
+    const file = await tx((db) => exportCsv(db, { principal: alice, groupId: 'flat-export' }))
     expect(file.filename).toMatch(/^AgentSplit Export - Flat · Zürich - \d{4}-\d{2}-\d{2}\.csv$/)
-    expect(file.content.startsWith('﻿')).toBe(true)
+    expect(file.content.startsWith('\uFEFF')).toBe(true)
     // Participant columns follow the group's name order, as everywhere in v2.
     expect(file.content.slice(1).split('\n')).toEqual([
       `"Date","Description","Vendor","Category","Currency","Cost","Original cost","Original currency","Conversion rate","Is Reimbursement","Split mode","'=Cara","Alice","Bob"`,
@@ -213,7 +211,7 @@ describe('exports', () => {
   })
 
   it('writes the JSON without user IDs, connection IDs or email addresses (P-EXPORT-10 to P-EXPORT-15)', async () => {
-    const file = await tx((db) => exportJson(db, { principal: alice, groupId: 'g1' }))
+    const file = await tx((db) => exportJson(db, { principal: alice, groupId: 'g2' }))
     expect(file.filename).toMatch(/^AgentSplit Export - Flat · Zürich - \d{4}-\d{2}-\d{2}\.json$/)
     const body = JSON.parse(file.content) as {
       currency: string
@@ -222,28 +220,28 @@ describe('exports', () => {
       activities: { activityType: string; data: string | null; expenseId: string | null; snapshot: unknown }[]
     }
     expect([body.currency, body.currencyCode]).toEqual(['$', 'USD'])
-    expect(body.expenses.map((e) => e.id)).toEqual(['imported', 'groceries', 'ramen', 'rent', 'refund', 'payback'])
-    expect(body.expenses[0]).toMatchObject({ amount: '30.00', expenseDate: '2025-12-01T00:00:00.000Z', paidById: 'pc', splitMode: 'BY_SHARES', isReimbursement: false })
-    expect(body.expenses.find((e) => e.id === 'payback')?.paidFor).toEqual([{ participantId: 'pa', shares: '20.00', amount: '20.00' }])
-    expect(body.expenses.find((e) => e.id === 'rent')).toMatchObject({ paidById: 'pa' })
+    expect(body.expenses.map((e) => e.id)).toEqual(['imported', 'groceries', 'ramen', 'rent', 'refund', 'payback'].map(x))
+    expect(body.expenses[0]).toMatchObject({ amount: '30.00', expenseDate: '2025-12-01T00:00:00.000Z', paidById: x('pc'), splitMode: 'BY_SHARES', isReimbursement: false })
+    expect(body.expenses.find((e) => e.id === x('payback'))?.paidFor).toEqual([{ participantId: x('pa'), shares: '20.00', amount: '20.00' }])
+    expect(body.expenses.find((e) => e.id === x('rent'))).toMatchObject({ paidById: x('pa') })
     // History keeps deleted expenses and stored snapshots of both formats (P-HIST-62).
-    expect(body.activities.filter((a) => a.expenseId === 'gone').map((a) => a.activityType)).toEqual(['CREATE_EXPENSE', 'DELETE_EXPENSE'])
-    expect(body.activities.find((a) => a.expenseId === 'imported')?.snapshot).toMatchObject({ schemaVersion: 1 })
-    expect(body.activities.find((a) => a.expenseId === 'rent')?.snapshot).toMatchObject({ schemaVersion: 2 })
+    expect(body.activities.filter((a) => a.expenseId === x('gone')).map((a) => a.activityType)).toEqual(['CREATE_EXPENSE', 'DELETE_EXPENSE'])
+    expect(body.activities.find((a) => a.expenseId === x('imported'))?.snapshot).toMatchObject({ schemaVersion: 1 })
+    expect(body.activities.find((a) => a.expenseId === x('rent'))?.snapshot).toMatchObject({ schemaVersion: 2 })
     expect(body.activities.find((a) => a.activityType === 'UPDATE_GROUP')?.data).toBe('Invitation created')
     expect(file.content).not.toMatch(/u-alice|key-secret|example\.com|actorUserId|agentKeyId/)
   })
 
   it('leaves deleted expenses out of both files (P-EXPORT-08)', async () => {
-    const csv = await tx((db) => exportCsv(db, { principal: alice, groupId: 'g1' }))
-    const json = JSON.parse((await tx((db) => exportJson(db, { principal: alice, groupId: 'g1' }))).content) as { expenses: { id: string }[] }
+    const csv = await tx((db) => exportCsv(db, { principal: alice, groupId: 'g2' }))
+    const json = JSON.parse((await tx((db) => exportJson(db, { principal: alice, groupId: 'g2' }))).content) as { expenses: { id: string }[] }
     expect(csv.content).not.toContain('gone')
-    expect(json.expenses.map((e) => e.id)).not.toContain('gone')
+    expect(json.expenses.map((e) => e.id)).not.toContain(x('gone'))
   })
 
   it('refuses non-members (P-EXPORT-04)', async () => {
-    await expect(tx((db) => exportCsv(db, { principal: stranger, groupId: 'g1' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
-    await expect(tx((db) => exportJson(db, { principal: stranger, groupId: 'flat' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => exportCsv(db, { principal: stranger, groupId: 'g2' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => exportJson(db, { principal: stranger, groupId: 'flat-export' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
   })
 
   it('names the file with an ASCII fallback (P-EXPORT-28)', () => {

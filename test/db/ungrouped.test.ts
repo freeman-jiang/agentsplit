@@ -5,62 +5,87 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { expenses, groups, invitations, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { accountBalances, listBalances } from '~/server/balances'
-import type { Db } from '~/server/core/db'
+import { sqlState } from '~/server/core/db'
 import { expenseContext, feedOptions, listFeed } from '~/server/feed'
 import { createExpense, deleteExpense, getExpense, listExpenses, listGroups, updateExpense } from '~/server/ledger'
 import { type Principal } from '~/server/core/access'
 import { createUngroupedExpense, renewPrivateInvitation, type PrivatePerson } from '~/server/ungrouped'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { randomId } from '~/server/core/ids'
+import { BASE } from '../kit/config'
 import { testDatabase, type TestDatabase } from '../kit/database'
+import { draft } from '../kit/drafts'
+import { counter } from '../kit/ids'
+import { principal, userRows } from '../kit/people'
 
 let database: TestDatabase
-const BASE_URL = 'http://localhost:5183'
 
-const tx = <A>(work: (db: Db) => Promise<A>) => database.tx(work)
+const tx: TestDatabase['tx'] = (work) => database.tx(work)
 
-const principal = (name: string): Principal => ({ userId: `u-${name.toLowerCase()}`, name, email: `${name.toLowerCase()}@example.com`, source: 'web', agentKeyId: null })
-const alice = principal('Alice')
-const bob = principal('Bob')
-const carol = principal('Carol')
-const outsider = principal('Outsider')
-const guest = principal('Guest')
-let keys = 0
-const key = () => `test-key-${String(++keys).padStart(4, '0')}`
+const alice = principal('u-alice', { name: 'Alice' })
+const bob = principal('u-bob', { name: 'Bob' })
+const carol = principal('u-carol', { name: 'Carol' })
+const outsider = principal('u-outsider', { name: 'Outsider' })
+const guest = principal('u-guest', { name: 'Guest' })
+const unverified = principal('u-unverified', { name: 'Unverified' })
+const key = counter('key-ungrouped')
 
-const draft = (over: Partial<ExpenseDraft> & Pick<ExpenseDraft, 'payers' | 'shares'>): ExpenseDraft => ({
-  kind: 'expense',
-  title: 'Shared meal',
-  vendor: null,
-  notes: '',
-  categoryId: 0,
-  expenseDate: '2026-10-09',
-  currency: 'USD',
-  amount: '60',
-  splitMode: 'evenly',
-  recurrence: 'none',
-  ...over,
-})
-const even = (ids: string[]) => ids.map((participantId) => ({ participantId, weight: '1' }))
-const paid = (participantId: string, amount = '60') => [{ participantId, amount }]
+/** A meal of 60 on 2026-10-09, paid by `payer` and shared evenly by `people`. */
+const meal = (data: { payer: string; people: readonly string[] } & Partial<ExpenseDraft>) => draft({ title: 'Shared meal', expenseDate: '2026-10-09', amount: '60', ...data })
 
+/** Alice and Bob, the people of the private dinners. */
 const people: PrivatePerson[] = [
   { kind: 'account', id: 'me', userId: alice.userId },
   { kind: 'account', id: 'friend', userId: bob.userId },
 ]
-const privateId = randomId()
-const [pAlice, pBob] = [`${privateId}_me`, `${privateId}_friend`]
-const feedIds = async (p: Principal, filter: Parameters<typeof listFeed>[1]['filter'] = {}, limit = 100) =>
-  (await tx((db) => listFeed(db, { principal: p, filter, cursor: null, limit }))).expenses.map((e) => e.id)
+
+type Dinner = { id: string; me: string; friend: string }
+/**
+ * A new private expense of 60 that `owner` pays and shares evenly with
+ * `friend`, both accounts. Its ID is also its group's. The default title does
+ * not match the filters that find the shared fixture.
+ */
+async function privateDinner(data: { owner?: Principal; friend?: Principal; title?: string } = {}): Promise<Dinner> {
+  const owner = data.owner ?? alice
+  const id = randomId()
+  await tx((db) =>
+    createUngroupedExpense(db, {
+      principal: owner,
+      baseUrl: BASE,
+      expenseId: id,
+      idempotencyKey: key(),
+      people: [
+        { kind: 'account', id: 'me', userId: owner.userId },
+        { kind: 'account', id: 'friend', userId: (data.friend ?? bob).userId },
+      ],
+      expense: meal({ title: data.title ?? 'Dinner for two', payer: 'me', people: ['me', 'friend'] }),
+    }),
+  )
+  return { id, me: `${id}_me`, friend: `${id}_friend` }
+}
+/** A repayment from the friend to the owner of `dinner`, recorded by `by`. */
+const repay = (data: { dinner: Dinner; by: Principal; expenseId?: string; amount?: string }) =>
+  tx((db) =>
+    createExpense(db, {
+      principal: data.by,
+      groupId: data.dinner.id,
+      expenseId: data.expenseId ?? randomId(),
+      idempotencyKey: key(),
+      expense: meal({ kind: 'payment', title: 'Payment', amount: data.amount ?? '30', categoryId: 1, payer: data.dinner.friend, people: [data.dinner.me] }),
+    }),
+  )
+
+const feedIds = async (data: { principal: Principal; filter?: Parameters<typeof listFeed>[1]['filter']; limit?: number }) =>
+  (await tx((db) => listFeed(db, { principal: data.principal, filter: data.filter ?? {}, cursor: null, limit: data.limit ?? 100 }))).expenses.map((e) => e.id)
+
+// The read-only fixture: the household and the private dinner of Alice and Bob.
+let privateId: string
 
 beforeAll(async () => {
   database = await testDatabase()
   await tx(async (db) => {
-    const now = new Date()
-    await db.insert(user).values(
-      [alice, bob, carol, outsider, guest].map((p) => ({ id: p.userId, name: p.name, email: p.email, emailVerified: true, createdAt: now, updatedAt: now })),
-    )
-    await db.insert(user).values({ id: 'u-unverified', name: 'Unverified', email: 'unverified@example.com', emailVerified: false, createdAt: now, updatedAt: now })
+    await db.insert(user).values(userRows([alice, bob, carol, outsider, guest], { verified: true }))
+    await db.insert(user).values(userRows([unverified]))
     await db.insert(groups).values({ id: 'house', kind: 'named', slug: 'household', name: 'Household', defaultCurrency: 'USD' })
     await db.insert(participants).values([
       { id: 'h-alice', groupId: 'house', name: 'Alice' },
@@ -72,29 +97,20 @@ beforeAll(async () => {
       { userId: alice.userId, groupId: 'house', role: 'admin', participantId: 'h-alice' },
       { userId: bob.userId, groupId: 'house', participantId: 'h-bob' },
       { userId: carol.userId, groupId: 'house', participantId: 'h-carol' },
-      { userId: 'u-unverified', groupId: 'house', participantId: 'h-unverified' },
+      { userId: unverified.userId, groupId: 'house', participantId: 'h-unverified' },
     ])
   })
-  await tx((db) => createExpense(db, { principal: bob, groupId: 'house', expenseId: 'only-bob', idempotencyKey: key(), expense: draft({ title: 'Only Bob', payers: paid('h-bob'), shares: even(['h-bob']) }) }))
+  await tx((db) => createExpense(db, { principal: bob, groupId: 'house', expenseId: 'only-bob', idempotencyKey: key(), expense: meal({ title: 'Only Bob', payer: 'h-bob', people: ['h-bob'] }) }))
   await tx((db) =>
     createExpense(db, {
       principal: alice,
       groupId: 'house',
       expenseId: 'supplies',
       idempotencyKey: key(),
-      expense: draft({ title: 'Household supplies', payers: paid('h-alice'), shares: even(['h-alice', 'h-bob', 'h-carol']) }),
+      expense: meal({ title: 'Household supplies', payer: 'h-alice', people: ['h-alice', 'h-bob', 'h-carol'] }),
     }),
   )
-  await tx((db) =>
-    createUngroupedExpense(db, {
-      principal: alice,
-      baseUrl: BASE_URL,
-      expenseId: privateId,
-      idempotencyKey: key(),
-      people,
-      expense: draft({ title: 'Private dinner', payers: paid('me'), shares: even(['me', 'friend']) }),
-    }),
-  )
+  privateId = (await privateDinner({ title: 'Private dinner' })).id
 })
 afterAll(async () => {
   await database.close()
@@ -107,19 +123,19 @@ describe('ungrouped expenses', () => {
     expect(mine.expenses.find((e) => e.id === privateId)?.group).toBeNull()
     expect(mine.expenses.map((e) => e.id)).not.toContain('only-bob')
     // The default is "involving me", in the UI and for agents (DECISIONS.md, P-FEED-19).
-    expect(await feedIds(alice)).toEqual(mine.expenses.map((e) => e.id))
-    expect(await feedIds(alice, { involvingMe: false })).toContain('only-bob')
+    expect(await feedIds({ principal: alice })).toEqual(mine.expenses.map((e) => e.id))
+    expect(await feedIds({ principal: alice, filter: { involvingMe: false } })).toContain('only-bob')
   })
 
   it('private expense is visible to participants and absent from named groups', async () => {
-    expect(await feedIds(bob)).toContain(privateId)
-    expect(await feedIds(carol, { involvingMe: false })).not.toContain(privateId)
+    expect(await feedIds({ principal: bob })).toContain(privateId)
+    expect(await feedIds({ principal: carol, filter: { involvingMe: false } })).not.toContain(privateId)
     expect((await tx((db) => listGroups(db, alice))).map((g) => g.id)).toEqual(['house'])
   })
 
   it('non-participants cannot bypass privacy using IDs, filters or history', async () => {
     for (const peer of [carol, outsider]) {
-      expect(await feedIds(peer, { groupId: privateId, involvingMe: false })).toEqual([])
+      expect(await feedIds({ principal: peer, filter: { groupId: privateId, involvingMe: false } })).toEqual([])
       await expect(tx((db) => expenseContext(db, { principal: peer, expenseId: privateId }))).rejects.toMatchObject({ _tag: 'NotFound' })
       await expect(tx((db) => getExpense(db, { principal: peer, groupId: privateId, expenseId: privateId }))).rejects.toMatchObject({
         _tag: 'Forbidden',
@@ -128,19 +144,22 @@ describe('ungrouped expenses', () => {
       await expect(tx((db) => listExpenses(db, { principal: peer, groupId: privateId, filter: {}, cursor: null, limit: 10 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
     }
     // Its own people can filter by the private context's ID (DECISIONS.md, P-FEED-18).
-    expect(await feedIds(bob, { groupId: privateId })).toEqual([privateId])
+    expect(await feedIds({ principal: bob, filter: { groupId: privateId } })).toEqual([privateId])
   })
 
   it('named group and no-group filters run before pagination', async () => {
-    const ungrouped = await tx((db) => listFeed(db, { principal: alice, filter: { scope: 'ungrouped' }, cursor: null, limit: 100 }))
-    expect(ungrouped.expenses.length).toBeGreaterThan(0)
-    expect(ungrouped.expenses.every((e) => e.group === null)).toBe(true)
-    const grouped = await tx((db) => listFeed(db, { principal: alice, filter: { scope: 'grouped' }, cursor: null, limit: 100 }))
-    expect(grouped.expenses.every((e) => e.group !== null)).toBe(true)
-    const house = await tx((db) => listFeed(db, { principal: alice, filter: { groupId: 'house' }, cursor: null, limit: 100 }))
-    expect(house.expenses.every((e) => e.group?.id === 'house')).toBe(true)
+    const ids = (filter: Parameters<typeof listFeed>[1]['filter']) => tx((db) => listFeed(db, { principal: alice, filter, cursor: null, limit: 100 })).then((r) => r.expenses)
+    const ungrouped = await ids({ scope: 'ungrouped' })
+    expect(ungrouped.map((e) => e.id)).toContain(privateId)
+    expect(ungrouped.every((e) => e.group === null)).toBe(true)
+    const grouped = await ids({ scope: 'grouped' })
+    expect(grouped.map((e) => e.id)).toContain('supplies')
+    expect(grouped.every((e) => e.group !== null)).toBe(true)
+    const house = await ids({ groupId: 'house' })
+    expect(house.map((e) => e.id)).toContain('supplies')
+    expect(house.every((e) => e.group?.id === 'house')).toBe(true)
     expect(
-      await feedIds(alice, { search: 'private DINNER', payerUserId: alice.userId, personUserId: bob.userId, from: '2026-10-09', to: '2026-10-09', currency: 'USD' }, 1),
+      await feedIds({ principal: alice, filter: { search: 'private DINNER', payerUserId: alice.userId, personUserId: bob.userId, from: '2026-10-09', to: '2026-10-09', currency: 'USD' }, limit: 1 }),
     ).toEqual([privateId])
     await expect(tx((db) => listFeed(db, { principal: alice, filter: { from: '2026-10-10', to: '2026-10-09' }, cursor: null, limit: 30 }))).rejects.toMatchObject({
       _tag: 'Invalid',
@@ -149,16 +168,17 @@ describe('ungrouped expenses', () => {
   })
 
   it('stable newest-first pagination survives a new expense at the head', async () => {
-    const all = await feedIds(alice, { involvingMe: false })
+    const all = await feedIds({ principal: alice, filter: { involvingMe: false } })
     const first = await tx((db) => listFeed(db, { principal: alice, filter: { involvingMe: false }, cursor: null, limit: 1 }))
     expect(first.nextCursor).not.toBeNull()
+    // Alice alone shares it, so no balance changes.
     await tx((db) =>
       createExpense(db, {
         principal: alice,
         groupId: 'house',
         expenseId: 'new-head',
         idempotencyKey: key(),
-        expense: draft({ title: 'New head', expenseDate: '2026-10-10', payers: paid('h-alice'), shares: even(['h-alice']) }),
+        expense: meal({ title: 'New head', expenseDate: '2026-10-10', payer: 'h-alice', people: ['h-alice'] }),
       }),
     )
     const next = await tx((db) => listFeed(db, { principal: alice, filter: { involvingMe: false }, cursor: first.nextCursor, limit: 100 }))
@@ -167,80 +187,63 @@ describe('ungrouped expenses', () => {
   })
 
   it('private access cannot be expanded or reclassified', async () => {
+    const d = await privateDinner()
     await expect(
-      tx((db) => createExpense(db, { principal: alice, groupId: privateId, expenseId: randomId(), idempotencyKey: key(), expense: draft({ payers: paid(pAlice), shares: even([pAlice, pBob]) }) })),
+      tx((db) => createExpense(db, { principal: alice, groupId: d.id, expenseId: randomId(), idempotencyKey: key(), expense: meal({ payer: d.me, people: [d.me, d.friend] }) })),
     ).rejects.toMatchObject({ _tag: 'Invalid', message: 'Create a separate ungrouped expense for a new purchase.' })
     await expect(
       tx((db) =>
         createExpense(db, {
           principal: alice,
-          groupId: privateId,
+          groupId: d.id,
           expenseId: randomId(),
           idempotencyKey: key(),
-          expense: draft({ kind: 'payment', recurrence: 'monthly', payers: paid(pBob, '1'), shares: even([pAlice]), amount: '1' }),
+          expense: meal({ kind: 'payment', recurrence: 'monthly', amount: '1', payer: d.friend, people: [d.me] }),
         }),
       ),
     ).rejects.toMatchObject({ message: 'Ungrouped expenses do not recur.' })
-    // The database refuses the same changes when the app checks are skipped.
-    const refused = { cause: { code: '23514' } }
-    await expect(tx((db) => db.insert(participants).values({ id: `${privateId}_extra`, groupId: privateId, name: 'Extra' }))).rejects.toMatchObject(refused)
-    await expect(tx((db) => db.insert(memberships).values({ userId: outsider.userId, groupId: privateId, participantId: null }))).rejects.toMatchObject(refused)
-    await expect(
-      tx((db) => db.insert(invitations).values({ id: randomId(), groupId: privateId, email: outsider.email, participantId: pBob, tokenHash: randomId(), createdBy: alice.userId, expiresAt: new Date() })),
-    ).rejects.toMatchObject(refused)
-    await expect(tx((db) => db.update(groups).set({ kind: 'named' }).where(eq(groups.id, privateId)))).rejects.toMatchObject(refused)
-    await expect(tx((db) => db.execute(sql`DELETE FROM private_people WHERE group_id = ${privateId}`))).rejects.toMatchObject(refused)
+    // The database refuses the same changes when the app checks are skipped: 23514 is a failed check or trigger.
+    const refused = (write: Promise<unknown>) => expect(write.catch(sqlState)).resolves.toBe('23514')
+    await refused(tx((db) => db.insert(participants).values({ id: `${d.id}_extra`, groupId: d.id, name: 'Extra' })))
+    await refused(tx((db) => db.insert(memberships).values({ userId: outsider.userId, groupId: d.id, participantId: null })))
+    await refused(tx((db) => db.insert(invitations).values({ id: randomId(), groupId: d.id, email: outsider.email, participantId: d.friend, tokenHash: randomId(), createdBy: alice.userId, expiresAt: new Date() })))
+    await refused(tx((db) => db.update(groups).set({ kind: 'named' }).where(eq(groups.id, d.id))))
+    await refused(tx((db) => db.execute(sql`DELETE FROM private_people WHERE group_id = ${d.id}`)))
   })
 
   it('private editing preserves roster, exact money and revisions', async () => {
-    await expect(
-      tx((db) => updateExpense(db, { principal: alice, groupId: privateId, expenseId: privateId, expectedRevision: 1, idempotencyKey: key(), expense: draft({ payers: paid(pAlice), shares: even([pAlice]) }) })),
-    ).rejects.toMatchObject({ message: 'The people with access to this private expense cannot be changed. Create a new expense for a different set of people.' })
-    await expect(
-      tx((db) =>
-        updateExpense(db, { principal: alice, groupId: privateId, expenseId: privateId, expectedRevision: 1, idempotencyKey: key(), expense: draft({ kind: 'payment', payers: paid(pAlice), shares: even([pBob]) }) }),
-      ),
-    ).rejects.toMatchObject({ message: 'Record repayments separately from the original expense.' })
+    const d = await privateDinner()
+    const edit = (data: { principal: Principal; expense: ExpenseDraft }) =>
+      tx((db) => updateExpense(db, { principal: data.principal, groupId: d.id, expenseId: d.id, expectedRevision: 1, idempotencyKey: key(), expense: data.expense }))
+    await expect(edit({ principal: alice, expense: meal({ payer: d.me, people: [d.me] }) })).rejects.toMatchObject({
+      message: 'The people with access to this private expense cannot be changed. Create a new expense for a different set of people.',
+    })
+    await expect(edit({ principal: alice, expense: meal({ kind: 'payment', payer: d.me, people: [d.friend] }) })).rejects.toMatchObject({
+      message: 'Record repayments separately from the original expense.',
+    })
     // Any of its people may edit it, not only its creator.
-    const edited = await tx((db) =>
-      updateExpense(db, {
-        principal: bob,
-        groupId: privateId,
-        expenseId: privateId,
-        expectedRevision: 1,
-        idempotencyKey: key(),
-        expense: draft({ title: 'Private dinner corrected', payers: paid(pAlice), shares: even([pAlice, pBob]) }),
-      }),
-    )
+    const edited = await edit({ principal: bob, expense: meal({ title: 'Dinner for two, corrected', payer: d.me, people: [d.me, d.friend] }) })
     expect(edited.revision).toBe(2)
     expect(edited.shares.map((s) => s.amount)).toEqual(['30.00', '30.00'])
-    await expect(
-      tx((db) => updateExpense(db, { principal: alice, groupId: privateId, expenseId: privateId, expectedRevision: 1, idempotencyKey: key(), expense: draft({ title: 'Stale edit', payers: paid(pAlice), shares: even([pAlice, pBob]) }) })),
-    ).rejects.toMatchObject({ _tag: 'Conflict', currentRevision: 2 })
+    await expect(edit({ principal: alice, expense: meal({ title: 'Stale edit', payer: d.me, people: [d.me, d.friend] }) })).rejects.toMatchObject({ _tag: 'Conflict', currentRevision: 2 })
   })
 
   it('repayment settles only the selected expense, preserving household balances', async () => {
+    const d = await privateDinner()
     const before = await tx((db) => listBalances(db, { principal: alice, groupId: 'house' }))
-    const owed = await tx((db) => expenseContext(db, { principal: alice, expenseId: privateId }))
-    expect(owed.context?.settlements).toEqual([{ currency: 'USD', transfers: [{ from: pBob, to: pAlice, amount: '30.00' }] }])
-    await tx((db) =>
-      createExpense(db, {
-        principal: bob,
-        groupId: privateId,
-        expenseId: 'repayment',
-        idempotencyKey: key(),
-        expense: draft({ kind: 'payment', title: 'Payment', amount: '30', categoryId: 1, payers: paid(pBob, '30'), shares: even([pAlice]) }),
-      }),
-    )
-    const settled = await tx((db) => expenseContext(db, { principal: alice, expenseId: privateId }))
+    const owed = await tx((db) => expenseContext(db, { principal: alice, expenseId: d.id }))
+    expect(owed.context?.settlements).toEqual([{ currency: 'USD', transfers: [{ from: d.friend, to: d.me, amount: '30.00' }] }])
+    const repayment = randomId()
+    await repay({ dinner: d, by: bob, expenseId: repayment })
+    const settled = await tx((db) => expenseContext(db, { principal: alice, expenseId: d.id }))
     expect(settled.context?.settlements).toEqual([{ currency: 'USD', transfers: [] }])
     expect(await tx((db) => listBalances(db, { principal: alice, groupId: 'house' }))).toEqual(before)
-    await expect(tx((db) => deleteExpense(db, { principal: alice, groupId: privateId, expenseId: privateId, expectedRevision: 2, idempotencyKey: key() }))).rejects.toMatchObject({
+    await expect(tx((db) => deleteExpense(db, { principal: alice, groupId: d.id, expenseId: d.id, expectedRevision: 1, idempotencyKey: key() }))).rejects.toMatchObject({
       message: 'Remove this expense’s recorded repayments before deleting the expense.',
     })
     // A repayment's page names the original expense it settles.
-    const payment = await tx((db) => expenseContext(db, { principal: bob, expenseId: 'repayment' }))
-    expect(payment.context).toMatchObject({ expenseId: privateId, title: 'Private dinner corrected' })
+    const payment = await tx((db) => expenseContext(db, { principal: bob, expenseId: repayment }))
+    expect(payment.context).toMatchObject({ expenseId: d.id, title: 'Dinner for two' })
   })
 
   it('three-person ad hoc expense and email invitation are private and atomic', async () => {
@@ -249,11 +252,11 @@ describe('ungrouped expenses', () => {
     const result = await tx((db) =>
       createUngroupedExpense(db, {
         principal: alice,
-        baseUrl: BASE_URL,
+        baseUrl: BASE,
         expenseId: id,
         idempotencyKey: key(),
         people: roster,
-        expense: draft({ title: 'Ad hoc three-person dinner', payers: paid('me'), shares: even(['me', 'friend', 'guest']) }),
+        expense: meal({ title: 'Ad hoc three-person dinner', payer: 'me', people: ['me', 'friend', 'guest'] }),
       }),
     )
     expect(result).toMatchObject({ expenseId: id, groupId: id, revision: 1 })
@@ -265,7 +268,7 @@ describe('ungrouped expenses', () => {
     expect(result.invitations).toHaveLength(1)
     const [link] = result.invitations
     expect(link?.email).toBe('new.person@example.com')
-    expect(link?.url).toMatch(new RegExp(`^${BASE_URL}/invite/[A-Za-z0-9_-]{43}$`))
+    expect(link?.url).toMatch(new RegExp(`^${BASE}/invite/[A-Za-z0-9_-]{43}$`))
     // Only the SHA-256 hash of the secret is stored.
     const secret = link?.url.split('/').at(-1) ?? ''
     const hash = Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret))).toString('hex')
@@ -276,17 +279,17 @@ describe('ungrouped expenses', () => {
     await tx((db) => db.update(invitations).set({ expiresAt: new Date(0) }).where(eq(invitations.groupId, id)))
     expect((await tx((db) => expenseContext(db, { principal: alice, expenseId: id }))).context?.invitations).toHaveLength(1)
     expect((await tx((db) => expenseContext(db, { principal: bob, expenseId: id }))).context?.invitations).toEqual([])
-    await expect(tx((db) => renewPrivateInvitation(db, { principal: outsider, baseUrl: BASE_URL, groupId: id, participantId: `${id}_guest` }))).rejects.toMatchObject({
+    await expect(tx((db) => renewPrivateInvitation(db, { principal: outsider, baseUrl: BASE, groupId: id, participantId: `${id}_guest` }))).rejects.toMatchObject({
       _tag: 'Forbidden',
       message: 'Group not found, or you are not a member',
     })
-    await expect(tx((db) => renewPrivateInvitation(db, { principal: bob, baseUrl: BASE_URL, groupId: id, participantId: `${id}_guest` }))).rejects.toMatchObject({
+    await expect(tx((db) => renewPrivateInvitation(db, { principal: bob, baseUrl: BASE, groupId: id, participantId: `${id}_guest` }))).rejects.toMatchObject({
       message: 'Only the expense creator can reissue its original invitations.',
     })
-    await expect(tx((db) => renewPrivateInvitation(db, { principal: alice, baseUrl: BASE_URL, groupId: id, participantId: `${id}_friend` }))).rejects.toMatchObject({
+    await expect(tx((db) => renewPrivateInvitation(db, { principal: alice, baseUrl: BASE, groupId: id, participantId: `${id}_friend` }))).rejects.toMatchObject({
       message: 'This person has already joined.',
     })
-    const renewed = await tx((db) => renewPrivateInvitation(db, { principal: alice, baseUrl: BASE_URL, groupId: id, participantId: `${id}_guest` }))
+    const renewed = await tx((db) => renewPrivateInvitation(db, { principal: alice, baseUrl: BASE, groupId: id, participantId: `${id}_guest` }))
     expect(renewed).toMatchObject({ email: 'new.person@example.com', participantId: `${id}_guest`, participantName: 'New person' })
     const rows = await tx((db) => db.select().from(invitations).where(eq(invitations.groupId, id)))
     expect(rows.filter((r) => r.revokedAt === null).map((r) => r.id)).toEqual([renewed.id])
@@ -299,11 +302,11 @@ describe('ungrouped expenses', () => {
       tx((db) =>
         createUngroupedExpense(db, {
           principal: alice,
-          baseUrl: BASE_URL,
+          baseUrl: BASE,
           expenseId: id,
           idempotencyKey: key(),
           people: roster,
-          expense: draft({ payers: paid('me'), shares: even(['me', 'friend', 'guest']) }),
+          expense: meal({ payer: 'me', people: ['me', 'friend', 'guest'] }),
         }),
       ),
     ).rejects.toMatchObject({ _tag: 'Conflict', id })
@@ -313,38 +316,40 @@ describe('ungrouped expenses', () => {
   it('forged account IDs and uninvolved extra viewers are rejected', async () => {
     const forged: PrivatePerson[] = [...people, { kind: 'account', id: 'stranger', userId: outsider.userId }]
     const create = (data: { people: PrivatePerson[]; expense: ExpenseDraft }) =>
-      tx((db) => createUngroupedExpense(db, { principal: alice, baseUrl: BASE_URL, expenseId: randomId(), idempotencyKey: key(), ...data }))
-    await expect(create({ people: forged, expense: draft({ payers: paid('me'), shares: even(['me', 'friend', 'stranger']) }) })).rejects.toMatchObject({
+      tx((db) => createUngroupedExpense(db, { principal: alice, baseUrl: BASE, expenseId: randomId(), idempotencyKey: key(), ...data }))
+    await expect(create({ people: forged, expense: meal({ payer: 'me', people: ['me', 'friend', 'stranger'] }) })).rejects.toMatchObject({
       message: 'Choose an existing contact or invite someone by email.',
     })
     const exact = 'Include yourself and exactly the people paying for or sharing this expense. Each person must be unique.'
-    await expect(create({ people, expense: draft({ payers: paid('me'), shares: even(['me']) }) })).rejects.toMatchObject({ message: exact })
+    await expect(create({ people, expense: meal({ payer: 'me', people: ['me'] }) })).rejects.toMatchObject({ message: exact })
+    await expect(create({ people: [people[1]!, { kind: 'email', id: 'x', name: 'X', email: 'x@example.com' }], expense: meal({ payer: 'friend', people: ['friend', 'x'] }) })).rejects.toMatchObject({
+      message: exact,
+    })
     await expect(
-      create({ people: [people[1]!, { kind: 'email', id: 'x', name: 'X', email: 'x@example.com' }], expense: draft({ payers: paid('friend'), shares: even(['friend', 'x']) }) }),
-    ).rejects.toMatchObject({ message: exact })
-    await expect(
-      create({ people: [...people, { kind: 'email', id: 'twin', name: 'Twin', email: bob.email }], expense: draft({ payers: paid('me'), shares: even(['me', 'friend', 'twin']) }) }),
+      create({ people: [...people, { kind: 'email', id: 'twin', name: 'Twin', email: bob.email }], expense: meal({ payer: 'me', people: ['me', 'friend', 'twin'] }) }),
     ).rejects.toMatchObject({ message: exact })
     // The private write rules check the new expense, as they check every later write.
-    await expect(create({ people, expense: draft({ kind: 'payment', payers: paid('me'), shares: even(['me', 'friend']) }) })).rejects.toMatchObject({
+    await expect(create({ people, expense: meal({ kind: 'payment', payer: 'me', people: ['me', 'friend'] }) })).rejects.toMatchObject({
       message: 'Record repayments separately from the original expense.',
     })
-    await expect(create({ people, expense: draft({ recurrence: 'weekly', payers: paid('me'), shares: even(['me', 'friend']) }) })).rejects.toMatchObject({
+    await expect(create({ people, expense: meal({ recurrence: 'weekly', payer: 'me', people: ['me', 'friend'] }) })).rejects.toMatchObject({
       message: 'Ungrouped expenses do not recur.',
     })
-    await expect(
-      create({ people: [people[0]!, { kind: 'email', id: 'x', name: ' ', email: 'x@example.com' }], expense: draft({ payers: paid('me'), shares: even(['me', 'x']) }) }),
-    ).rejects.toMatchObject({ message: 'Enter a name and a valid email address.' })
-    const unverified = { ...principal('Unverified'), userId: 'u-unverified' }
+    await expect(create({ people: [people[0]!, { kind: 'email', id: 'x', name: ' ', email: 'x@example.com' }], expense: meal({ payer: 'me', people: ['me', 'x'] }) })).rejects.toMatchObject({
+      message: 'Enter a name and a valid email address.',
+    })
     await expect(
       tx((db) =>
         createUngroupedExpense(db, {
           principal: unverified,
-          baseUrl: BASE_URL,
+          baseUrl: BASE,
           expenseId: randomId(),
           idempotencyKey: key(),
-          people: [{ kind: 'account', id: 'me', userId: 'u-unverified' }, { kind: 'account', id: 'a', userId: alice.userId }],
-          expense: draft({ payers: paid('me'), shares: even(['me', 'a']) }),
+          people: [
+            { kind: 'account', id: 'me', userId: unverified.userId },
+            { kind: 'account', id: 'a', userId: alice.userId },
+          ],
+          expense: meal({ payer: 'me', people: ['me', 'a'] }),
         }),
       ),
     ).rejects.toMatchObject({ _tag: 'Unauthorized' })
@@ -363,73 +368,100 @@ describe('ungrouped expenses', () => {
   })
 
   it('dashboard totals include private contexts, separate currencies and preserve partial-state warnings', async () => {
-    // Household +40, private dinner 0 after the repayment, three-person dinner +40.
-    const summary = await tx((db) => accountBalances(db, { principal: alice }))
+    // Dana's own accounts and groups, so no other test changes her totals.
+    const dana = principal('u-dana', { name: 'Dana' })
+    const erin = principal('u-erin', { name: 'Erin' })
+    await tx(async (db) => {
+      await db.insert(user).values(userRows([dana, erin], { verified: true }))
+      await db.insert(groups).values({ id: 'dana-house', kind: 'named', name: 'Dana house', defaultCurrency: 'USD' })
+      await db.insert(participants).values([
+        { id: 'd-dana', groupId: 'dana-house', name: 'Dana' },
+        { id: 'd-erin', groupId: 'dana-house', name: 'Erin' },
+        { id: 'd-fay', groupId: 'dana-house', name: 'Fay' },
+      ])
+      await db.insert(memberships).values([
+        { userId: dana.userId, groupId: 'dana-house', role: 'admin', participantId: 'd-dana' },
+        { userId: erin.userId, groupId: 'dana-house', participantId: 'd-erin' },
+      ])
+    })
+    await tx((db) => createExpense(db, { principal: dana, groupId: 'dana-house', expenseId: randomId(), idempotencyKey: key(), expense: meal({ payer: 'd-dana', people: ['d-dana', 'd-erin', 'd-fay'] }) }))
+    const repaid = await privateDinner({ owner: dana, friend: erin })
+    await repay({ dinner: repaid, by: erin })
+    await tx((db) =>
+      createUngroupedExpense(db, {
+        principal: dana,
+        baseUrl: BASE,
+        expenseId: randomId(),
+        idempotencyKey: key(),
+        people: [
+          { kind: 'account', id: 'me', userId: dana.userId },
+          { kind: 'account', id: 'friend', userId: erin.userId },
+          { kind: 'email', id: 'guest', name: 'Guest', email: 'dana-guest@example.com' },
+        ],
+        expense: meal({ payer: 'me', people: ['me', 'friend', 'guest'] }),
+      }),
+    )
+    // Household +40, the repaid dinner 0, the three-person dinner +40.
+    const summary = await tx((db) => accountBalances(db, { principal: dana }))
     expect(summary.totals).toEqual([{ currency: 'USD', amount: '80.00' }])
-    expect(summary.balances.some((b) => b.groupId === privateId && b.kind === 'private')).toBe(true)
+    expect(summary.balances.find((b) => b.groupId === repaid.id)).toMatchObject({ kind: 'private', currency: 'USD', amount: '0.00' })
     expect(summary.unboundGroupIds).toEqual([])
     expect(await tx((db) => accountBalances(db, { principal: outsider }))).toEqual({ balances: [], totals: [], unboundGroupIds: [] })
     await tx((db) =>
       createExpense(db, {
-        principal: alice,
-        groupId: 'house',
-        expenseId: 'euro',
+        principal: dana,
+        groupId: 'dana-house',
+        expenseId: randomId(),
         idempotencyKey: key(),
-        expense: draft({ title: 'Euro expense', amount: '10', currency: 'EUR', payers: paid('h-alice', '10'), shares: even(['h-alice', 'h-bob']) }),
+        expense: meal({ title: 'Euro expense', amount: '10', currency: 'EUR', payer: 'd-dana', people: ['d-dana', 'd-erin'] }),
       }),
     )
-    expect((await tx((db) => accountBalances(db, { principal: alice }))).totals).toEqual([
+    expect((await tx((db) => accountBalances(db, { principal: dana }))).totals).toEqual([
       { currency: 'EUR', amount: '5.00' },
       { currency: 'USD', amount: '80.00' },
     ])
     await tx(async (db) => {
-      await db.insert(groups).values({ id: 'legacy', kind: 'named', name: 'Unbound legacy test', defaultCurrency: 'USD' })
-      await db.insert(memberships).values({ userId: alice.userId, groupId: 'legacy', participantId: null })
+      await db.insert(groups).values({ id: 'dana-legacy', kind: 'named', name: 'Unbound legacy test', defaultCurrency: 'USD' })
+      await db.insert(memberships).values({ userId: dana.userId, groupId: 'dana-legacy', participantId: null })
     })
-    const partial = await tx((db) => accountBalances(db, { principal: alice }))
-    expect(partial.unboundGroupIds).toEqual(['legacy'])
+    const partial = await tx((db) => accountBalances(db, { principal: dana }))
+    expect(partial.unboundGroupIds).toEqual(['dana-legacy'])
     expect(partial.totals).toEqual([
       { currency: 'EUR', amount: '5.00' },
       { currency: 'USD', amount: '80.00' },
     ])
     // Reading balances never creates expenses (no recurring side effect).
     const before = (await tx((db) => db.select({ id: expenses.id }).from(expenses))).length
-    await tx((db) => accountBalances(db, { principal: alice }))
+    await tx((db) => accountBalances(db, { principal: dana }))
     expect((await tx((db) => db.select({ id: expenses.id }).from(expenses))).length).toBe(before)
   })
 
   it('deletes the original after its repayments, and then refuses new repayments', async () => {
-    await tx((db) => deleteExpense(db, { principal: bob, groupId: privateId, expenseId: 'repayment', expectedRevision: 1, idempotencyKey: key() }))
-    await tx((db) => deleteExpense(db, { principal: alice, groupId: privateId, expenseId: privateId, expectedRevision: 2, idempotencyKey: key() }))
-    const log = await tx((db) => db.execute<{ type: string }>(sql`SELECT type FROM activities WHERE group_id = ${privateId} ORDER BY sequence`))
-    expect(log.rows.map((r) => r.type)).toEqual(['create_group', 'create_expense', 'update_expense', 'create_expense', 'delete_expense', 'delete_expense'])
-    await expect(
-      tx((db) =>
-        createExpense(db, {
-          principal: bob,
-          groupId: privateId,
-          expenseId: randomId(),
-          idempotencyKey: key(),
-          expense: draft({ kind: 'payment', amount: '1', payers: paid(pBob, '1'), shares: even([pAlice]) }),
-        }),
-      ),
-    ).rejects.toMatchObject({ message: 'Cannot record a repayment for a deleted expense.' })
-    expect(await feedIds(alice, { groupId: privateId })).toEqual([])
+    const d = await privateDinner()
+    const repayment = randomId()
+    await repay({ dinner: d, by: bob, expenseId: repayment })
+    await tx((db) => deleteExpense(db, { principal: bob, groupId: d.id, expenseId: repayment, expectedRevision: 1, idempotencyKey: key() }))
+    await tx((db) => deleteExpense(db, { principal: alice, groupId: d.id, expenseId: d.id, expectedRevision: 1, idempotencyKey: key() }))
+    const log = await tx((db) => db.execute<{ type: string }>(sql`SELECT type FROM activities WHERE group_id = ${d.id} ORDER BY sequence`))
+    expect(log.rows.map((r) => r.type)).toEqual(['create_group', 'create_expense', 'create_expense', 'delete_expense', 'delete_expense'])
+    await expect(repay({ dinner: d, by: bob, amount: '1' })).rejects.toMatchObject({ message: 'Cannot record a repayment for a deleted expense.' })
+    expect(await feedIds({ principal: alice, filter: { groupId: d.id } })).toEqual([])
   })
+
   it('links an invited email that belongs to a contact, without an invitation', async () => {
     const id = randomId()
     const result = await tx((db) =>
       createUngroupedExpense(db, {
         principal: alice,
-        baseUrl: BASE_URL,
+        baseUrl: BASE,
         expenseId: id,
         idempotencyKey: key(),
-        people: [people[0]!, { kind: 'email', id: 'c', name: 'Typed name', email: 'CAROL@example.com' }],
-        expense: draft({ payers: paid('me'), shares: even(['me', 'c']) }),
+        people: [people[0]!, { kind: 'email', id: 'c', name: 'Typed name', email: carol.email.toUpperCase() }],
+        expense: meal({ payer: 'me', people: ['me', 'c'] }),
       }),
     )
     expect(result.invitations).toEqual([])
     expect(result.participants.find((p) => p.localId === 'c')?.name).toBe('Carol')
-    expect(await feedIds(carol, { groupId: id })).toEqual([id])
+    expect(await feedIds({ principal: carol, filter: { groupId: id } })).toEqual([id])
   })
 })
