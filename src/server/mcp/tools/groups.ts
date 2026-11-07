@@ -267,7 +267,7 @@ export const manageGroupAccess = defineTool({
     const i = result.invitation
     return {
       groupId: result.groupId,
-      // The current app answered true for every action but leave (DECISIONS.md group C, P-TOOL-ACCESS-28).
+      // The current app answered true for every action but leave; v2 answers true only after a join (DECISIONS.md group C, P-TOOL-ACCESS-28).
       joined: input.action === 'join',
       ...(i && i.url && i.participantId ? { invitation: { id: i.id, email: i.email, expiresAt: i.expiresAt, url: i.url, participantId: i.participantId, participantName: i.participantName ?? '' } } : {}),
     }

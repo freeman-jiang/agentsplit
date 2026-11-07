@@ -194,7 +194,7 @@ export function createApp(platform: Platform) {
       return secured(await (config.perfInstrumentation ? withPerfHeaders(() => route(request)) : route(request)))
     },
     /**
-     * The hourly job (server.ts runs it at minute 7). It creates due
+     * The hourly job (server.ts schedules it). It creates due
      * recurring expenses, so reads never have to (DECISIONS.md, P-BAL-30 and
      * P-RECUR-08). A failed occurrence is logged and skipped, the other links
      * go on, and the next run tries it again.

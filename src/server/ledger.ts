@@ -77,9 +77,7 @@ const decodeCursor = (text: string): Cursor => {
   try {
     const value = JSON.parse(atob(text)) as Cursor
     if (typeof value.k === 'string' && typeof value.c === 'string' && typeof value.i === 'string') return value
-  } catch {
-    // fall through
-  }
+  } catch {}
   throw new Invalid({ message: 'Invalid cursor', field: 'cursor' })
 }
 
@@ -241,7 +239,6 @@ async function storedExpense(tx: Db, expenseId: string) {
   return expense
 }
 
-/** Records an expense event with the snapshot of the context's group and people. */
 const record = (tx: Db, data: { context: WriteContext; principal: Principal; type: 'create_expense' | 'update_expense'; expense: ReadExpense; revision: number }) =>
   recordExpenseEvent(tx, {
     type: data.type,
@@ -270,7 +267,6 @@ async function writeDocuments(tx: Db, data: { groupId: string; expenseId: string
   await replaceDocuments(tx, data)
 }
 
-/** Writes the expense's receipt rows in the given order. */
 async function replaceDocuments(tx: Db, data: { expenseId: string; documents: readonly StoredDocument[]; saved: readonly StoredDocument[] }) {
   if (data.saved.length) await tx.delete(expenseDocuments).where(eq(expenseDocuments.expenseId, data.expenseId))
   if (data.documents.length) await tx.insert(expenseDocuments).values(documentRows({ ...data, keep: new Set(data.saved.map((d) => d.id)) }))
@@ -298,7 +294,6 @@ async function writeExpense(tx: Db, data: { expenseId: string; groupId: string; 
       .onConflictDoUpdate({
         target: [table.expenseId, table.participantId],
         set: { amount: sql`excluded.amount`, weight: sql`excluded.weight` },
-        // An unchanged part is not written again.
         setWhere: sql`(excluded.amount, excluded.weight) IS DISTINCT FROM (${table.amount}, ${table.weight})`,
       })
       .getSQL(),
@@ -380,7 +375,6 @@ export async function createExpense(
       row: tx.insert(expenses).values({ id: data.expenseId, groupId, revision: 1, ...columns(expense) }).getSQL(),
     })
     if (documents.length) await writeDocuments(tx, { groupId, expenseId: data.expenseId, documents, saved: [] })
-    // A new expense has no recurring link yet.
     await syncRecurrence(tx, { groupId, expenseId: data.expenseId, rule: expense.recurrence, expenseDate: expense.expenseDate, previous: null, link: null })
     const stored = await storedExpense(tx, data.expenseId)
     await record(tx, { context, principal: data.principal, type: 'create_expense', expense: stored, revision: 1 })
@@ -396,7 +390,6 @@ function currentExpense(context: WriteContext, expectedRevision: number) {
   return expense
 }
 
-/** The documents of an expense read with them. */
 const documentsOf = (expense: ReadExpense): readonly StoredDocument[] => expense.documents ?? []
 
 async function ensureBaseline(tx: Db, data: { context: WriteContext; principal: Principal }) {
@@ -583,7 +576,6 @@ export async function deleteExpense(
     assertPrivateWrite(context.privateContext, { expenseId: data.expenseId, op: 'delete' })
     await ensureBaseline(tx, { context, principal: data.principal })
     await tx.update(expenses).set({ deletedAt: new Date(), revision }).where(eq(expenses.id, data.expenseId))
-    // Deleting the newest occurrence of a series stops it.
     if (context.link && !context.link.actedOn) await stopRecurrence(tx, { expenseId: data.expenseId })
     await recordExpenseEvent(tx, { type: 'delete_expense', expense: current, revision, principal: data.principal, snapshot: null })
     return { revision }
