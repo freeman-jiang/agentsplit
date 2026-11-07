@@ -15,7 +15,8 @@ import type { Db } from './db'
 import { contacts } from './feed'
 import { groupSnapshotOf, invitationTokenHash, newInvitationToken } from './groups'
 import { randomId } from './ids'
-import { actor, createExpense, requireMember, type Principal } from './ledger'
+import { requireMember, type Principal } from './access'
+import { actor, createExpense } from './ledger'
 
 export type PrivatePerson =
   | { readonly kind: 'account'; readonly id: string; readonly userId: string }
@@ -187,6 +188,7 @@ export async function renewPrivateInvitation(tx: Db, data: { principal: Principa
   })
   await tx.insert(activities).values({ id: randomId(), groupId: membership.groupId, type: 'update_group', data: 'Private expense invitation renewed', ...actor(data.principal) })
   return {
+    groupId: membership.groupId,
     id,
     email: person.email,
     participantId: data.participantId,

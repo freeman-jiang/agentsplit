@@ -4,14 +4,13 @@
 // addresses (P-EXPORT-14), rows in a defined order (P-EXPORT-29), and the group
 // name in both file names (P-EXPORT-15).
 import { sql } from 'drizzle-orm'
-import { groupAccessDenied } from '../shared/api'
 import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/minor'
 import { preferredPayer } from '../shared/split'
 import { RECURRENCE_NAMES, SPLIT_MODE_NAMES, type ActivityType, type ExpenseKind, type Recurrence, type SplitMode } from '../shared/vocabulary'
 import type { Db } from './db'
 import { publicData } from './history'
-import type { Principal } from './ledger'
+import { memberCte, requireActive, type Principal } from './access'
 import { activityData, activitySource, documentsJson, iso } from './sql'
 
 type ExpenseRow = {
@@ -63,11 +62,7 @@ type Head = {
 /** The group and its live expenses in the export order: expense date, creation time, then ID, oldest first. */
 async function load(db: Db, data: { principal: Principal; group: string; activities: boolean }) {
   const result = await db.execute<Head>(sql`
-    WITH g AS (
-      SELECT g.*, m.active FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
-      WHERE g.id = ${data.group} OR g.slug = ${data.group}
-      LIMIT 1
-    )
+    WITH ${memberCte(data)}
     SELECT g.active, g.id, g.name, g.slug, g.information, g.default_currency,
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id) FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
       coalesce((SELECT json_agg(json_build_object(
@@ -93,9 +88,7 @@ async function load(db: Db, data: { principal: Principal; group: string; activit
       } AS activities
     FROM g
   `)
-  const head = result.rows[0]
-  if (!head?.active) throw groupAccessDenied()
-  return head
+  return requireActive(result.rows[0])
 }
 
 const money = (amount: string, currency: CurrencyCode) => formatMinor({ amount: minor(BigInt(amount)), currency })

@@ -11,44 +11,18 @@ import {
   idempotencyKeys,
   memberships,
 } from '../../db/schema/app'
-import { Conflict, Forbidden, groupAccessDenied, Invalid, NotFound } from '../shared/api'
+import { Conflict, Invalid, NotFound } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../shared/expense-rules'
 import { titleWithVendor } from '../shared/history'
 import { formatMinor, type Minor } from '../shared/minor'
-import type { ActivitySource, ExpenseKind, Role } from '../shared/vocabulary'
+import type { ExpenseKind, Role } from '../shared/vocabulary'
+import { memberCte, requireActive, requireMember, type Membership, type Principal } from './access'
 import type { Db } from './db'
 import { randomId, sha256Hex } from './ids'
 import { displayName, documentsJson, escapeLike, expenseColumns, involves, toExpense, type ExpenseRow } from './sql'
 import { stopRecurrence, syncRecurrence, type LinkState } from './recurring'
 import { assertPrivateWrite, privateContextOf, type PrivateContext } from './ungrouped'
-
-export type Principal = {
-  readonly userId: string
-  readonly name: string
-  readonly email: string
-  /** The activity source: `agent` for an API key or OAuth connection, as in the current app (P-DB-79). */
-  readonly source: Exclude<ActivitySource, 'system'>
-  /** The API key or OAuth connection an agent used; null on the web. */
-  readonly agentKeyId: string | null
-}
-
-// ---------- access ----------
-
-export type Membership = { groupId: string; role: Role; participantId: string | null }
-
-/** The one membership check. A group that does not exist and a group the caller cannot see look the same. */
-export async function requireMember(db: Db, data: { principal: Principal; group: string; admin?: boolean }): Promise<Membership> {
-  const [row] = await db
-    .select({ groupId: groups.id, role: memberships.role, participantId: memberships.participantId, active: memberships.active })
-    .from(groups)
-    .innerJoin(memberships, and(eq(memberships.groupId, groups.id), eq(memberships.userId, data.principal.userId)))
-    .where(eq(groups.id, sql`agentsplit_group_id(${data.group})`))
-    .limit(1)
-  if (!row?.active) throw groupAccessDenied()
-  if (data.admin && row.role !== 'admin') throw new Forbidden({ message: 'Only admins can do this' })
-  return { groupId: row.groupId, role: row.role, participantId: row.participantId }
-}
 
 // ---------- reads ----------
 
@@ -98,20 +72,14 @@ export const displayNames = (groupId: SQL) => sql`
  */
 export async function getGroup(db: Db, data: { principal: Principal; group: string }) {
   const result = await db.execute<GroupRow>(sql`
-    WITH g AS (
-      SELECT g.id, g.slug, g.name, g.default_currency, g.information, g.revision, m.role, m.participant_id, m.active,
-        (SELECT pc.expense_id FROM private_contexts pc WHERE pc.group_id = g.id) AS context_expense_id
-      FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
-      WHERE g.id = agentsplit_group_id(${data.group})
-      LIMIT 1
-    )
-    SELECT g.*,
+    WITH ${memberCte(data)}
+    SELECT g.id, g.slug, g.name, g.default_currency, g.information, g.revision, g.role, g.participant_id, g.active,
+      (SELECT pc.expense_id FROM private_contexts pc WHERE pc.group_id = g.id) AS context_expense_id,
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id)
         FROM (${displayNames(sql`g.id`)}) p), '[]') AS participants
     FROM g
   `)
-  const [g] = result.rows
-  if (!g?.active) throw groupAccessDenied()
+  const g = requireActive(result.rows[0])
   return {
     id: g.id,
     contextExpenseId: g.context_expense_id,
@@ -190,11 +158,8 @@ export async function listExpenses(
   const f = data.filter
   const limit = Math.min(Math.max(Math.trunc(data.limit) || 50, 1), 200)
   // The membership check is part of the statement: rows come only from a group the caller belongs to.
-  const member = sql`WITH g AS (
-    SELECT g.id FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId} AND m.active
-    WHERE g.id = agentsplit_group_id(${data.group}) LIMIT 1
-  )`
-  const where: SQL[] = [sql`e.group_id = (SELECT id FROM g)`, sql`e.deleted_at IS NULL`]
+  const member = sql`WITH ${memberCte(data)}`
+  const where: SQL[] = [sql`e.group_id = (SELECT id FROM g WHERE active)`, sql`e.deleted_at IS NULL`]
   if (f.search?.trim()) {
     const term = escapeLike(f.search.trim())
     where.push(sql`(e.title ILIKE ${term} OR e.vendor ILIKE ${term} OR e.notes ILIKE ${term})`)
@@ -355,12 +320,7 @@ export async function loadWriteContext(
   const change = data.op === 'change'
   const none = sql`NULL::json`
   const result = await tx.execute<ContextRow>(sql`
-    WITH g AS (
-      SELECT g.id, g.slug, g.name, g.default_currency, m.role, m.participant_id, m.active
-      FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
-      WHERE g.id = agentsplit_group_id(${data.group})
-      LIMIT 1
-    )${change ? sql`, locked AS (SELECT e.id FROM expenses e WHERE e.id = ${data.expenseId} AND e.group_id = (SELECT id FROM g) FOR UPDATE)` : sql``}
+    WITH ${memberCte(data)}${change ? sql`, locked AS (SELECT e.id FROM expenses e WHERE e.id = ${data.expenseId} AND e.group_id = (SELECT id FROM g) FOR UPDATE)` : sql``}
     SELECT g.id AS group_id, g.slug, g.name, g.default_currency, g.role, g.participant_id, g.active,
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name)) FROM participants p WHERE p.group_id = g.id), '[]') AS people,
       coalesce((SELECT json_agg(c.id) FROM categories c), '[]') AS categories,
@@ -386,8 +346,7 @@ export async function loadWriteContext(
       } AS link
     FROM g
   `)
-  const [row] = result.rows
-  if (!row?.active) throw groupAccessDenied()
+  const row = requireActive(result.rows[0])
   return {
     op: data.op,
     expenseId: data.expenseId,

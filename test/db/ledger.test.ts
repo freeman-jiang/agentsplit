@@ -5,7 +5,8 @@ import { user } from '../../db/schema/auth'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { makeDb, type Db } from '~/server/db'
 import { listBalances } from '~/server/expenses'
-import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense, type Principal } from '~/server/ledger'
+import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense } from '~/server/ledger'
+import { type Principal } from '~/server/access'
 import { resetTestDatabase, testUsers } from './setup'
 
 let pool: Pool

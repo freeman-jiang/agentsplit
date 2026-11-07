@@ -12,6 +12,7 @@ import { EMAIL, groupPath } from '../../../shared/groups'
 import { GROUP_ID } from '../../../shared/ids'
 import { LIMITS } from '../../../shared/limits'
 import { ROLES, type Role } from '../../../shared/vocabulary'
+import { memberCte, requireActive } from '../../access'
 import type { Db } from '../../db'
 import * as groups from '../../groups'
 import { displayName, iso } from '../../sql'
@@ -73,19 +74,19 @@ export const listGroups = defineTool({
   }),
   run: async ({ db, principal }, { groupIds, cursor = 0, limit = LIMITS.pageMax }) => {
     const requested = groupIds ? [...new Set(groupIds)] : null
-    // A requested ID outside the caller's memberships fails the whole call, as in the current app.
-    if (requested?.length) {
-      const ids = sql.join(requested.map((id) => sql`${id}`), sql`, `)
+    const refs = requested?.length ? sql`unnest(ARRAY[${sql.join(requested.map((id) => sql`${id}`), sql`, `)}]::text[]) AS r(ref)` : null
+    // A requested group outside the caller's memberships fails the whole call, as in the current app.
+    if (refs) {
       const denied = await db.execute<{ n: number }>(sql`
-        SELECT count(*)::int AS n FROM unnest(ARRAY[${ids}]::text[]) AS r(id)
-        WHERE NOT EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = ${principal.userId} AND m.group_id = r.id AND m.active)`)
+        SELECT count(*)::int AS n FROM ${refs}
+        WHERE NOT EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = ${principal.userId} AND m.group_id = agentsplit_group_id(r.ref) AND m.active)`)
       if (denied.rows[0]?.n !== 0) throw groupAccessDenied()
     }
     const result = await db.execute<GroupRow & { participants: number }>(sql`
       SELECT ${groupColumns}, (SELECT count(*)::int FROM participants p WHERE p.group_id = g.id) AS participants
       FROM memberships m JOIN groups g ON g.id = m.group_id
       WHERE m.user_id = ${principal.userId} AND m.active AND g.kind = 'named'
-        ${requested ? (requested.length ? sql`AND g.id IN (${sql.join(requested.map((id) => sql`${id}`), sql`, `)})` : sql`AND false`) : sql``}
+        ${requested ? (refs ? sql`AND g.id IN (SELECT agentsplit_group_id(r.ref) FROM ${refs})` : sql`AND false`) : sql``}
       ORDER BY g.created_at DESC, g.id DESC
       LIMIT ${limit + 1} OFFSET ${cursor}
     `)
@@ -98,6 +99,7 @@ export const listGroups = defineTool({
 })
 
 type DetailsRow = GroupRow & {
+  active: boolean
   role: Role
   participant_id: string | null
   context_expense_id: string | null
@@ -132,14 +134,14 @@ export const getGroup = defineTool({
   }),
   run: async ({ db, principal, baseUrl }, { groupId }) => {
     const result = await db.execute<DetailsRow>(sql`
-      WITH m AS (SELECT role, participant_id FROM memberships WHERE user_id = ${principal.userId} AND group_id = ${groupId} AND active)
-      SELECT ${groupColumns}, m.role, m.participant_id,
+      WITH ${memberCte({ principal, group: groupId })}
+      SELECT ${groupColumns}, g.role, g.participant_id, g.active,
         (SELECT pc.expense_id FROM private_contexts pc WHERE pc.group_id = g.id) AS context_expense_id,
         coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${displayName({ group: sql`p.group_id`, participant: sql`p.id`, name: sql`p.name` })}, 'groupId', p.group_id) ORDER BY p.created_at, p.id)
           FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
         coalesce((SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'role', mb.role, 'participantId', mb.participant_id) ORDER BY mb.created_at, u.id)
           FROM memberships mb JOIN "user" u ON u.id = mb.user_id WHERE mb.group_id = g.id AND mb.active), '[]') AS members,
-        CASE WHEN m.role = 'admin' THEN coalesce((
+        CASE WHEN g.role = 'admin' THEN coalesce((
           SELECT json_agg(json_build_object('id', i.id, 'email', i.email, 'expiresAt', ${iso(sql`i.expires_at`)}, 'participantId', i.participant_id, 'participantName', i.participant_name) ORDER BY i.created_at, i.id)
           FROM invitations i WHERE i.group_id = g.id AND i.accepted_at IS NULL AND i.revoked_at IS NULL
             AND (g.kind = 'private' OR i.expires_at > now())), '[]') ELSE '[]' END AS invitations,
@@ -147,11 +149,9 @@ export const getGroup = defineTool({
           AND (EXISTS (SELECT 1 FROM memberships mb WHERE mb.participant_id = p.id) OR EXISTS (SELECT 1 FROM invitations i WHERE i.participant_id = p.id))), '{}') AS reserved,
         coalesce((SELECT array_agg(DISTINCT x.participant_id ORDER BY x.participant_id) FROM (
           SELECT participant_id FROM expense_payers WHERE group_id = g.id UNION SELECT participant_id FROM expense_shares WHERE group_id = g.id) x), '{}') AS with_expenses
-      FROM groups g JOIN m ON true
-      WHERE g.id = ${groupId}
+      FROM g
     `)
-    const g = result.rows[0]
-    if (!g) throw groupAccessDenied()
+    const g = requireActive(result.rows[0])
     const path = `${origin(baseUrl)}${groupPath(g)}`
     // A private context has no group page: people open its expense (P-UNGROUP-39).
     const share = g.context_expense_id ? `${origin(baseUrl)}/expenses/${g.context_expense_id}` : path
@@ -363,7 +363,8 @@ export const manageGroupAccess = defineTool({
     const field = (name: AccessField) => input[name] ?? ''
     if (input.action === 'renew_invitation') {
       const invitation = await renewPrivateInvitation(db, { principal, baseUrl, groupId: field('groupId'), participantId: field('participantId') })
-      return { groupId: field('groupId'), joined: false, invitation }
+      const { groupId, ...rest } = invitation
+      return { groupId, joined: false, invitation: rest }
     }
     const request = contract(AccessRequest, {
       action: input.action,

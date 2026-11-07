@@ -8,7 +8,8 @@ import pg from 'pg'
 import { groups, memberships, participants } from '../db/schema/app'
 import { session, user } from '../db/schema/auth'
 import { makeDb } from '../src/server/db'
-import { createExpense, type Principal } from '../src/server/ledger'
+import type { Principal } from '../src/server/access'
+import { createExpense } from '../src/server/ledger'
 
 const url = process.env['DATABASE_URL']
 const tokenFile = process.argv[2]

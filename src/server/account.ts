@@ -7,7 +7,7 @@ import * as authSchema from '../../db/schema/auth'
 import { Forbidden, Invalid, NotFound } from '../shared/api'
 import { LIMITS } from '../shared/limits'
 import type { Db } from './db'
-import type { Principal } from './ledger'
+import type { Principal } from './access'
 import { iso } from './sql'
 
 type AccountRow = {

@@ -3,7 +3,7 @@
 import { sql } from 'drizzle-orm'
 import { Forbidden } from '../../shared/api'
 import type { Db } from '../db'
-import type { Principal } from '../ledger'
+import type { Principal } from '../access'
 import { verifyApiKey } from './api-key'
 import { jsonError, noStore } from '../security'
 import { requestSession } from '../session'

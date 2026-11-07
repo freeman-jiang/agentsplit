@@ -8,7 +8,8 @@ import { titleWithVendor } from '../shared/history'
 import type { Recurrence } from '../shared/vocabulary'
 import type { Db } from './db'
 import { randomId } from './ids'
-import { actor, expenseDocumentsOf, loadExpenses, requireMember, snapshot, type Principal } from './ledger'
+import { requireMember, type Principal } from './access'
+import { actor, expenseDocumentsOf, loadExpenses, snapshot } from './ledger'
 
 const daysIn = (year: number, month: number) => new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
 

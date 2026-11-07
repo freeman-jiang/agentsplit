@@ -10,7 +10,8 @@ import { FAIR_USE, FAIR_USE_LIMITS, LIMITS } from '../shared/limits'
 import { formatMinor, minor } from '../shared/minor'
 import { RECEIPT_CONTENT_TYPES, RECURRENCES, SPLIT_MODES, type ExpenseKind } from '../shared/vocabulary'
 import type { Db } from './db'
-import { loadExpenses, requireMember, type Principal, type StoredDocument } from './ledger'
+import { memberCte, requireMember, type Principal } from './access'
+import { loadExpenses, type StoredDocument } from './ledger'
 import { receiptDownloadPath } from './receipts'
 import { balancesOf, balanceSums, documentStatesJson, iso, type BalanceSum, type Tombstone } from './sql'
 
@@ -87,10 +88,7 @@ export async function getExpenseContext(db: Db, data: { principal: Principal; ex
  */
 export async function listBalances(db: Db, data: { principal: Principal; group: string; currency?: CurrencyCode }) {
   const result = await db.execute<{ active: boolean; participants: string[]; sums: BalanceSum[] }>(sql`
-    WITH g AS (
-      SELECT g.id, m.active FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
-      WHERE g.id = ${data.group} OR g.slug = ${data.group} LIMIT 1
-    )
+    WITH ${memberCte(data)}
     SELECT g.active,
       coalesce((SELECT json_agg(p.id ORDER BY p.name, p.id) FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
       ${balanceSums({ group: sql`g.id`, ...(data.currency ? { where: sql`x.currency = ${data.currency}` } : {}) })} AS sums

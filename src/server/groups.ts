@@ -21,7 +21,8 @@ import { formatMinor, minor } from '../shared/minor'
 import type { GroupKind, Role } from '../shared/vocabulary'
 import type { Db } from './db'
 import { randomId, randomToken, sha256Hex } from './ids'
-import { actor, displayNames, idempotent, requireMember, type Principal } from './ledger'
+import { memberCte, requireActive, requireMember, type Principal } from './access'
+import { actor, displayNames, idempotent } from './ledger'
 import { groupsCreated, iso } from './sql'
 
 type AccessInput = typeof AccessRequest.Type
@@ -114,11 +115,7 @@ type DetailsRow = {
 /** The Settings tab in one statement that also checks the caller's membership. Only admins see invitations. */
 export async function getGroupDetails(db: Db, data: { principal: Principal; group: string }) {
   const result = await db.execute<DetailsRow>(sql`
-    WITH g AS (
-      SELECT g.id, g.kind, g.slug, g.name, g.information, g.default_currency, g.revision, m.role, m.participant_id, m.active
-      FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
-      WHERE g.id = agentsplit_group_id(${data.group})
-    ),
+    WITH ${memberCte(data)},
     pending AS (
       SELECT i.id, i.email, i.participant_id, i.participant_name, i.expires_at FROM invitations i, g
       WHERE i.group_id = g.id AND g.role = 'admin' AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > now()
@@ -146,8 +143,7 @@ export async function getGroupDetails(db: Db, data: { principal: Principal; grou
         FROM pending), '[]') AS invitations
     FROM g
   `)
-  const [g] = result.rows
-  if (!g?.active) throw groupAccessDenied()
+  const g = requireActive(result.rows[0])
   return {
     kind: g.kind,
     id: g.id,
@@ -295,8 +291,7 @@ export async function updateGroup(
   tx: Db,
   data: { principal: Principal; group: string; expectedRevision: number; idempotencyKey: string | null; changes: ChangesInput },
 ): Promise<{ id: string; slug: string | null; revision: number }> {
-  const { groupId, role } = await requireMember(tx, data)
-  if (role !== 'admin') throw new Forbidden({ message: 'Only group admins can edit group settings' })
+  const { groupId } = await requireMember(tx, { ...data, admin: 'Only group admins can edit group settings' })
   const request = { op: 'update_group', groupId, expectedRevision: data.expectedRevision, changes: data.changes }
   return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request }, async () => {
     const group = await lockGroup(tx, groupId)
