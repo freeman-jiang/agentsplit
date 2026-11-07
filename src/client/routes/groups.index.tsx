@@ -157,7 +157,7 @@ function Groups() {
   const archived = data.groups.filter((g) => marks.archived.includes(g.id) && !marks.starred.includes(g.id))
   const recent = data.groups.filter((g) => !starred.includes(g) && !archived.includes(g))
   const list = (groups: Group[]) => (
-    <ul className="grid gap-4 sm:grid-cols-2">
+    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {groups.map((g) => (
         <GroupCard key={g.id} group={g} starred={marks.starred.includes(g.id)} archived={marks.archived.includes(g.id)} marks={marks} />
       ))}
@@ -210,12 +210,12 @@ function GroupCard({ group, starred, archived, marks }: { group: Group; starred:
     <li>
       {/* The whole card opens the group; the name stays a real link for keyboards and new tabs. */}
       <div
-        className="w-full cursor-pointer rounded-2xl border bg-card px-4 py-3 transition-colors hover:bg-accent"
+        className="w-full cursor-pointer rounded-2xl border bg-card p-4 transition-colors hover:bg-accent"
         onClick={() => navigate({ to: '/$group', params })}
       >
         <div className="flex justify-between gap-2">
           {/* As in the current app, the card opens the group's own URL: /<slug>, or /groups/<id>, which opens its expenses. */}
-          <Link to="/$group" params={params} className="min-w-0 flex-1 truncate" onClick={(e) => e.stopPropagation()}>
+          <Link to="/$group" params={params} className="min-w-0 flex-1 truncate font-medium" onClick={(e) => e.stopPropagation()}>
             {group.name}
           </Link>
           <span className="flex shrink-0">
@@ -230,7 +230,7 @@ function GroupCard({ group, starred, archived, marks }: { group: Group; starred:
                 marks.toggleStar(group.id)
               }}
             >
-              <Star className={cn('h-4 w-4', starred ? 'fill-orange-400 text-orange-400' : 'text-muted-foreground')} />
+              <Star className={cn('h-4 w-4', starred ? 'fill-foreground text-foreground' : 'text-muted-foreground')} />
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -244,13 +244,13 @@ function GroupCard({ group, starred, archived, marks }: { group: Group; starred:
             </DropdownMenu>
           </span>
         </div>
-        <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+        <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
           <span className="flex items-center">
-            <Users className="mr-1 inline h-3 w-3" aria-hidden="true" />
+            <Users className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />
             <span aria-label={`${group.participantCount} participants`}>{group.participantCount}</span>
           </span>
           <span className="flex items-center">
-            <Calendar className="mx-1 inline h-3 w-3" aria-hidden="true" />
+            <Calendar className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />
             {new Date(group.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}
           </span>
         </div>
