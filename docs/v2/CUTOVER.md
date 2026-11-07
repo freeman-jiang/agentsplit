@@ -109,3 +109,4 @@ The verifier passed: the same IDs, balances and expenses as the local run. Then 
 3. Remove the unused Cloudflare resources with Freeman's approval: the `agentsplit-preview` Worker, its Hyperdrive config, the R2 buckets `agentsplit-receipts` and `agentsplit-receipts-preview` (OpenTofu, through the dots thread), and close dots#58.
 4. Update README.md, MCP.md, AUTH.md, DEPLOYMENT.md and PRIVACY.md for v2.
 5. Remove the current app from the repository and move v2 to the root, on a branch Freeman approves.
+6. Remove the one-time import tools: `scripts/import-legacy.ts`, `scripts/with-apps-pg.sh`, `DB_ROLE` in `db/migrate.ts` and `scripts/seed-synthetic.ts`, and the importer's `recurring_links_anchor` trigger (migration 0014). Done on branch `t3/untangle`; Git history keeps them.
