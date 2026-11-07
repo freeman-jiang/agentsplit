@@ -6,7 +6,8 @@ import { sql, type SQL } from 'drizzle-orm'
 import { groupAccessDenied, Invalid, NotFound } from '../shared/api'
 import { suggestSettlements } from '../shared/balances'
 import type { CurrencyCode } from '../shared/currencies'
-import { formatMinor, minor } from '../shared/money'
+import { formatMinor, minor } from '../shared/minor'
+import type { ExpenseKind, GroupKind, Role } from '../shared/vocabulary'
 import type { Db } from './db'
 import type { Principal } from './ledger'
 import { activitySource, balancesOf, balanceSums, displayName as displayNameOf, escapeLike, expenseColumns, involves, iso, notBaseline, toExpense, type BalanceSum, type ExpenseRow } from './sql'
@@ -20,7 +21,7 @@ export type FeedFilter = {
   readonly payerUserId?: string
   readonly currency?: CurrencyCode
   readonly categoryId?: number
-  readonly kind?: 'expense' | 'payment'
+  readonly kind?: ExpenseKind
   readonly from?: string
   readonly to?: string
 }
@@ -71,7 +72,7 @@ const displayName = displayNameOf({ group: sql`p.group_id`, participant: sql`p.i
 // ---------- feed ----------
 
 type FeedRow = ExpenseRow & {
-  group_kind: 'named' | 'private'
+  group_kind: GroupKind
   group_name: string
   group_slug: string | null
   context_expense_id: string | null
@@ -155,7 +156,7 @@ export async function listFeed(db: Db, data: { principal: Principal; filter: Fee
 // ---------- account balance ----------
 
 type BalancesRow = {
-  rows: { groupId: string; groupName: string; kind: 'named' | 'private'; currency: string; participantId: string; participantName: string; amount: string }[]
+  rows: { groupId: string; groupName: string; kind: GroupKind; currency: string; participantId: string; participantName: string; amount: string }[]
   unbound: string[]
   denied: string[]
   foreign: string[]
@@ -263,11 +264,11 @@ export async function feedOptions(db: Db, data: { principal: Principal }) {
 // ---------- expense page ----------
 
 type ContextRow = ExpenseRow & {
-  role: 'admin' | 'member'
+  role: Role
   viewer_participant_id: string | null
   g_name: string
   g_slug: string | null
-  g_kind: 'named' | 'private'
+  g_kind: GroupKind
   participants: { id: string; name: string }[]
   context_expense_id: string | null
   context_expense_title: string | null

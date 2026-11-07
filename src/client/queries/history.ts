@@ -1,9 +1,7 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import type { CurrencyCode } from '../../shared/currencies'
+import { LIMITS } from '../../shared/limits'
 import { rpc } from '../rpc'
-
-/** The Log loads 20 events at a time (P-HIST-65). */
-export const LOG_PAGE = 20
 
 /**
  * Group Log pages. Every page after the first reuses the first page's
@@ -18,7 +16,7 @@ export const activitiesQuery = (group: string, filter: { expenseId?: string } = 
         api('history.activities', {
           groupId: group,
           cursor: pageParam.cursor,
-          limit: LOG_PAGE,
+          limit: LIMITS.logPage,
           ...filter,
           ...(pageParam.atActivityId ? { atActivityId: pageParam.atActivityId } : {}),
         }),

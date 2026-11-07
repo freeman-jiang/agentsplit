@@ -6,6 +6,8 @@
 // registers the image to the group and attaches it, so a target alone saves nothing.
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { receipts, receiptUploads } from '../../db/schema/app'
+import { LIMITS } from '../shared/limits'
+import type { ReceiptContentType } from '../shared/vocabulary'
 import type { Bucket } from './bucket'
 import type { Db } from './db'
 import { randomId, randomToken, sha256Hex } from './ids'
@@ -14,14 +16,10 @@ import { spaceFor } from './receipt-quota'
 import { imageInfo, NEW_URL_PREFIX, type ImageInfo } from './receipts'
 import { jsonError } from './security'
 
-/** A target is valid this long for its PUT, as the current app's presigned URLs (P-RECEIPT-33). */
-const TARGET_SECONDS = 300
-/** A stored upload can be attached this long after its PUT (P-RECEIPT-39). */
-const ATTACH_HOURS = 24
 /** The first read for the image header. Phone JPEGs carry their frame header well inside it. */
 const HEADER_BYTES = 256 * 1024
 
-export type UploadRequest = { readonly filename: string; readonly contentType: 'image/jpeg' | 'image/png'; readonly bytes: number }
+export type UploadRequest = { readonly filename: string; readonly contentType: ReceiptContentType; readonly bytes: number }
 export type UploadTarget = {
   uploadId: string
   filename: string
@@ -56,7 +54,7 @@ export async function prepareUploads(
   const bytes = data.requests.reduce((sum, file) => sum + file.bytes, 0)
   const full = await spaceFor(tx, { userId: data.principal.userId, bytes, lock: false, outstanding: true })
   if (full) return { uploads: [], uploadError: full }
-  const expiresAt = new Date(Date.now() + TARGET_SECONDS * 1000)
+  const expiresAt = new Date(Date.now() + LIMITS.uploadTargetSeconds * 1000)
   const origin = new URL(data.baseUrl).origin
   const rows = data.requests.map((file) => {
     const token = randomToken()
@@ -142,7 +140,7 @@ async function storedImage(bucket: Bucket, data: { key: string; bytes: number })
 /**
  * Attaches stored uploads to an expense, in the update's transaction
  * (P-TOOL-UPDATEEXP-11 to 14). Each upload must belong to the caller, the
- * group and the expense, be stored within 24 hours, and be a JPEG or PNG of
+ * group and the expense, be stored within LIMITS.uploadAttachHours, and be a JPEG or PNG of
  * its declared type. The image is registered to the group, and its upload
  * row is deleted, so an uploadId attaches once. The images must fit the
  * caller's receipt storage, decided under the caller's quota lock, so
@@ -164,7 +162,7 @@ export async function attachUploads(
       contentType: receiptUploads.contentType,
       bytes: receiptUploads.bytes,
       state: receiptUploads.state,
-      fresh: sql<boolean>`${receiptUploads.uploadedAt} > now() - make_interval(hours => ${ATTACH_HOURS})`,
+      fresh: sql<boolean>`${receiptUploads.uploadedAt} > now() - make_interval(hours => ${LIMITS.uploadAttachHours})`,
     })
     .from(receiptUploads)
     .where(inArray(receiptUploads.id, ids))
@@ -207,7 +205,7 @@ export async function attachUploads(
 export async function removeStaleUploads(data: { db: Db; bucket: Bucket }) {
   const removed = await data.db
     .delete(receiptUploads)
-    .where(sql`${receiptUploads.createdAt} < now() - make_interval(hours => ${ATTACH_HOURS + 1})`)
+    .where(sql`${receiptUploads.createdAt} < now() - make_interval(hours => ${LIMITS.uploadAttachHours + 1})`)
     .returning({ key: receiptUploads.key, state: receiptUploads.state })
   await data.bucket.delete(removed.filter((r) => r.state !== 'pending').map((r) => r.key))
   return removed.length

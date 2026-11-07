@@ -1,12 +1,16 @@
 // Minor-unit arithmetic without Effect, for the client and the server alike.
-// src/shared/money.ts adds the Effect Schema types and the Result-returning
-// parseMinor on top of this module; the client imports only this one.
+// src/shared/money.ts holds the Effect Schemas of money values.
+import type { Brand } from 'effect'
 import { CURRENCIES, type CurrencyCode } from './currencies'
-import type { DecimalString } from './money'
 
 /** An integer count of a currency's minor units (cents for USD, yen for JPY). */
 export type Minor = bigint & { readonly Minor: unique symbol }
 export const minor = (value: bigint): Minor => value as Minor
+
+/** An exact decimal amount as text, such as "12.30" or "-5". Never a float. The schema is DecimalString in money.ts. */
+export type DecimalString = Brand.Branded<string, 'DecimalString'>
+/** The form of a DecimalString. */
+export const DECIMAL = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/
 
 /** Minor units from a decimal string, or null if it is malformed or has more decimals than the currency allows. */
 export function minorOrNull(data: { amount: string; currency: CurrencyCode }): Minor | null {

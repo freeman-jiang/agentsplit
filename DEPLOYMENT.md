@@ -65,7 +65,7 @@ Coolify builds `Dockerfile`. At each start, the container applies the new SQL mi
 
 On SIGTERM, the server stops taking connections, lets running requests and the hourly job finish, and exits within 25 seconds. Compose gives it 30 seconds. The hourly job runs at minute 7 of each hour: it creates due recurring expenses, deletes stale receipt uploads, removes from Garage the receipts that were deleted for good when that failed at once, and deletes expired DPoP replay rows.
 
-The fair-use limits are constants in `src/shared/limits.ts`. Only the daily sign-up cap has a setting.
+Every limit, the fair-use limits included, is a constant in `src/shared/limits.ts`. Only the daily sign-up cap has a setting.
 
 Better Auth limits sign-in and client registration per IP address from `X-Forwarded-For`. It uses the address only when the header holds exactly one, as Traefik sends it when it does not trust incoming forwarding headers. With more than one address, Better Auth counts all such requests together, so the limits still hold, for everyone at once.
 

@@ -1,6 +1,7 @@
 // Queries and cache updates for the expenses area. Writes invalidate every
 // screen that shows money, so the balance rail, the lists and the tabs agree.
 import { infiniteQueryOptions, queryOptions, type QueryClient } from '@tanstack/react-query'
+import { LIMITS } from '../../shared/limits'
 import { rpc } from '../rpc'
 
 /** Categories and currencies never change at run time; load them once per session. */
@@ -24,12 +25,12 @@ export const balancesQuery = (group: string) =>
     staleTime: 0,
   })
 
-/** Payment history, 30 per page (P-BAL-67). */
+/** Payment history, a page of expenses at a time (P-BAL-67). */
 export const paymentsQuery = (group: string) =>
   infiniteQueryOptions({
     queryKey: ['expenses', group, { kind: 'payment' }],
     initialPageParam: null as string | null,
-    queryFn: ({ pageParam }) => rpc((api) => api('expenses.list', { groupId: group, filter: { kind: 'payment' }, cursor: pageParam, limit: 30 })),
+    queryFn: ({ pageParam }) => rpc((api) => api('expenses.list', { groupId: group, filter: { kind: 'payment' }, cursor: pageParam, limit: LIMITS.expensePage })),
     getNextPageParam: (page) => page.nextCursor,
   })
 

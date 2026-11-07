@@ -15,7 +15,8 @@ import { Conflict, Forbidden, groupAccessDenied, Invalid, NotFound } from '../sh
 import type { CurrencyCode } from '../shared/currencies'
 import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../shared/expense-rules'
 import { titleWithVendor } from '../shared/history'
-import { formatMinor, type Minor } from '../shared/money'
+import { formatMinor, type Minor } from '../shared/minor'
+import type { ActivitySource, ExpenseKind, Role } from '../shared/vocabulary'
 import type { Db } from './db'
 import { randomId, sha256Hex } from './ids'
 import { displayName, documentsJson, escapeLike, expenseColumns, involves, toExpense, type ExpenseRow } from './sql'
@@ -27,14 +28,14 @@ export type Principal = {
   readonly name: string
   readonly email: string
   /** The activity source: `agent` for an API key or OAuth connection, as in the current app (P-DB-79). */
-  readonly source: 'web' | 'agent'
+  readonly source: Exclude<ActivitySource, 'system'>
   /** The API key or OAuth connection an agent used; null on the web. */
   readonly agentKeyId: string | null
 }
 
 // ---------- access ----------
 
-export type Membership = { groupId: string; role: 'admin' | 'member'; participantId: string | null }
+export type Membership = { groupId: string; role: Role; participantId: string | null }
 
 /** The one membership check. A group that does not exist and a group the caller cannot see look the same. */
 export async function requireMember(db: Db, data: { principal: Principal; group: string; admin?: boolean }): Promise<Membership> {
@@ -76,7 +77,7 @@ type GroupRow = {
   default_currency: string
   information: string
   revision: number
-  role: 'admin' | 'member'
+  role: Role
   participant_id: string | null
   active: boolean
   participants: { id: string; name: string }[]
@@ -132,7 +133,7 @@ export type ExpenseFilter = {
   readonly payerId?: string
   readonly currency?: CurrencyCode
   readonly categoryId?: number
-  readonly kind?: 'expense' | 'payment'
+  readonly kind?: ExpenseKind
   readonly from?: string
   readonly to?: string
 }
@@ -330,7 +331,7 @@ type ContextRow = {
   slug: string | null
   name: string
   default_currency: string
-  role: 'admin' | 'member'
+  role: Role
   participant_id: string | null
   active: boolean
   people: { id: string; name: string }[]

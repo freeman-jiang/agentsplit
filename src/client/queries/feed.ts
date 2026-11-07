@@ -1,5 +1,6 @@
 import { infiniteQueryOptions, queryOptions, type QueryClient } from '@tanstack/react-query'
 import type { FeedCursor, FeedFilter } from '../../shared/api'
+import { LIMITS } from '../../shared/limits'
 import { rpc } from '../rpc'
 
 type Filter = typeof FeedFilter.Type
@@ -10,7 +11,7 @@ export const feedQuery = (filter: Filter) =>
   infiniteQueryOptions({
     queryKey: ['feed', 'list', filter],
     initialPageParam: null as Cursor | null,
-    queryFn: ({ pageParam }) => rpc((api) => api('feed.list', { filter, cursor: pageParam, limit: 30 })),
+    queryFn: ({ pageParam }) => rpc((api) => api('feed.list', { filter, cursor: pageParam, limit: LIMITS.expensePage })),
     getNextPageParam: (page) => page.nextCursor,
     staleTime: 0,
   })

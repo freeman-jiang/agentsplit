@@ -4,6 +4,7 @@ import { sql, type SQL } from 'drizzle-orm'
 import { computeBalances } from '../shared/balances'
 import type { CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/minor'
+import type { ExpenseKind, Recurrence } from '../shared/vocabulary'
 
 /** The name to show for the author of an activity row `a`. */
 export const actorName = sql.raw(`CASE WHEN a.source = 'system' AND a.actor_name IS NULL THEN 'Automatic recurrence' ELSE a.actor_name END`)
@@ -147,7 +148,7 @@ export type ExpenseRow = {
   id: string
   group_id: string
   revision: number
-  kind: 'expense' | 'payment'
+  kind: ExpenseKind
   title: string
   vendor: string | null
   notes: string
@@ -156,7 +157,7 @@ export type ExpenseRow = {
   currency: string
   amount: string
   split_mode: 'evenly' | 'shares' | 'percentage' | 'amount'
-  recurrence: 'none' | 'daily' | 'weekly' | 'monthly'
+  recurrence: Recurrence
   created_at: string
   updated_at: string
   payers: { participantId: string; amount: string }[]

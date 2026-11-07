@@ -11,6 +11,7 @@ import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
 import type { FeedFilter } from '~/shared/api'
 import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
+import { LIMITS } from '~/shared/limits'
 import { DashboardBalance } from './expenses/-dashboard-balance'
 import { FeedCard } from './expenses/-feed-card'
 
@@ -74,7 +75,7 @@ function toFilter(s: SearchParams, search: string): { filter: typeof FeedFilter.
     filter: {
       involvingMe: text(s.view) !== 'all',
       ...(group === 'grouped' || group === 'ungrouped' ? { scope: group } : group !== 'all' ? { groupId: group } : {}),
-      ...(search.trim() ? { search: search.trim().slice(0, 200) } : {}),
+      ...(search.trim() ? { search: search.trim().slice(0, LIMITS.searchMax) } : {}),
       ...(text(s.person) ? { personUserId: text(s.person) } : {}),
       ...(text(s.payer) ? { payerUserId: text(s.payer) } : {}),
       ...(currency ? { currency: currency as CurrencyCode } : {}),
@@ -143,7 +144,7 @@ function Dashboard() {
             <label className="relative col-span-2 text-sm sm:col-span-1">
               <span className="sr-only">Search</span>
               <Search aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input type="search" className="ps-9" placeholder="Search descriptions or merchants" maxLength={200} {...select('q')} />
+              <Input type="search" className="ps-9" placeholder="Search descriptions or merchants" maxLength={LIMITS.searchMax} {...select('q')} />
             </label>
             <label className="text-sm">
               <span className="sr-only">Group</span>

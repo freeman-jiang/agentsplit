@@ -2,18 +2,19 @@
 // balances "as of" a recorded change. Every function is a read: it never
 // writes a row, never creates recurring expenses, and never attaches live
 // expense state to a historical answer. Stored snapshots are read as stored,
-// in either format (src/shared/history.ts).
+// in either format (src/shared/snapshots.ts).
 import { sql, type SQL } from 'drizzle-orm'
 import { groupAccessDenied, Invalid, NotFound } from '../shared/api'
 import { computeBalances } from '../shared/balances'
 import type { CurrencyCode } from '../shared/currencies'
-import { readSnapshot, savedEntry, type Category, type SavedExpense, type SavedState } from '../shared/history'
-import { formatMinor } from '../shared/money'
+import type { Category, SavedExpense, SavedState } from '../shared/history'
+import { readSnapshot, savedEntry } from '../shared/snapshots'
+import { formatMinor } from '../shared/minor'
+import type { ActivityType, ExpenseKind, Recurrence } from '../shared/vocabulary'
 import type { Db } from './db'
 import type { Principal } from './ledger'
 import { activityData, activitySource, iso, tombstonesJson, type Tombstone } from './sql'
 
-export type ActivityType = 'create_group' | 'join_group' | 'leave_group' | 'update_group' | 'create_expense' | 'update_expense' | 'delete_expense'
 export type Boundary = { readonly asOf?: string; readonly atActivityId?: string }
 
 /**
@@ -124,7 +125,7 @@ type ActivityRow = {
   agent: boolean
   snapshot: unknown
   previous: unknown
-  live: { kind: 'expense' | 'payment' } | null
+  live: { kind: ExpenseKind } | null
 }
 
 export type ActivityQuery = Boundary & {
@@ -326,8 +327,8 @@ export type HistoricalFilter = {
   readonly categoryId?: number
   readonly payerId?: string
   readonly participantId?: string
-  readonly kind?: 'expense' | 'payment'
-  readonly recurrence?: 'none' | 'daily' | 'weekly' | 'monthly'
+  readonly kind?: ExpenseKind
+  readonly recurrence?: Recurrence
   readonly from?: string
   readonly to?: string
 }

@@ -34,7 +34,7 @@ Run every command inside the dev shell, from the repository root: `direnv exec .
 
 Each area owns its own files, so areas can be built in parallel:
 
-1. **Contract:** `src/shared/api/<area>.ts` defines an `RpcGroup` of the area's procedures with Effect Schema payloads, outputs and errors. Reuse `Id`, `IdempotencyKey`, `CalendarDate`, `ReadError`, `WriteError` and the error classes from `src/shared/api/core.ts`. Outputs use `DecimalOutput` and plain strings; inputs use the checked `DecimalString` and `CalendarDate`.
+1. **Contract:** `src/shared/api/<area>.ts` defines an `RpcGroup` of the area's procedures with Effect Schema payloads, outputs and errors. Reuse `Id`, `IdempotencyKey`, `CalendarDate`, the vocabulary schemas (`ExpenseKindSchema`, `RecurrenceSchema` and others), `ReadError`, `WriteError` and the error classes from `src/shared/api/core.ts`. Outputs use `DecimalOutput` and plain strings; inputs use the checked `DecimalString` and `CalendarDate`.
 2. **Register the contract:** add the group to the `CoreApi.merge(...)` call in `src/shared/api.ts` and re-export it. This is a one-line edit.
 3. **Domain service:** `src/server/<area>.ts` holds the functions. Each takes `(db, { principal, ... })`, checks access itself, and throws the shared domain errors (`Forbidden`, `NotFound`, `Conflict`, `Invalid`).
 4. **Handlers:** `src/server/handlers/<area>.ts` exports a layer of `Api.toLayerHandler(tag, ...)` calls built with `read` and `write` from `src/server/rpc.ts`. Add it to `Layer.mergeAll` in `src/server/handlers.ts` (a one-line edit).
@@ -48,7 +48,8 @@ Each area owns its own files, so areas can be built in parallel:
 
 - Every write runs through `write` (one SERIALIZABLE transaction) and takes an `idempotencyKey`. Every edit or delete takes `expectedRevision` and throws `Conflict` on a mismatch.
 - Every change to a group or an expense writes its activity row in the same transaction. Expense revisions need their snapshot (`schemaVersion: 2`).
-- Money is minor units (`bigint`) inside, exact decimal strings outside. Use `parseMinor`, `formatMinor`, `resolveShares` and `validateExpense`. Never use floats for money.
+- Money is minor units (`bigint`) inside, exact decimal strings outside. Use `minorOrNull`, `formatMinor`, `resolveShares` and `validateExpense`. Never use floats for money.
+- Value lists (kinds, split modes, recurrences, roles, group kinds, activity types and sources, upload states, receipt types, and the current app's names for them) live only in `src/shared/vocabulary.ts`. Every limit (field lengths, people per group, page sizes, times, rates and the fair-use limits) lives only in `src/shared/limits.ts`. The contract, the Drizzle enums and CHECKs, the MCP schemas and descriptions, the rule messages and the client derive from these two modules; `test/db/database-rules.test.ts` compares the database's CHECKs with them. A new list or limit goes there, not into a schema.
 - Expense dates are `YYYY-MM-DD` strings. Times are `timestamptz` and ISO strings in the API.
 - The membership check happens on the server for every read and write: `requireMember`, or a membership CTE in the same statement.
 - The database triggers are the last line of defense. Never disable them, and never write migrations that weaken them.
@@ -61,7 +62,7 @@ The Workers Free CPU limit no longer applies (DECISIONS.md, "Hosting changes to 
 - Do not call Better Auth on the RPC path. The session is already resolved by the middleware.
 - Load large libraries only where they are needed, with a dynamic `import()`.
 - Keep the client fast: route-level code splitting (automatic), data preloaded on hover (`defaultPreload: 'intent'`), and no full page loads inside the app.
-- Never import `effect` at runtime in `src/client/`: use `import type` from the contract, and call the server through `rpc()` from `src/client/rpc.ts`. Route options (`validateSearch`, `beforeLoad`) stay in the main chunk, so keep them free of large libraries. Contract outputs must be JSON-identical (no `Date` or `bigint` transforms); `src/client/rpc.ts` checks this at compile time. CI fails when the up-front JavaScript exceeds 150 KB gzip (`scripts/check-bundle.ts`).
+- Never import `effect` at runtime in `src/client/`, directly or through `src/shared`: the modules the client imports (`vocabulary`, `limits`, `minor`, `split`, `expense-rules`, `history`, `stats`, `groups`, `account`, `ids`, `currencies`) stay Effect-free, and the Schema parts live beside them (`money.ts`, `snapshots.ts`, `api/`). Use `import type` from the contract, and call the server through `rpc()` from `src/client/rpc.ts`. Route options (`validateSearch`, `beforeLoad`) stay in the main chunk, so keep them free of large libraries. Contract outputs must be JSON-identical (no `Date` or `bigint` transforms); `src/client/rpc.ts` checks this at compile time. CI fails when the up-front JavaScript exceeds 150 KB gzip (`scripts/check-bundle.ts`).
 
 ### Behavior
 

@@ -2,13 +2,13 @@
 // MCP tools all call validateExpense. The rules are the current app's
 // (src/lib/schemas.ts expenseFormSchema), plus multiple payers.
 import { CURRENCIES, type CurrencyCode } from './currencies'
-import { formatMinor, minor, minorOrNull, sumMinor, type Minor } from './minor'
-import { parseWeight, preferredPayer, resolveShares, type SplitMode } from './split'
-
-export const LIMITS = { titleMin: 2, titleMax: 200, vendorMax: 100, notesMax: 5_000, people: 100, amountMax: 10_000_000n } as const
+import { LIMITS, numberText } from './limits'
+import { DECIMAL, formatMinor, minor, minorOrNull, sumMinor, type Minor } from './minor'
+import { formatWeight, parseWeight, preferredPayer, resolveShares } from './split'
+import type { ExpenseKind, Recurrence, SplitMode } from './vocabulary'
 
 export type ExpenseDraft = {
-  readonly kind: 'expense' | 'payment'
+  readonly kind: ExpenseKind
   readonly title: string
   readonly vendor: string | null
   readonly notes: string
@@ -19,7 +19,7 @@ export type ExpenseDraft = {
   readonly payers: ReadonlyArray<{ readonly participantId: string; readonly amount: string }>
   readonly splitMode: SplitMode
   readonly shares: ReadonlyArray<{ readonly participantId: string; readonly weight: string }>
-  readonly recurrence: 'none' | 'daily' | 'weekly' | 'monthly'
+  readonly recurrence: Recurrence
 }
 
 export type ResolvedExpense = Omit<ExpenseDraft, 'amount' | 'payers' | 'shares' | 'vendor'> & {
@@ -39,15 +39,7 @@ export const isRealDate = (value: string) => {
 
 const isCalendarDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && isRealDate(value)
 
-const normalizeWeight = (text: string) => {
-  const { units, scale } = parseWeight(text)
-  if (scale === 0) return units.toString()
-  const digits = units.toString().padStart(scale + 1, '0')
-  return `${digits.slice(0, -scale)}.${digits.slice(-scale)}`
-}
-
 // The current app's messages (messages/en-US.json SchemaErrors), in English only.
-const DECIMAL = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/
 const moneyMessage = (text: string, currency: CurrencyCode) =>
   DECIMAL.test(text) ? `${currency} amounts allow at most ${CURRENCIES[currency].decimals} decimal places` : 'Enter a decimal amount such as 12.34'
 
@@ -60,10 +52,7 @@ function sumMessage(data: { what: 'amounts' | 'payments'; sum: Minor; amount: Mi
 
 function percentMessage(total: { units: bigint; scale: number }) {
   const hundred = 100n * 10n ** BigInt(total.scale)
-  const text = (units: bigint) => {
-    const digits = units.toString().padStart(total.scale + 1, '0')
-    return normalizeWeight(total.scale ? `${digits.slice(0, -total.scale)}.${digits.slice(-total.scale)}` : digits)
-  }
+  const text = (units: bigint) => formatWeight({ units, scale: total.scale })
   const difference = total.units > hundred ? total.units - hundred : hundred - total.units
   return `The percentages add up to ${text(total.units)}%, ${text(difference)}% ${total.units > hundred ? 'more' : 'less'} than 100%.`
 }
@@ -87,19 +76,19 @@ export function validateExpense(data: {
 
   // Not trimmed: the current app checks the title as typed (only vendor is trimmed).
   const title = draft.title
-  if (title.length < LIMITS.titleMin) issue('title', 'Enter at least two characters.')
-  else if (title.length > LIMITS.titleMax) issue('title', 'Enter at most 200 characters.')
+  if (title.length < LIMITS.titleMin) issue('title', `Enter at least ${numberText(LIMITS.titleMin)} characters.`)
+  else if (title.length > LIMITS.titleMax) issue('title', `Enter at most ${numberText(LIMITS.titleMax)} characters.`)
   const vendor = draft.vendor?.trim() || null
-  if (vendor && vendor.length > LIMITS.vendorMax) issue('vendor', 'Enter at most 100 characters.')
-  if (draft.notes.length > LIMITS.notesMax) issue('notes', 'Enter at most 5,000 characters.')
+  if (vendor && vendor.length > LIMITS.vendorMax) issue('vendor', `Enter at most ${numberText(LIMITS.vendorMax)} characters.`)
+  if (draft.notes.length > LIMITS.notesMax) issue('notes', `Enter at most ${numberText(LIMITS.notesMax)} characters.`)
   if (!Number.isInteger(draft.categoryId) || draft.categoryId < 0) issue('categoryId', 'Unknown category')
   if (!isCalendarDate(draft.expenseDate)) issue('expenseDate', 'Use a real calendar date, YYYY-MM-DD')
 
   const amount = minorOrNull({ amount: draft.amount, currency }) ?? undefined
   if (amount === undefined) issue('amount', moneyMessage(draft.amount, currency))
   else if (amount === 0n) issue('amount', 'The amount must not be zero.')
-  else if ((amount < 0n ? -amount : amount) > LIMITS.amountMax * 10n ** BigInt(decimals))
-    issue('amount', 'The amount must be at most 10,000,000.')
+  else if ((amount < 0n ? -amount : amount) > BigInt(LIMITS.amountMax) * 10n ** BigInt(decimals))
+    issue('amount', `The amount must be at most ${numberText(LIMITS.amountMax)}.`)
 
   // Payers: each a group participant, once, with a nonzero part of the same sign, summing to the amount.
   const payers: { participantId: string; amount: Minor }[] = []
@@ -121,7 +110,7 @@ export function validateExpense(data: {
 
   // Shares: as the current app.
   if (draft.shares.length === 0) issue('shares', 'The expense must be paid for at least one participant.')
-  if (draft.shares.length > LIMITS.people) issue('shares', `At most ${LIMITS.people} people`)
+  if (draft.shares.length > LIMITS.participantsPerGroup) issue('shares', `At most ${LIMITS.participantsPerGroup} people`)
   const shareIds = new Set<string>()
   const weights: { participantId: string; weight: string }[] = []
   let percentTotal = 0n
@@ -152,7 +141,7 @@ export function validateExpense(data: {
       percentTotal = percentTotal * 10n ** BigInt(scale - percentScale) + weight.units * 10n ** BigInt(scale - weight.scale)
       percentScale = scale
     }
-    weights.push({ participantId: share.participantId, weight: normalizeWeight(share.weight) })
+    weights.push({ participantId: share.participantId, weight: formatWeight(weight) })
   })
   if (draft.splitMode === 'percentage' && weights.length === draft.shares.length && percentTotal !== 100n * 10n ** BigInt(percentScale))
     issue('shares', percentMessage({ units: percentTotal, scale: percentScale }))

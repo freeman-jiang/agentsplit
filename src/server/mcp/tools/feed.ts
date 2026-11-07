@@ -5,7 +5,9 @@
 // wire shape that the feed row does not carry.
 import { Schema } from 'effect'
 import { sql } from 'drizzle-orm'
+import { LIMITS } from '../../../shared/limits'
 import { preferredPayer } from '../../../shared/split'
+import { RECURRENCE_NAMES, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
 import * as feed from '../../feed'
 import { defineTool } from '../registry'
 import { Attribution, Category, Person } from './expenses'
@@ -15,14 +17,12 @@ import {
   DateTime,
   Id,
   minorOf,
-  MODE_NAMES,
   money,
   Money,
   NoArguments,
   NonNegativeInt,
   NullableString,
   RecurrenceInput,
-  RULE_NAMES,
   SplitModeInput,
 } from './shared'
 
@@ -86,10 +86,10 @@ export const listAllExpenses = defineTool({
     'List accessible expenses and repayments across groups and private ungrouped expenses, ordered by expense date, creation time, then ID, newest first. By default (involvingMe=true) only expenses that you paid for or share are listed, as in the app; set involvingMe=false for every accessible expense. Filter by scope (all/grouped/ungrouped), groupId (a named group or a private context), personId or paidByUserId (account IDs from get_expense_options), dates, currency, category, type, or title/vendor text. Pass nextCursor unchanged for the next page. group=null means no named group; groupId is the private accounting context ID for existing expense/history/balance/payment tools. A private context settles only its original contextExpenseId; never copy that balance into a named group. paidBy is the payer who paid the most; payers lists every payer. Reads do not generate recurrences.',
   input: Schema.Struct({
     cursor: optional(Schema.NullOr(Cursor)),
-    limit: optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 })).annotate({ default: 30 })),
+    limit: optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax })).annotate({ default: LIMITS.expensePage })),
     scope: optional(Schema.Literals(['all', 'grouped', 'ungrouped']).annotate({ default: 'all' })),
     groupId: optional(Schema.String.check(Schema.isMinLength(1))),
-    filter: optional(Schema.String.check(Schema.isMaxLength(200))),
+    filter: optional(Schema.String.check(Schema.isMaxLength(LIMITS.searchMax))),
     involvingMe: optional(
       Schema.Boolean.annotate({ default: true, description: 'Default true: only expenses that you paid for or share. Set false for every accessible expense.' }),
     ),
@@ -106,7 +106,7 @@ export const listAllExpenses = defineTool({
   run: async ({ db, principal }, input) => {
     const page = await feed.listFeed(db, {
       principal,
-      limit: input.limit ?? 30,
+      limit: input.limit ?? LIMITS.expensePage,
       cursor: input.cursor ? { date: input.cursor.date.slice(0, 10), createdAt: input.cursor.createdAt, id: input.cursor.id } : null,
       filter: {
         ...(input.scope === undefined ? {} : { scope: input.scope }),
@@ -153,9 +153,9 @@ export const listAllExpenses = defineTool({
           originalCurrency: x?.original_currency ?? null,
           conversionRate: x?.conversion_rate ?? null,
           isReimbursement: e.kind === 'payment',
-          splitMode: MODE_NAMES[e.splitMode],
+          splitMode: SPLIT_MODE_NAMES[e.splitMode],
           notes: e.notes === '' ? null : e.notes,
-          recurrenceRule: RULE_NAMES[e.recurrence],
+          recurrenceRule: RECURRENCE_NAMES[e.recurrence],
           recurringExpenseLinkId: x?.link_id ?? null,
           deletedAt: null,
           revision: e.revision,

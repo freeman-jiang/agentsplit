@@ -1,16 +1,6 @@
-// Splitting without Effect, for the client and the server alike. The schema
-// of a split mode is SplitModeSchema in shared/api/core.ts.
+// Splitting without Effect, for the client and the server alike.
 import { minor, sumMinor, type Minor } from './minor'
-
-export const SPLIT_MODES = ['evenly', 'shares', 'percentage', 'amount'] as const
-export type SplitMode = (typeof SPLIT_MODES)[number]
-
-/**
- * The current app's names of the split modes and the recurrence rules. Its
- * MCP tools, its exports and its saved form defaults use them.
- */
-export const MODE_NAMES = { evenly: 'EVENLY', shares: 'BY_SHARES', percentage: 'BY_PERCENTAGE', amount: 'BY_AMOUNT' } as const satisfies Record<SplitMode, string>
-export const RULE_NAMES = { none: 'NONE', daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY' } as const
+import type { SplitMode } from './vocabulary'
 
 /** A weight is an exact non-negative decimal: a share count, a percentage, or an amount. */
 export type Weight = { readonly units: bigint; readonly scale: number }
@@ -22,9 +12,15 @@ export function parseWeight(text: string): Weight {
   return { units: BigInt((match[1] ?? '0') + fraction), scale: fraction.length }
 }
 
+/** The canonical text of a weight, without trailing zeros: "1.5" for 1.50, "2" for 2.0. */
+export function formatWeight(weight: Weight): string {
+  const digits = weight.units.toString().padStart(weight.scale + 1, '0')
+  return weight.scale === 0 ? digits : `${digits.slice(0, -weight.scale)}.${digits.slice(-weight.scale)}`.replace(/\.?0+$/, '')
+}
+
 const atScale = (weight: Weight, scale: number) => weight.units * 10n ** BigInt(scale - weight.scale)
 
-export class SplitError extends Error {
+class SplitError extends Error {
   readonly _tag = 'SplitError'
   constructor(readonly reason: 'no-participants' | 'zero-weights' | 'amount-mismatch') {
     super(`Split failed: ${reason}`)

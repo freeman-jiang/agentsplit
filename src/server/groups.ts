@@ -13,18 +13,12 @@ import {
 } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { Conflict, Forbidden, groupAccessDenied, Invalid, NotFound } from '../shared/api'
-import {
-  INVITATION_DAYS,
-  INVITATION_TOKEN,
-  normalizeSlug,
-  slugProblem,
-  type AccessRequest,
-  type GroupChanges,
-  type GroupCreateInput,
-} from '../shared/api/groups'
+import type { AccessRequest, GroupChanges, GroupCreateInput } from '../shared/api/groups'
 import type { CurrencyCode } from '../shared/currencies'
+import { INVITATION_TOKEN, normalizeSlug, slugProblem } from '../shared/groups'
 import { groupLimitMessage, LIMITS, participantLimitMessage } from '../shared/limits'
-import { formatMinor, minor } from '../shared/money'
+import { formatMinor, minor } from '../shared/minor'
+import type { GroupKind, Role } from '../shared/vocabulary'
 import type { Db } from './db'
 import { randomId, randomToken, sha256Hex } from './ids'
 import { actor, displayNames, idempotent, requireMember, type Principal } from './ledger'
@@ -33,8 +27,6 @@ import { groupsCreated, iso } from './sql'
 type AccessInput = typeof AccessRequest.Type
 type CreateInput = typeof GroupCreateInput.Type
 type ChangesInput = typeof GroupChanges.Type
-
-const PAGE = 100
 
 // ---------- reads ----------
 
@@ -62,7 +54,7 @@ export async function listDirectory(db: Db, data: { principal: Principal; offset
       FROM mine JOIN groups g ON g.id = mine.group_id
       WHERE mine.kind = 'named'
       ORDER BY g.created_at DESC, g.id DESC
-      OFFSET ${offset} LIMIT ${PAGE + 1}
+      OFFSET ${offset} LIMIT ${LIMITS.directoryPage + 1}
     ),
     nets AS (
       SELECT e.currency, sum(parts.amount) AS net
@@ -84,8 +76,8 @@ export async function listDirectory(db: Db, data: { principal: Principal; offset
   const [row] = result.rows
   if (!row) throw new Error('The directory query returned no row')
   return {
-    groups: row.groups.slice(0, PAGE),
-    nextOffset: row.groups.length > PAGE ? offset + PAGE : null,
+    groups: row.groups.slice(0, LIMITS.directoryPage),
+    nextOffset: row.groups.length > LIMITS.directoryPage ? offset + LIMITS.directoryPage : null,
     totals: row.totals.map((t) => {
       const currency = t.currency as CurrencyCode
       return { currency, net: formatMinor({ amount: minor(BigInt(t.net)), currency }) }
@@ -95,27 +87,27 @@ export async function listDirectory(db: Db, data: { principal: Principal; offset
 }
 
 type DetailsRow = {
-  kind: 'named' | 'private'
+  kind: GroupKind
   id: string
   slug: string | null
   name: string
   information: string
   default_currency: string
   revision: number
-  role: 'admin' | 'member'
+  role: Role
   participant_id: string | null
   active: boolean
   people: {
     id: string
     name: string
     memberEmail: string | null
-    memberRole: 'admin' | 'member' | null
+    memberRole: Role | null
     userId: string | null
     invitedEmail: string | null
     inExpenses: boolean
     reserved: boolean
   }[]
-  unbound: { userId: string; name: string; email: string; role: 'admin' | 'member' }[]
+  unbound: { userId: string; name: string; email: string; role: Role }[]
   invitations: { id: string; email: string; participantId: string | null; participantName: string | null; expiresAt: string }[]
 }
 
@@ -254,7 +246,7 @@ export async function createGroup(
     // Fair use. Under SERIALIZABLE, two creates that both read the count cannot both commit past it.
     const created = await tx.execute<{ count: number }>(sql`SELECT ${groupsCreated(data.principal.userId)} AS count`)
     if ((created.rows[0]?.count ?? 0) >= LIMITS.groupsCreated) throw new Invalid({ message: groupLimitMessage })
-    const creator = { id: randomId(), name: data.principal.name.trim().slice(0, 50) || 'Member' }
+    const creator = { id: randomId(), name: data.principal.name.trim().slice(0, LIMITS.nameMax) || 'Member' }
     const people = [creator, ...data.group.participants.map((name) => ({ id: randomId(), name }))]
     if (people.length > LIMITS.participantsPerGroup) throw new Invalid({ message: participantLimitMessage, field: 'participants' })
     if (new Set(people.map((p) => p.name)).size !== people.length)
@@ -534,7 +526,7 @@ async function applyAccess(
       participantName: participant.name,
       tokenHash: invitationTokenHash(token),
       createdBy: me.userId,
-      expiresAt: new Date(Date.now() + INVITATION_DAYS * 24 * 60 * 60 * 1000),
+      expiresAt: new Date(Date.now() + LIMITS.invitationDays * 86_400_000),
     }
     await tx.insert(invitations).values(invitation)
     await log({ type: 'update_group', data: `Invitation created for ${participant.name}`, participantId: participant.id })

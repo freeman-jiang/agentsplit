@@ -13,7 +13,7 @@ import { createExpense, deleteExpense, getExpense, updateExpense, type Principal
 import { RecordedTime } from '~/shared/api'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { describeRevision } from '~/shared/history'
-import { minor } from '~/shared/money'
+import { minor } from '~/shared/minor'
 import { insertImportedExpense, v1GroupSnapshot } from './history-fixtures'
 import { resetTestDatabase, testUsers } from './setup'
 

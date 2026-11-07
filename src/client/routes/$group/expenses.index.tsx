@@ -14,6 +14,7 @@ import { ExportMenu } from '~/client/components/history/export-menu'
 import { Input } from '~/client/ui/input'
 import { Skeleton } from '~/client/ui/skeleton'
 import type { Expense } from '~/shared/api'
+import { LIMITS } from '~/shared/limits'
 
 type Search = { sort?: 'date' | 'updated'; q?: string }
 
@@ -116,7 +117,7 @@ function ExpensesTab() {
             type="search"
             placeholder="Search for an expense…"
             aria-label="Search expenses"
-            maxLength={200}
+            maxLength={LIMITS.searchMax}
             value={text}
             onChange={(e) => setText(e.target.value)}
             className="ps-9 pe-9"

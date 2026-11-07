@@ -4,7 +4,19 @@
 import { Schema } from 'effect'
 import type { SavedExpense, SavedState } from '../../../shared/history'
 import { preferredPayer } from '../../../shared/split'
-import { DateTime, Id, isCurrencyCode, MODE_NAMES, minorOf, Money, NonNegativeInt, NullableString, RecurrenceInput, RULE_NAMES, SplitModeInput, symbolOf } from './shared'
+import { RECURRENCE_NAMES, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
+import {
+  DateTime,
+  Id,
+  isCurrencyCode,
+  minorOf,
+  Money,
+  NonNegativeInt,
+  NullableString,
+  RecurrenceInput,
+  SplitModeInput,
+  symbolOf,
+} from './shared'
 
 const Category = Schema.NullOr(Schema.Struct({ id: Schema.Int, name: Schema.String, grouping: Schema.String }))
 
@@ -105,10 +117,10 @@ export function expenseSnapshot(data: { expense: SavedExpense; groupId: string }
       paidBy: savedPayer(e),
       payers: e.payers.map((p) => ({ participantId: p.participantId, name: p.name, amount: p.amount })),
       paidFor: e.shares.map((s) => ({ participantId: s.participantId, name: s.name, shares: s.weight })),
-      splitMode: MODE_NAMES[e.splitMode],
+      splitMode: SPLIT_MODE_NAMES[e.splitMode],
       isReimbursement: e.kind === 'payment',
       notes: e.notes === '' ? null : e.notes,
-      recurrenceRule: RULE_NAMES[e.recurrence],
+      recurrenceRule: RECURRENCE_NAMES[e.recurrence],
       documents: e.documents.map((d) => ({ id: d.id, url: d.url, ...(d.deleted === undefined ? {} : { deleted: d.deleted }) })),
     },
   }

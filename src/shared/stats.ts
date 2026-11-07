@@ -2,16 +2,15 @@
 // current app's (src/lib/totals.ts, src/lib/monthly-spending.ts): payments are
 // left out of every figure, shares are the same parts balances use, and dates
 // are calendar dates. One change: both monthly charts use the same months
-// (DECISIONS.md, P-STATS-36).
-import { Result } from 'effect'
+// (DECISIONS.md, P-STATS-36). No Effect import: the client uses regroupMonthly.
 import type { CurrencyCode } from './currencies'
-import { formatMinor, minor, parseMinor, type DecimalString, type Minor } from './money'
-import type { Category, Recurrence } from './history'
-import { titleWithVendor } from './history'
+import { titleWithVendor, type Category } from './history'
+import { formatMinor, minor, minorOrNull, type DecimalString, type Minor } from './minor'
+import { RECURRING_PERIODS, type ExpenseKind, type Recurrence } from './vocabulary'
 
 export type StatsExpense = {
   readonly id: string
-  readonly kind: 'expense' | 'payment'
+  readonly kind: ExpenseKind
   readonly title: string
   readonly vendor: string | null
   /** YYYY-MM-DD. */
@@ -204,10 +203,7 @@ export function monthlyByCategory(data: { expenses: readonly StatsExpense[]; mon
 /** Regroups the category payload by category group on the client, without a request. */
 export function regroupMonthly(data: { spending: MonthlySpending; grouping: MonthlyGrouping; currency: CurrencyCode }): MonthlySpending {
   if (data.grouping === 'category' || data.spending.months.length === 0) return data.spending
-  const m = (text: string) => {
-    const parsed = parseMinor({ amount: text, currency: data.currency })
-    return Result.isSuccess(parsed) ? (parsed.success as bigint) : 0n
-  }
+  const m = (text: string): bigint => minorOrNull({ amount: text, currency: data.currency }) ?? 0n
   const totalsByKey = new Map<string, Acc>()
   const months = data.spending.months.map((month) => {
     const categories = new Map<string, Acc>()
@@ -235,7 +231,7 @@ export function regroupMonthly(data: { spending: MonthlySpending; grouping: Mont
  * yearly = N / 700, each rounded half away from zero.
  */
 export function recurring(expenses: readonly StatsExpense[]) {
-  const periods = (['daily', 'weekly', 'monthly'] as const).map((period) => {
+  const periods = RECURRING_PERIODS.map((period) => {
     const list = spending(expenses).filter((e) => e.recurrence === period)
     return { period, count: list.length, total: sum(list.map((e) => e.amount)) }
   })

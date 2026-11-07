@@ -1,6 +1,6 @@
 // The account area against a real database: profile, API keys through Better
 // Auth, connected apps, consent clients, the owner bootstrap, and the
-// security rules that sign-in and the Worker rely on.
+// security rules that sign-in and the server rely on.
 import { serializeSignedCookie } from 'better-call'
 import { and, eq } from 'drizzle-orm'
 import type { Pool, PoolClient } from 'pg'
@@ -12,7 +12,8 @@ import { createAuth } from '~/server/auth'
 import { makeDb, type Db } from '~/server/db'
 import type { Principal } from '~/server/ledger'
 import { CONTENT_SECURITY_POLICY, readinessResponse } from '~/server/security'
-import { Forbidden, Invalid, NotFound, safeNextPath } from '~/shared/api'
+import { safeNextPath } from '~/shared/account'
+import { Forbidden, Invalid, NotFound } from '~/shared/api'
 import { resetTestDatabase } from './setup'
 
 const secret = 'test-secret-0123456789-0123456789-0123456789'

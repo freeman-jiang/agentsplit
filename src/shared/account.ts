@@ -5,9 +5,6 @@ export const OAUTH_READ_SCOPE = 'agentsplit:read'
 export const OAUTH_WRITE_SCOPE = 'agentsplit:write'
 export const OAUTH_SCOPES: readonly string[] = ['openid', 'profile', 'email', 'offline_access', OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE]
 
-export const PROFILE_NAME_MAX = 50
-export const API_KEY_NAME_MAX = 32
-
 const INVITE_PATH = /^\/invite\/[A-Za-z0-9_-]{43}$/
 export const isInvitationPath = (path: string) => INVITE_PATH.test(path)
 
@@ -16,7 +13,7 @@ export const isInvitationPath = (path: string) => INVITE_PATH.test(path)
  * and backslash forms such as `//evil.example` and `/\evil.example`, which
  * browsers resolve to another host.
  */
-export function sameOriginPath(value: string | null | undefined): string | null {
+function sameOriginPath(value: string | null | undefined): string | null {
   if (!value || value.length > 2048 || !value.startsWith('/') || value.startsWith('//')) return null
   if (/[\\\u0000-\u001f\u007f]/.test(value)) return null
   const base = 'https://agentsplit.invalid'

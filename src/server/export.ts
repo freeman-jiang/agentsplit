@@ -6,10 +6,11 @@
 import { sql } from 'drizzle-orm'
 import { groupAccessDenied } from '../shared/api'
 import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
-import { formatMinor, minor } from '../shared/money'
-import { MODE_NAMES, preferredPayer, RULE_NAMES, type SplitMode } from '../shared/split'
+import { formatMinor, minor } from '../shared/minor'
+import { preferredPayer } from '../shared/split'
+import { RECURRENCE_NAMES, SPLIT_MODE_NAMES, type ActivityType, type ExpenseKind, type Recurrence, type SplitMode } from '../shared/vocabulary'
 import type { Db } from './db'
-import { publicData, type ActivityType } from './history'
+import { publicData } from './history'
 import type { Principal } from './ledger'
 import { activityData, activitySource, documentsJson, iso } from './sql'
 
@@ -21,14 +22,14 @@ type ExpenseRow = {
   vendor: string | null
   grouping: string
   categoryName: string
-  kind: 'expense' | 'payment'
+  kind: ExpenseKind
   currency: CurrencyCode
   amount: string
   originalAmount: string | null
   originalCurrency: string | null
   conversionRate: string | null
   splitMode: SplitMode
-  recurrence: 'none' | 'daily' | 'weekly' | 'monthly'
+  recurrence: Recurrence
   notes: string
   revision: number
   payers: { participantId: string; amount: string }[] | null
@@ -154,8 +155,8 @@ export async function exportJson(db: Db, data: { principal: Principal; group: st
       payers: (e.payers ?? []).map((p) => ({ participantId: p.participantId, amount: money(p.amount, e.currency) })),
       paidFor: (e.shares ?? []).map((s) => ({ participantId: s.participantId, shares: weightText(e, s.weight), amount: money(s.amount, e.currency) })),
       isReimbursement: e.kind === 'payment',
-      splitMode: MODE_NAMES[e.splitMode],
-      recurrenceRule: RULE_NAMES[e.recurrence],
+      splitMode: SPLIT_MODE_NAMES[e.splitMode],
+      recurrenceRule: RECURRENCE_NAMES[e.recurrence],
       notes: e.notes,
       revision: e.revision,
       documents: e.documents ?? [],

@@ -3,10 +3,11 @@
 // come from the stored, resolved parts.
 import type { CurrencyCode } from '~/shared/currencies'
 import { formatMinor, minor, minorOrNull } from '~/shared/minor'
+import type { ExpenseKind } from '~/shared/vocabulary'
 
 type Part = { readonly participantId: string; readonly amount: string }
 export type RowExpense = {
-  readonly kind: 'expense' | 'payment'
+  readonly kind: ExpenseKind
   readonly currency: CurrencyCode
   readonly amount: string
   readonly payers: readonly Part[]

@@ -5,11 +5,10 @@
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { activities, expenseDocuments, groups, participants, recurringLinks } from '../../db/schema/app'
 import { titleWithVendor } from '../shared/history'
+import type { Recurrence } from '../shared/vocabulary'
 import type { Db } from './db'
 import { randomId } from './ids'
 import { actor, expenseDocumentsOf, loadExpenses, requireMember, snapshot, type Principal } from './ledger'
-
-export type Rule = 'none' | 'daily' | 'weekly' | 'monthly'
 
 const daysIn = (year: number, month: number) => new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
 
@@ -18,7 +17,7 @@ const daysIn = (year: number, month: number) => new Date(Date.UTC(year, month + 
  * where the month has it, and the month's last day otherwise, so Jan 31 gives
  * Feb 28 and then Mar 31 (P-RECUR-07).
  */
-export function nextDate(data: { from: string; rule: Exclude<Rule, 'none'>; anchorDay: number }): string {
+export function nextDate(data: { from: string; rule: Exclude<Recurrence, 'none'>; anchorDay: number }): string {
   const [year = 0, month = 1, day = 1] = data.from.split('-').map(Number)
   const date =
     data.rule === 'monthly'
@@ -40,7 +39,7 @@ export type LinkState = { readonly id: string; readonly actedOn: boolean }
  */
 export async function syncRecurrence(
   tx: Db,
-  data: { groupId: string; expenseId: string; rule: Rule; expenseDate: string; previous: { rule: Rule; expenseDate: string } | null; link: LinkState | null },
+  data: { groupId: string; expenseId: string; rule: Recurrence; expenseDate: string; previous: { rule: Recurrence; expenseDate: string } | null; link: LinkState | null },
 ) {
   const { link } = data
   if (link?.actedOn) return

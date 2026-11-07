@@ -1,12 +1,14 @@
-// Fair-use limits. AgentSplit is free, with no paid tier: these limits exist
-// only to stop abuse, and they are set high enough that a household never
-// meets them. Each limit is one constant here, so it is easy to change. The
-// server enforces them; the client and agents read them to explain them.
+// Every limit of the app, in one table. The contract schemas, the Drizzle
+// CHECKs, the MCP schemas and descriptions, the rule messages and the client
+// derive from it, and the server enforces it.
+// The fair-use limits exist only to stop abuse: AgentSplit is free, with no
+// paid tier, and they are set high enough that a household never meets them.
 // No Effect import: the client bundle uses this module (BUILDING.md).
 
 const MiB = 1024 * 1024
 
-export const LIMITS = {
+/** The fair-use limits that reference.get and get_reference_data publish. */
+export const FAIR_USE_LIMITS = {
   /** Receipt storage per uploader, in bytes ("500 MB"). */
   receiptStorageBytes: 500 * MiB,
   /** One receipt image, in bytes (5 MiB). */
@@ -15,7 +17,7 @@ export const LIMITS = {
   receiptsPerRequest: 10,
   /** Named groups that one account may create. */
   groupsCreated: 20,
-  /** Participants in one group, the creator included. */
+  /** People in one group or one expense, the creator included. */
   participantsPerGroup: 50,
   /** API keys per account. */
   apiKeys: 10,
@@ -23,8 +25,55 @@ export const LIMITS = {
   writesPerMinute: 60,
   /** OAuth dynamic client registrations per IP address per hour. */
   clientRegistrationsPerHour: 20,
-  /** New accounts per day, for the whole instance. SIGN_UP_DAILY_LIMIT overrides it. */
+} as const
+
+export const LIMITS = {
+  ...FAIR_USE_LIMITS,
+  /** New accounts per day, for the whole instance. SIGN_UP_DAILY_LIMIT overrides it, so it is not published. */
   signUpsPerDay: 200,
+  /** MCP requests per user per minute: the current app's token bucket, refilled at 2 per second (P-MCP-85). */
+  mcpRequestsPerMinute: 120,
+  /** Requests per API key per minute (Better Auth's per-key rate limit). */
+  apiKeyRequestsPerMinute: 120,
+
+  // Expense fields, as the current app's src/lib/schemas.ts.
+  titleMin: 2,
+  titleMax: 200,
+  vendorMax: 100,
+  notesMax: 5_000,
+  /** The largest absolute amount, in major units of any currency. */
+  amountMax: 10_000_000,
+
+  // Names and group settings.
+  /** Group, person and profile names. */
+  nameMax: 50,
+  groupNameMin: 2,
+  apiKeyNameMax: 32,
+  informationMax: 10_000,
+  slugMin: 3,
+  slugMax: 63,
+  searchMax: 200,
+
+  // Pages.
+  /** The most rows that one list request reads, or one delete request names. */
+  pageMax: 100,
+  /** Expense lists, payments and the dashboard feed. */
+  expensePage: 30,
+  /** The group Log (P-HIST-65). */
+  logPage: 20,
+  /** The receipts on the storage page. */
+  receiptPage: 20,
+  /** Groups per page of the directory. */
+  directoryPage: 100,
+  /** The most saved expenses that one historical list request reads. */
+  historyPageMax: 200,
+
+  // Times.
+  invitationDays: 7,
+  /** An upload target is valid this long for its PUT, as the current app's presigned URLs (P-RECEIPT-33). */
+  uploadTargetSeconds: 300,
+  /** A stored upload can be attached this long after its PUT (P-RECEIPT-39). */
+  uploadAttachHours: 24,
 } as const
 
 export const FAIR_USE = 'These are fair-use limits that keep AgentSplit free. A normal household never reaches them.'
@@ -36,6 +85,13 @@ export function megabytes(bytes: number): string {
   if (bytes > 0 && value < 0.1) return '0.1 MB'
   return `${Number(value.toFixed(1))} MB`
 }
+
+/** A size limit as the current app's receipt messages state it: "5 MiB". */
+export const mebibytes = (bytes: number) => `${Number((bytes / MiB).toFixed(1))} MiB`
+
+/** A count as English text: words below ten ("two"), digits with separators above ("5,000"). */
+export const numberText = (value: number) =>
+  ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'][value] ?? value.toLocaleString('en-US')
 
 /** The answer to an upload that does not fit the uploader's receipt storage. */
 export const storageFullMessage = (usedBytes: number) =>

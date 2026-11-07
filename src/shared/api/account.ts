@@ -5,9 +5,6 @@ import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { Id, ReadError, WriteError } from './core'
 
-
-export * from '../account'
-
 export const Profile = Schema.Struct({
   id: Schema.String,
   name: Schema.String,

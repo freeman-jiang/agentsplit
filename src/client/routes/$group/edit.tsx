@@ -13,6 +13,8 @@ import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
 import type { AccessRequest, GroupChanges, GroupDetails } from '~/shared/api'
 import { groupRef } from '~/shared/groups'
+import { LIMITS } from '~/shared/limits'
+import type { Role } from '~/shared/vocabulary'
 
 export const Route = createFileRoute('/$group/edit')({
   loader: ({ context, params }) => context.queryClient.ensureQueryData(groupDetailsQuery(params.group)),
@@ -130,7 +132,7 @@ function People({ details }: { details: Details }) {
   const people = details.people
   const list = (rename?: { id: string; name: string }) => people.map((p) => ({ id: p.id, name: p.id === rename?.id ? rename.name : p.name }))
 
-  const memberActions = (member: { userId: string; name: string; role: 'admin' | 'member' }) =>
+  const memberActions = (member: { userId: string; name: string; role: Role }) =>
     admin && (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -249,7 +251,7 @@ function People({ details }: { details: Details }) {
                     <label className="text-sm" htmlFor={`name-${person.id}`}>
                       Name for {person.name}
                     </label>
-                    <Input id={`name-${person.id}`} required maxLength={50} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+                    <Input id={`name-${person.id}`} required maxLength={LIMITS.nameMax} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
                   </div>
                   <Button size="sm" disabled={busy || !editing.name.trim()}>
                     Save name
@@ -292,7 +294,7 @@ function People({ details }: { details: Details }) {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Only this Google account can join as {person.name}. Share the invitation link; it expires in 7 days.
+                    Only this Google account can join as {person.name}. Share the invitation link; it expires in {LIMITS.invitationDays} days.
                   </p>
                 </form>
               )}
@@ -381,7 +383,7 @@ function People({ details }: { details: Details }) {
             New person&apos;s name
           </label>
           <div className="flex flex-wrap gap-2">
-            <Input id="new-person" className="min-w-0 flex-1" maxLength={50} required value={newName} onChange={(e) => setNewName(e.target.value)} />
+            <Input id="new-person" className="min-w-0 flex-1" maxLength={LIMITS.nameMax} required value={newName} onChange={(e) => setNewName(e.target.value)} />
             <Button disabled={busy || !newName.trim()}>Add person</Button>
           </div>
         </form>

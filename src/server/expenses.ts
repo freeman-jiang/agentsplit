@@ -6,11 +6,12 @@ import { categories } from '../../db/schema/app'
 import { NotFound } from '../shared/api'
 import { suggestSettlements } from '../shared/balances'
 import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
-import { FAIR_USE, LIMITS } from '../shared/limits'
-import { formatMinor, minor } from '../shared/money'
+import { FAIR_USE, FAIR_USE_LIMITS, LIMITS } from '../shared/limits'
+import { formatMinor, minor } from '../shared/minor'
+import { RECEIPT_CONTENT_TYPES, RECURRENCES, SPLIT_MODES, type ExpenseKind } from '../shared/vocabulary'
 import type { Db } from './db'
 import { loadExpenses, requireMember, type Principal, type StoredDocument } from './ledger'
-import { MAX_RECEIPT_BYTES, receiptDownloadPath } from './receipts'
+import { receiptDownloadPath } from './receipts'
 import { balancesOf, balanceSums, documentStatesJson, iso, type BalanceSum, type Tombstone } from './sql'
 
 /** Every category, ordered by ID (P-EXP-102: the current app has no order). */
@@ -67,7 +68,7 @@ export async function getExpenseDetail(db: Db, data: { principal: Principal; gro
 
 /** Where an expense lives, for any group the caller can access (P-EXP-142). */
 export async function getExpenseContext(db: Db, data: { principal: Principal; expenseId: string }) {
-  const result = await db.execute<{ group_id: string; slug: string | null; kind: 'expense' | 'payment'; title: string }>(sql`
+  const result = await db.execute<{ group_id: string; slug: string | null; kind: ExpenseKind; title: string }>(sql`
     SELECT e.group_id, g.slug, e.kind, e.title FROM expenses e
     JOIN groups g ON g.id = e.group_id
     JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId} AND m.active
@@ -114,17 +115,14 @@ export async function listBalances(db: Db, data: { principal: Principal; group: 
   }
 }
 
-// The sign-up cap is per instance and set by SIGN_UP_DAILY_LIMIT, so it is not reference data.
-const { signUpsPerDay: _signUpsPerDay, ...accountLimits } = LIMITS
-
 /** What an agent or the form needs to know to write an expense (P-EXP-143). Receipts are always on. */
 export async function getReference(db: Db) {
   return {
     categories: await listCategories(db),
     currencies: (Object.keys(CURRENCIES) as CurrencyCode[]).map((code) => ({ code, ...CURRENCIES[code] })),
-    splitModes: ['evenly', 'shares', 'percentage', 'amount'] as const,
-    recurrence: ['none', 'daily', 'weekly', 'monthly'] as const,
-    attachments: { enabled: true, contentTypes: ['image/jpeg', 'image/png'] as const, maxBytes: MAX_RECEIPT_BYTES },
-    limits: { ...accountLimits, fairUse: FAIR_USE },
+    splitModes: SPLIT_MODES,
+    recurrence: RECURRENCES,
+    attachments: { enabled: true, contentTypes: RECEIPT_CONTENT_TYPES, maxBytes: LIMITS.receiptBytes },
+    limits: { ...FAIR_USE_LIMITS, fairUse: FAIR_USE },
   }
 }

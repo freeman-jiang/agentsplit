@@ -3,7 +3,8 @@
 // change with a notes-only edit.
 import { describe, expect, it } from 'vitest'
 import { fieldChanged } from '~/client/components/history/revision-diff'
-import { describeRevision, readSnapshot, REVISION_FIELDS } from '~/shared/history'
+import { describeRevision, REVISION_FIELDS } from '~/shared/history'
+import { readSnapshot } from '~/shared/snapshots'
 
 const shares = [
   { participantId: 'alice', name: 'Alice', amount: '20.00', weight: '1' },

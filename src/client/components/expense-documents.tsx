@@ -7,14 +7,12 @@ import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '~/client/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '~/client/ui/dialog'
-import { LIMITS } from '~/shared/limits'
+import { LIMITS, mebibytes } from '~/shared/limits'
 import { prepareReceipt, tombstoneText, type Tombstone } from './receipt-files'
 
 /** `deleted` is set for a receipt that was deleted for good: it shows a tombstone, and saving needs it removed. */
 export type FormDocument = { id: string; url: string; width: number; height: number; deleted?: Tombstone | null }
 
-const MAX_BYTES = LIMITS.receiptBytes
-const mib = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1).replace(/\.0$/, '')} MiB`
 export const receiptSrc = (data: { groupId: string; url: string }) => `/api/receipts?${new URLSearchParams({ groupId: data.groupId, url: data.url })}`
 
 type Uploaded = { id: string; url: string; width: number; height: number }
@@ -39,8 +37,8 @@ export function ExpenseDocuments(props: { groupId: string; documents: readonly F
     setUploading(true)
     const file = await prepareReceipt(original)
     setUploading(false)
-    if (file.size > MAX_BYTES) {
-      toast.error('The file is too big', { description: `The maximum file size you can upload is ${mib(MAX_BYTES)}. Yours is ${mib(file.size)}.` })
+    if (file.size > LIMITS.receiptBytes) {
+      toast.error('The file is too big', { description: `The maximum file size you can upload is ${mebibytes(LIMITS.receiptBytes)}. Yours is ${mebibytes(file.size)}.` })
       return
     }
     setUploading(true)
