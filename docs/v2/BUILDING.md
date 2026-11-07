@@ -47,7 +47,7 @@ Each area owns its own files, so areas can be built in parallel:
 ### Correctness
 
 - Every write runs through `write` (one SERIALIZABLE transaction) and takes an `idempotencyKey`. Every edit or delete takes `expectedRevision` and throws `Conflict` on a mismatch.
-- Every change to a group or an expense writes its activity row in the same transaction. Expense revisions need their snapshot (`schemaVersion: 2`).
+- Every change to a group or an expense writes its activity row in the same transaction, through `recordExpenseEvent` or `recordGroupEvent` in `src/server/activity.ts`. That module also owns the snapshots (`schemaVersion: 2`, checked with `satisfies` against the readers in `src/shared/snapshots.ts`), the access-change text and the system actor.
 - Money is minor units (`bigint`) inside, exact decimal strings outside. Use `minorOrNull`, `formatMinor`, `resolveShares` and `validateExpense`. Never use floats for money.
 - Value lists (kinds, split modes, recurrences, roles, group kinds, activity types and sources, upload states, receipt types, and the current app's names for them) live only in `src/shared/vocabulary.ts`. Every limit (field lengths, people per group, page sizes, times, rates and the fair-use limits) lives only in `src/shared/limits.ts`. The contract, the Drizzle enums and CHECKs, the MCP schemas and descriptions, the rule messages and the client derive from these two modules; `test/db/database-rules.test.ts` compares the database's CHECKs with them. A new list or limit goes there, not into a schema.
 - Expense dates are `YYYY-MM-DD` strings. Times are `timestamptz` and ISO strings in the API.
@@ -58,7 +58,7 @@ Each area owns its own files, so areas can be built in parallel:
 
 The Workers Free CPU limit no longer applies (DECISIONS.md, "Hosting changes to Coolify"), but the rules stay: they keep the pages fast on one small host.
 
-- One SQL statement per screen read where possible. Let PostgreSQL build nested results as JSON (`json_agg`, `json_build_object`), with minor units as text. See `getGroup` and `selectExpenses` in `src/server/ledger.ts`.
+- One SQL statement per screen read where possible. Let PostgreSQL build nested results as JSON (`json_agg`, `json_build_object`), with minor units as text. Read expenses with `expenseColumns` and `toExpense` from `src/server/expense-read.ts`, the one expense read model; see `getGroup` and `listExpenses` in `src/server/ledger.ts`.
 - Do not call Better Auth on the RPC path. The session is already resolved by the middleware.
 - Load large libraries only where they are needed, with a dynamic `import()`.
 - Keep the client fast: route-level code splitting (automatic), data preloaded on hover (`defaultPreload: 'intent'`), and no full page loads inside the app.

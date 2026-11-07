@@ -13,7 +13,7 @@ import { requireMember, type Principal } from './access'
 import { httpReader } from './mcp/authenticate'
 import { spaceFor } from './receipt-quota'
 import { GROUP_DENIED, jsonError, sameOrigin } from './security'
-import type { Tombstone } from './sql'
+import type { Tombstone } from './expense-read'
 
 /** The multipart envelope may add this much to the image. */
 const ENVELOPE_BYTES = 64 * 1024

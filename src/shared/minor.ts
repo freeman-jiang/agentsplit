@@ -24,6 +24,13 @@ export function minorOrNull(data: { amount: string; currency: CurrencyCode }): M
   return minor(sign === '-' ? -units : units)
 }
 
+/** Minor units of decimal text that the server formatted, so it always fits its currency; anything else is a bug. */
+export function minorOf(amount: string, currency: CurrencyCode): Minor {
+  const value = minorOrNull({ amount, currency })
+  if (value === null) throw new Error(`${amount} is not a ${currency} amount`)
+  return value
+}
+
 /** Formats minor units as an exact decimal string with the currency's full decimals ("12.30"). */
 export function formatMinor(data: { amount: Minor; currency: CurrencyCode }): DecimalString {
   const { decimals } = CURRENCIES[data.currency]

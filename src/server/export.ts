@@ -5,36 +5,15 @@
 // name in both file names (P-EXPORT-15).
 import { sql } from 'drizzle-orm'
 import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
-import { formatMinor, minor } from '../shared/minor'
+import { formatMinor, minor, minorOf } from '../shared/minor'
 import { preferredPayer } from '../shared/split'
-import { RECURRENCE_NAMES, SPLIT_MODE_NAMES, type ActivityType, type ExpenseKind, type Recurrence, type SplitMode } from '../shared/vocabulary'
-import type { Db } from './db'
-import { publicData } from './history'
+import { RECURRENCE_NAMES, SPLIT_MODE_NAMES, type ActivityType, type SplitMode } from '../shared/vocabulary'
 import { memberCte, requireActive, type Principal } from './access'
-import { activityData, activitySource, documentsJson, iso } from './sql'
+import { activitySource, activityText, savedTitle } from './activity'
+import type { Db } from './db'
+import { expenseColumns, toExpense, type ExpenseRow, type ReadExpense } from './expense-read'
+import { iso } from './sql'
 
-type ExpenseRow = {
-  id: string
-  createdAt: string
-  expenseDate: string
-  title: string
-  vendor: string | null
-  grouping: string
-  categoryName: string
-  kind: ExpenseKind
-  currency: CurrencyCode
-  amount: string
-  originalAmount: string | null
-  originalCurrency: string | null
-  conversionRate: string | null
-  splitMode: SplitMode
-  recurrence: Recurrence
-  notes: string
-  revision: number
-  payers: { participantId: string; amount: string }[] | null
-  shares: { participantId: string; amount: string; weight: string }[] | null
-  documents: { id: string; url: string; width: number; height: number }[] | null
-}
 type ActivityRow = {
   id: string
   time: string
@@ -42,6 +21,7 @@ type ActivityRow = {
   participantId: string | null
   expenseId: string | null
   data: string | null
+  saved: { title: string; vendor: string | null } | null
   expenseRevision: number | null
   snapshot: unknown
   source: string
@@ -65,36 +45,25 @@ async function load(db: Db, data: { principal: Principal; group: string; activit
     WITH ${memberCte(data)}
     SELECT g.active, g.id, g.name, g.slug, g.information, g.default_currency,
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id) FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
-      coalesce((SELECT json_agg(json_build_object(
-          'id', e.id, 'createdAt', ${iso(sql`e.created_at`)}, 'expenseDate', e.expense_date::text,
-          'title', e.title, 'vendor', e.vendor, 'grouping', c.grouping, 'categoryName', c.name, 'kind', e.kind,
-          'currency', e.currency, 'amount', e.amount::text, 'originalAmount', e.original_amount::text,
-          'originalCurrency', e.original_currency, 'conversionRate', e.conversion_rate, 'splitMode', e.split_mode,
-          'recurrence', e.recurrence, 'notes', e.notes, 'revision', e.revision,
-          'payers', (SELECT json_agg(json_build_object('participantId', x.participant_id, 'amount', x.amount::text) ORDER BY x.participant_id) FROM expense_payers x WHERE x.expense_id = e.id),
-          'shares', (SELECT json_agg(json_build_object('participantId', x.participant_id, 'amount', x.amount::text, 'weight', x.weight) ORDER BY x.participant_id) FROM expense_shares x WHERE x.expense_id = e.id),
-          'documents', ${documentsJson(sql`e`)}
-        ) ORDER BY e.expense_date, e.created_at, e.id)
-        FROM expenses e JOIN categories c ON c.id = e.category_id
-        WHERE e.group_id = g.id AND e.deleted_at IS NULL), '[]') AS expenses,
+      coalesce((SELECT json_agg(x ORDER BY x.expense_date, x.created_key, x.id) FROM (
+          SELECT ${expenseColumns({ documents: true })}, e.created_at AS created_key FROM expenses e WHERE e.group_id = g.id AND e.deleted_at IS NULL) x), '[]') AS expenses,
       ${
         data.activities
           ? sql`coalesce((SELECT json_agg(json_build_object(
               'id', a.id, 'time', ${iso(sql`a.time`)}, 'type', a.type,
-              'participantId', a.participant_id, 'expenseId', a.expense_id, 'data', ${activityData(sql`a`)}, 'expenseRevision', a.expense_revision,
+              'participantId', a.participant_id, 'expenseId', a.expense_id, 'data', a.data, 'saved', ${savedTitle(sql`a`)}, 'expenseRevision', a.expense_revision,
               'snapshot', a.snapshot, 'source', ${activitySource(sql`a`)}, 'actorName', a.actor_name
             ) ORDER BY a.sequence) FROM activities a WHERE a.group_id = g.id), '[]')`
           : sql`NULL`
       } AS activities
     FROM g
   `)
-  return requireActive(result.rows[0])
+  const head = requireActive(result.rows[0])
+  return { ...head, expenses: head.expenses.map(toExpense) }
 }
 
-const money = (amount: string, currency: CurrencyCode) => formatMinor({ amount: minor(BigInt(amount)), currency })
-
 /** The split input in the current app's units: amount-split weights are major units there, minor units here. */
-const weightText = (e: ExpenseRow, weight: string) => (e.splitMode === 'amount' ? money(weight, e.currency) : weight)
+const weightText = (e: ReadExpense, weight: string) => (e.splitMode === 'amount' ? formatMinor({ amount: minor(BigInt(weight)), currency: e.currency }) : weight)
 
 const SPLIT_LABEL: Record<SplitMode, string> = {
   evenly: 'Evenly',
@@ -137,22 +106,22 @@ export async function exportJson(db: Db, data: { principal: Principal; group: st
       expenseDate: `${e.expenseDate}T00:00:00.000Z`,
       title: e.title,
       vendor: e.vendor,
-      category: { grouping: e.grouping, name: e.categoryName },
-      amount: money(e.amount, e.currency),
+      category: e.category ? { grouping: e.category.grouping, name: e.category.name } : null,
+      amount: e.amount,
       currencyCode: e.currency,
-      originalAmount: e.originalAmount === null || e.originalCurrency === null ? null : money(e.originalAmount, e.originalCurrency as CurrencyCode),
+      originalAmount: e.originalAmount,
       originalCurrency: e.originalCurrency,
       conversionRate: e.conversionRate,
       // The payer of the whole amount; with several payers, the one who paid most.
-      paidById: e.payers?.length ? preferredPayer(e.payers.map((p) => ({ participantId: p.participantId, amount: minor(BigInt(p.amount)) }))) : null,
-      payers: (e.payers ?? []).map((p) => ({ participantId: p.participantId, amount: money(p.amount, e.currency) })),
-      paidFor: (e.shares ?? []).map((s) => ({ participantId: s.participantId, shares: weightText(e, s.weight), amount: money(s.amount, e.currency) })),
+      paidById: e.payers.length ? preferredPayer(e.payers.map((p) => ({ participantId: p.participantId, amount: minorOf(p.amount, e.currency) }))) : null,
+      payers: e.payers.map((p) => ({ participantId: p.participantId, amount: p.amount })),
+      paidFor: e.shares.map((s) => ({ participantId: s.participantId, shares: weightText(e, s.weight), amount: s.amount })),
       isReimbursement: e.kind === 'payment',
       splitMode: SPLIT_MODE_NAMES[e.splitMode],
       recurrenceRule: RECURRENCE_NAMES[e.recurrence],
       notes: e.notes,
       revision: e.revision,
-      documents: e.documents ?? [],
+      documents: (e.documents ?? []).map((d) => ({ id: d.id, url: d.url, width: d.width, height: d.height })),
     })),
     participants: g.participants,
     // Snapshots exactly as stored, in either format. No actor user IDs or connection IDs.
@@ -162,7 +131,7 @@ export async function exportJson(db: Db, data: { principal: Principal; group: st
       activityType: a.type.toUpperCase(),
       participantId: a.participantId,
       expenseId: a.expenseId,
-      data: publicData(a),
+      data: activityText(a),
       expenseRevision: a.expenseRevision,
       snapshot: a.snapshot,
       source: a.source,
@@ -196,16 +165,16 @@ export async function exportCsv(db: Db, data: { principal: Principal; group: str
     ...g.participants.map((p) => escapeFormula(p.name)),
   ]
   const rows = g.expenses.map((e) => {
-    const paid = new Map((e.payers ?? []).map((p) => [p.participantId, BigInt(p.amount)]))
-    const owed = new Map((e.shares ?? []).map((s) => [s.participantId, BigInt(s.amount)]))
+    const paid = new Map(e.payers.map((p) => [p.participantId, minorOf(p.amount, e.currency)]))
+    const owed = new Map(e.shares.map((s) => [s.participantId, minorOf(s.amount, e.currency)]))
     return [
       e.expenseDate,
       escapeFormula(e.title),
       escapeFormula(e.vendor ?? ''),
-      escapeFormula(e.categoryName),
+      escapeFormula(e.category?.name ?? ''),
       e.currency,
-      money(e.amount, e.currency),
-      e.originalAmount === null || e.originalCurrency === null ? null : money(e.originalAmount, e.originalCurrency as CurrencyCode),
+      e.amount,
+      e.originalAmount,
       e.originalCurrency,
       e.conversionRate,
       e.kind === 'payment' ? 'Yes' : 'No',

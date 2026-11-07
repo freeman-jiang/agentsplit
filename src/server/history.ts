@@ -5,15 +5,16 @@
 // in either format (src/shared/snapshots.ts).
 import { sql, type SQL } from 'drizzle-orm'
 import { Invalid, NotFound } from '../shared/api'
-import { computeBalances } from '../shared/balances'
 import type { CurrencyCode } from '../shared/currencies'
 import type { Category, SavedExpense, SavedState } from '../shared/history'
-import { readSnapshot, savedEntry } from '../shared/snapshots'
-import { formatMinor } from '../shared/minor'
+import { compareIds } from '../shared/ids'
+import { readSnapshot } from '../shared/snapshots'
 import type { ActivityType, ExpenseKind, Recurrence } from '../shared/vocabulary'
-import type { Db } from './db'
 import { memberCte, requireActive, type Principal } from './access'
-import { activityData, activitySource, iso, tombstonesJson, type Tombstone } from './sql'
+import { activitySource, activityText, savedTitle } from './activity'
+import type { Db } from './db'
+import { tombstonesJson, type Tombstone } from './expense-read'
+import { iso } from './sql'
 
 export type Boundary = { readonly asOf?: string; readonly atActivityId?: string }
 
@@ -69,17 +70,6 @@ function requireBoundaryFound(data: { selection: Boundary; head: Head }) {
 const boundaryTime = (data: { selection: Boundary; head: Head }) =>
   data.selection.asOf !== undefined ? new Date(data.selection.asOf).toISOString() : (data.head.boundary_time ?? new Date().toISOString())
 
-/**
- * Access changes store "<action>: <target>", where the target can be a user
- * ID or an email address (P-ACCESS-30, P-EXPORT-14). Only the action is shown
- * or exported; expense titles and group names pass unchanged.
- */
-export function publicData(data: { type: ActivityType; data: string | null }): string | null {
-  if (data.data === null || !['join_group', 'leave_group', 'update_group'].includes(data.type)) return data.data
-  const at = data.data.indexOf(': ')
-  return at === -1 ? data.data : data.data.slice(0, at)
-}
-
 const read = (raw: unknown, categories: ReadonlyMap<number, Category>): SavedState | null => (raw === null ? null : readSnapshot({ raw, categories }))
 
 type Tombstones = Record<string, Tombstone> | null
@@ -101,6 +91,7 @@ type ActivityRow = {
   expenseId: string | null
   expenseRevision: number | null
   data: string | null
+  saved: { title: string; vendor: string | null } | null
   source: string
   actorName: string | null
   actorUserId: string | null
@@ -157,7 +148,7 @@ export async function listActivities(db: Db, data: { principal: Principal; group
       coalesce((
         SELECT json_agg(json_build_object(
           'id', p.id, 'time', ${iso(sql`p.time`)}, 'type', p.type, 'participantId', p.participant_id,
-          'expenseId', p.expense_id, 'expenseRevision', p.expense_revision, 'data', ${activityData(sql`p`)}, 'source', ${activitySource(sql`p`)},
+          'expenseId', p.expense_id, 'expenseRevision', p.expense_revision, 'data', p.data, 'saved', ${savedTitle(sql`p`)}, 'source', ${activitySource(sql`p`)},
           'actorName', coalesce(p.actor_name, who.name), 'actorUserId', p.actor_user_id, 'agentKeyId', p.agent_key_id, 'verified', p.actor_user_id IS NOT NULL,
           'agent', p.agent_key_id IS NOT NULL OR ${activitySource(sql`p`)} = 'agent',
           'snapshot', p.snapshot, 'previous', prev.snapshot,
@@ -186,7 +177,7 @@ export async function listActivities(db: Db, data: { principal: Principal; group
       participantId: a.participantId,
       expenseId: a.expenseId,
       expenseRevision: a.expenseRevision,
-      data: publicData(a),
+      data: activityText(a),
       source: a.source,
       actorName: a.actorName,
       verified: a.verified,
@@ -299,7 +290,7 @@ export async function historicalLedger(db: Db, data: { principal: Principal; gro
     const state = readSnapshot({ raw: row.snapshot, categories })
     if (state._tag === 'expense') expenses.push(state.expense)
   }
-  const unavailable = [...head.missing, ...unreadable].sort()
+  const unavailable = [...head.missing, ...unreadable].sort(compareIds)
   return {
     history: { asOf: boundaryTime({ selection: data, head }), atActivityId: head.boundary_id, complete: unavailable.length === 0, unavailableExpenseIds: unavailable },
     expenses,
@@ -336,7 +327,7 @@ export function filterSaved(expenses: readonly SavedExpense[], f: HistoricalFilt
         (!f.from || e.expenseDate >= f.from) &&
         (!f.to || e.expenseDate <= f.to),
     )
-    .sort((a, b) => b.expenseDate.localeCompare(a.expenseDate) || b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+    .sort((a, b) => compareIds(b.expenseDate, a.expenseDate) || compareIds(b.createdAt, a.createdAt) || compareIds(b.id, a.id))
 }
 
 export async function listSavedExpenses(
@@ -348,27 +339,4 @@ export async function listSavedExpenses(
   const limit = data.limit ?? 50
   const list = filterSaved(ledger.expenses, data.filter)
   return { history: ledger.history, expenses: list.slice(cursor, cursor + limit), hasMore: list.length > cursor + limit, nextCursor: cursor + limit }
-}
-
-/** Balances from the saved splits at a boundary. Refused when the boundary is incomplete, so a partial total is never shown as a balance. */
-export async function savedBalances(db: Db, data: { principal: Principal; group: string } & Boundary) {
-  const ledger = await historicalLedger(db, data)
-  if (!ledger.history.complete)
-    throw new Invalid({
-      message:
-        'Historical balances are unavailable because some expenses have no saved state at this point. Read list_expenses at the same boundary to inspect history coverage.',
-    })
-  const balances = computeBalances(ledger.expenses.map(savedEntry))
-  return {
-    history: ledger.history,
-    balances: [...balances].flatMap(([currency, byPerson]) =>
-      [...byPerson].map(([participantId, b]) => ({
-        participantId,
-        currency,
-        paid: formatMinor({ amount: b.paid, currency }),
-        owed: formatMinor({ amount: b.owed, currency }),
-        net: formatMinor({ amount: b.net, currency }),
-      })),
-    ),
-  }
 }

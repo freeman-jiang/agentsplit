@@ -1,11 +1,10 @@
 // Feed tools: list_all_expenses and get_expense_options, with the current
 // app's inputs and outputs (src/trpc/routers/expenses/*). The feed rules
 // (access, scope, "involving me", the cursor) are in src/server/feed.ts; this
-// file only maps names. One more statement reads the columns of the current
-// wire shape that the feed row does not carry.
+// file only maps names.
 import { Schema } from 'effect'
-import { sql } from 'drizzle-orm'
 import { LIMITS } from '../../../shared/limits'
+import { minorOf } from '../../../shared/minor'
 import { preferredPayer } from '../../../shared/split'
 import { RECURRENCE_NAMES, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
 import * as feed from '../../feed'
@@ -16,7 +15,6 @@ import {
   CurrencyCodeInput,
   DateTime,
   Id,
-  minorOf,
   money,
   Money,
   NoArguments,
@@ -70,15 +68,6 @@ const FeedRow = Schema.Struct({
   _count: Schema.Struct({ documents: NonNegativeInt }),
 })
 
-type Extra = {
-  id: string
-  original_amount: string | null
-  original_currency: string | null
-  conversion_rate: string | null
-  link_id: string | null
-  category: { id: number; name: string; grouping: string } | null
-}
-
 export const listAllExpenses = defineTool({
   name: 'list_all_expenses',
   kind: 'read',
@@ -122,19 +111,8 @@ export const listAllExpenses = defineTool({
         ...(input.to === undefined ? {} : { to: input.to }),
       },
     })
-    // The feed already checked access to these rows; this reads only their other columns.
-    const ids = page.expenses.map((e) => e.id)
-    const extra = ids.length
-      ? await db.execute<Extra>(sql`
-          SELECT e.id, e.original_amount::text AS original_amount, e.original_currency, e.conversion_rate,
-            (SELECT l.id FROM recurring_links l WHERE l.current_frame_expense_id = e.id LIMIT 1) AS link_id,
-            (SELECT json_build_object('id', c.id, 'name', c.name, 'grouping', c.grouping) FROM categories c WHERE c.id = e.category_id) AS category
-          FROM expenses e WHERE e.id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`)
-      : { rows: [] }
-    const byId = new Map(extra.rows.map((r) => [r.id, r]))
     return {
       expenses: page.expenses.map((e) => {
-        const x = byId.get(e.id)
         const names = new Map(e.people.map((p) => [p.id, p.name]))
         const person = (id: string) => ({ id, name: names.get(id) ?? '' })
         const payerId = e.payers.length ? preferredPayer(e.payers.map((p) => ({ participantId: p.participantId, amount: minorOf(p.amount, e.currency) }))) : ''
@@ -149,14 +127,14 @@ export const listAllExpenses = defineTool({
           expenseDate: `${e.expenseDate}T00:00:00.000Z`,
           categoryId: e.categoryId,
           paidById: payerId,
-          originalAmount: !x || x.original_amount === null || x.original_currency === null ? null : money(x.original_amount, x.original_currency),
-          originalCurrency: x?.original_currency ?? null,
-          conversionRate: x?.conversion_rate ?? null,
+          originalAmount: e.originalAmount,
+          originalCurrency: e.originalCurrency,
+          conversionRate: e.conversionRate,
           isReimbursement: e.kind === 'payment',
           splitMode: SPLIT_MODE_NAMES[e.splitMode],
           notes: e.notes === '' ? null : e.notes,
           recurrenceRule: RECURRENCE_NAMES[e.recurrence],
-          recurringExpenseLinkId: x?.link_id ?? null,
+          recurringExpenseLinkId: e.link?.id ?? null,
           deletedAt: null,
           revision: e.revision,
           group: e.group,
@@ -168,7 +146,7 @@ export const listAllExpenses = defineTool({
           payers: e.payers.map((p) => ({ participant: person(p.participantId), amount: p.amount })),
           // An amount split stores minor units; the current app shows them as amounts.
           paidFor: e.shares.map((s) => ({ participant: person(s.participantId), shares: e.splitMode === 'amount' ? money(s.weight, e.currency) : s.weight })),
-          category: x?.category ?? null,
+          category: e.category,
           _count: { documents: e.documentCount },
         }
       }),

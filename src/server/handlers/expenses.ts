@@ -1,4 +1,5 @@
 import { Effect, Layer } from 'effect'
+import * as balances from '../balances'
 import * as expenses from '../expenses'
 import * as recurring from '../recurring'
 import { Api, read } from '../rpc'
@@ -19,7 +20,7 @@ export const ExpensesHandlers = Layer.mergeAll(
   ),
   Api.toLayerHandler('expenses.locate', ({ expenseId }) => read((db, principal) => expenses.getExpenseContext(db, { principal, expenseId }))),
   Api.toLayerHandler('balances.list', ({ groupId, currency }) =>
-    read((db, principal) => expenses.listBalances(db, { principal, group: groupId, ...(currency ? { currency } : {}) })),
+    read((db, principal) => balances.listBalances(db, { principal, group: groupId, ...(currency ? { currency } : {}) })),
   ),
   Api.toLayerHandler('recurring.list', ({ groupId }) => read((db, principal) => recurring.listRecurring(db, { principal, group: groupId }))),
   // Each occurrence is its own SERIALIZABLE transaction, as in the scheduled job.

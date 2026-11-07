@@ -3,14 +3,7 @@
 // handlers and the MCP tools cannot skip it. Ported from the current app's
 // createGroup and updateGroup (src/lib/api.ts) and src/lib/group-access.ts.
 import { and, asc, eq, gt, inArray, isNull, ne, or, sql } from 'drizzle-orm'
-import {
-  activities,
-  groups,
-  groupSlugHistory,
-  invitations,
-  memberships,
-  participants,
-} from '../../db/schema/app'
+import { groups, groupSlugHistory, invitations, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { Conflict, Forbidden, groupAccessDenied, Invalid, NotFound } from '../shared/api'
 import type { AccessRequest, GroupChanges, GroupCreateInput } from '../shared/api/groups'
@@ -22,8 +15,15 @@ import type { GroupKind, Role } from '../shared/vocabulary'
 import type { Db } from './db'
 import { randomId, randomToken, sha256Hex } from './ids'
 import { memberCte, requireActive, requireMember, type Principal } from './access'
-import { actor, displayNames, idempotent } from './ledger'
-import { groupsCreated, iso } from './sql'
+import { accessText, groupSnapshot, recordGroupEvent } from './activity'
+import { netsCte } from './balances'
+import { idempotent } from './idempotency'
+import { displayNames } from './people'
+import { iso } from './sql'
+
+/** The named groups that `userId` created, from their create_group activities (LIMITS.groupsCreated). Groups are never deleted. */
+export const groupsCreated = (userId: string) => sql`(SELECT count(*)::int FROM activities a JOIN groups g ON g.id = a.group_id AND g.kind = 'named'
+  WHERE a.type = 'create_group' AND a.actor_user_id = ${userId})`
 
 type AccessInput = typeof AccessRequest.Type
 type CreateInput = typeof GroupCreateInput.Type
@@ -57,21 +57,12 @@ export async function listDirectory(db: Db, data: { principal: Principal; offset
       ORDER BY g.created_at DESC, g.id DESC
       OFFSET ${offset} LIMIT ${LIMITS.directoryPage + 1}
     ),
-    nets AS (
-      SELECT e.currency, sum(parts.amount) AS net
-      FROM mine
-      JOIN (
-        SELECT expense_id, group_id, participant_id, amount FROM expense_payers
-        UNION ALL
-        SELECT expense_id, group_id, participant_id, -amount FROM expense_shares
-      ) parts ON parts.group_id = mine.group_id AND parts.participant_id = mine.participant_id
-      JOIN expenses e ON e.id = parts.expense_id AND e.deleted_at IS NULL
-      GROUP BY e.currency
-    )
+    ${netsCte},
+    totals AS (SELECT currency, sum(net) AS net FROM nets GROUP BY currency)
     SELECT
       coalesce((SELECT json_agg(json_build_object('id', id, 'slug', slug, 'name', name, 'participantCount', participant_count,
         'createdAt', ${iso(sql`created_at`)}) ORDER BY created_at DESC, id DESC) FROM page), '[]') AS groups,
-      coalesce((SELECT json_agg(json_build_object('currency', currency, 'net', net::text) ORDER BY currency) FROM nets), '[]') AS totals,
+      coalesce((SELECT json_agg(json_build_object('currency', currency, 'net', net::text) ORDER BY currency) FROM totals), '[]') AS totals,
       (SELECT count(*)::int FROM mine WHERE participant_id IS NULL) AS unbound
   `)
   const [row] = result.rows
@@ -198,37 +189,12 @@ async function claimSlug(tx: Db, data: { slug: string; groupId: string }) {
   await tx.delete(groupSlugHistory).where(eq(groupSlugHistory.slug, data.slug))
 }
 
-/**
- * The history snapshot of a group and its participants, in the given order.
- * The caller reads them; this only builds the shape.
- */
-export function groupSnapshotOf<C extends string>(data: {
-  group: { id: string; name: string; slug: string | null; information: string; defaultCurrency: C; revision: number }
-  participants: readonly { id: string; name: string }[]
-}) {
-  const { group } = data
-  return {
-    schemaVersion: 2 as const,
-    kind: 'group' as const,
-    group: {
-      id: group.id,
-      name: group.name,
-      slug: group.slug,
-      information: group.information,
-      // The field name the history reader expects (V2GroupSnapshot in src/shared/history.ts).
-      currency: group.defaultCurrency,
-      revision: group.revision,
-      participants: data.participants,
-    },
-  }
-}
-
 /** The group and its participants as they are now, for a history snapshot. */
-async function groupSnapshot(tx: Db, groupId: string) {
+async function currentSnapshot(tx: Db, groupId: string) {
   const [group] = await tx.select().from(groups).where(eq(groups.id, groupId))
   if (!group) throw new NotFound({ entity: 'group', id: groupId })
   const people = await tx.execute<{ id: string; name: string }>(sql`${displayNames(sql`${groupId}`)} ORDER BY p.created_at, p.id`)
-  return groupSnapshotOf({ group, participants: people.rows })
+  return groupSnapshot({ group: { ...group, defaultCurrency: group.defaultCurrency as CurrencyCode }, participants: people.rows })
 }
 
 export async function createGroup(
@@ -261,15 +227,7 @@ export async function createGroup(
     // One statement per row keeps created_at in insertion order, so the creator is listed first.
     for (const person of people) await tx.insert(participants).values({ ...person, groupId, createdAt: sql`clock_timestamp()` })
     await tx.insert(memberships).values({ userId: data.principal.userId, groupId, role: 'admin', participantId: creator.id })
-    await tx.insert(activities).values({
-      id: randomId(),
-      groupId,
-      type: 'create_group',
-      groupRevision: 1,
-      data: data.group.name,
-      snapshot: await groupSnapshot(tx, groupId),
-      ...actor(data.principal),
-    })
+    await recordGroupEvent(tx, { groupId, type: 'create_group', principal: data.principal, groupRevision: 1, data: data.group.name, snapshot: await currentSnapshot(tx, groupId) })
     return { id: groupId, slug, revision: 1 }
   })
 }
@@ -321,14 +279,7 @@ export async function updateGroup(
         ...(changes.defaultCurrency === undefined ? {} : { defaultCurrency: changes.defaultCurrency }),
       })
       .where(eq(groups.id, groupId))
-    await tx.insert(activities).values({
-      id: randomId(),
-      groupId,
-      type: 'update_group',
-      groupRevision: revision,
-      snapshot: await groupSnapshot(tx, groupId),
-      ...actor(data.principal),
-    })
+    await recordGroupEvent(tx, { groupId, type: 'update_group', principal: data.principal, groupRevision: revision, snapshot: await currentSnapshot(tx, groupId) })
     return { id: groupId, slug, revision }
   })
 }
@@ -431,7 +382,7 @@ async function applyAccess(
   const [membership] = await tx.select().from(memberships).where(and(eq(memberships.userId, me.userId), eq(memberships.groupId, groupId)))
   const done = (joined = true): { result: AccessResult; url: null } => ({ result: { groupId, joined, invitation: null }, url: null })
   const log = (entry: { type: 'join_group' | 'leave_group' | 'update_group'; data: string; participantId?: string | null }) =>
-    tx.insert(activities).values({ id: randomId(), groupId, type: entry.type, data: entry.data, participantId: entry.participantId ?? null, ...actor(me) })
+    recordGroupEvent(tx, { groupId, principal: me, ...entry })
 
   if (group.kind === 'private') {
     if (input.action === 'remove_member' || input.action === 'set_role') throw new Forbidden({ message: 'Private expense membership cannot be reassigned.' })
@@ -469,7 +420,7 @@ async function applyAccess(
         .set({ active: true, participantId: invitation.participantId, role: membership.active ? membership.role : 'member' })
         .where(and(eq(memberships.userId, me.userId), eq(memberships.groupId, groupId)))
     else await tx.insert(memberships).values({ userId: me.userId, groupId, role: 'member', participantId: invitation.participantId })
-    await log({ type: 'join_group', data: `join: ${me.name}`, participantId: invitation.participantId })
+    await log({ type: 'join_group', data: accessText({ action: 'join', whom: me.name }), participantId: invitation.participantId })
     return done()
   }
 
@@ -507,7 +458,7 @@ async function applyAccess(
         throw new Invalid({ message: 'The verified email must match the existing member account.' })
       if (targetAccess.participantId) throw new Invalid({ message: 'This member already has a fixed identity.', reason: 'state' })
       await tx.update(memberships).set({ participantId: participant.id }).where(and(eq(memberships.userId, target.id), eq(memberships.groupId, groupId)))
-      await log({ type: 'update_group', data: `Member identity bound: ${target.name} as ${participant.name}`, participantId: participant.id })
+      await log({ type: 'update_group', data: accessText({ action: 'Member identity bound', whom: `${target.name} as ${participant.name}` }), participantId: participant.id })
       return done()
     }
     if (targetAccess?.active) throw new Invalid({ message: 'That account is already a member. Bind its identity in member settings if needed.', reason: 'state' })
@@ -573,15 +524,15 @@ async function applyAccess(
   const where = and(eq(memberships.userId, targetUserId), eq(memberships.groupId, groupId))
   if (nextRole) {
     await tx.update(memberships).set({ role: nextRole }).where(where)
-    await log({ type: 'update_group', data: `set_role: ${target.name} is now ${nextRole === 'admin' ? 'an admin' : 'a member'}`, participantId: target.participantId })
+    await log({ type: 'update_group', data: accessText({ action: 'set_role', whom: `${target.name} is now ${nextRole === 'admin' ? 'an admin' : 'a member'}` }), participantId: target.participantId })
     return done()
   }
   await tx.update(memberships).set({ active: false }).where(where)
   if (input.action === 'leave') {
-    await log({ type: 'leave_group', data: `leave: ${target.name}`, participantId: target.participantId })
+    await log({ type: 'leave_group', data: accessText({ action: 'leave', whom: target.name }), participantId: target.participantId })
     return done(false)
   }
-  await log({ type: 'update_group', data: `remove_member: ${target.name}`, participantId: target.participantId })
+  await log({ type: 'update_group', data: accessText({ action: 'remove_member', whom: target.name }), participantId: target.participantId })
   return done()
 }
 

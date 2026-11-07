@@ -1,28 +1,23 @@
 // Ledger reads and writes. Every function checks group access itself, so the
 // RPC handlers and the MCP tools cannot skip it. Writes take a transaction.
-import { and, asc, eq, isNull, notInArray, sql, type SQL } from 'drizzle-orm'
-import {
-  activities,
-  expenseDocuments,
-  expensePayers,
-  expenses,
-  expenseShares,
-  groups,
-  idempotencyKeys,
-  memberships,
-} from '../../db/schema/app'
+import { and, asc, eq, notInArray, sql, type SQL } from 'drizzle-orm'
+import { expenseDocuments, expensePayers, expenses, expenseShares, groups, memberships } from '../../db/schema/app'
 import { Conflict, Invalid, NotFound } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../shared/expense-rules'
-import { titleWithVendor } from '../shared/history'
+import { compareIds } from '../shared/ids'
 import { formatMinor, type Minor } from '../shared/minor'
 import type { ExpenseKind, Role } from '../shared/vocabulary'
 import { memberCte, requireActive, requireMember, type Membership, type Principal } from './access'
+import { recordExpenseEvent, type SnapshotGroup } from './activity'
 import type { Db } from './db'
-import { randomId, sha256Hex } from './ids'
-import { displayName, documentsJson, escapeLike, expenseColumns, involves, toExpense, type ExpenseRow } from './sql'
+import { expenseColumns, involves, loadExpenses, toExpense, type ExpenseRow, type ReadExpense, type StoredDocument } from './expense-read'
+import { idempotent, storedRequestJson, type StoredRequest } from './idempotency'
+import { randomId } from './ids'
+import { displayNames } from './people'
+import { assertPrivateWrite, privateContextOf, type PrivateContext } from './private-context'
 import { stopRecurrence, syncRecurrence, type LinkState } from './recurring'
-import { assertPrivateWrite, privateContextOf, type PrivateContext } from './ungrouped'
+import { escapeLike, textList } from './sql'
 
 // ---------- reads ----------
 
@@ -56,15 +51,6 @@ type GroupRow = {
   active: boolean
   participants: { id: string; name: string }[]
 }
-
-/**
- * The group's participants with their display names: a bound, verified
- * account's name replaces the participant's placeholder name, as in the
- * current app (P-GROUP-55).
- */
-export const displayNames = (groupId: SQL) => sql`
-  SELECT p.id, ${displayName({ group: sql`p.group_id`, participant: sql`p.id`, name: sql`p.name` })} AS name
-  FROM participants p WHERE p.group_id = ${groupId}`
 
 /**
  * A group with its participants, in one statement that also checks the
@@ -118,39 +104,6 @@ const decodeCursor = (text: string): Cursor => {
   throw new Invalid({ message: 'Invalid cursor', field: 'cursor' })
 }
 
-type ListRow = ExpenseRow & { created_key: string; updated_key: string }
-
-/**
- * Expenses with their payers, shares and document count, in one statement.
- * PostgreSQL builds each row's parts as JSON, so the server parses one value
- * per row instead of several result sets. Minor units travel as text, never as
- * JSON numbers.
- */
-async function selectExpenses(db: Db, data: { where: SQL; orderBy: SQL; limit?: number; with?: SQL }) {
-  const result = await db.execute<ListRow>(sql`
-    ${data.with ?? sql``}
-    SELECT ${expenseColumns}, e.created_at::text AS created_key, e.updated_at::text AS updated_key
-    FROM expenses e
-    WHERE ${data.where}
-    ORDER BY ${data.orderBy}
-    ${data.limit === undefined ? sql`` : sql`LIMIT ${data.limit}`}
-  `)
-  return result.rows.map((e) => ({
-    expense: toExpense(e),
-    /** Exact PostgreSQL timestamps (microseconds) for cursors. */
-    keys: { created: e.created_key, updated: e.updated_key },
-  }))
-}
-
-export async function loadExpenses(db: Db, ids: string[]) {
-  if (ids.length === 0) return []
-  const rows = await selectExpenses(db, { where: sql`e.id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`, orderBy: sql`e.id` })
-  const byId = new Map(rows.map((r) => [r.expense.id, r.expense]))
-  return ids.flatMap((id) => byId.get(id) ?? [])
-}
-
-export type ApiExpense = Awaited<ReturnType<typeof loadExpenses>>[number]
-
 export async function listExpenses(
   db: Db,
   data: { principal: Principal; group: string; filter: ExpenseFilter; cursor: string | null; limit: number },
@@ -180,68 +133,37 @@ export async function listExpenses(
         : sql`(e.expense_date, e.created_at, e.id) < (${c.k}::date, ${c.c}::timestamptz, ${c.i})`,
     )
   }
-  const rows = await selectExpenses(db, {
-    where: sql.join(where, sql` AND `),
-    orderBy: byUpdated ? sql`e.updated_at DESC, e.id DESC` : sql`e.expense_date DESC, e.created_at DESC, e.id DESC`,
-    limit: limit + 1,
-    with: member,
-  })
+  // The exact PostgreSQL timestamps (microseconds) are the cursor keys.
+  const result = await db.execute<ExpenseRow & { created_key: string; updated_key: string }>(sql`
+    ${member}
+    SELECT ${expenseColumns()}, e.created_at::text AS created_key, e.updated_at::text AS updated_key
+    FROM expenses e
+    WHERE ${sql.join(where, sql` AND `)}
+    ORDER BY ${byUpdated ? sql`e.updated_at DESC, e.id DESC` : sql`e.expense_date DESC, e.created_at DESC, e.id DESC`}
+    LIMIT ${limit + 1}
+  `)
+  const rows = result.rows
   // No rows: an empty page, or not a member. Only then is the separate check needed.
   if (rows.length === 0) await requireMember(db, data)
   const page = rows.slice(0, limit)
   const last = page.at(-1)
   return {
-    expenses: page.map((r) => r.expense),
+    expenses: page.map(toExpense),
     nextCursor:
       rows.length > limit && last
-        ? encodeCursor(byUpdated ? { k: last.keys.updated, c: '', i: last.expense.id } : { k: last.expense.expenseDate, c: last.keys.created, i: last.expense.id })
+        ? encodeCursor(byUpdated ? { k: last.updated_key, c: '', i: last.id } : { k: last.expense_date, c: last.created_key, i: last.id })
         : null,
   }
 }
 
 export async function getExpense(db: Db, data: { principal: Principal; group: string; expenseId: string }) {
   const { groupId } = await requireMember(db, data)
-  const [row] = await db.select({ id: expenses.id }).from(expenses).where(and(eq(expenses.id, data.expenseId), eq(expenses.groupId, groupId), isNull(expenses.deletedAt)))
-  const [expense] = row ? await loadExpenses(db, [row.id]) : []
-  if (!expense) throw new NotFound({ entity: 'expense', id: data.expenseId })
+  const [expense] = await loadExpenses(db, { ids: [data.expenseId], groupId })
+  if (!expense || expense.deleted) throw new NotFound({ entity: 'expense', id: data.expenseId })
   return expense
 }
 
 // ---------- writes ----------
-
-const idempotencyPrincipal = (principal: Principal) => `${principal.userId}:${principal.agentKeyId ?? 'web'}`
-
-/** A used idempotency key: the hash of its request, and the stored result (any JSON value). */
-export type StoredRequest = { readonly requestHash: string; readonly response: unknown }
-
-/**
- * Runs a write once per (principal, key). A retry with the same request gets
- * the stored result; the same key with a different request is refused. A
- * caller without a key (null) can never retry, so it skips the lookup and the
- * stored row. `previous` is the lookup, when the caller already read it.
- */
-export async function idempotent<A>(
-  tx: Db,
-  data: { principal: Principal; key: string | null; request: unknown; previous?: StoredRequest | null },
-  write: () => Promise<A>,
-): Promise<A> {
-  if (data.key === null) return write()
-  const principal = idempotencyPrincipal(data.principal)
-  const requestHash = sha256Hex(JSON.stringify(data.request))
-  const [previous] =
-    data.previous === undefined
-      ? await tx.select().from(idempotencyKeys).where(and(eq(idempotencyKeys.principal, principal), eq(idempotencyKeys.key, data.key)))
-      : data.previous
-        ? [data.previous]
-        : []
-  if (previous) {
-    if (previous.requestHash !== requestHash) throw new Invalid({ message: 'This idempotency key was used for a different request', field: 'idempotencyKey' })
-    return previous.response as A
-  }
-  const result = await write()
-  await tx.insert(idempotencyKeys).values({ principal, key: data.key, requestHash, response: result as object })
-  return result
-}
 
 function resolve(draft: ExpenseDraft, people: readonly { id: string }[]): ResolvedExpense {
   const result = validateExpense({ draft, participantIds: new Set(people.map((p) => p.id)) })
@@ -251,19 +173,6 @@ function resolve(draft: ExpenseDraft, people: readonly { id: string }[]): Resolv
   }
   return result.value
 }
-
-export type StoredDocument = { id: string; url: string; width: number; height: number }
-
-export async function expenseDocumentsOf(tx: Db, expenseId: string): Promise<StoredDocument[]> {
-  return tx
-    .select({ id: expenseDocuments.id, url: expenseDocuments.url, width: expenseDocuments.width, height: expenseDocuments.height })
-    .from(expenseDocuments)
-    .where(eq(expenseDocuments.expenseId, expenseId))
-    .orderBy(asc(expenseDocuments.position))
-}
-
-/** The receipts of expense row `e` as JSON, in the order of expenseDocumentsOf. */
-const documentsOf = sql`coalesce(${documentsJson(sql`e`)}, '[]')`
 
 // ---------- write context ----------
 
@@ -278,7 +187,7 @@ export type WriteContext = {
   readonly expenseId: string
   readonly idempotencyKey: string | null
   readonly membership: Membership
-  readonly group: { readonly id: string; readonly name: string; readonly slug: string | null; readonly defaultCurrency: string }
+  readonly group: SnapshotGroup
   readonly people: readonly { readonly id: string; readonly name: string }[]
   readonly categories: ReadonlySet<number>
   readonly privateContext: PrivateContext | null
@@ -286,7 +195,7 @@ export type WriteContext = {
   /** create: the expense with this ID in any group. A create must not reuse it. */
   readonly existing: { readonly groupId: string; readonly revision: number } | null
   /** change: the expense in this group, locked for the write, with its receipts. */
-  readonly expense: { readonly value: ApiExpense; readonly deleted: boolean; readonly documents: readonly StoredDocument[] } | null
+  readonly expense: ReadExpense | null
   /** change: the expense's recurring link. */
   readonly link: LinkState | null
 }
@@ -304,7 +213,7 @@ type ContextRow = {
   private_context: PrivateContext | null
   previous: StoredRequest | null
   existing: { groupId: string; revision: number } | null
-  expense: (ExpenseRow & { deleted: boolean; documents: StoredDocument[] }) | null
+  expense: ExpenseRow | null
   link: LinkState | null
 }
 
@@ -325,17 +234,11 @@ export async function loadWriteContext(
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name)) FROM participants p WHERE p.group_id = g.id), '[]') AS people,
       coalesce((SELECT json_agg(c.id) FROM categories c), '[]') AS categories,
       ${privateContextOf(sql`g.id`)} AS private_context,
-      ${
-        data.idempotencyKey === null
-          ? none
-          : sql`(SELECT json_build_object('requestHash', k.request_hash, 'response', k.response) FROM idempotency_keys k
-              WHERE k.principal = ${idempotencyPrincipal(data.principal)} AND k.key = ${data.idempotencyKey})`
-      } AS previous,
+      ${data.idempotencyKey === null ? none : storedRequestJson({ principal: data.principal, key: data.idempotencyKey })} AS previous,
       ${change ? none : sql`(SELECT json_build_object('groupId', x.group_id, 'revision', x.revision) FROM expenses x WHERE x.id = ${data.expenseId})`} AS existing,
       ${
         change
-          ? sql`(SELECT row_to_json(r) FROM (SELECT ${expenseColumns}, e.deleted_at IS NOT NULL AS deleted, ${documentsOf} AS documents
-              FROM expenses e WHERE e.id = (SELECT id FROM locked)) r)`
+          ? sql`(SELECT row_to_json(r) FROM (SELECT ${expenseColumns({ documents: true })} FROM expenses e WHERE e.id = (SELECT id FROM locked)) r)`
           : none
       } AS expense,
       ${
@@ -358,7 +261,7 @@ export async function loadWriteContext(
     privateContext: row.private_context,
     previous: row.previous,
     existing: row.existing,
-    expense: row.expense ? { value: toExpense(row.expense), deleted: row.expense.deleted, documents: row.expense.documents } : null,
+    expense: row.expense ? toExpense(row.expense) : null,
     link: row.link,
   }
 }
@@ -374,34 +277,20 @@ async function contextFor(tx: Db, data: { principal: Principal; group: string; e
 
 /** The expense as written, with its receipts, for the activity snapshot and the result. */
 async function storedExpense(tx: Db, expenseId: string) {
-  const result = await tx.execute<ExpenseRow & { documents: StoredDocument[] }>(sql`SELECT ${expenseColumns}, ${documentsOf} AS documents FROM expenses e WHERE e.id = ${expenseId}`)
-  const [row] = result.rows
-  if (!row) throw new NotFound({ entity: 'expense', id: expenseId })
-  return { expense: toExpense(row), documents: row.documents }
+  const [expense] = await loadExpenses(tx, { ids: [expenseId], documents: true })
+  if (!expense) throw new NotFound({ entity: 'expense', id: expenseId })
+  return expense
 }
 
-/**
- * The v2 history snapshot of one expense revision, with its receipt pointers,
- * so that a receipt removed later stays in the earlier revision. Legacy snapshots keep schemaVersion 1.
- */
-export function snapshot(data: {
-  group: { id: string; name: string; slug: string | null; defaultCurrency: string }
-  expense: ApiExpense
-  names: Map<string, string>
-  documents: readonly StoredDocument[]
-}) {
-  const named = <T extends { participantId: string }>(list: readonly T[]) => list.map((p) => ({ ...p, name: data.names.get(p.participantId) ?? '' }))
-  // Attribution comes from the activities themselves; it is not part of the revision.
-  const { addedBy: _addedBy, editedBy: _editedBy, ...expense } = data.expense
-  return {
-    schemaVersion: 2,
-    kind: data.expense.kind,
-    group: { id: data.group.id, name: data.group.name, slug: data.group.slug, currency: data.group.defaultCurrency },
-    expense: { ...expense, payers: named(data.expense.payers), shares: named(data.expense.shares), documents: data.documents },
-  }
-}
-
-const namesOf = (context: WriteContext) => new Map(context.people.map((p) => [p.id, p.name]))
+/** Records an expense event with the snapshot of the context's group and people. */
+const record = (tx: Db, data: { context: WriteContext; principal: Principal; type: 'create_expense' | 'update_expense'; expense: ReadExpense; revision: number }) =>
+  recordExpenseEvent(tx, {
+    type: data.type,
+    expense: data.expense,
+    revision: data.revision,
+    principal: data.principal,
+    snapshot: { group: data.context.group, names: new Map(data.context.people.map((p) => [p.id, p.name])) },
+  })
 
 /**
  * Replaces an expense's receipts. Every URL must be a receipt uploaded to this
@@ -414,7 +303,7 @@ async function writeDocuments(tx: Db, data: { groupId: string; expenseId: string
   if (urls.length) {
     const registered = await tx.execute<{ url: string; deleted: boolean }>(
       sql`SELECT url, EXISTS (SELECT 1 FROM deleted_receipts d WHERE d.receipt_id = receipts.id) AS deleted
-        FROM receipts WHERE group_id = ${data.groupId} AND url IN (${sql.join(urls.map((u) => sql`${u}`), sql`, `)})`,
+        FROM receipts WHERE group_id = ${data.groupId} AND url IN (${textList(urls)})`,
     )
     if (registered.rows.length !== urls.length) throw new Invalid({ message: 'Attach only receipts uploaded to this group', field: 'documents' })
     if (registered.rows.some((r) => r.deleted)) throw new Invalid({ message: 'A receipt in this list was deleted. Remove it and save again.', field: 'documents' })
@@ -468,13 +357,6 @@ async function writeExpense(tx: Db, data: { expenseId: string; groupId: string; 
     ${shares.upsert}`)
 }
 
-export const actor = (principal: Principal) => ({
-  source: principal.source,
-  actorName: principal.name,
-  actorUserId: principal.userId,
-  agentKeyId: principal.agentKeyId,
-})
-
 const columns = (e: ResolvedExpense) => ({
   kind: e.kind,
   title: e.title,
@@ -489,19 +371,25 @@ const columns = (e: ResolvedExpense) => ({
 })
 
 /** True when an update would store exactly what is saved. */
-function unchanged(data: { before: ApiExpense; after: ResolvedExpense; documentsBefore: readonly StoredDocument[]; documentsAfter: readonly StoredDocument[] | undefined }) {
+function unchanged(data: { before: ReadExpense; after: ResolvedExpense; documentsBefore: readonly StoredDocument[]; documentsAfter: readonly StoredDocument[] | undefined }) {
   const { before, after } = data
   const money = (amount: Minor) => formatMinor({ amount, currency: after.currency })
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
-  const byId = <T extends { participantId: string }>(list: readonly T[]) => [...list].sort((a, b) => (a.participantId < b.participantId ? -1 : 1))
+  const byId = <T extends { participantId: string }>(list: readonly T[]) => [...list].sort((a, b) => compareIds(a.participantId, b.participantId))
   const docs = (list: readonly StoredDocument[]) => list.map((d) => [d.url, d.width, d.height]).sort()
   return (
     same(
       [before.kind, before.title, before.vendor, before.notes, before.categoryId, before.expenseDate, before.currency, before.amount, before.splitMode, before.recurrence],
       [after.kind, after.title, after.vendor, after.notes, after.categoryId, after.expenseDate, after.currency, money(after.amount), after.splitMode, after.recurrence],
     ) &&
-    same(byId(before.payers), byId(after.payers.map((p) => ({ participantId: p.participantId, amount: money(p.amount) })))) &&
-    same(byId(before.shares), byId(after.shares.map((s) => ({ participantId: s.participantId, amount: money(s.amount), weight: s.weight })))) &&
+    same(
+      byId(before.payers.map((p) => ({ participantId: p.participantId, amount: p.amount }))),
+      byId(after.payers.map((p) => ({ participantId: p.participantId, amount: money(p.amount) }))),
+    ) &&
+    same(
+      byId(before.shares.map((s) => ({ participantId: s.participantId, amount: s.amount, weight: s.weight }))),
+      byId(after.shares.map((s) => ({ participantId: s.participantId, amount: money(s.amount), weight: s.weight }))),
+    ) &&
     (data.documentsAfter === undefined || same(docs(data.documentsBefore), docs(data.documentsAfter)))
   )
 }
@@ -517,7 +405,7 @@ export async function createExpense(
     expense: ExpenseDraft
     documents?: readonly StoredDocument[]
   },
-): Promise<ApiExpense> {
+): Promise<ReadExpense> {
   const context = await loadWriteContext(tx, { principal: data.principal, group: data.group, expenseId: data.expenseId, op: 'create', idempotencyKey: data.idempotencyKey })
   const { groupId } = context.membership
   const documents = data.documents ?? []
@@ -539,17 +427,8 @@ export async function createExpense(
     // A new expense has no recurring link yet.
     await syncRecurrence(tx, { groupId, expenseId: data.expenseId, rule: expense.recurrence, expenseDate: expense.expenseDate, previous: null, link: null })
     const stored = await storedExpense(tx, data.expenseId)
-    await tx.insert(activities).values({
-      id: randomId(),
-      groupId,
-      type: 'create_expense',
-      expenseId: data.expenseId,
-      expenseRevision: 1,
-      data: titleWithVendor(stored.expense),
-      snapshot: snapshot({ group: context.group, expense: stored.expense, names: namesOf(context), documents: stored.documents }),
-      ...actor(data.principal),
-    })
-    return stored.expense
+    await record(tx, { context, principal: data.principal, type: 'create_expense', expense: stored, revision: 1 })
+    return stored
   })
 }
 
@@ -557,27 +436,17 @@ export async function createExpense(
 export function currentExpense(context: WriteContext, expectedRevision: number) {
   const { expense } = context
   if (!expense || expense.deleted) throw new NotFound({ entity: 'expense', id: context.expenseId })
-  if (expense.value.revision !== expectedRevision) throw new Conflict({ entity: 'expense', id: context.expenseId, currentRevision: expense.value.revision })
+  if (expense.revision !== expectedRevision) throw new Conflict({ entity: 'expense', id: context.expenseId, currentRevision: expense.revision })
   return expense
 }
 
+/** The documents of an expense read with them. */
+const documentsOf = (expense: ReadExpense): readonly StoredDocument[] => expense.documents ?? []
+
 async function ensureBaseline(tx: Db, data: { context: WriteContext; principal: Principal }) {
   const { expense } = data.context
-  if (!expense || expense.value.revision !== 0) return
   // Expenses that predate history get a baseline snapshot before their first edit.
-  await tx
-    .insert(activities)
-    .values({
-      id: randomId(),
-      groupId: data.context.membership.groupId,
-      type: 'update_expense',
-      expenseId: data.context.expenseId,
-      expenseRevision: 0,
-      data: titleWithVendor(expense.value),
-      snapshot: snapshot({ group: data.context.group, expense: expense.value, names: namesOf(data.context), documents: expense.documents }),
-      ...actor(data.principal),
-    })
-    .onConflictDoNothing()
+  if (expense && expense.revision === 0) await record(tx, { context: data.context, principal: data.principal, type: 'update_expense', expense, revision: 0 })
 }
 
 export async function updateExpense(
@@ -595,19 +464,18 @@ export async function updateExpense(
     /** The write context, when the caller already loaded it. */
     context?: WriteContext
   },
-): Promise<ApiExpense> {
+): Promise<ReadExpense> {
   const context = await contextFor(tx, { ...data, op: 'change', context: data.context })
   const { groupId } = context.membership
   const request = { op: 'update', groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision, expense: data.expense, documents: data.documents ?? null }
   return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request, previous: context.previous }, async () => {
-    const current = currentExpense(context, data.expectedRevision)
-    const before = current.value
+    const before = currentExpense(context, data.expectedRevision)
     const revision = before.revision
     assertPrivateWrite(context.privateContext, { expenseId: data.expenseId, op: 'update', draft: data.expense })
     const expense = resolve(data.expense, context.people)
     requireCategory(context, expense.categoryId)
     // An edit that changes nothing adds no revision, as in the current app.
-    if (unchanged({ before, after: expense, documentsBefore: current.documents, documentsAfter: data.documents })) return before
+    if (unchanged({ before, after: expense, documentsBefore: documentsOf(before), documentsAfter: data.documents })) return before
     await ensureBaseline(tx, { context, principal: data.principal })
     // A new amount or currency drops a legacy conversion, which no longer describes it (P-EXP-135).
     const moneyChanged = before.currency !== expense.currency || before.amount !== formatMinor({ amount: expense.amount, currency: expense.currency })
@@ -621,7 +489,7 @@ export async function updateExpense(
         .where(eq(expenses.id, data.expenseId))
         .getSQL(),
     })
-    if (data.documents) await writeDocuments(tx, { groupId, expenseId: data.expenseId, documents: data.documents, saved: current.documents })
+    if (data.documents) await writeDocuments(tx, { groupId, expenseId: data.expenseId, documents: data.documents, saved: documentsOf(before) })
     await syncRecurrence(tx, {
       groupId,
       expenseId: data.expenseId,
@@ -631,17 +499,8 @@ export async function updateExpense(
       link: context.link,
     })
     const stored = await storedExpense(tx, data.expenseId)
-    await tx.insert(activities).values({
-      id: randomId(),
-      groupId,
-      type: 'update_expense',
-      expenseId: data.expenseId,
-      expenseRevision: revision + 1,
-      data: titleWithVendor(stored.expense),
-      snapshot: snapshot({ group: context.group, expense: stored.expense, names: namesOf(context), documents: stored.documents }),
-      ...actor(data.principal),
-    })
-    return stored.expense
+    await record(tx, { context, principal: data.principal, type: 'update_expense', expense: stored, revision: revision + 1 })
+    return stored
   })
 }
 
@@ -655,24 +514,15 @@ export async function removeDocuments(tx: Db, data: { principal: Principal; grou
   const context = await loadWriteContext(tx, { principal: data.principal, group: data.group, expenseId: data.expenseId, op: 'change', idempotencyKey: null })
   const current = context.expense
   if (!current || current.deleted) return false
-  const documents = current.documents.filter((d) => !data.urls.has(d.url))
-  if (documents.length === current.documents.length) return false
-  const { groupId } = context.membership
-  const revision = current.value.revision + 1
+  const saved = documentsOf(current)
+  const documents = saved.filter((d) => !data.urls.has(d.url))
+  if (documents.length === saved.length) return false
+  const revision = current.revision + 1
   await ensureBaseline(tx, { context, principal: data.principal })
   await tx.update(expenses).set({ revision }).where(eq(expenses.id, data.expenseId))
-  await replaceDocuments(tx, { expenseId: data.expenseId, documents, saved: current.documents })
+  await replaceDocuments(tx, { expenseId: data.expenseId, documents, saved })
   const stored = await storedExpense(tx, data.expenseId)
-  await tx.insert(activities).values({
-    id: randomId(),
-    groupId,
-    type: 'update_expense',
-    expenseId: data.expenseId,
-    expenseRevision: revision,
-    data: titleWithVendor(stored.expense),
-    snapshot: snapshot({ group: context.group, expense: stored.expense, names: namesOf(context), documents: stored.documents }),
-    ...actor(data.principal),
-  })
+  await record(tx, { context, principal: data.principal, type: 'update_expense', expense: stored, revision })
   return true
 }
 
@@ -691,23 +541,14 @@ export async function deleteExpense(
   const { groupId } = context.membership
   const request = { op: 'delete', groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision }
   return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request, previous: context.previous }, async () => {
-    const current = currentExpense(context, data.expectedRevision).value
+    const current = currentExpense(context, data.expectedRevision)
     const revision = current.revision + 1
     assertPrivateWrite(context.privateContext, { expenseId: data.expenseId, op: 'delete' })
     await ensureBaseline(tx, { context, principal: data.principal })
     await tx.update(expenses).set({ deletedAt: new Date(), revision }).where(eq(expenses.id, data.expenseId))
     // Deleting the newest occurrence of a series stops it.
     if (context.link && !context.link.actedOn) await stopRecurrence(tx, { expenseId: data.expenseId })
-    await tx.insert(activities).values({
-      id: randomId(),
-      groupId,
-      type: 'delete_expense',
-      expenseId: data.expenseId,
-      expenseRevision: revision,
-      // The deleted expense's text, as the current app stores it.
-      data: titleWithVendor(current),
-      ...actor(data.principal),
-    })
+    await recordExpenseEvent(tx, { type: 'delete_expense', expense: current, revision, principal: data.principal, snapshot: null })
     return { revision }
   })
 }
