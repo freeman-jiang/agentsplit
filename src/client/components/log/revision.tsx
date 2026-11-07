@@ -1,8 +1,7 @@
 // The saved-revision panel of a Log event, as in the current app's
 // activity-revision.tsx: every field, the changes from the revision before,
 // and links to saved attachments.
-import { cn } from '~/client/cn'
-import { disclosure, DisclosureSummary } from '~/client/ui/disclosure'
+import { DisclosureSummary } from '~/client/ui/disclosure'
 import type { Activity } from '~/shared/api'
 import { describeRevision, REVISION_FIELDS } from '~/shared/history'
 import { tombstoneText } from '../receipt-files'
@@ -40,7 +39,7 @@ export function ActivityRevision({ activity, groupId }: { activity: ActivityItem
   if (state._tag === 'group') {
     const g = state.group
     return (
-      <details onClick={stop} className={cn(disclosure, 'mt-1 text-xs sm:border-l sm:border-border/60 sm:pl-3')}>
+      <details onClick={stop} className="mt-1 text-xs sm:border-l sm:border-border/60 sm:pl-3">
         <DisclosureSummary quiet>View saved group settings</DisclosureSummary>
         <div className="mt-2 space-y-1 rounded-xl bg-muted/50 p-3">
           <p>
@@ -60,7 +59,7 @@ export function ActivityRevision({ activity, groupId }: { activity: ActivityItem
   const deleted = activity.type === 'delete_expense'
   return (
     // Indented under a faint rule, so the details read as part of the event above.
-    <details onClick={stop} className={cn(disclosure, 'mt-1 text-xs sm:border-l sm:border-border/60 sm:pl-3')} data-testid="revision">
+    <details onClick={stop} className="mt-1 text-xs sm:border-l sm:border-border/60 sm:pl-3" data-testid="revision">
       <DisclosureSummary quiet>
         View saved revision {saved.revision}
         {deleted ? ' · Deleted' : ''}

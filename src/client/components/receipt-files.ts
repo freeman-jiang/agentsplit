@@ -1,5 +1,6 @@
 // Receipt files in the browser: photos shrink before upload, and a receipt
 // deleted for good shows who deleted it and when.
+import { formatMoment } from '~/client/dates'
 
 /** The long side of an uploaded photo, in pixels. Receipt text stays readable at this size. */
 const LONG_SIDE = 2000
@@ -45,4 +46,4 @@ export type Tombstone = { readonly by: string; readonly at: string }
 
 /** "Receipt deleted by Alice on Nov 7, 2026". */
 export const tombstoneText = (tombstone: Tombstone) =>
-  `Receipt deleted by ${tombstone.by} on ${new Date(tombstone.at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`
+  `Receipt deleted by ${tombstone.by} on ${formatMoment.date(tombstone.at)}`

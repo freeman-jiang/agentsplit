@@ -1,23 +1,23 @@
 import { useSuspenseInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { SuggestedPayments } from '~/client/components/balances-view'
-import { namesOf } from '~/client/components/expense-row'
+import { SuggestedPayments } from '~/client/components/balance/settlements'
+import { attributionLine, namesOf } from '~/client/components/expense-row/figures'
 import { money } from '~/client/components/money'
-import { groupQuery } from '~/client/queries'
 import { balancesQuery, paymentsQuery } from '~/client/queries/expenses'
+import { groupQuery } from '~/client/queries/groups'
 import { Button } from '~/client/ui/button'
 
 export const Route = createFileRoute('/$group/payments/')({
-  loader: ({ context, params }) =>
-    Promise.all([context.queryClient.fetchQuery(balancesQuery(params.group)), context.queryClient.ensureInfiniteQueryData(paymentsQuery(params.group))]),
+  loader: ({ context }) => Promise.all([context.queryClient.fetchQuery(balancesQuery(context.groupId)), context.queryClient.ensureInfiniteQueryData(paymentsQuery(context.groupId))]),
   component: PaymentsTab,
 })
 
 function PaymentsTab() {
   const { group } = Route.useParams()
-  const { data: g } = useSuspenseQuery(groupQuery(group))
-  const { data: balances } = useSuspenseQuery(balancesQuery(group))
-  const payments = useSuspenseInfiniteQuery(paymentsQuery(group))
+  const { groupId } = Route.useRouteContext()
+  const { data: g } = useSuspenseQuery(groupQuery(groupId))
+  const { data: balances } = useSuspenseQuery(balancesQuery(groupId))
+  const payments = useSuspenseInfiniteQuery(paymentsQuery(groupId))
   const names = new Map(g.participants.map((p) => [p.id, p.name]))
   const rows = payments.data.pages.flatMap((p) => p.expenses)
   return (
@@ -47,7 +47,7 @@ function PaymentsTab() {
                       {namesOf({ ids: p.payers.map((x) => x.participantId), names, viewer: null })} → {namesOf({ ids: p.shares.map((x) => x.participantId), names, viewer: null })}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {p.expenseDate} · {p.editedBy ? `Last edited by ${p.editedBy}` : p.addedBy ? `Added by ${p.addedBy}` : 'Original author unavailable'}
+                      {p.expenseDate} · {attributionLine(p)}
                     </div>
                   </div>
                   <div className="shrink-0 tabular-nums">

@@ -1,6 +1,7 @@
-// The category icons of the current app's category-icon.tsx (P-EXP-22). The
-// keys are the fixed category IDs of db/migrations/0002_categories.sql, so a
-// card needs no extra request. Named imports keep only these icons in the bundle.
+// The category icons of the current app's category-icon.tsx (P-EXP-22), by
+// category and by category group. The keys are the fixed category IDs and
+// groups of db/migrations/0002_categories.sql, so a card needs no extra
+// request. Named imports keep only these icons in the bundle.
 import {
   Armchair,
   Baby,
@@ -92,8 +93,18 @@ const ICONS: Readonly<Record<number, LucideIcon>> = {
   43: HandHelping, // Life/Donation
 }
 
-/** An unknown category shows the general icon, as in the current app. */
-export function CategoryIcon({ categoryId, ...props }: { categoryId: number } & LucideProps) {
-  const Icon = ICONS[categoryId] ?? Banknote
+/** The Stats tab's icon of each category group. */
+const GROUPING_ICONS: Readonly<Record<string, LucideIcon>> = {
+  Entertainment: FerrisWheel,
+  'Food and Drink': Utensils,
+  Home,
+  Life: HandHelping,
+  Transportation: Bus,
+  Utilities: PlugZap,
+}
+
+/** A category's icon, or a category group's. An unknown one shows the general icon, as in the current app. */
+export function CategoryIcon({ categoryId, grouping, ...props }: ({ categoryId: number; grouping?: undefined } | { grouping: string; categoryId?: undefined }) & LucideProps) {
+  const Icon = (grouping === undefined ? ICONS[categoryId] : GROUPING_ICONS[grouping]) ?? Banknote
   return <Icon aria-hidden="true" {...props} />
 }

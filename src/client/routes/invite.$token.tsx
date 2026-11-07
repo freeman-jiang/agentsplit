@@ -1,20 +1,21 @@
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
-import { meQuery } from '~/client/queries'
-import { errorMessage, invitationQuery, newIdempotencyKey, refreshGroups } from '~/client/queries/groups'
-import { rpc } from '~/client/rpc'
+import { requireSignedIn, signOut } from '~/client/auth-guard'
+import { describeError } from '~/client/errors'
+import { meQuery } from '~/client/queries/account'
+import { invitationQuery } from '~/client/queries/groups'
+import { afterWrite } from '~/client/queries/keys'
+import { newIdempotencyKey, rpc } from '~/client/rpc'
 import { Alert, AlertDescription } from '~/client/ui/alert'
 import { Button } from '~/client/ui/button'
 import { INVITATION_TOKEN } from '~/shared/groups'
 
-const signInFor = (token: string) => `/sign-in?next=${encodeURIComponent(`/invite/${token}`)}`
-
 export const Route = createFileRoute('/invite/$token')({
-  beforeLoad: async ({ context, params }) => {
+  beforeLoad: async ({ context, params, location }) => {
     if (!INVITATION_TOKEN.test(params.token)) throw redirect({ to: '/groups', replace: true })
     // Signed out, or a session the server does not accept: sign in, then come back here (P-ACCESS-32, P-ACCESS-33).
-    if (!(await context.queryClient.ensureQueryData(meQuery))) throw redirect({ href: signInFor(params.token), replace: true })
+    await requireSignedIn({ queryClient: context.queryClient, location })
   },
   loader: ({ context, params }) => context.queryClient.ensureQueryData(invitationQuery(params.token)),
   component: InvitationPage,
@@ -82,10 +83,10 @@ function AcceptInvitation({ token }: { token: string }) {
           try {
             const shareUrl = new URL(`/invite/${token}`, window.location.origin).href
             const result = await rpc((api) => api('groups.access', { idempotencyKey, request: { action: 'join', shareUrl } }))
-            await refreshGroups(queryClient)
+            await afterWrite({ queryClient, scope: 'group', groupId: result.groupId })
             await navigate({ to: '/$group', params: { group: result.groupId } })
           } catch (e) {
-            setError(errorMessage(e))
+            setError(describeError(e).message)
             setPending(false)
           }
         }}
@@ -113,13 +114,10 @@ function SwitchAccount({ token }: { token: string }) {
           setPending(true)
           setError('')
           try {
-            const response = await fetch('/api/auth/sign-out', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
-            if (!response.ok) throw new Error('Sign-out failed')
-            // A full page load drops every cached query of the old account.
-            window.location.assign(signInFor(token))
-          } catch {
+            await signOut({ next: `/invite/${token}` })
+          } catch (cause) {
             setPending(false)
-            setError('Unable to sign out. Please try again.')
+            setError(describeError(cause).message)
           }
         }}
       >

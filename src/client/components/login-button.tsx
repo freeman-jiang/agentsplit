@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { authClient } from '~/client/auth-client'
-import { errorMessage } from '~/client/queries/account'
+import { describeError } from '~/client/errors'
 import { Button } from '~/client/ui/button'
 
 /** Starts Google sign-in at once, as the current app's login button does (P-AUTH-59, P-AUTH-60). */
@@ -19,7 +19,7 @@ export function LoginButton(props: { label: string; selectAccount: boolean; call
         ...(props.selectAccount ? { additionalParams: { prompt: 'select_account' } } : {}),
       })
       if (result.error) {
-        setError(errorMessage(result.error, 'Unable to log in. Please try again.'))
+        setError(describeError(result.error, 'Unable to log in. Please try again.').message)
         setPending(false)
       }
     } catch {

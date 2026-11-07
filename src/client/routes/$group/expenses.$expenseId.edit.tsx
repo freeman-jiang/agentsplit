@@ -1,30 +1,25 @@
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import { useGroupTarget } from '~/client/components/entry-write'
 import { ExpenseForm } from '~/client/components/expense-form'
 import { stateFromExpense } from '~/client/components/expense-form-state'
-import { ExpenseLog } from '~/client/components/history/expense-log'
-import { groupQuery } from '~/client/queries'
+import { ExpenseLog } from '~/client/components/log/expense-log'
 import { expenseDetailQuery, referenceQuery } from '~/client/queries/expenses'
+import { groupQuery } from '~/client/queries/groups'
 
 export const Route = createFileRoute('/$group/expenses/$expenseId/edit')({
-  loader: ({ context, params }) =>
-    Promise.all([
-      context.queryClient.ensureQueryData(
-        expenseDetailQuery(params.group, params.expenseId),
-      ),
-      context.queryClient.ensureQueryData(referenceQuery),
-    ]),
+  loader: ({ context, params }) => Promise.all([context.queryClient.ensureQueryData(expenseDetailQuery(context.groupId, params.expenseId)), context.queryClient.ensureQueryData(referenceQuery)]),
   component: EditExpense,
 })
 
 function EditExpense() {
   const { group, expenseId } = Route.useParams()
+  const { groupId } = Route.useRouteContext()
   const queryClient = useQueryClient()
-  const { data: g } = useSuspenseQuery(groupQuery(group))
+  const { data: g } = useSuspenseQuery(groupQuery(groupId))
   const { data: reference } = useSuspenseQuery(referenceQuery)
-  const { data: detail } = useSuspenseQuery(
-    expenseDetailQuery(group, expenseId),
-  )
+  const { data: detail } = useSuspenseQuery(expenseDetailQuery(groupId, expenseId))
+  const target = useGroupTarget({ groupId, group, kind: 'expense' })
   return (
     <>
       <ExpenseForm
@@ -32,22 +27,14 @@ function EditExpense() {
         key={detail.expense.revision}
         mode="edit"
         detail={detail}
-        group={g}
-        target={{ kind: 'group', groupParam: group }}
+        participants={g.participants}
+        target={target}
         reference={reference}
-        initial={stateFromExpense({
-          expense: detail.expense,
-          documents: detail.documents,
-          participants: g.participants.map((p) => p.id),
-        })}
-        onReload={() =>
-          void queryClient.invalidateQueries({
-            queryKey: expenseDetailQuery(group, expenseId).queryKey,
-          })
-        }
+        initial={stateFromExpense({ expense: detail.expense, documents: detail.documents, participants: g.participants.map((p) => p.id) })}
+        onReload={() => void queryClient.invalidateQueries({ queryKey: expenseDetailQuery(groupId, expenseId).queryKey })}
       />
       {/* The collapsed expense log under the editor, as in the current app (P-HIST-80). */}
-      <ExpenseLog group={group} groupId={g.id} expenseId={expenseId} />
+      <ExpenseLog groupId={groupId} expenseId={expenseId} />
     </>
   )
 }

@@ -1,13 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { cn } from '~/client/cn'
-import { money } from '~/client/components/money'
+import { TotalAmounts } from '~/client/components/balance/totals'
 import { accountBalancesQuery } from '~/client/queries/feed'
 import { Button } from '~/client/ui/button'
 import { Skeleton } from '~/client/ui/skeleton'
 
 /** The caller's own balance across every group and ungrouped expense. The feed filters never change it. */
 export function DashboardBalance() {
-  const summary = useQuery({ ...accountBalancesQuery, refetchOnMount: 'always' })
+  const summary = useQuery(accountBalancesQuery)
   // One left-aligned stack: the title row with its note, then each amount under its label.
   return (
     <section aria-labelledby="dashboard-balance-title" className="rounded-2xl border bg-card p-4 sm:px-6 sm:py-5" data-testid="dashboard-balance">
@@ -38,28 +37,7 @@ export function DashboardBalance() {
           {summary.data.totals.length === 0 ? (
             <p className="mt-4 text-lg">No recorded balance yet.</p>
           ) : (
-            <ul className="mt-3 flex flex-wrap gap-x-12 gap-y-5 sm:mt-2">
-              {summary.data.totals.map(({ currency, amount }) => {
-                const negative = amount.startsWith('-')
-                const zero = /^-?0(\.0+)?$/.test(amount)
-                return (
-                  <li key={currency} className="max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-2 sm:space-y-1" data-currency={currency}>
-                    <p className="text-xs text-muted-foreground max-sm:text-sm">
-                      {zero ? 'Net balance' : negative ? 'You owe' : 'You are owed'} · {currency}
-                    </p>
-                    <p
-                      className={cn(
-                        'text-3xl font-semibold tabular-nums sm:text-4xl',
-                        !zero && !negative && 'text-owed',
-                        negative && 'text-owe',
-                      )}
-                    >
-                      {money(negative ? amount.slice(1) : amount, currency)}
-                    </p>
-                  </li>
-                )
-              })}
-            </ul>
+            <TotalAmounts totals={summary.data.totals.map(({ currency, amount }) => ({ currency, net: amount }))} />
           )}
         </>
       )}

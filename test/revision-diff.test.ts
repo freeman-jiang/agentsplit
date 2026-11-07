@@ -2,7 +2,7 @@
 // come back from saved revisions in any order, so "Split between" must not
 // change with a notes-only edit.
 import { describe, expect, it } from 'vitest'
-import { fieldChanged } from '~/client/components/history/revision-diff'
+import { fieldChanged } from '~/client/components/log/revision-diff'
 import { describeRevision, REVISION_FIELDS } from '~/shared/history'
 import { readSnapshot } from '~/shared/snapshots'
 

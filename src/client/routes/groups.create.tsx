@@ -1,11 +1,12 @@
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
-import { createFileRoute, Link, redirect, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { requireSignedIn } from '~/client/auth-guard'
 import { GroupForm } from '~/client/components/group-form'
-import { meQuery } from '~/client/queries'
-import { errorMessage, newIdempotencyKey, refreshGroups } from '~/client/queries/groups'
-import { rpc } from '~/client/rpc'
+import { meQuery } from '~/client/queries/account'
+import { afterWrite } from '~/client/queries/keys'
+import { newIdempotencyKey, rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '~/client/ui/card'
 import { Input } from '~/client/ui/input'
@@ -13,9 +14,7 @@ import { groupRef } from '~/shared/groups'
 import { LIMITS } from '~/shared/limits'
 
 export const Route = createFileRoute('/groups/create')({
-  beforeLoad: async ({ context }) => {
-    if (!(await context.queryClient.ensureQueryData(meQuery))) throw redirect({ to: '/sign-in' })
-  },
+  beforeLoad: ({ context, location }) => requireSignedIn({ queryClient: context.queryClient, location }),
   component: CreateGroup,
 })
 
@@ -41,12 +40,8 @@ function CreateGroup() {
         }
         onSubmit={async (values) => {
           const participants = people.map((p) => p.name.trim()).filter(Boolean)
-          const group = await rpc((api) =>
-            api('groups.create', { groupId: null, idempotencyKey, group: { ...values, slug: values.slug.trim() || null, participants } }),
-          ).catch((e: unknown) => {
-            throw new Error(errorMessage(e))
-          })
-          await refreshGroups(queryClient)
+          const group = await rpc((api) => api('groups.create', { groupId: null, idempotencyKey, group: { ...values, slug: values.slug.trim() || null, participants } }))
+          await afterWrite({ queryClient, scope: 'group', groupId: group.id })
           await navigate({ to: '/$group/expenses', params: { group: groupRef(group) } })
         }}
       >

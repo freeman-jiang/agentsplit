@@ -1,7 +1,8 @@
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useState } from 'react'
+import { DeleteDialog } from '~/client/components/delete-dialog'
 import { accountQuery } from '~/client/queries/account'
+import { afterWrite } from '~/client/queries/keys'
 import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 
@@ -13,21 +14,6 @@ export const Route = createFileRoute('/settings/connections/')({
 function Connections() {
   const { data: account } = useSuspenseQuery(accountQuery)
   const queryClient = useQueryClient()
-  const [pending, setPending] = useState<string | null>(null)
-  const [error, setError] = useState('')
-  async function revoke(clientId: string) {
-    if (!window.confirm('Revoke this app’s access to AgentSplit? It must connect again to regain access.')) return
-    setPending(clientId)
-    setError('')
-    try {
-      await rpc((api) => api('account.revokeConnection', { clientId }))
-      await queryClient.invalidateQueries({ queryKey: accountQuery.queryKey })
-    } catch {
-      setError('Could not revoke the connection. Please try again.')
-    } finally {
-      setPending(null)
-    }
-  }
   return (
     <main className="mx-auto w-full max-w-3xl space-y-6 px-4 py-8 sm:px-8">
       <Link className="text-sm underline" to="/settings">
@@ -39,11 +25,6 @@ function Connections() {
         are managed separately.
       </p>
       <div className="space-y-4">
-        {error && (
-          <p role="alert" className="text-destructive">
-            {error}
-          </p>
-        )}
         {account.connections.length === 0 ? (
           <p>No connected apps yet.</p>
         ) : (
@@ -55,9 +36,20 @@ function Connections() {
                   <p className="break-all text-xs text-muted-foreground">{c.clientId}</p>
                   <p className="mt-1 text-sm">{c.canWrite ? 'Read and manage your groups' : 'Read only'}</p>
                 </div>
-                <Button size="sm" variant="outline" disabled={pending !== null} onClick={() => void revoke(c.clientId)}>
-                  {pending === c.clientId ? 'Revoking…' : 'Revoke access'}
-                </Button>
+                <DeleteDialog
+                  trigger={
+                    <Button size="sm" variant="outline">
+                      Revoke access
+                    </Button>
+                  }
+                  title="Revoke this app’s access to AgentSplit?"
+                  description="It must connect again to regain access."
+                  pending="Revoking…"
+                  onConfirm={async () => {
+                    await rpc((api) => api('account.revokeConnection', { clientId: c.clientId }))
+                    await afterWrite({ queryClient, scope: 'account' })
+                  }}
+                />
               </li>
             ))}
           </ul>

@@ -2,10 +2,10 @@ import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { authClient } from '~/client/auth-client'
-import { consentClientQuery, errorMessage } from '~/client/queries/account'
-import { meQuery } from '~/client/queries'
+import { describeError } from '~/client/errors'
+import { consentClientQuery, meQuery } from '~/client/queries/account'
 import { Button } from '~/client/ui/button'
-import { OAUTH_READ_SCOPE, OAUTH_SCOPES, OAUTH_WRITE_SCOPE } from '~/shared/account'
+import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from '~/shared/account'
 
 export const Route = createFileRoute('/settings/connections/consent')({
   component: Consent,
@@ -13,46 +13,31 @@ export const Route = createFileRoute('/settings/connections/consent')({
 
 type Request = { clientId: string; redirectHost: string; scopes: string[]; claims: string[] }
 
-const CLAIM_SECTIONS = ['userinfo', 'id_token']
-
-/** The OIDC claims request: an object with optional userinfo and id_token objects of short claim names. */
-function requestedClaims(raw: string | null): string[] | null {
-  if (raw === null) return []
-  if (raw.length > 8192) return null
-  let parsed: unknown
+/** The claim names of the OIDC claims request, to list them; Better Auth checks the request itself. */
+function requestedClaims(raw: string | null): string[] {
   try {
-    parsed = JSON.parse(raw)
+    const parsed: unknown = JSON.parse(raw ?? '{}')
+    if (typeof parsed !== 'object' || parsed === null) return []
+    const sections = Object.entries(parsed).filter(([section]) => section === 'userinfo' || section === 'id_token')
+    return [...new Set(sections.flatMap(([, value]) => (typeof value === 'object' && value !== null ? Object.keys(value) : [])))]
   } catch {
-    return null
+    return []
   }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null
-  const names = new Set<string>()
-  for (const [section, value] of Object.entries(parsed)) {
-    // Other members are ignored, as the current app's schema does.
-    if (!CLAIM_SECTIONS.includes(section)) continue
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
-    for (const name of Object.keys(value)) {
-      if (name.length > 80) return null
-      names.add(name)
-    }
-  }
-  return [...names]
 }
 
-/** Reads the signed authorization query that Better Auth sent here, or null when it is unusable. */
+/**
+ * What the screen shows of the signed authorization query that Better Auth
+ * sent here. Better Auth verifies the query when the user answers, so this
+ * only reads it; without a client or scopes there is nothing to show.
+ */
 function parseRequest(search: string): Request | null {
   const query = new URLSearchParams(search)
   const clientId = query.get('client_id') ?? ''
   const scopes = (query.get('scope') ?? '').split(' ').filter(Boolean)
-  const claims = requestedClaims(query.get('claims'))
-  let redirect: URL
-  try {
-    redirect = new URL(query.get('redirect_uri') ?? '')
-  } catch {
-    return null
-  }
-  if (!clientId || !query.get('sig') || claims === null || !scopes.length || scopes.some((s) => !OAUTH_SCOPES.includes(s))) return null
-  return { clientId, redirectHost: redirect.host || redirect.href, scopes, claims }
+  if (!clientId || !scopes.length) return null
+  const redirect = query.get('redirect_uri') ?? ''
+  const redirectHost = URL.canParse(redirect) ? new URL(redirect).host || redirect : redirect
+  return { clientId, redirectHost, scopes, claims: requestedClaims(query.get('claims')) }
 }
 
 function Consent() {
@@ -87,11 +72,11 @@ function ConsentScreen(props: { request: Request; clientName: string | null }) {
         method: 'POST',
         body: { accept, scope: scopes.filter((s) => allowWrite || s !== OAUTH_WRITE_SCOPE).join(' ') },
       })
-      if (result.error || !result.data?.url) throw new Error(errorMessage(result.error, 'Unable to authorize this connection'))
+      if (result.error || !result.data?.url) throw new Error(describeError(result.error, 'Unable to authorize this connection').message)
       // Better Auth's client already follows redirect=true responses. Avoid a second navigation.
       if (!result.data.redirect) window.location.assign(result.data.url)
     } catch (cause) {
-      setError(errorMessage(cause, 'Unable to authorize this connection'))
+      setError(describeError(cause, 'Unable to authorize this connection').message)
       setPending(false)
     }
   }

@@ -1,18 +1,17 @@
 import { useState, type ReactNode } from 'react'
+import { describeError } from '~/client/errors'
 import { Alert, AlertDescription } from '~/client/ui/alert'
 import { Button } from '~/client/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/client/ui/card'
 import { Input } from '~/client/ui/input'
 import { Label } from '~/client/ui/label'
-import { NativeSelect } from '~/client/ui/native-select'
+import { CurrencySelect } from '~/client/ui/currency-select'
 import { Textarea } from '~/client/ui/textarea'
-import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
+import type { CurrencyCode } from '~/shared/currencies'
 import { normalizeSlug, slugProblem } from '~/shared/groups'
 import { LIMITS } from '~/shared/limits'
 
-export type GroupFormValues = { name: string; slug: string; information: string; defaultCurrency: CurrencyCode }
-
-const CODES = Object.keys(CURRENCIES).sort() as CurrencyCode[]
+type GroupFormValues = { name: string; slug: string; information: string; defaultCurrency: CurrencyCode }
 
 /** The problem with each field, checked as the server checks it, so the form can say so before saving. */
 function problems(values: GroupFormValues) {
@@ -82,7 +81,7 @@ export function GroupForm(props: {
         try {
           await props.onSubmit({ ...values, name: values.name.trim() })
         } catch (e) {
-          setError(e instanceof Error ? e.message : String(e))
+          setError(describeError(e).message)
         } finally {
           setSaving(false)
         }
@@ -131,19 +130,13 @@ export function GroupForm(props: {
           </div>
           <div className="space-y-2">
             <Label htmlFor="group-currency">Default currency</Label>
-            <NativeSelect
+            <CurrencySelect
               id="group-currency"
               className="h-11"
               value={values.defaultCurrency}
               aria-describedby="group-currency-help"
-              onChange={(e) => set('defaultCurrency', e.target.value as CurrencyCode)}
-            >
-              {CODES.map((code) => (
-                <option key={code} value={code}>
-                  {code} · {CURRENCIES[code].name}
-                </option>
-              ))}
-            </NativeSelect>
+              onChange={(currency) => set('defaultCurrency', currency)}
+            />
             <p id="group-currency-help" className="text-xs text-muted-foreground">
               {props.mode === 'edit'
                 ? 'Changes the default for new expenses only. Existing amounts, currencies and balances stay unchanged.'
