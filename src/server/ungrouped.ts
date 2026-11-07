@@ -4,19 +4,19 @@
 // Ported from the current app's src/lib/ungrouped-expenses.ts and
 // src/lib/ungrouped-access.ts; the database triggers in
 // db/migrations/0003_private_contexts.sql enforce the same rules.
-import { and, eq, isNull, sql, type SQL } from 'drizzle-orm'
-import { activities, expenses, groups, invitations, memberships, participants, privateContexts, privatePeople } from '../../db/schema/app'
+import { and, eq, isNull } from 'drizzle-orm'
+import { expenses, groups, invitations, memberships, participants, privateContexts, privatePeople } from '../../db/schema/app'
 import { Conflict, Forbidden, Invalid, Unauthorized } from '../shared/api'
 import type { ExpenseDraft } from '../shared/expense-rules'
 import { EMAIL } from '../shared/groups'
 import { LIMITS, participantLimitMessage } from '../shared/limits'
-import type { V2GroupSnapshot } from '../shared/snapshots'
-import type { Db } from './db'
-import { contacts } from './feed'
-import { groupSnapshotOf, invitationTokenHash, newInvitationToken } from './groups'
-import { randomId } from './ids'
 import { requireMember, type Principal } from './access'
-import { actor, createExpense } from './ledger'
+import { groupSnapshot, recordGroupEvent } from './activity'
+import type { Db } from './db'
+import { invitationTokenHash, newInvitationToken } from './groups'
+import { randomId } from './ids'
+import { createExpense } from './ledger'
+import { contacts } from './people'
 
 export type PrivatePerson =
   | { readonly kind: 'account'; readonly id: string; readonly userId: string }
@@ -101,16 +101,12 @@ export async function createUngroupedExpense(
       p.userId ? [{ userId: p.userId, groupId, participantId: p.id, role: p.userId === data.principal.userId ? ('admin' as const) : ('member' as const) }] : [],
     ),
   )
-  await tx.insert(activities).values({
-    id: randomId(),
+  await recordGroupEvent(tx, {
     groupId,
     type: 'create_group',
+    principal: data.principal,
     data: 'Private expense',
-    snapshot: groupSnapshotOf({
-      group: { ...group, information: '' },
-      participants: stored.map((p) => ({ id: p.id, name: p.name })),
-    }) satisfies typeof V2GroupSnapshot.Encoded,
-    ...actor(data.principal),
+    snapshot: groupSnapshot({ group: { ...group, information: '' }, participants: stored }),
   })
   const toStored = new Map(stored.map((p) => [p.localId, p.id]))
   const local = (id: string) => toStored.get(id) ?? id
@@ -186,7 +182,7 @@ export async function renewPrivateInvitation(tx: Db, data: { principal: Principa
     createdBy: data.principal.userId,
     expiresAt,
   })
-  await tx.insert(activities).values({ id: randomId(), groupId: membership.groupId, type: 'update_group', data: 'Private expense invitation renewed', ...actor(data.principal) })
+  await recordGroupEvent(tx, { groupId: membership.groupId, type: 'update_group', principal: data.principal, data: 'Private expense invitation renewed' })
   return {
     groupId: membership.groupId,
     id,
@@ -195,50 +191,5 @@ export async function renewPrivateInvitation(tx: Db, data: { principal: Principa
     participantName: person.name,
     expiresAt: expiresAt.toISOString(),
     url: new URL(`/invite/${secret}`, data.baseUrl).href,
-  }
-}
-
-type PrivateWrite = { readonly op: 'create' | 'update'; readonly draft: ExpenseDraft } | { readonly op: 'delete' }
-
-/** The facts of a private context that its write rules need. */
-export type PrivateContext = { expense_id: string; people: string[]; original_live: boolean; live_payments: number }
-
-/**
- * The private context of group `groupId` as one JSON value, or null for a
- * named group. The expense write context (ledger.ts) reads it in the same
- * statement as the membership and the expense.
- */
-export const privateContextOf = (groupId: SQL) => sql`(
-  SELECT json_build_object('expense_id', pc.expense_id,
-    'people', coalesce((SELECT json_agg(pp.participant_id) FROM private_people pp WHERE pp.group_id = pc.group_id), '[]'),
-    'original_live', EXISTS (SELECT 1 FROM expenses o WHERE o.id = pc.expense_id AND o.deleted_at IS NULL),
-    'live_payments', (SELECT count(*)::int FROM expenses x WHERE x.group_id = pc.group_id AND x.id <> pc.expense_id AND x.deleted_at IS NULL))
-  FROM private_contexts pc WHERE pc.group_id = ${groupId})`
-
-/**
- * The write rules inside a private context, checked by every expense write
- * (ledger.ts) before it changes anything. A named group passes unchanged.
- */
-export function assertPrivateWrite(context: PrivateContext | null, data: { expenseId: string } & PrivateWrite) {
-  if (!context) return
-  const original = data.expenseId === context.expense_id
-  if (data.op === 'delete') {
-    if (original && context.live_payments > 0)
-      throw new Invalid({ message: 'Remove this expense’s recorded repayments before deleting the expense.', reason: 'state' })
-    return
-  }
-  const { draft } = data
-  if (draft.recurrence !== 'none') throw new Invalid({ message: 'Ungrouped expenses do not recur.', field: 'recurrence' })
-  if (original && draft.kind === 'payment') throw new Invalid({ message: 'Record repayments separately from the original expense.', field: 'kind' })
-  if (!original && draft.kind !== 'payment') throw new Invalid({ message: 'Create a separate ungrouped expense for a new purchase.', field: 'kind' })
-  if (draft.kind === 'expense') {
-    const involved = new Set([...draft.payers.map((p) => p.participantId), ...draft.shares.map((s) => s.participantId)])
-    if (involved.size !== context.people.length || context.people.some((id) => !involved.has(id)))
-      throw new Invalid({
-        message: 'The people with access to this private expense cannot be changed. Create a new expense for a different set of people.',
-        field: 'shares',
-      })
-  } else if (data.op === 'create' && !context.original_live) {
-    throw new Invalid({ message: 'Cannot record a repayment for a deleted expense.' })
   }
 }

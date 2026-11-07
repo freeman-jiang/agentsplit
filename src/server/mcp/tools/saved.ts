@@ -3,13 +3,13 @@
 // stored formats arrive as one SavedExpense, so the output has one shape.
 import { Schema } from 'effect'
 import type { SavedExpense, SavedState } from '../../../shared/history'
+import { minorOf } from '../../../shared/minor'
 import { preferredPayer } from '../../../shared/split'
 import { RECURRENCE_NAMES, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
 import {
   DateTime,
   Id,
   isCurrencyCode,
-  minorOf,
   Money,
   NonNegativeInt,
   NullableString,

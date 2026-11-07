@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import type { CurrencyCode } from './currencies'
 import { minor, type Minor } from './minor'
-import { compareIds } from './split'
+import { compareIds } from './ids'
 
 /** One ledger entry as balances see it: who paid and who owes, in one currency. */
 export type LedgerEntry = {

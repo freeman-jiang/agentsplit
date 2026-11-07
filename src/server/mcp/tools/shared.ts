@@ -3,7 +3,7 @@ import { Schema } from 'effect'
 import { RecordedTime as HistoryRecordedTime } from '../../../shared/api/history'
 import { CURRENCIES, type CurrencyCode } from '../../../shared/currencies'
 import { isRealDate } from '../../../shared/expense-rules'
-import { DECIMAL, formatMinor, minor, minorOrNull, type Minor } from '../../../shared/minor'
+import { DECIMAL, formatMinor, minor } from '../../../shared/minor'
 import { RECURRENCE_LIST, SPLIT_MODE_LIST } from '../../../shared/vocabulary'
 
 /** The app origin, without a trailing slash, for links. */
@@ -50,13 +50,6 @@ export const HistoryFields = {
 /** Decimal text at the currency's full precision. Stored values are minor units. */
 export const money = (amount: string, currency: string) =>
   isCurrencyCode(currency) ? formatMinor({ amount: minor(BigInt(amount)), currency }) : amount
-
-/** Minor units of decimal text that the server formatted; it always fits its currency. */
-export const minorOf = (amount: string, currency: CurrencyCode): Minor => {
-  const value = minorOrNull({ amount, currency })
-  if (value === null) throw new Error(`${amount} is not a ${currency} amount`)
-  return value
-}
 
 export const isCurrencyCode = (code: string): code is CurrencyCode => code in CURRENCIES
 

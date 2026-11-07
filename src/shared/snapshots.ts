@@ -61,13 +61,14 @@ const V1Group = Schema.Struct({
   }),
 })
 
-/** v2's snapshot (src/server/ledger.ts `snapshot`). */
-const V2Expense = Schema.Struct({
+/** v2's snapshot. The writer (expenseSnapshot in src/server/activity.ts) is checked against it. */
+export const V2ExpenseSnapshot = Schema.Struct({
   schemaVersion: Schema.Literal(2),
   kind: Schema.Literals(EXPENSE_KINDS),
   group: Schema.optional(Schema.Struct({ id: Schema.String, name: Schema.String, slug: Schema.NullOr(Schema.String), currency: Schema.String })),
   expense: Schema.Struct({
     id: Schema.String,
+    groupId: Schema.optional(Schema.String),
     revision: Schema.Number,
     kind: Schema.Literals(EXPENSE_KINDS),
     title: Schema.String,
@@ -82,8 +83,11 @@ const V2Expense = Schema.Struct({
     shares: Schema.Array(Schema.Struct({ participantId: Schema.String, amount: Schema.String, weight: Schema.String, name: Schema.String })),
     recurrence: Schema.Literals(RECURRENCES),
     createdAt: Schema.String,
+    updatedAt: Schema.optional(Schema.String),
     documentCount: Schema.Number,
-    documents: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.String, url: Schema.String }))),
+    documents: Schema.optional(
+      Schema.Array(Schema.Struct({ id: Schema.String, url: Schema.String, width: Schema.optional(Schema.Number), height: Schema.optional(Schema.Number) })),
+    ),
     originalAmount: Schema.optional(Schema.NullOr(Schema.String)),
     originalCurrency: Schema.optional(Schema.NullOr(Schema.String)),
     conversionRate: Schema.optional(Schema.NullOr(Schema.String)),
@@ -91,8 +95,8 @@ const V2Expense = Schema.Struct({
 })
 
 /**
- * The v2 group snapshot that group writes must store: the settings and the
- * participants at write time. Kept here so the reader and the writers agree.
+ * The v2 group snapshot: the settings and the participants at write time. The
+ * writer (groupSnapshot in src/server/activity.ts) is checked against it.
  */
 export const V2GroupSnapshot = Schema.Struct({
   schemaVersion: Schema.Literal(2),
@@ -130,7 +134,7 @@ const V2PrivateGroupRow = Schema.Struct({
 
 const decodeV1Expense = Schema.decodeUnknownSync(V1Expense)
 const decodeV1Group = Schema.decodeUnknownSync(V1Group)
-const decodeV2Expense = Schema.decodeUnknownSync(V2Expense)
+const decodeV2Expense = Schema.decodeUnknownSync(V2ExpenseSnapshot)
 const decodeV2Group = Schema.decodeUnknownSync(Schema.Union([V2GroupSnapshot, V2PrivateGroupRow]))
 
 class UnreadableSnapshot extends Error {}
@@ -218,7 +222,7 @@ function fromV1(raw: typeof V1Expense.Type, categories: ReadonlyMap<number, Cate
   }
 }
 
-function fromV2(raw: typeof V2Expense.Type, categories: ReadonlyMap<number, Category>): SavedExpense {
+function fromV2(raw: typeof V2ExpenseSnapshot.Type, categories: ReadonlyMap<number, Category>): SavedExpense {
   const e = raw.expense
   const currency = e.currency
   const money = (amount: string) => formatMinor({ amount: toMinor(amount, currency), currency })

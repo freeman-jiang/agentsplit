@@ -15,7 +15,8 @@ import { ROLES, type Role } from '../../../shared/vocabulary'
 import { memberCte, requireActive } from '../../access'
 import type { Db } from '../../db'
 import * as groups from '../../groups'
-import { displayName, iso } from '../../sql'
+import { participantName } from '../../people'
+import { iso } from '../../sql'
 import { renewPrivateInvitation } from '../../ungrouped'
 import { defineTool, ToolError } from '../registry'
 import { DateTime, Id, isCurrencyCode, NonNegativeInt, NullableString, origin } from './shared'
@@ -137,7 +138,7 @@ export const getGroup = defineTool({
       WITH ${memberCte({ principal, group: groupId })}
       SELECT ${groupColumns}, g.role, g.participant_id, g.active,
         (SELECT pc.expense_id FROM private_contexts pc WHERE pc.group_id = g.id) AS context_expense_id,
-        coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${displayName({ group: sql`p.group_id`, participant: sql`p.id`, name: sql`p.name` })}, 'groupId', p.group_id) ORDER BY p.created_at, p.id)
+        coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${participantName}, 'groupId', p.group_id) ORDER BY p.created_at, p.id)
           FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
         coalesce((SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'role', mb.role, 'participantId', mb.participant_id) ORDER BY mb.created_at, u.id)
           FROM memberships mb JOIN "user" u ON u.id = mb.user_id WHERE mb.group_id = g.id AND mb.active), '[]') AS members,
@@ -180,7 +181,7 @@ const GroupWritten = Schema.Struct({ groupId: Id, group: Schema.Struct({ ...Grou
 async function readGroup(db: Db, groupId: string): Promise<typeof GroupWritten.Encoded> {
   const result = await db.execute<GroupRow & { participants: { id: string; name: string; groupId: string }[] }>(sql`
     SELECT ${groupColumns},
-      coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${displayName({ group: sql`p.group_id`, participant: sql`p.id`, name: sql`p.name` })}, 'groupId', p.group_id) ORDER BY p.created_at, p.id)
+      coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${participantName}, 'groupId', p.group_id) ORDER BY p.created_at, p.id)
         FROM participants p WHERE p.group_id = g.id), '[]') AS participants
     FROM groups g WHERE g.id = ${groupId}`)
   const g = result.rows[0]

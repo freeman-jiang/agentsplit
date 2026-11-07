@@ -4,14 +4,14 @@
 // figures, the Log and the files come from src/server/stats.ts, history.ts
 // and export.ts; this file only maps names.
 import { Schema } from 'effect'
-import { sql } from 'drizzle-orm'
 import { LIMITS } from '../../../shared/limits'
-import { minor } from '../../../shared/minor'
+import { minorOf } from '../../../shared/minor'
 import { preferredPayer } from '../../../shared/split'
-import { ACTIVITY_TYPE_BY_NAME, ACTIVITY_TYPE_LIST, ACTIVITY_TYPE_NAMES, RECURRENCE_NAMES, SPLIT_MODE_NAMES, type ExpenseKind, type Recurrence, type SplitMode } from '../../../shared/vocabulary'
+import { ACTIVITY_TYPE_BY_NAME, ACTIVITY_TYPE_LIST, ACTIVITY_TYPE_NAMES, RECURRENCE_NAMES, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
+import type { Db } from '../../db'
+import { loadExpenses } from '../../expense-read'
 import * as exports from '../../export'
 import * as history from '../../history'
-import { iso } from '../../sql'
 import * as stats from '../../stats'
 import { defineTool } from '../registry'
 import { Snapshot, snapshotOf } from './saved'
@@ -177,65 +177,37 @@ const LiveExpense = Schema.Struct({
   revision: NonNegativeInt,
 })
 
-type LiveRow = {
-  id: string
-  group_id: string
-  title: string
-  vendor: string | null
-  amount: string
-  currency: string
-  created_at: string
-  expense_date: string
-  category_id: number
-  original_amount: string | null
-  original_currency: string | null
-  conversion_rate: string | null
-  kind: ExpenseKind
-  split_mode: SplitMode
-  notes: string
-  recurrence: Recurrence
-  link_id: string | null
-  revision: number
-  payers: { participantId: string; amount: string }[]
-}
-
-/** The live rows of the expenses on a page. listActivities has checked access to the group. */
-async function liveExpenses(db: Parameters<typeof history.listActivities>[0], data: { groupId: string; ids: readonly string[] }) {
-  if (data.ids.length === 0) return new Map<string, typeof LiveExpense.Encoded>()
-  const result = await db.execute<LiveRow>(sql`
-    SELECT e.id, e.group_id, e.title, e.vendor, e.amount::text AS amount, e.currency, ${iso(sql`e.created_at`)} AS created_at,
-      e.expense_date::text AS expense_date, e.category_id, e.original_amount::text AS original_amount, e.original_currency, e.conversion_rate,
-      e.kind, e.split_mode, e.notes, e.recurrence, e.revision,
-      (SELECT l.id FROM recurring_links l WHERE l.current_frame_expense_id = e.id LIMIT 1) AS link_id,
-      coalesce((SELECT json_agg(json_build_object('participantId', p.participant_id, 'amount', p.amount::text)) FROM expense_payers p WHERE p.expense_id = e.id), '[]') AS payers
-    FROM expenses e
-    WHERE e.group_id = ${data.groupId} AND e.deleted_at IS NULL AND e.id IN (${sql.join(data.ids.map((id) => sql`${id}`), sql`, `)})`)
+/** The live expenses on a page, in the list_activity shape. listActivities has checked access to the group. */
+async function liveExpenses(db: Db, data: { groupId: string; ids: readonly string[] }) {
+  const rows = await loadExpenses(db, { ids: data.ids, groupId: data.groupId })
   return new Map(
-    result.rows.map((e) => [
-      e.id,
-      {
-        id: e.id,
-        groupId: e.group_id,
-        title: e.title,
-        vendor: e.vendor,
-        amount: money(e.amount, e.currency),
-        currencyCode: e.currency,
-        createdAt: e.created_at,
-        expenseDate: `${e.expense_date}T00:00:00.000Z`,
-        categoryId: e.category_id,
-        paidById: e.payers.length ? preferredPayer(e.payers.map((p) => ({ participantId: p.participantId, amount: minor(BigInt(p.amount)) }))) : '',
-        originalAmount: e.original_amount === null || e.original_currency === null ? null : money(e.original_amount, e.original_currency),
-        originalCurrency: e.original_currency,
-        conversionRate: e.conversion_rate,
-        isReimbursement: e.kind === 'payment',
-        splitMode: SPLIT_MODE_NAMES[e.split_mode],
-        notes: e.notes === '' ? null : e.notes,
-        recurrenceRule: RECURRENCE_NAMES[e.recurrence],
-        recurringExpenseLinkId: e.link_id,
-        deletedAt: null,
-        revision: e.revision,
-      },
-    ]),
+    rows
+      .filter((e) => !e.deleted)
+      .map((e): [string, typeof LiveExpense.Encoded] => [
+        e.id,
+        {
+          id: e.id,
+          groupId: e.groupId,
+          title: e.title,
+          vendor: e.vendor,
+          amount: e.amount,
+          currencyCode: e.currency,
+          createdAt: e.createdAt,
+          expenseDate: `${e.expenseDate}T00:00:00.000Z`,
+          categoryId: e.categoryId,
+          paidById: e.payers.length ? preferredPayer(e.payers.map((p) => ({ participantId: p.participantId, amount: minorOf(p.amount, e.currency) }))) : '',
+          originalAmount: e.originalAmount,
+          originalCurrency: e.originalCurrency,
+          conversionRate: e.conversionRate,
+          isReimbursement: e.kind === 'payment',
+          splitMode: SPLIT_MODE_NAMES[e.splitMode],
+          notes: e.notes === '' ? null : e.notes,
+          recurrenceRule: RECURRENCE_NAMES[e.recurrence],
+          recurringExpenseLinkId: e.link?.id ?? null,
+          deletedAt: null,
+          revision: e.revision,
+        },
+      ]),
   )
 }
 

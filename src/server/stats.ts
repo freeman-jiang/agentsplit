@@ -3,68 +3,42 @@
 // recurring expenses (DECISIONS.md, P-STATS-44).
 import { sql } from 'drizzle-orm'
 import type { CurrencyCode } from '../shared/currencies'
-import { formatMinor, minor, type Minor } from '../shared/minor'
+import { formatMinor, minor, minorOf, type Minor } from '../shared/minor'
 import * as stats from '../shared/stats'
-import type { ExpenseKind, Recurrence } from '../shared/vocabulary'
-import type { Db } from './db'
 import { memberCte, requireActive, type Principal } from './access'
-
-type Row = {
-  id: string
-  kind: ExpenseKind
-  title: string
-  vendor: string | null
-  expenseDate: string
-  createdAt: string
-  currency: CurrencyCode
-  amount: string
-  categoryId: number
-  grouping: string
-  name: string
-  recurrence: Recurrence
-  /** Recurring and still the current frame of its series. */
-  activeRecurring: boolean
-  payers: { participantId: string; amount: string }[]
-  shares: { participantId: string; amount: string }[]
-}
+import type { Db } from './db'
+import { expenseColumns, isActiveSeries, toExpense, type ExpenseRow } from './expense-read'
 
 type Head = {
   active: boolean | null
   participant_id: string | null
   default_currency: CurrencyCode
   participants: { id: string; name: string }[]
-  expenses: Row[]
+  expenses: ExpenseRow[]
 }
 
-/**
- * The group's live expenses, newest first (expense date, then creation), with
- * their resolved parts. Minor units travel as text.
- */
+/** The group's live expenses, newest first (expense date, then creation), in the units the figures use. */
 async function load(db: Db, data: { principal: Principal; group: string }) {
   const result = await db.execute<Head>(sql`
     WITH ${memberCte(data)}
     SELECT g.active, g.participant_id, g.default_currency,
       coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id) FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
-      coalesce((SELECT json_agg(json_build_object(
-          'id', e.id, 'kind', e.kind, 'title', e.title, 'vendor', e.vendor, 'expenseDate', e.expense_date::text,
-          'createdAt', e.created_at, 'currency', e.currency, 'amount', e.amount::text, 'categoryId', e.category_id,
-          'grouping', c.grouping, 'name', c.name, 'recurrence', e.recurrence,
-          'activeRecurring', e.recurrence <> 'none' AND EXISTS (SELECT 1 FROM recurring_links r WHERE r.current_frame_expense_id = e.id AND r.next_expense_created_at IS NULL),
-          'payers', (SELECT json_agg(json_build_object('participantId', x.participant_id, 'amount', x.amount::text) ORDER BY x.participant_id) FROM expense_payers x WHERE x.expense_id = e.id),
-          'shares', (SELECT json_agg(json_build_object('participantId', x.participant_id, 'amount', x.amount::text) ORDER BY x.participant_id) FROM expense_shares x WHERE x.expense_id = e.id)
-        ) ORDER BY e.expense_date DESC, e.created_at DESC, e.id DESC)
-        FROM expenses e JOIN categories c ON c.id = e.category_id
-        WHERE e.group_id = g.id AND e.deleted_at IS NULL), '[]') AS expenses
+      coalesce((SELECT json_agg(x ORDER BY x.expense_date DESC, x.created_key DESC, x.id DESC) FROM (
+          SELECT ${expenseColumns()}, e.created_at AS created_key FROM expenses e WHERE e.group_id = g.id AND e.deleted_at IS NULL) x), '[]') AS expenses
     FROM g
   `)
   const head = requireActive(result.rows[0])
-  const expenses = head.expenses.map((e) => ({
-    ...e,
-    amount: minor(BigInt(e.amount)),
-    category: { grouping: e.grouping, name: e.name },
-    payers: (e.payers ?? []).map((p) => ({ participantId: p.participantId, amount: minor(BigInt(p.amount)) })),
-    shares: (e.shares ?? []).map((s) => ({ participantId: s.participantId, amount: minor(BigInt(s.amount)) })),
-  }))
+  const expenses = head.expenses.map((row) => {
+    const e = toExpense(row)
+    return {
+      ...e,
+      amount: minorOf(e.amount, e.currency),
+      category: e.category ?? { grouping: '', name: '' },
+      activeSeries: isActiveSeries(e),
+      payers: e.payers.map((p) => ({ participantId: p.participantId, amount: minorOf(p.amount, e.currency) })),
+      shares: e.shares.map((s) => ({ participantId: s.participantId, amount: minorOf(s.amount, e.currency) })),
+    }
+  })
   return { head, expenses }
 }
 
@@ -79,7 +53,7 @@ export async function statsOverview(
   data: { principal: Principal; group: string; currency?: CurrencyCode; from?: string; to?: string; today?: string; participantId?: string },
 ) {
   const { head, expenses } = await load(db, data)
-  const recurringAll = expenses.filter((e) => e.activeRecurring && e.kind === 'expense')
+  const recurringAll = expenses.filter((e) => e.activeSeries)
   const { list, preferred } = stats.statsCurrencies({ used: [...expenses, ...recurringAll].map((e) => e.currency), groupCurrency: head.default_currency })
   const currency = data.currency ?? preferred
   const range = normalRange({ from: data.from, to: data.to })

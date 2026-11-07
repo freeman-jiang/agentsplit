@@ -1,4 +1,5 @@
 // Splitting without Effect, for the client and the server alike.
+import { compareIds } from './ids'
 import { minor, sumMinor, type Minor } from './minor'
 import type { SplitMode } from './vocabulary'
 
@@ -62,9 +63,6 @@ export function apportion(data: {
   }
   return parts.map((part) => minor(negative ? -part : part))
 }
-
-/** Code-unit order, as the current app sorts participant IDs (`a < b`). */
-export const compareIds = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
 export type ShareInput = {
   readonly amount: Minor

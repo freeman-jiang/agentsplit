@@ -4,23 +4,25 @@
 // which checks membership, validates, records history and checks revisions.
 // Multiple payers are new: `payers` beside the current single `paidBy`.
 import { Schema } from 'effect'
-import { sql, type SQL } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import { Conflict, NotFound } from '../../../shared/api'
 import type { ExpenseDraft } from '../../../shared/expense-rules'
 import type { SavedExpense } from '../../../shared/history'
 import { GROUP_ID } from '../../../shared/ids'
 import { LIMITS, mebibytes } from '../../../shared/limits'
-import { formatMinor, minor } from '../../../shared/minor'
+import { formatMinor, minor, minorOf } from '../../../shared/minor'
 import { preferredPayer } from '../../../shared/split'
-import { RECURRENCE_BY_NAME, RECURRENCE_NAMES, SPLIT_MODE_BY_NAME, SPLIT_MODE_NAMES, RECEIPT_CONTENT_TYPES, type ExpenseKind, type Recurrence, type SplitMode } from '../../../shared/vocabulary'
+import { RECURRENCE_BY_NAME, RECURRENCE_NAMES, SPLIT_MODE_BY_NAME, SPLIT_MODE_NAMES, RECEIPT_CONTENT_TYPES } from '../../../shared/vocabulary'
 import { memberCte, requireMember, type Principal } from '../../access'
+import { attributionEvents, attributionOf, type AttributionEvent } from '../../activity'
 import type { Db } from '../../db'
+import { expenseColumns, involves, toExpense, type ExpenseRow, type ReadExpense } from '../../expense-read'
 import * as history from '../../history'
 import { randomId } from '../../ids'
 import * as ledger from '../../ledger'
 import { attachUploads, prepareUploads, UploadError } from '../../receipt-uploads'
 import { receiptDownloadPath } from '../../receipts'
-import { activitySource, displayName, documentStatesJson, escapeLike, involves, iso, notBaseline, type Tombstone } from '../../sql'
+import { escapeLike } from '../../sql'
 import { createUngroupedExpense } from '../../ungrouped'
 import { PAYMENT_RULES, RECORDING_RULES } from '../instructions'
 import { defineTool, ToolError } from '../registry'
@@ -32,7 +34,6 @@ import {
   Decimal,
   HistoryFields,
   Id,
-  minorOf,
   money,
   Money,
   NonNegativeInt,
@@ -260,159 +261,99 @@ const ExpenseWrite = {
 
 // ---------- reading ----------
 
-type Event = { type: 'create_expense' | 'update_expense'; time: string; userId: string | null; actorName: string | null; source: string; currentName: string | null }
 type Attribution = typeof Attribution.Type
 
-/**
- * The create and update events of one expense for attribution, oldest first,
- * without baselines. `through` keeps the events up to one recorded event; the
- * names are then the ones recorded at the time, not the accounts' current
- * names, as in the current app (P-FEED-40).
- */
-const attributionEvents = (data: { groupId: SQL; expenseId: SQL; through?: SQL }) => sql`
-  coalesce((SELECT json_agg(json_build_object('type', a.type, 'time', ${iso(sql`a.time`)}, 'userId', a.actor_user_id, 'actorName', a.actor_name, 'source', ${activitySource(sql`a`)},
-      'currentName', ${data.through === undefined ? sql`(SELECT u.name FROM "user" u WHERE u.id = a.actor_user_id AND u.email_verified)` : sql`NULL`}) ORDER BY a.sequence)
-    FROM activities a WHERE a.expense_id = ${data.expenseId} AND a.group_id = ${data.groupId} AND a.type IN ('create_expense', 'update_expense') AND ${notBaseline(sql`a`)}
-      ${data.through === undefined ? sql`` : sql`AND a.sequence <= (SELECT b.sequence FROM activities b WHERE b.id = ${data.through})`}), '[]')`
-
-/** The current app's expenseAttributions: authors from the audit log, never from the payer. */
-function attribution(events: readonly Event[], viewerUserId: string): Attribution {
-  const row: { -readonly [K in keyof Attribution]: Attribution[K] } = { createdBy: null, updatedBy: null }
-  for (const event of events) {
-    const actor =
-      event.userId || event.source === 'system'
-        ? { userId: event.userId, name: event.currentName ?? event.actorName ?? (event.source === 'system' ? 'Automatic recurrence' : 'Member'), source: event.source }
-        : null
-    if (event.type === 'create_expense') {
-      row.createdBy ??= actor
-      row.createdAt ??= event.time
-    } else {
-      row.updatedBy = actor
-      row.updatedAt = event.time
-      if (event.userId === viewerUserId) row.lastEditedByYouAt = event.time
-    }
+/** The attribution in this tool's wire form: a time without an event is left out, as in the current app. */
+function attribution(data: { events: readonly AttributionEvent[]; viewer: string }): Attribution {
+  const { createdAt, updatedAt, lastEditedByYouAt, createdBy, updatedBy } = attributionOf(data)
+  return {
+    ...(createdAt === null ? {} : { createdAt }),
+    ...(updatedAt === null ? {} : { updatedAt }),
+    ...(lastEditedByYouAt === null ? {} : { lastEditedByYouAt }),
+    createdBy,
+    updatedBy,
   }
-  return row
 }
 
-type Row = {
-  id: string
-  group_id: string
-  revision: number
-  kind: ExpenseKind
-  title: string
-  vendor: string | null
-  notes: string
-  category_id: number
-  category: { id: number; name: string; grouping: string } | null
-  expense_date: string
-  currency: string
-  amount: string
-  original_amount: string | null
-  original_currency: string | null
-  conversion_rate: string | null
-  split_mode: SplitMode
-  recurrence: Recurrence
-  created_at: string
-  deleted_at: string | null
-  payers: { id: string; name: string; amount: string }[]
-  shares: { id: string; name: string; weight: string }[]
-  events: Event[]
-  document_count: number
-  documents: { id: string; url: string; width: number; height: number; receiptId: string | null; deleted: Tombstone | null }[] | null
-  link: { id: string; groupId: string; currentFrameExpenseId: string; nextExpenseCreatedAt: string | null; nextExpenseDate: string } | null
-}
+type Row = ExpenseRow & { events: AttributionEvent[] }
 
-/** The display name of the participant of payer or share row `part`. */
-const partName = (part: SQL) =>
-  displayName({ group: sql`${part}.group_id`, participant: sql`${part}.participant_id`, name: sql`(SELECT np.name FROM participants np WHERE np.id = ${part}.participant_id)` })
-
-/** One statement: expenses with their people, names, category, audit events and documents. */
+/** One statement: expenses with their people's names, attribution events and, for a detail, receipts. */
 const expenseSelect = (data: { detail: boolean }) => sql`
-  SELECT e.id, e.group_id, e.revision, e.kind, e.title, e.vendor, e.notes, e.category_id,
-    (SELECT json_build_object('id', c.id, 'name', c.name, 'grouping', c.grouping) FROM categories c WHERE c.id = e.category_id) AS category,
-    e.expense_date::text AS expense_date, e.currency, e.amount::text AS amount,
-    e.original_amount::text AS original_amount, e.original_currency, e.conversion_rate, e.split_mode, e.recurrence,
-    ${iso(sql`e.created_at`)} AS created_at, ${iso(sql`e.deleted_at`)} AS deleted_at,
-    coalesce((SELECT json_agg(json_build_object('id', p.participant_id, 'name', ${partName(sql`p`)}, 'amount', p.amount::text) ORDER BY p.participant_id)
-      FROM expense_payers p WHERE p.expense_id = e.id), '[]') AS payers,
-    coalesce((SELECT json_agg(json_build_object('id', s.participant_id, 'name', ${partName(sql`s`)}, 'weight', s.weight) ORDER BY s.participant_id)
-      FROM expense_shares s WHERE s.expense_id = e.id), '[]') AS shares,
-    ${attributionEvents({ groupId: sql`e.group_id`, expenseId: sql`e.id` })} AS events,
-    (SELECT count(*)::int FROM expense_documents d WHERE d.expense_id = e.id) AS document_count,
-    ${
-      data.detail
-        ? sql`coalesce(${documentStatesJson(sql`e`)}, '[]') AS documents,
-          (SELECT json_build_object('id', l.id, 'groupId', l.group_id, 'currentFrameExpenseId', l.current_frame_expense_id,
-              'nextExpenseCreatedAt', ${iso(sql`l.next_expense_created_at`)}, 'nextExpenseDate', l.next_expense_date::text || 'T00:00:00.000Z')
-            FROM recurring_links l WHERE l.current_frame_expense_id = e.id) AS link`
-        : sql`NULL AS documents, NULL AS link`
-    }
+  SELECT ${expenseColumns({ names: true, documents: data.detail })},
+    ${attributionEvents({ groupId: sql`e.group_id`, expenseId: sql`e.id` })} AS events
   FROM expenses e`
 
 /** A share's split input as the current app writes it: exact amounts in BY_AMOUNT, weights otherwise. */
-const shareText = (row: Row, weight: string) => (row.split_mode === 'amount' ? money(weight, row.currency) : weight)
+const shareText = (e: ReadExpense, weight: string) => (e.splitMode === 'amount' ? money(weight, e.currency) : weight)
 
-function mainPayer(row: Row) {
-  const id = row.payers.length ? preferredPayer(row.payers.map((p) => ({ participantId: p.id, amount: minor(BigInt(p.amount)) }))) : ''
-  return row.payers.find((p) => p.id === id) ?? { id, name: '' }
+function mainPayer(e: ReadExpense) {
+  const id = e.payers.length ? preferredPayer(e.payers.map((p) => ({ participantId: p.participantId, amount: minorOf(p.amount, e.currency) }))) : ''
+  const payer = e.payers.find((p) => p.participantId === id)
+  return { id, name: payer?.name ?? '' }
 }
 
-const common = (row: Row) => ({
-  id: row.id,
-  title: row.title,
-  vendor: row.vendor,
-  amount: money(row.amount, row.currency),
-  currencyCode: row.currency,
-  createdAt: row.created_at,
-  expenseDate: `${row.expense_date}T00:00:00.000Z`,
-  originalAmount: row.original_amount === null || row.original_currency === null ? null : money(row.original_amount, row.original_currency),
-  originalCurrency: row.original_currency,
-  isReimbursement: row.kind === 'payment',
-  splitMode: SPLIT_MODE_NAMES[row.split_mode],
-  recurrenceRule: RECURRENCE_NAMES[row.recurrence],
-  category: row.category,
+const common = (e: ReadExpense) => ({
+  id: e.id,
+  title: e.title,
+  vendor: e.vendor,
+  amount: e.amount,
+  currencyCode: e.currency,
+  createdAt: e.createdAt,
+  expenseDate: `${e.expenseDate}T00:00:00.000Z`,
+  originalAmount: e.originalAmount,
+  originalCurrency: e.originalCurrency,
+  isReimbursement: e.kind === 'payment',
+  splitMode: SPLIT_MODE_NAMES[e.splitMode],
+  recurrenceRule: RECURRENCE_NAMES[e.recurrence],
+  category: e.category,
 })
 
 const summary = (row: Row, viewer: string): typeof ExpenseSummary.Encoded => {
-  const payer = mainPayer(row)
+  const e = toExpense(row)
   return {
-    ...common(row),
-    attribution: attribution(row.events, viewer),
-    paidBy: { id: payer.id, name: payer.name },
-    payers: row.payers.map((p) => ({ participant: { id: p.id, name: p.name }, amount: money(p.amount, row.currency) })),
-    paidFor: row.shares.map((s) => ({ participant: { id: s.id, name: s.name }, shares: shareText(row, s.weight) })),
-    _count: { documents: row.document_count },
+    ...common(e),
+    attribution: attribution({ events: row.events, viewer }),
+    paidBy: mainPayer(e),
+    payers: e.payers.map((p) => ({ participant: { id: p.participantId, name: p.name ?? '' }, amount: p.amount })),
+    paidFor: e.shares.map((s) => ({ participant: { id: s.participantId, name: s.name ?? '' }, shares: shareText(e, s.weight) })),
+    _count: { documents: e.documentCount },
   }
 }
 
 const detail = (row: Row, data: { viewer: string; baseUrl: string }): typeof ExpenseDetail.Encoded => {
-  const payer = mainPayer(row)
+  const e = toExpense(row)
+  const payer = mainPayer(e)
   return {
-    ...common(row),
-    groupId: row.group_id,
-    categoryId: row.category_id,
+    ...common(e),
+    groupId: e.groupId,
+    categoryId: e.categoryId,
     paidById: payer.id,
-    conversionRate: row.conversion_rate,
-    notes: row.notes === '' ? null : row.notes,
-    recurringExpenseLinkId: row.link?.id ?? null,
-    deletedAt: row.deleted_at,
-    revision: row.revision,
-    attribution: attribution(row.events, data.viewer),
-    paidBy: { id: payer.id, name: payer.name, groupId: row.group_id },
-    payers: row.payers.map((p) => ({ participantId: p.id, name: p.name, amount: money(p.amount, row.currency) })),
-    paidFor: row.shares.map((s) => ({ expenseId: row.id, participantId: s.id, shares: shareText(row, s.weight) })),
-    documents: (row.documents ?? []).map((d) => ({
+    conversionRate: e.conversionRate,
+    notes: e.notes === '' ? null : e.notes,
+    recurringExpenseLinkId: e.link?.id ?? null,
+    deletedAt: null,
+    revision: e.revision,
+    attribution: attribution({ events: row.events, viewer: data.viewer }),
+    paidBy: { ...payer, groupId: e.groupId },
+    payers: e.payers.map((p) => ({ participantId: p.participantId, name: p.name ?? '', amount: p.amount })),
+    paidFor: e.shares.map((s) => ({ expenseId: e.id, participantId: s.participantId, shares: shareText(e, s.weight) })),
+    documents: (e.documents ?? []).map((d) => ({
       id: d.id,
       url: d.url,
       width: d.width,
       height: d.height,
-      expenseId: row.id,
+      expenseId: e.id,
       receiptId: d.receiptId,
       deleted: d.deleted,
-      ...(d.deleted ? {} : { downloadUrl: `${origin(data.baseUrl)}${receiptDownloadPath({ groupId: row.group_id, url: d.url })}` }),
+      ...(d.deleted ? {} : { downloadUrl: `${origin(data.baseUrl)}${receiptDownloadPath({ groupId: e.groupId, url: d.url })}` }),
     })),
-    recurringExpenseLink: row.link,
+    recurringExpenseLink: e.link && {
+      id: e.link.id,
+      groupId: e.groupId,
+      currentFrameExpenseId: e.id,
+      nextExpenseCreatedAt: e.link.nextExpenseCreatedAt,
+      nextExpenseDate: `${e.link.nextExpenseDate}T00:00:00.000Z`,
+    },
   }
 }
 
@@ -445,10 +386,10 @@ const savedSummary = (e: SavedExpense): typeof ExpenseSummary.Encoded => ({
 
 /** Authors of an expense up to and including one recorded event, from the audit log. */
 async function attributionThrough(db: Db, data: { groupId: string; expenseId: string; activityId: string; viewer: string }) {
-  const result = await db.execute<{ events: Event[] }>(
+  const result = await db.execute<{ events: AttributionEvent[] }>(
     sql`SELECT ${attributionEvents({ groupId: sql`${data.groupId}`, expenseId: sql`${data.expenseId}`, through: sql`${data.activityId}` })} AS events`,
   )
-  return attribution(result.rows[0]?.events ?? [], data.viewer)
+  return attribution({ events: result.rows[0]?.events ?? [], viewer: data.viewer })
 }
 
 export const listExpenses = defineTool({
@@ -627,7 +568,7 @@ function draftOf(input: ExpenseInput): ExpenseDraft {
 }
 
 /** The saved expense with the changes applied, as one full draft that is validated again. */
-function mergedDraft(current: ledger.ApiExpense, changes: Changes): ExpenseDraft {
+function mergedDraft(current: ReadExpense, changes: Changes): ExpenseDraft {
   const currency = changes.currencyCode ?? current.currency
   const amount = changes.amount ?? current.amount
   const moneyChanged = changes.amount !== undefined || changes.currencyCode !== undefined
@@ -743,8 +684,7 @@ export const updateExpense = defineTool({
     // One read for the tool and the ledger write. Each call is new, so it sends no idempotency key.
     const context = await ledger.loadWriteContext(db, { principal, group: input.groupId, expenseId: input.expenseId, op: 'change', idempotencyKey: null })
     // A stale revision conflicts before any upload is checked, so a failed call changes nothing.
-    const stored = ledger.currentExpense(context, input.expectedRevision)
-    const current = stored.value
+    const current = ledger.currentExpense(context, input.expectedRevision)
     const attached = await attachUploads(db, {
       principal,
       groupId: current.groupId,
@@ -758,7 +698,7 @@ export const updateExpense = defineTool({
     // No change, no revision, as in the current app.
     if (Object.keys(changes).length > 0 || attached.length > 0) {
       // documents replaces the saved list; attached receipts join it, or the saved list when documents is omitted.
-      const documents = attached.length ? [...(changes.documents ?? stored.documents), ...attached] : changes.documents
+      const documents = attached.length ? [...(changes.documents ?? current.documents ?? []), ...attached] : changes.documents
       saved = await ledger.updateExpense(db, {
         principal,
         group: input.groupId,

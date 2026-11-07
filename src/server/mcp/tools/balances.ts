@@ -1,20 +1,16 @@
 // Balance and recurrence tools: get_balances, get_participant_balances and
 // process_recurring_expenses, with the current app's inputs and outputs
 // (src/trpc/routers/groups/balances/*, recurring.procedure.ts). Balances come
-// from src/server/expenses.ts, src/server/feed.ts and, as of a recorded
-// change, src/server/history.ts; recurrence from src/server/recurring.ts.
+// from src/server/balances.ts, recurrence from src/server/recurring.ts.
 import { Schema } from 'effect'
-import { computeBalances, suggestSettlements } from '../../../shared/balances'
+import { suggestSettlements, type Balance } from '../../../shared/balances'
 import type { CurrencyCode } from '../../../shared/currencies'
 import { LIMITS } from '../../../shared/limits'
 import { formatMinor, minor, type Minor } from '../../../shared/minor'
-import { savedEntry } from '../../../shared/snapshots'
-import * as expenses from '../../expenses'
-import * as feed from '../../feed'
-import * as history from '../../history'
+import * as balances from '../../balances'
 import * as recurring from '../../recurring'
 import { defineTool, ToolError } from '../registry'
-import { CurrencyCodeInput, HistoryFields, Id, minorOf, Money, NullableString, RecordedTime, ShortId, symbolOf } from './shared'
+import { CurrencyCodeInput, HistoryFields, Id, Money, NullableString, RecordedTime, ShortId, symbolOf } from './shared'
 
 type Transfer = { from: string; to: string; amount: Minor }
 
@@ -38,14 +34,15 @@ function publicBalances(data: { transfers: readonly Transfer[]; currency: Curren
   return Object.fromEntries([...sums].map(([id, s]) => [id, { paid: text(s.paid), paidFor: text(s.paidFor), total: text(s.paid - s.paidFor) }]))
 }
 
-const bucket = (data: { currency: CurrencyCode; transfers: readonly Transfer[] }) => ({
-  currencyCode: data.currency,
-  balances: publicBalances(data),
-  reimbursements: data.transfers.map((t) => ({ from: t.from, to: t.to, amount: formatMinor({ amount: t.amount, currency: data.currency }) })),
-})
-
-const INCOMPLETE =
-  'Historical balances are unavailable because some expenses have no saved state at this point. Read list_expenses at the same boundary to inspect history coverage.'
+/** One currency bucket of get_balances, from the balances of that currency. */
+const bucket = ([currency, byPerson]: readonly [CurrencyCode, ReadonlyMap<string, Balance>]) => {
+  const transfers = suggestSettlements(byPerson)
+  return {
+    currencyCode: currency,
+    balances: publicBalances({ transfers, currency }),
+    reimbursements: transfers.map((t) => ({ from: t.from, to: t.to, amount: formatMinor({ amount: t.amount, currency }) })),
+  }
+}
 
 export const getBalances = defineTool({
   name: 'get_balances',
@@ -71,27 +68,21 @@ export const getBalances = defineTool({
     ),
   }),
   run: async ({ db, principal }, input) => {
+    const scope = { principal, group: input.groupId, currency: input.currencyCode }
     if (input.asOf === undefined && input.atActivityId === undefined) {
-      const current = await expenses.listBalances(db, { principal, group: input.groupId, ...(input.currencyCode ? { currency: input.currencyCode } : {}) })
-      return {
-        currencies: current.currencies.map((c) =>
-          bucket({ currency: c.currency, transfers: c.settlements.map((s) => ({ ...s, amount: minorOf(s.amount, c.currency) })) }),
-        ),
-      }
+      const current = await balances.groupBalances(db, scope)
+      return { currencies: [...current.balances].map(bucket) }
     }
-    const ledger = await history.historicalLedger(db, {
-      principal,
-      group: input.groupId,
-      ...(input.asOf === undefined ? {} : { asOf: input.asOf }),
-      ...(input.atActivityId === undefined ? {} : { atActivityId: input.atActivityId }),
-    })
-    if (!ledger.history.complete) throw new ToolError('PRECONDITION_FAILED', INCOMPLETE)
-    const saved = ledger.expenses.filter((e) => !input.currencyCode || e.currency === input.currencyCode)
-    const balances = computeBalances(saved.map(savedEntry))
-    return {
-      history: ledger.history,
-      currencies: [...balances].map(([currency, byPerson]) => bucket({ currency, transfers: suggestSettlements(byPerson) })),
-    }
+    const saved = await balances
+      .historicalBalances(db, {
+        ...scope,
+        ...(input.asOf === undefined ? {} : { asOf: input.asOf }),
+        ...(input.atActivityId === undefined ? {} : { atActivityId: input.atActivityId }),
+      })
+      .catch((error: unknown) => {
+        throw error instanceof balances.IncompleteHistory ? new ToolError('PRECONDITION_FAILED', error.message) : error
+      })
+    return { history: saved.history, currencies: [...saved.balances].map(bucket) }
   },
 })
 
@@ -128,7 +119,7 @@ export const getParticipantBalances = defineTool({
     ),
   }),
   run: async ({ db, principal }, input) => {
-    const result = await feed.accountBalances(db, { principal, ...(input.groups ? { scope: input.groups } : {}) })
+    const result = await balances.accountBalances(db, { principal, ...(input.groups ? { scope: input.groups } : {}) })
     return {
       totals: result.totals.map((t) => ({ currencyCode: t.currency, amount: t.amount })),
       unboundGroupIds: result.unboundGroupIds,

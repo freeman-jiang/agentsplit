@@ -4,7 +4,8 @@
 import type { CurrencyCode } from '~/shared/currencies'
 import { validateExpense, type ExpenseDraft, type ExpenseIssue } from '~/shared/expense-rules'
 import { formatMinor, minor, minorOrNull, sumMinor, type DecimalString } from '~/shared/minor'
-import { apportion, compareIds, parseWeight, preferredPayer } from '~/shared/split'
+import { compareIds } from '~/shared/ids'
+import { apportion, parseWeight, preferredPayer } from '~/shared/split'
 import { SPLIT_MODE_NAMES, SPLIT_MODES, type ExpenseKind, type Recurrence, type SplitMode } from '~/shared/vocabulary'
 import type { FormDocument } from './expense-documents'
 
