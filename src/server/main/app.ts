@@ -1,6 +1,6 @@
 // The app's one request handler and its hourly job. The platform (the HTTP
 // server, the connection pool, the bucket client and the static files) is in
-// src/server/server.ts; this module reaches it only through `Platform`. The
+// server.ts beside it; this module reaches it only through `Platform`. The
 // plain HTTP routes are in the *-routes.ts modules beside this one.
 import { Context, Layer } from 'effect'
 import { HttpRouter } from 'effect/http'
@@ -30,6 +30,7 @@ import { HistoryHandlers } from '../handlers/history'
 import { StorageHandlers } from '../handlers/storage'
 import { secured } from '../headers'
 import { jsonError } from '../core/errors'
+import { maintenanceResponse } from '../maintenance'
 import { handleMcp } from '../mcp/endpoint'
 import type { McpSettings } from '../mcp/server'
 import { withPerfHeaders } from '../perf'
@@ -127,6 +128,8 @@ export function createApp(platform: Platform) {
   const checkDatabase = () => withClient(async (client) => void (await client.query('SELECT 1')))
 
   async function route(request: Request): Promise<Response> {
+    const paused = config.maintenance && maintenanceResponse(request)
+    if (paused) return paused
     const url = new URL(request.url)
     // The Effect RPC client joins its base URL with a slash, so it posts to /api/rpc/.
     if (url.pathname === '/api/rpc' || url.pathname === '/api/rpc/') {
@@ -191,15 +194,17 @@ export function createApp(platform: Platform) {
       return secured(await (config.perfInstrumentation ? withPerfHeaders(() => route(request)) : route(request)))
     },
     /**
-     * The hourly job (src/server/server.ts runs it at minute 7). It creates due
+     * The hourly job (server.ts runs it at minute 7). It creates due
      * recurring expenses, so reads never have to (DECISIONS.md, P-BAL-30 and
      * P-RECUR-08). A failed occurrence is logged and skipped, the other links
      * go on, and the next run tries it again.
      * It also removes stale upload targets, the objects of deleted receipts
-     * that are still in storage, and expired DPoP replay rows.
+     * that are still in storage, and expired DPoP replay rows. It pauses in
+     * maintenance, so nothing writes then.
      */
-    scheduled(time: Date): Promise<void> {
-      return withDb(async (db) => {
+    async scheduled(time: Date): Promise<void> {
+      if (config.maintenance) return
+      await withDb(async (db) => {
         const created = await materializeDue(db, {
           today: todayUtc(time),
           onError: (error, linkId) => console.error('Recurring expense failed; its link waits for the next run', { linkId }, error),
