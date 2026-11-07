@@ -91,6 +91,7 @@ export function GroupForm(props: {
             <Label htmlFor="group-name">Group name</Label>
             <Input
               id="group-name"
+              className="h-11"
               placeholder="Summer vacations"
               maxLength={50}
               value={values.name}
@@ -98,7 +99,7 @@ export function GroupForm(props: {
               aria-describedby="group-name-help"
               onChange={(e) => set('name', e.target.value)}
             />
-            <p id="group-name-help" className="text-sm text-muted-foreground">
+            <p id="group-name-help" className="text-xs text-muted-foreground">
               Enter a name for your group.
             </p>
             {fieldError(issues.name, 'group-name-error')}
@@ -107,6 +108,7 @@ export function GroupForm(props: {
             <Label htmlFor="group-slug">Custom URL (optional)</Label>
             <Input
               id="group-slug"
+              className="h-11"
               placeholder="maple"
               autoCapitalize="none"
               autoCorrect="off"
@@ -116,7 +118,7 @@ export function GroupForm(props: {
               aria-describedby="group-slug-help"
               onChange={(e) => set('slug', e.target.value)}
             />
-            <p id="group-slug-help" className="text-sm text-muted-foreground">
+            <p id="group-slug-help" className="text-xs text-muted-foreground">
               Use /{normalizeSlug(values.slug) || 'your-group'} to open this group. Members still need to sign in.
             </p>
             {fieldError(issues.slug, 'group-slug-error')}
@@ -125,6 +127,7 @@ export function GroupForm(props: {
             <Label htmlFor="group-currency">Default currency</Label>
             <NativeSelect
               id="group-currency"
+              className="h-11"
               value={values.defaultCurrency}
               aria-describedby="group-currency-help"
               onChange={(e) => set('defaultCurrency', e.target.value as CurrencyCode)}
@@ -135,7 +138,7 @@ export function GroupForm(props: {
                 </option>
               ))}
             </NativeSelect>
-            <p id="group-currency-help" className="text-sm text-muted-foreground">
+            <p id="group-currency-help" className="text-xs text-muted-foreground">
               {props.mode === 'edit'
                 ? 'Changes the default for new expenses only. Existing amounts, currencies and balances stay unchanged.'
                 : 'The starting currency for new expenses. Each expense can use a different currency.'}
