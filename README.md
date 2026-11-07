@@ -11,12 +11,12 @@ AgentSplit is a fork of [Spliit](https://github.com/spliit-app/spliit). People s
 
 ## Repository layout
 
-`v2/` holds the live app. v2 went live in production on 2026-11-05 at 18:00:48 UTC ([docs/v2/CUTOVER.md](docs/v2/CUTOVER.md)). The repository root still holds the old Next.js and Prisma app, so that a rollback is possible. The old app will be removed and v2 will move to the root.
+The app is a rewrite (v2) of the Next.js and Prisma app it replaced in production on 2026-11-05 at 18:00:48 UTC ([docs/v2/CUTOVER.md](docs/v2/CUTOVER.md)). The old app is in the Git history before the move of v2 to the root.
 
-- `v2/src/shared/`: the Effect Schema contract and the pure money, split and balance rules.
-- `v2/src/server/`: the server. `app.ts` routes every request; `server.ts` is the Bun process.
-- `v2/src/client/`: the React single-page app.
-- `v2/db/`: the Drizzle schema, the SQL migrations and the invariant triggers.
+- `src/shared/`: the Effect Schema contract and the pure money, split and balance rules.
+- `src/server/`: the server. `app.ts` routes every request; `server.ts` is the Bun process.
+- `src/client/`: the React single-page app.
+- `db/`: the Drizzle schema, the SQL migrations and the invariant triggers.
 - `docs/v2/`: the plan, design, decisions, parity records and the cutover record.
 
 ## Stack
@@ -30,29 +30,29 @@ AgentSplit is a fork of [Spliit](https://github.com/spliit-app/spliit). People s
 
 ## Develop
 
-Run each command from `v2/`, inside the dev shell. `direnv exec .` loads the dev shell from the repository root.
+Run each command from the repository root, inside the dev shell (`direnv exec .`).
 
 The dev shell runs one PostgreSQL 18 server for the machine at `127.0.0.1:5437`. Start it from the main checkout (`~/projects/agentsplit`) with `db-start`. Do not start a second server in a worktree.
 
 1. Install the dependencies: `direnv exec . bun install --frozen-lockfile`.
 2. Create a dev database: `direnv exec . db-reset agentsplit_dev_<area>`.
 3. Apply the migrations: `DATABASE_URL=postgresql://postgres@127.0.0.1:5437/agentsplit_dev_<area> direnv exec . bun db/migrate.ts`.
-4. Write `v2/.env.local` (Git ignores it) with these settings:
+4. Write `.env.local` (Git ignores it) with these settings:
    - `DATABASE_URL=postgresql://postgres@127.0.0.1:5437/agentsplit_dev_<area>`
    - `PORT=<api-port>`
    - `BASE_URL=http://localhost:<vite-port>`
    - `BETTER_AUTH_SECRET`: a random 64-character hex string (`openssl rand -hex 32`).
    - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`: any placeholders.
-   - `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_KEY` and `S3_UPLOAD_SECRET`: a local Garage. `v2/scripts/e2e.sh` shows how to start one from the Compose file.
+   - `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_KEY` and `S3_UPLOAD_SECRET`: a local Garage. `scripts/e2e.sh` shows how to start one from the Compose file.
 5. Start the API server: `direnv exec . bun run dev:server`.
 6. In a second terminal, start Vite: `API_PORT=<api-port> direnv exec . bun run dev -- --port <vite-port> --strictPort`.
 7. Open `http://localhost:<vite-port>`.
 
-Vite serves the client and sends `/api/`, `/.well-known/`, `/robots.txt`, `/sitemap.xml` and the export paths to the API server. To sign in without Google, follow "Local database" in [docs/v2/BUILDING.md](docs/v2/BUILDING.md). Use synthetic data only (`v2/scripts/seed-synthetic.ts`). Never copy the production backups.
+Vite serves the client and sends `/api/`, `/.well-known/`, `/robots.txt`, `/sitemap.xml` and the export paths to the API server. To sign in without Google, follow "Local database" in [docs/v2/BUILDING.md](docs/v2/BUILDING.md). Use synthetic data only (`scripts/seed-synthetic.ts`). Never copy the production backups.
 
 ## Test and build
 
-| Task | Command, from `v2/` |
+| Task | Command |
 | --- | --- |
 | Production build (client, server bundle, migrations) | `direnv exec . bun run build` |
 | Bundle budget (after the build) | `direnv exec . bun scripts/check-bundle.ts` |
@@ -60,15 +60,14 @@ Vite serves the client and sends `/api/`, `/.well-known/`, `/robots.txt`, `/site
 | Unit and database tests | `TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:5437/agentsplit_test_<area> direnv exec . bun run test` |
 | End-to-end tests on the built server | `direnv exec . ./scripts/e2e.sh` |
 | End-to-end tests on the image and the Coolify stack | `direnv exec . ./scripts/e2e.sh --compose` |
-| Image | `docker build -t agentsplit-v2 .` |
+| Image | `docker build -t agentsplit .` |
 | New SQL migration | `direnv exec . bunx drizzle-kit generate --name <name>` (add `--custom` for triggers) |
 
 - The test database name must contain `test`. Create it with `direnv exec . db-reset agentsplit_test_<area>`.
-- The tests in `v2/test/legacy/` compare v2 with the old app's code in `src/`. They need the old app's dependencies. From the repository root, run `direnv exec . sh -c 'npm ci --ignore-scripts && npx prisma generate'` once.
 - The end-to-end tests start Garage (and, with `--compose`, the image and PostgreSQL 18) through `docker-compose` on the Podman socket. Each run uses new test-only secrets and removes its containers and volumes. Set `E2E_PORT` to run more than one suite at a time.
-- The GitHub workflow `.github/workflows/v2.yml` runs the same checks.
+- The GitHub workflow `.github/workflows/ci.yml` runs the same checks.
 
-The rules for adding to v2 are in [docs/v2/BUILDING.md](docs/v2/BUILDING.md).
+The rules for adding to the app are in [docs/v2/BUILDING.md](docs/v2/BUILDING.md).
 
 ## License
 
