@@ -199,13 +199,10 @@ describe('receipts', () => {
     await refuses('23514', `TRUNCATE receipts CASCADE`)
   })
 
-  it('sets the size of a receipt stored before sizes were recorded once, and nothing else', async () => {
+  it('refuses to change the size of a receipt, also one stored before sizes were recorded', async () => {
     const receipt = id('receipt')
     await run(`INSERT INTO receipts (id, group_id, url) VALUES ($1, $2, $3)`, [receipt, group, `r2://agentsplit-receipts/receipts/${receipt}.png`])
-    await refuses('23514', `UPDATE receipts SET bytes = 10, url = 'r2://agentsplit-receipts/receipts/other.png' WHERE id = $1`, [receipt])
-    await run(`UPDATE receipts SET bytes = 1234 WHERE id = $1`, [receipt])
-    await refuses('23514', `UPDATE receipts SET bytes = 99 WHERE id = $1`, [receipt])
-    await refuses('23514', `UPDATE receipts SET bytes = 0 WHERE id = $1`, [receipt])
+    await refuses('23514', `UPDATE receipts SET bytes = 1234 WHERE id = $1`, [receipt])
   })
 
   it('keeps a receipt deletion: only its purge time can be set, once', async () => {
