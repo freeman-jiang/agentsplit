@@ -14,7 +14,7 @@ AgentSplit is a fork of [Spliit](https://github.com/spliit-app/spliit). People s
 The app is a rewrite (v2) of the Next.js and Prisma app it replaced in production on 2026-11-05 at 18:00:48 UTC ([docs/v2/CUTOVER.md](docs/v2/CUTOVER.md)). The old app is in the Git history before the move of v2 to the root.
 
 - `src/shared/`: the value lists (`vocabulary.ts`), every limit (`limits.ts`), the Effect Schema contract (`api/`), and the pure money, split and balance rules.
-- `src/server/`: the server. `app.ts` routes every request; `server.ts` is the Bun process.
+- `src/server/`: the server. `main/app.ts` routes every request; `main/server.ts` is the Bun process.
 - `src/client/`: the React single-page app.
 - `db/`: the Drizzle schema, the SQL migrations and the invariant triggers.
 - `docs/v2/`: the plan, design, decisions, parity records and the cutover record.

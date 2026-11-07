@@ -37,16 +37,20 @@ Each area owns its own files, so areas can be built in parallel:
 1. **Contract:** `src/shared/api/<area>.ts` defines an `RpcGroup` of the area's procedures with Effect Schema payloads, outputs and errors. Reuse `Id`, `IdempotencyKey`, `CalendarDate`, the vocabulary schemas (`ExpenseKindSchema`, `RecurrenceSchema` and others), `ReadError`, `WriteError` and the error classes from `src/shared/api/core.ts`. What each error means to a caller (its RPC log level, MCP code, recovery, HTTP status and text) is one table in `src/shared/errors.ts`; a new `NotFound` entity or `Invalid` reason goes there. Outputs use `DecimalOutput` and plain strings; inputs use the checked `DecimalString` and `CalendarDate`.
 2. **Register the contract:** add the group to the `CoreApi.merge(...)` call in `src/shared/api.ts` and re-export it. This is a one-line edit.
 3. **Domain service:** `src/server/<area>.ts` holds the functions. Each takes `(db, { principal, groupId, ... })`, where `groupId` is the caller's group reference (an ID or a slug), checks access itself, and returns values or throws the shared domain errors (`Forbidden`, `NotFound`, `Conflict`, `Invalid`). It never builds an HTTP response.
-4. **Handlers:** `src/server/handlers/<area>.ts` exports a layer of `Api.toLayerHandler(tag, ...)` calls built with `read`, `write` and `publicRead` from `src/server/rpc.ts`. Add it to `Layer.mergeAll` in `src/server/app.ts` (a one-line edit).
+4. **Handlers:** `src/server/handlers/<area>.ts` exports a layer of `Api.toLayerHandler(tag, ...)` calls built with `read`, `write` and `publicRead` from `src/server/rpc.ts`. Add it to `Layer.mergeAll` in `src/server/main/app.ts` (a one-line edit).
 5. **Client:** queries in `src/client/queries/<area>.ts` (`queryOptions` and `infiniteQueryOptions`), screens as TanStack Router file routes under `src/client/routes/`. Replace the placeholder route of your screen.
 6. **Tests:** `test/db/<area>.test.ts` for services against a real database, and the parity record below.
 7. **Parity record:** `docs/v2/parity/<area>.md` lists every PARITY.md item you covered, with the test that proves it, and every item you could not cover, with the reason.
 
 ## Server modules
 
+The folders of `src/server/` depend in one direction only: `main/` → `handlers/` and `mcp/` → the area services in `src/server/` → `auth/` → `core/`. A module never imports a folder to its left.
+
+- `core/`: what everything else builds on. `db.ts` (the pool and transactions), `ids.ts`, `config.ts` (every setting, read and checked once at start by `main/server.ts`), `errors.ts` (the domain errors and their JSON answers on plain HTTP routes) and `access.ts` (`Principal`, `requireMember` and `memberCte`, the one group membership check).
+- `main/`: the composition root. `app.ts` routes every request; `server.ts` is the Bun process (the pool, the server, the hourly job).
+
 The area services build on these modules in `src/server/`. Use them instead of writing their SQL again:
 
-- `access.ts`: `Principal`, `requireMember` and `memberCte`, the one group membership check.
 - `expense-read.ts`: the expense read model (`expenseColumns`, `toExpense`, `loadExpenses`), what a read adds to it (`ExpenseParts`: names, receipts, attribution events), the list filter (`ExpenseFilter`) and the receipt states.
 - `activity.ts`: the activity writer, the snapshots, the access-change text, attribution and the system actor.
 - `balances.ts`: group balances, the caller's nets across groups, and balances at a recorded change.
@@ -57,10 +61,9 @@ The area services build on these modules in `src/server/`. Use them instead of w
 The platform around them:
 
 - `calls.ts`: the one call runner of RPC (`rpc.ts`) and MCP (`mcp/server.ts`). `runRead` reads on the request's connection. `runWrite` takes the fair-use write budget, then runs one SERIALIZABLE transaction with retries and an after-commit list. Both turn every failure into a declared error: a database rule (23514, 23503, 23505) becomes `Invalid`, anything else is logged and becomes `Unavailable`, whose text never names the cause.
-- `config.ts`: every setting, read and checked once at start by `server.ts`.
-- `auth/`: sessions, Better Auth, API keys, OAuth tokens and agent connections (`oauth-connections.ts`), the MCP challenges, the reader of plain HTTP downloads (`httpReader`) and the one origin rule (`origin.ts`). `mcp/` depends on it, never the reverse.
-- `mcp/`: the MCP endpoint (`endpoint.ts`, `server.ts`) and the tools, listed once in `mcp/tools/index.ts`. A tool is a thin adapter: it decodes the current app's argument names with schemas from the contract and the limits (`tools/inputs.ts`), calls the same service as the RPC handler, and maps the result with `tools/wire.ts`, the one module of output schemas and wire mappers. When an agent needs a filter or a field, add it to the service; a tool has no SQL of its own, and a tool file imports no other tool file.
-- `app.ts` routes every request. The plain HTTP routes live beside it: `receipt-routes.ts` and `export-routes.ts`. `headers.ts`, `http-errors.ts`, `public-pages.ts`, `perf.ts` and `maintenance.ts` hold the response headers, the JSON errors, robots.txt, the sitemap and health checks, the performance headers and the maintenance answer.
+- `auth/`: sessions, Better Auth, API keys, OAuth tokens and agent connections (`oauth-connections.ts`), the owner's first sign-in (`owner-bootstrap.ts`), the MCP challenges, the reader of plain HTTP downloads (`httpReader`) and the one origin rule (`origin.ts`). It depends only on `core/`.
+- `mcp/`: the MCP endpoint (`endpoint.ts`, `server.ts`) and the tools in `mcp/tools/`: `defineTool` and the error body (`registry.ts`), the server instructions (`instructions.ts`), and the tools, listed once in `index.ts`. A tool is a thin adapter: it decodes the current app's argument names with schemas from the contract and the limits (`tools/inputs.ts`), calls the same service as the RPC handler, and maps the result with `tools/wire.ts`, the one module of output schemas and wire mappers. When an agent needs a filter or a field, add it to the service; a tool has no SQL of its own, and a tool file imports no other tool file.
+- The plain HTTP routes that `main/app.ts` serves: `receipt-routes.ts` and `export-routes.ts`. `headers.ts`, `public-pages.ts`, `perf.ts` and `maintenance.ts` hold the response headers, robots.txt, the sitemap and health checks, the performance headers and the maintenance answer.
 
 ## Rules
 
@@ -71,7 +74,7 @@ The platform around them:
 - Money is minor units (`bigint`) inside, exact decimal strings outside. Use `minorOrNull`, `formatMinor`, `resolveShares` and `validateExpense`. Never use floats for money.
 - Value lists (kinds, split modes, recurrences, roles, group kinds, activity types and sources, upload states, receipt types, and the current app's names for them) live only in `src/shared/vocabulary.ts`. Every limit (field lengths, people per group, page sizes, times, rates and the fair-use limits) lives only in `src/shared/limits.ts`. The contract, the Drizzle enums and CHECKs, the MCP schemas and descriptions, the rule messages and the client derive from these two modules; `test/db/database-rules.test.ts` compares the database's CHECKs with them. A new list or limit goes there, not into a schema.
 - Expense dates are `YYYY-MM-DD` strings. Times are `timestamptz` and ISO strings in the API.
-- The membership check happens on the server for every read and write, through `src/server/access.ts`: `requireMember`, or `memberCte` as the first CTE of the same statement. Both resolve a group reference with `agentsplit_group_id` (an ID, a current slug in any case, or a retired slug), so never match `id` or `slug` by hand.
+- The membership check happens on the server for every read and write, through `src/server/core/access.ts`: `requireMember`, or `memberCte` as the first CTE of the same statement. Both resolve a group reference with `agentsplit_group_id` (an ID, a current slug in any case, or a retired slug), so never match `id` or `slug` by hand.
 - The database triggers are the last line of defense. Never disable them, and never write migrations that weaken them.
 
 ### Speed
