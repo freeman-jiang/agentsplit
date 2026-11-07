@@ -12,7 +12,7 @@ import type { ActivityType, ExpenseKind } from '../shared/vocabulary'
 import { memberCte, requireActive, type Principal } from './core/access'
 import { activitySource, activityText, attributionEvents, notBaseline, savedTitle, type AttributionEvent } from './activity'
 import type { Db } from './core/db'
-import { tombstonesJson, type ExpenseFilter, type Tombstone } from './expense-read'
+import { passesFilter, tombstonesJson, type ExpenseFilter, type Tombstone } from './expense-read'
 import { iso } from './sql'
 
 export type Boundary = typeof BoundarySchema.Type
@@ -302,22 +302,8 @@ export async function historicalLedger(db: Db, data: { principal: Principal; gro
  * ID, newest first. The filter's sort does not apply.
  */
 export function filterSaved(expenses: readonly SavedExpense[], f: ExpenseFilter): SavedExpense[] {
-  const text = f.search?.trim().toLocaleLowerCase()
-  const vendor = f.vendor?.trim().toLocaleLowerCase()
   return expenses
-    .filter(
-      (e) =>
-        (!text || [e.title, e.vendor ?? '', e.notes].some((v) => v.toLocaleLowerCase().includes(text))) &&
-        (!vendor || e.vendor?.toLocaleLowerCase() === vendor) &&
-        (!f.currency || e.currency === f.currency) &&
-        (f.categoryId === undefined || e.categoryId === f.categoryId) &&
-        (!f.payerId || e.payers.some((p) => p.participantId === f.payerId)) &&
-        (!f.participantId || e.payers.some((p) => p.participantId === f.participantId) || e.shares.some((s) => s.participantId === f.participantId)) &&
-        (!f.kind || e.kind === f.kind) &&
-        (!f.recurrence || e.recurrence === f.recurrence) &&
-        (!f.from || e.expenseDate >= f.from) &&
-        (!f.to || e.expenseDate <= f.to),
-    )
+    .filter((e) => passesFilter(e, f))
     .sort((a, b) => compareIds(b.expenseDate, a.expenseDate) || compareIds(b.createdAt, a.createdAt) || compareIds(b.id, a.id))
 }
 

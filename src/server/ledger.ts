@@ -12,12 +12,12 @@ import type { Role } from '../shared/vocabulary'
 import { memberCte, myMemberships, requireActive, requireMember, type Membership, type Principal } from './core/access'
 import { recordExpenseEvent, type SnapshotGroup } from './activity'
 import type { Db } from './core/db'
-import { documentRows, EXPENSE_FIELDS, expenseColumns, involves, loadExpenses, toExpense, type ExpenseField, type ExpenseFilter, type ExpenseParts, type ExpenseRow, type ReadExpense, type StoredDocument } from './expense-read'
+import { documentRows, EXPENSE_FIELDS, expenseColumns, filterConditions, loadExpenses, toExpense, type ExpenseField, type ExpenseFilter, type ExpenseParts, type ExpenseRow, type ReadExpense, type StoredDocument } from './expense-read'
 import { idempotent, storedRequestJson, type StoredRequest } from './idempotency'
 import { participantsJson } from './people'
 import { assertPrivateWrite, privateContextOf, type PrivateContext } from './private-context'
 import { stopRecurrence, syncRecurrence, type LinkState } from './recurring'
-import { escapeLike, textList } from './sql'
+import { textList } from './sql'
 
 // ---------- reads ----------
 
@@ -100,21 +100,7 @@ export async function listExpenses(
   const { limit } = data
   // The membership check is part of the statement: rows come only from a group the caller belongs to.
   const member = sql`WITH ${memberCte(data)}`
-  const where: SQL[] = [sql`e.group_id = (SELECT id FROM g WHERE active)`, sql`e.deleted_at IS NULL`]
-  if (f.search?.trim()) {
-    const term = escapeLike(f.search.trim())
-    where.push(sql`(e.title ILIKE ${term} OR e.vendor ILIKE ${term} OR e.notes ILIKE ${term})`)
-  }
-  const vendor = f.vendor?.trim()
-  if (vendor) where.push(sql`lower(e.vendor) = lower(${vendor})`)
-  if (f.currency) where.push(sql`e.currency = ${f.currency}`)
-  if (f.categoryId !== undefined) where.push(sql`e.category_id = ${f.categoryId}`)
-  if (f.kind) where.push(sql`e.kind = ${f.kind}`)
-  if (f.recurrence) where.push(sql`e.recurrence = ${f.recurrence}`)
-  if (f.from) where.push(sql`e.expense_date >= ${f.from}::date`)
-  if (f.to) where.push(sql`e.expense_date <= ${f.to}::date`)
-  if (f.payerId) where.push(sql`EXISTS (SELECT 1 FROM expense_payers p WHERE p.expense_id = e.id AND p.participant_id = ${f.payerId})`)
-  if (f.participantId) where.push(involves(sql`${f.participantId}`))
+  const where: SQL[] = [sql`e.group_id = (SELECT id FROM g WHERE active)`, sql`e.deleted_at IS NULL`, ...filterConditions(f)]
   const byUpdated = f.sort === 'updated'
   if (data.cursor) {
     const c = decodeCursor(data.cursor)

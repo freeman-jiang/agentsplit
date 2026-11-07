@@ -5,13 +5,14 @@
 import { sql, type SQL } from 'drizzle-orm'
 import type { ExpenseFilter as Filter } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
+import type { SavedExpense } from '../shared/history'
 import { formatMinor, minor } from '../shared/minor'
 import type { ExpenseKind, Recurrence, SplitMode } from '../shared/vocabulary'
 import { actorName, attributionEvents, type AttributionEvent } from './activity'
 import type { Db } from './core/db'
 import { randomId } from './core/ids'
 import { displayName } from './people'
-import { iso, textList } from './sql'
+import { escapeLike, iso, textList } from './sql'
 
 /** The expense row's own fields: what a write sets, an unchanged edit compares and a recurring occurrence copies. */
 export const EXPENSE_FIELDS = ['kind', 'title', 'vendor', 'notes', 'categoryId', 'expenseDate', 'currency', 'amount', 'splitMode', 'recurrence'] as const
@@ -64,6 +65,67 @@ const partName = (part: SQL) =>
 
 /** Which expenses a list keeps (the contract's ExpenseFilter); the live and the historical lists read it alike. */
 export type ExpenseFilter = typeof Filter.Type
+
+type FilterKey = Exclude<keyof ExpenseFilter, 'sort'>
+type FilterRule<V> = {
+  /** The condition on expense row `e`, or null when the value keeps every row. */
+  readonly live: (value: V) => SQL | null
+  /** The same condition on a saved revision. */
+  readonly saved: (expense: SavedExpense, value: V) => boolean
+}
+
+const lower = (text: string) => text.trim().toLocaleLowerCase()
+
+/**
+ * Every filter, for the live list (SQL, ledger.ts) and the historical one
+ * (saved revisions, history.ts). The type requires both forms of each key.
+ */
+const FILTERS: { readonly [K in FilterKey]-?: FilterRule<NonNullable<ExpenseFilter[K]>> } = {
+  search: {
+    live: (v) => {
+      const term = escapeLike(v.trim())
+      return v.trim() ? sql`(e.title ILIKE ${term} OR e.vendor ILIKE ${term} OR e.notes ILIKE ${term})` : null
+    },
+    saved: (e, v) => !lower(v) || [e.title, e.vendor ?? '', e.notes].some((t) => t.toLocaleLowerCase().includes(lower(v))),
+  },
+  vendor: {
+    live: (v) => (v.trim() ? sql`lower(e.vendor) = lower(${v.trim()})` : null),
+    saved: (e, v) => !lower(v) || e.vendor?.toLocaleLowerCase() === lower(v),
+  },
+  currency: { live: (v) => sql`e.currency = ${v}`, saved: (e, v) => e.currency === v },
+  categoryId: { live: (v) => sql`e.category_id = ${v}`, saved: (e, v) => e.categoryId === v },
+  kind: { live: (v) => sql`e.kind = ${v}`, saved: (e, v) => e.kind === v },
+  recurrence: { live: (v) => sql`e.recurrence = ${v}`, saved: (e, v) => e.recurrence === v },
+  from: { live: (v) => sql`e.expense_date >= ${v}::date`, saved: (e, v) => e.expenseDate >= v },
+  to: { live: (v) => sql`e.expense_date <= ${v}::date`, saved: (e, v) => e.expenseDate <= v },
+  payerId: {
+    live: (v) => sql`EXISTS (SELECT 1 FROM expense_payers p WHERE p.expense_id = e.id AND p.participant_id = ${v})`,
+    saved: (e, v) => e.payers.some((p) => p.participantId === v),
+  },
+  participantId: {
+    live: (v) => involves(sql`${v}`),
+    saved: (e, v) => e.payers.some((p) => p.participantId === v) || e.shares.some((s) => s.participantId === v),
+  },
+}
+
+const FILTER_KEYS = Object.keys(FILTERS) as FilterKey[]
+
+// TypeScript cannot relate FILTERS[key] to filter[key] for a union key; each entry's own type is checked above.
+const rule = (key: FilterKey) => FILTERS[key] as FilterRule<NonNullable<ExpenseFilter[FilterKey]>>
+
+/** The SQL conditions of a filter on expense row `e`. */
+export const filterConditions = (filter: ExpenseFilter): SQL[] =>
+  FILTER_KEYS.flatMap((key) => {
+    const value = filter[key]
+    return value === undefined ? [] : (rule(key).live(value) ?? [])
+  })
+
+/** Whether a saved revision passes a filter. */
+export const passesFilter = (expense: SavedExpense, filter: ExpenseFilter) =>
+  FILTER_KEYS.every((key) => {
+    const value = filter[key]
+    return value === undefined || rule(key).saved(expense, value)
+  })
 
 /** What a read adds to the columns of an expense: payer and sharer names, the receipts, and the create and update events. */
 export type ExpenseParts = { readonly names?: boolean; readonly documents?: boolean; readonly attribution?: boolean }
