@@ -17,10 +17,11 @@ import { CONTENT_SECURITY_POLICY } from '~/server/headers'
 import { readinessResponse } from '~/server/public-pages'
 import { safeNextPath } from '~/shared/account'
 import { Forbidden, Invalid, NotFound } from '~/shared/api'
-import { resetTestDatabase } from './setup'
+import { testDatabase, type TestDatabase } from '../kit/database'
 
 const secret = 'test-secret-0123456789-0123456789-0123456789'
 const baseUrl = 'http://localhost:5185'
+let database: TestDatabase
 let pool: Pool
 let client: PoolClient
 let db: Db
@@ -42,7 +43,8 @@ async function sessionHeaders(userId: string): Promise<Headers> {
 }
 
 beforeAll(async () => {
-  pool = await resetTestDatabase()
+  database = await testDatabase()
+  pool = database.pool
   client = await pool.connect()
   db = makeDb(client)
   const now = new Date()
@@ -54,7 +56,7 @@ beforeAll(async () => {
 })
 afterAll(async () => {
   client.release()
-  await pool.end()
+  await database.close()
 })
 
 describe('profile', () => {

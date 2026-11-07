@@ -3,12 +3,11 @@
 // rows are synthetic, in the format the importer copies (history-fixtures.ts).
 import { eq, sql } from 'drizzle-orm'
 import { Schema } from 'effect'
-import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { activities, expenses, groups, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { savedBalances } from '~/server/balances'
-import { makeDb, type Db } from '~/server/core/db'
+import type { Db } from '~/server/core/db'
 import { getSavedExpense, historicalLedger, listActivities, listSavedExpenses } from '~/server/history'
 import { createExpense, deleteExpense, getExpense, updateExpense } from '~/server/ledger'
 import { type Principal } from '~/server/core/access'
@@ -17,20 +16,14 @@ import type { ExpenseDraft } from '~/shared/expense-rules'
 import { describeRevision } from '~/shared/history'
 import { minor } from '~/shared/minor'
 import { insertImportedExpense, v1GroupSnapshot } from './history-fixtures'
-import { resetTestDatabase, testUsers } from './setup'
+import { testDatabase, type TestDatabase } from '../kit/database'
+import { userRows } from '../kit/people'
 
-let pool: Pool
+let database: TestDatabase
 const alice: Principal = { userId: 'u-alice', name: 'Alice Account', email: 'a@example.com', source: 'web', agentKeyId: null }
 const agent: Principal = { userId: 'u-alice', name: 'Alice Account', email: 'a@example.com', source: 'agent', agentKeyId: 'key-123' }
 
-async function tx<A>(work: (db: Db) => Promise<A>): Promise<A> {
-  const client = await pool.connect()
-  try {
-    return await makeDb(client).transaction(work, { isolationLevel: 'serializable' })
-  } finally {
-    client.release()
-  }
-}
+const tx = <A>(work: (db: Db) => Promise<A>) => database.tx(work)
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 let keys = 0
 const key = () => `key-history-${++keys}`
@@ -72,7 +65,7 @@ async function counts() {
 let creation: Event, initial: Event, edited: Event, deletion: Event
 
 beforeAll(async () => {
-  pool = await resetTestDatabase()
+  database = await testDatabase()
   await tx(async (db) => {
     await db.insert(groups).values([
       { id: 'g1', kind: 'named', slug: 'home', name: 'Home', defaultCurrency: 'USD', createdAt: new Date('2019-06-01T00:00:00Z') },
@@ -87,7 +80,7 @@ beforeAll(async () => {
       { id: 'qc', groupId: 'g2', name: 'Cal' },
       { id: 'oa', groupId: 'other', name: 'Other' },
     ])
-    await db.insert(user).values(testUsers([alice, { userId: 'u-other', name: 'Other', email: 'other@example.com' }]))
+    await db.insert(user).values(userRows([alice, { userId: 'u-other', name: 'Other', email: 'other@example.com' }]))
     await db.insert(memberships).values([
       { userId: alice.userId, groupId: 'g1', role: 'admin', participantId: 'pa' },
       { userId: alice.userId, groupId: 'g2', role: 'admin', participantId: 'qa' },
@@ -111,7 +104,7 @@ beforeAll(async () => {
   deletion = await latestEvent('g1')
 })
 afterAll(async () => {
-  await pool.end()
+  await database.close()
 })
 
 describe('saved revisions (P-HIST-44 to P-HIST-49)', () => {

@@ -15,26 +15,22 @@ import { downloadReceipt, uploadReceipt } from '~/server/receipt-routes'
 import { jsonError } from '~/server/core/errors'
 import { fakeBucket } from './fake-bucket'
 import { listRecurring, materializeDue, occurrenceId, processGroup } from '~/server/recurring'
-import { resetTestDatabase, testUsers } from './setup'
+import { testDatabase, type TestDatabase } from '../kit/database'
+import { userRows } from '../kit/people'
 
+let database: TestDatabase
 let pool: Pool
 const alice: Principal = { userId: 'u-alice', name: 'Alice', email: 'a@example.com', source: 'web', agentKeyId: null }
 const bob: Principal = { userId: 'u-bob', name: 'Bob', email: 'b@example.com', source: 'web', agentKeyId: null }
 const mallory: Principal = { userId: 'u-mallory', name: 'Mallory', email: 'm@example.com', source: 'web', agentKeyId: null }
 
-async function tx<A>(work: (db: Db) => Promise<A>): Promise<A> {
-  const client = await pool.connect()
-  try {
-    return await makeDb(client).transaction(work, { isolationLevel: 'serializable' })
-  } finally {
-    client.release()
-  }
-}
+const tx = <A>(work: (db: Db) => Promise<A>) => database.tx(work)
 let keys = 0
 const key = () => `key-${++keys}-expenses-test`
 
 beforeAll(async () => {
-  pool = await resetTestDatabase()
+  database = await testDatabase()
+  pool = database.pool
   await tx(async (db) => {
     await db.insert(groups).values([
       { id: 'g1', kind: 'named', slug: 'home', name: 'Home', defaultCurrency: 'USD' },
@@ -46,7 +42,7 @@ beforeAll(async () => {
       { id: 'pc', groupId: 'g1', name: 'Cara' },
       { id: 'pm', groupId: 'g2', name: 'Mallory' },
     ])
-    await db.insert(user).values(testUsers([alice, bob, mallory]))
+    await db.insert(user).values(userRows([alice, bob, mallory]))
     await db.insert(memberships).values([
       { userId: alice.userId, groupId: 'g1', role: 'admin', participantId: 'pa' },
       { userId: bob.userId, groupId: 'g1', role: 'member', participantId: 'pb' },
@@ -60,7 +56,7 @@ beforeAll(async () => {
   })
 })
 afterAll(async () => {
-  await pool.end()
+  await database.close()
 })
 
 const draft = (over: Partial<ExpenseDraft> = {}): ExpenseDraft => ({

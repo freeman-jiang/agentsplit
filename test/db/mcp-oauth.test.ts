@@ -7,7 +7,7 @@ import { expenses, memberships } from '../../db/schema/app'
 import { oauthConsent } from '../../db/schema/auth'
 import { revokeOAuthConnection } from '~/server/auth/oauth-connections'
 import { removeExpiredDpopProofs } from '~/server/auth/oauth'
-import { BASE, callTool, failure, MCP_URL, ok, rpc, SECRET, startHarness, type Harness } from './mcp-harness'
+import { BASE, callTool, failure, MCP_URL, ok, rpc, SECRET, startHarness, type Harness } from './harness'
 
 /** Claude Code's published Client ID Metadata Document, as served on 2026-11-05. */
 const CLAUDE_CODE = 'https://claude.ai/oauth/claude-code-client-metadata'
@@ -76,7 +76,7 @@ async function authorize(data: { clientId?: string; redirectUri?: string; scope?
     ...(data.prompt ? { prompt: data.prompt } : {}),
   })
   const cookie = data.cookie ?? alice.cookie
-  const start = await h.auth(new Request(`${BASE}/api/auth/oauth2/authorize?${query}`, { headers: { cookie, accept: 'text/html', 'sec-fetch-mode': 'navigate' } }))
+  const start = await h.fetch(new Request(`${BASE}/api/auth/oauth2/authorize?${query}`, { headers: { cookie, accept: 'text/html', 'sec-fetch-mode': 'navigate' } }))
   expect(start.status, await start.clone().text()).toBe(302)
   const consentPage = new URL(start.headers.get('location') ?? '', BASE)
   // A consent that already covers the scopes is remembered: the code comes back at once.
@@ -86,7 +86,7 @@ async function authorize(data: { clientId?: string; redirectUri?: string; scope?
     return { code: consentPage.searchParams.get('code') ?? '', error: consentPage.searchParams.get('error'), verifier, redirectUri, clientId }
   }
   expect(consentPage.pathname).toBe('/settings/connections/consent')
-  const consent = await h.auth(
+  const consent = await h.fetch(
     new Request(`${BASE}/api/auth/oauth2/consent`, {
       method: 'POST',
       headers: { cookie, origin: BASE, 'content-type': 'application/json' },
@@ -100,7 +100,7 @@ async function authorize(data: { clientId?: string; redirectUri?: string; scope?
 }
 
 async function token(body: Record<string, string>, headers: Record<string, string> = {}) {
-  return h.auth(new Request(`${BASE}/api/auth/oauth2/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', ...headers }, body: new URLSearchParams({ resource: MCP_URL, ...body }) }))
+  return h.fetch(new Request(`${BASE}/api/auth/oauth2/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', ...headers }, body: new URLSearchParams({ resource: MCP_URL, ...body }) }))
 }
 
 async function connect(data: Parameters<typeof authorize>[0] = {}): Promise<Tokens> {
@@ -309,7 +309,7 @@ describe('DPoP-bound tokens', () => {
 
 describe('dynamic client registration', () => {
   it('registers a public native client whose loopback callback works on any port', async () => {
-    const r = await h.auth(
+    const r = await h.fetch(
       new Request(`${BASE}/api/auth/oauth2/register`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -347,14 +347,14 @@ describe('write recheck', () => {
 
 describe('OAuth routes', () => {
   const revoke = (t: Tokens) =>
-    h.auth(
+    h.fetch(
       new Request(`${BASE}/api/auth/oauth2/revoke`, {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ token: t.refresh_token ?? '', token_type_hint: 'refresh_token', client_id: CLAUDE_CODE }),
       }),
     )
-  const userinfo = (t: Tokens) => h.auth(new Request(`${BASE}/api/auth/oauth2/userinfo`, { headers: bearer(t) }))
+  const userinfo = (t: Tokens) => h.fetch(new Request(`${BASE}/api/auth/oauth2/userinfo`, { headers: bearer(t) }))
 
   it('an RFC 7009 revoke of the refresh token stops its access token at once (P-MCP-137)', async () => {
     const t = await connect()
@@ -372,7 +372,7 @@ describe('OAuth routes', () => {
   it('deleting the consent revokes the connections and refresh tokens of that client (P-MCP-138)', async () => {
     const t = await connect()
     const [consent] = await h.withDb((db) => db.select({ id: oauthConsent.id }).from(oauthConsent).where(and(eq(oauthConsent.userId, 'alice'), eq(oauthConsent.clientId, CLAUDE_CODE))))
-    const r = await h.auth(
+    const r = await h.fetch(
       new Request(`${BASE}/api/auth/oauth2/delete-consent`, {
         method: 'POST',
         headers: { cookie: alice.cookie, origin: BASE, 'content-type': 'application/json' },
@@ -393,7 +393,7 @@ describe('OAuth routes', () => {
     const bob = await h.withDb((db) => db.execute<{ token: string }>(sql`SELECT token FROM session WHERE user_id = 'bob'`)).then((r) => r.rows[0]?.token ?? '')
     const { serializeSignedCookie } = await import('better-call')
     const bobCookie = (await serializeSignedCookie('better-auth.session_token', bob, SECRET)).split(';')[0] ?? ''
-    const r = await h.auth(
+    const r = await h.fetch(
       new Request(`${BASE}/api/auth/oauth2/delete-consent`, {
         method: 'POST',
         headers: { cookie: bobCookie, origin: BASE, 'content-type': 'application/json' },
@@ -417,15 +417,15 @@ describe('OAuth routes', () => {
 
   it('exports accept the OAuth bearer of a member, and refuse another account’s (P-TOOL-EXPORT-06)', async () => {
     const t = await connect()
-    const json = await h.app.fetch(new Request(`${BASE}/groups/g1/expenses/export/json`, { headers: bearer(t) }))
+    const json = await h.fetch(new Request(`${BASE}/groups/g1/expenses/export/json`, { headers: bearer(t) }))
     expect(json.status).toBe(200)
     expect(((await json.json()) as { id: string }).id).toBe('g1')
-    const denied = await h.app.fetch(new Request(`${BASE}/groups/g2/expenses/export/csv`, { headers: bearer(t) }))
+    const denied = await h.fetch(new Request(`${BASE}/groups/g2/expenses/export/csv`, { headers: bearer(t) }))
     expect(denied.status).toBe(403)
     expect(await denied.json()).toEqual({ error: 'Group not found, or you are not a member' })
     // Read scope is required: without it the export gets the 403 of the MCP endpoint.
     await h.withDb((db) => db.update(oauthConsent).set({ scopes: ['offline_access'] }).where(eq(oauthConsent.userId, 'alice')))
-    const noRead = await h.app.fetch(new Request(`${BASE}/groups/g1/expenses/export/json`, { headers: bearer(t) }))
+    const noRead = await h.fetch(new Request(`${BASE}/groups/g1/expenses/export/json`, { headers: bearer(t) }))
     expect(noRead.status).toBe(403)
     expect(await noRead.json()).toEqual({ error: 'Read permission is no longer granted' })
   })

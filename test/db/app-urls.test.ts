@@ -6,24 +6,27 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { groups } from '../../db/schema/app'
 import { createApp, type App } from '~/server/main/app'
 import { makeDb } from '~/server/core/db'
+import { testSettings } from '../kit/config'
 import { fakeBucket } from './fake-bucket'
-import { resetTestDatabase } from './setup'
+import { testDatabase, type TestDatabase } from '../kit/database'
 
 const BASE = 'http://localhost'
 const SLUGGED = 'AbCdEfGhIjKlMnOpQrS_1'
 const UNSLUGGED = 'ZyXwVuTsRqPoNmLkJiH_2'
 
+let database: TestDatabase
 let pool: Pool
 let app: App
 
 beforeAll(async () => {
-  pool = await resetTestDatabase()
+  database = await testDatabase()
+  pool = database.pool
   await makeDb(pool).insert(groups).values([
     { id: SLUGGED, kind: 'named', slug: 'household', name: 'Household', defaultCurrency: 'USD' },
     { id: UNSLUGGED, kind: 'named', slug: null, name: 'Trip', defaultCurrency: 'USD' },
   ])
   app = createApp({
-    config: { baseUrl: BASE, secret: 'app-urls-test-secret-0123456789-0123456789', googleClientId: 'g', googleClientSecret: 'g', bootstrapEmail: undefined, signUpDailyLimit: 200, perfInstrumentation: false },
+    config: testSettings(),
     connect: () => pool.connect(),
     pool: makeDb(pool),
     bucket: fakeBucket().bucket,
@@ -31,7 +34,7 @@ beforeAll(async () => {
   })
 })
 afterAll(async () => {
-  await pool.end()
+  await database.close()
 })
 
 const get = (path: string, method = 'GET') => app.fetch(new Request(`${BASE}${path}`, { method, redirect: 'manual' }))

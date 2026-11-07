@@ -1,10 +1,9 @@
 // The Stats tab and the exports against a real database.
 import { sql } from 'drizzle-orm'
-import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { activities, groups, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
-import { makeDb, type Db } from '~/server/core/db'
+import type { Db } from '~/server/core/db'
 import { exportCsv, exportJson } from '~/server/export'
 import { contentDisposition } from '~/server/export-routes'
 import { createExpense, deleteExpense } from '~/server/ledger'
@@ -12,21 +11,15 @@ import { type Principal } from '~/server/core/access'
 import { statsExpenses, statsOverview } from '~/server/stats'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { insertImportedExpense } from './history-fixtures'
-import { resetTestDatabase, testUsers } from './setup'
+import { testDatabase, type TestDatabase } from '../kit/database'
+import { userRows } from '../kit/people'
 
-let pool: Pool
+let database: TestDatabase
 const alice: Principal = { userId: 'u-alice', name: 'Alice', email: 'a@example.com', source: 'web', agentKeyId: null }
 const unbound: Principal = { userId: 'u-unbound', name: 'Viewer', email: 'v@example.com', source: 'web', agentKeyId: null }
 const stranger: Principal = { userId: 'u-stranger', name: 'Stranger', email: 's@example.com', source: 'web', agentKeyId: null }
 
-async function tx<A>(work: (db: Db) => Promise<A>): Promise<A> {
-  const client = await pool.connect()
-  try {
-    return await makeDb(client).transaction(work, { isolationLevel: 'serializable' })
-  } finally {
-    client.release()
-  }
-}
+const tx = <A>(work: (db: Db) => Promise<A>) => database.tx(work)
 let keys = 0
 const create = (id: string, over: Partial<ExpenseDraft>) =>
   tx((db) =>
@@ -54,7 +47,7 @@ const create = (id: string, over: Partial<ExpenseDraft>) =>
   )
 
 beforeAll(async () => {
-  pool = await resetTestDatabase()
+  database = await testDatabase()
   await tx(async (db) => {
     await db.insert(groups).values([{ id: 'g1', kind: 'named', slug: 'flat', name: 'Flat · Zürich', defaultCurrency: 'USD' }])
     await db.insert(participants).values([
@@ -62,7 +55,7 @@ beforeAll(async () => {
       { id: 'pb', groupId: 'g1', name: 'Bob' },
       { id: 'pc', groupId: 'g1', name: '=Cara' },
     ])
-    await db.insert(user).values(testUsers([alice, unbound]))
+    await db.insert(user).values(userRows([alice, unbound]))
     await db.insert(memberships).values([
       { userId: alice.userId, groupId: 'g1', role: 'admin', participantId: 'pa' },
       { userId: unbound.userId, groupId: 'g1', role: 'member', participantId: null },
@@ -78,7 +71,7 @@ beforeAll(async () => {
   await tx((db) => deleteExpense(db, { principal: alice, groupId: 'g1', expenseId: 'gone', expectedRevision: 1, idempotencyKey: 'key-stats-delete' }))
 })
 afterAll(async () => {
-  await pool.end()
+  await database.close()
 })
 
 describe('stats overview', () => {

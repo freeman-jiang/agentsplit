@@ -8,7 +8,7 @@ import { user } from '../../db/schema/auth'
 import { checkSignUpCap } from '~/server/auth/auth'
 import { takeWrite } from '~/server/rate-limit'
 import { LIMITS, SIGN_UP_LIMIT_CODE } from '~/shared/limits'
-import { BASE, failure, startHarness, type Harness } from './mcp-harness'
+import { BASE, failure, startHarness, type Harness } from './harness'
 
 let h: Harness
 
@@ -54,7 +54,7 @@ describe('other limits', () => {
 
   it('rate-limits OAuth dynamic client registration per IP address', async () => {
     const register = (ip: string) =>
-      h.auth(
+      h.fetch(
         new Request(`${BASE}/api/auth/oauth2/register`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-forwarded-for': ip },

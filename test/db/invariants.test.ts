@@ -2,14 +2,16 @@
 // Runs against a disposable local database: TEST_DATABASE_URL (default agentsplit_test).
 import { Pool, type PoolClient } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { resetTestDatabase } from './setup'
+import { testDatabase, type TestDatabase } from '../kit/database'
 
+let database: TestDatabase
 let pool: Pool
 beforeAll(async () => {
-  pool = await resetTestDatabase()
+  database = await testDatabase()
+  pool = database.pool
 })
 afterAll(async () => {
-  await pool.end()
+  await database.close()
 })
 
 let n = 0

@@ -4,7 +4,7 @@
 // are the counts after the statement reduction; raise one only on purpose.
 import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { BASE, ok, startHarness, type Harness } from './mcp-harness'
+import { BASE, ok, startHarness, type Harness } from './harness'
 
 // Each write takes one token from the fair-use write budget (src/server/rate-limit.ts): one statement more than before.
 const CEILING = { mcpCreate: 10, mcpUpdateNotes: 10, webUpdate: 9 }
@@ -35,7 +35,7 @@ type Exit = { _tag: 'Exit'; exit: { _tag: 'Success'; value: unknown } | { _tag: 
 
 /** One web RPC call, through the server's request handler (src/server/app.ts). */
 async function webRpc(data: { tag: string; payload: object }) {
-  const response = await h.app.fetch(
+  const response = await h.fetch(
     new Request(`${BASE}/api/rpc`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie, origin: BASE },

@@ -8,7 +8,7 @@ import { verifyApiKey } from '~/server/auth/api-key'
 import { readApiKey } from '~/server/auth/authenticate'
 import { DPOP_ALGORITHMS, protectedResourceMetadata } from '~/server/auth/challenge'
 import { sha256Base64url } from '~/server/core/ids'
-import { BASE, startHarness, type Harness } from './mcp-harness'
+import { BASE, startHarness, type Harness } from './harness'
 
 // These tests create many API keys for one account; the fair-use cap has its own test (test/db/limits.test.ts).
 vi.mock('~/shared/limits', async (original) => {
@@ -47,7 +47,7 @@ describe('protected-resource metadata', () => {
   })
 
   it('differs from Better Auth’s own document only by offline_access', async () => {
-    const theirs = await h.auth(new Request(`${BASE}/.well-known/oauth-protected-resource/api/mcp`))
+    const theirs = await h.betterAuth(new Request(`${BASE}/.well-known/oauth-protected-resource/api/mcp`))
     expect(theirs.status).toBe(200)
     const body = (await theirs.json()) as { scopes_supported: string[] }
     const ours = (await protectedResourceMetadata(new Request(`${BASE}/.well-known/oauth-protected-resource/api/mcp`), BASE).json()) as Record<string, unknown>
