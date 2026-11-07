@@ -2,6 +2,7 @@
 // MCP tools all call validateExpense. The rules are the current app's
 // (src/lib/schemas.ts expenseFormSchema), plus multiple payers.
 import { CURRENCIES, type CurrencyCode } from './currencies'
+import { isRealDate } from './dates'
 import { LIMITS, numberText } from './limits'
 import { DECIMAL, formatMinor, minor, minorOrNull, sumMinor, type Minor } from './minor'
 import { formatWeight, parseWeight, preferredPayer, resolveShares } from './split'
@@ -30,12 +31,6 @@ export type ResolvedExpense = Omit<ExpenseDraft, 'amount' | 'payers' | 'shares' 
 }
 
 export type ExpenseIssue = { readonly field: string; readonly message: string }
-
-/** Does the date text name a real day (2026-02-29 and 2026-09-31 do not)? It does not check the YYYY-MM-DD form. */
-export const isRealDate = (value: string) => {
-  const date = new Date(`${value}T00:00:00Z`)
-  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
-}
 
 const isCalendarDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && isRealDate(value)
 
