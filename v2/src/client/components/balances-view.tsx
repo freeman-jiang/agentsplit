@@ -27,37 +27,45 @@ export function BalancesCard(props: { currencies: Currencies; names: Names }) {
           return (
             <div key={c.currency} className="mb-4 last:mb-0">
               <h3 className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{c.currency}</h3>
-              <ul className="space-y-1">
-                {c.balances.map((b) => {
-                  const positive = !b.net.startsWith('-') && size(b.net) > 0
-                  const width = `${(size(b.net) / largest) * 100}%`
-                  return (
-                    <li key={b.participantId} className="grid grid-cols-2 items-center text-sm" data-testid="balance-row">
-                      {/* The name sits on the empty half; the bar grows from the middle (P-BAL-45). */}
-                      <div className={'relative flex h-8 items-center justify-end px-2'}>
-                        {positive ? (
-                          <span className="truncate">{props.names.get(b.participantId) ?? 'Unknown'}</span>
-                        ) : (
-                          <>
-                            {size(b.net) > 0 && <span aria-hidden="true" className="absolute inset-y-1 right-0 bg-owe/15 dark:bg-owe/25" style={{ width }} />}
-                            <span className="relative text-owe tabular-nums">{money(b.net, c.currency)}</span>
-                          </>
-                        )}
-                      </div>
-                      <div className="relative flex h-8 items-center px-2">
-                        {positive ? (
-                          <>
-                            <span aria-hidden="true" className="absolute inset-y-1 left-0 bg-owed/15 dark:bg-owed/25" style={{ width }} />
-                            <span className="relative text-owed tabular-nums">{money(b.net, c.currency)}</span>
-                          </>
-                        ) : (
-                          <span className="truncate">{props.names.get(b.participantId) ?? 'Unknown'}</span>
-                        )}
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
+              <div aria-hidden="true" className="grid grid-cols-2 text-xs text-muted-foreground">
+                <span className="px-2 text-right">Owes</span>
+                <span className="px-2">Gets back</span>
+              </div>
+              {/* The center line marks zero: debts grow to the left, credits to the right. */}
+              <div className="relative">
+                <span aria-hidden="true" className="absolute inset-y-0 left-1/2 w-px bg-border" />
+                <ul className="space-y-1">
+                  {c.balances.map((b) => {
+                    const positive = !b.net.startsWith('-') && size(b.net) > 0
+                    const width = `${(size(b.net) / largest) * 100}%`
+                    return (
+                      <li key={b.participantId} className="grid grid-cols-2 items-center text-sm" data-testid="balance-row">
+                        {/* The name sits on the empty half; the bar grows from the middle (P-BAL-45). */}
+                        <div className={'relative flex h-8 items-center justify-end px-2'}>
+                          {positive ? (
+                            <span className="truncate">{props.names.get(b.participantId) ?? 'Unknown'}</span>
+                          ) : (
+                            <>
+                              {size(b.net) > 0 && <span aria-hidden="true" className="absolute inset-y-1 right-0 bg-owe/10 dark:bg-owe/12" style={{ width }} />}
+                              <span className="relative text-owe tabular-nums">{money(b.net, c.currency)}</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="relative flex h-8 items-center px-2">
+                          {positive ? (
+                            <>
+                              <span aria-hidden="true" className="absolute inset-y-1 left-0 bg-owed/10 dark:bg-owed/12" style={{ width }} />
+                              <span className="relative text-owed tabular-nums">{money(b.net, c.currency)}</span>
+                            </>
+                          ) : (
+                            <span className="truncate">{props.names.get(b.participantId) ?? 'Unknown'}</span>
+                          )}
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
             </div>
           )
         })

@@ -47,8 +47,8 @@ export function DashboardBalance() {
                   const negative = amount.startsWith('-')
                   const zero = /^-?0(\.0+)?$/.test(amount)
                   return (
-                    <li key={currency} className="max-sm:flex max-sm:items-baseline max-sm:justify-between max-sm:gap-3 sm:space-y-1" data-currency={currency}>
-                      <p className="text-xs text-muted-foreground">
+                    <li key={currency} className="max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-2 sm:space-y-1" data-currency={currency}>
+                      <p className="text-xs text-muted-foreground max-sm:text-sm">
                         {zero ? 'Net balance' : negative ? 'You owe' : 'You are owed'} · {currency}
                       </p>
                       <p

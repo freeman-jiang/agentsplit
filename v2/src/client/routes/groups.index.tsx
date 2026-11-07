@@ -285,8 +285,8 @@ function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
             {outstanding.map(({ currency, net }) => {
               const owed = !net.startsWith('-')
               return (
-                <li key={currency} className="max-sm:flex max-sm:items-baseline max-sm:justify-between max-sm:gap-3 sm:space-y-1">
-                  <span className="block text-xs text-muted-foreground">
+                <li key={currency} className="max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-2 sm:space-y-1">
+                  <span className="block text-xs text-muted-foreground max-sm:text-sm">
                     {owed ? 'You are owed' : 'You owe'} · {currency}
                   </span>
                   <span className={cn('block text-3xl font-semibold tabular-nums sm:text-4xl', owed ? 'text-owed' : 'text-owe')}>
