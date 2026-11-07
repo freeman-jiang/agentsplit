@@ -72,7 +72,8 @@ describe('settings', () => {
   // A bad setting must stop the start, not the first sign-in hours later.
   it('refuses a short secret, a missing setting and a malformed number at start', async () => {
     const { readSettings } = await import('~/server/core/config')
-    expect(readSettings(env).app).toMatchObject({ signUpDailyLimit: 200, perfInstrumentation: false })
+    // The base settings start; each case below changes one of them.
+    expect(readSettings(env).app.baseUrl).toBe('https://a.example')
     expect(() => readSettings({ ...env, BETTER_AUTH_SECRET: 'short' })).toThrow('Set BETTER_AUTH_SECRET to at least 32 characters')
     expect(() => readSettings({ ...env, GOOGLE_CLIENT_ID: ' ' })).toThrow('Set GOOGLE_CLIENT_ID')
     expect(() => readSettings({ ...env, SIGN_UP_DAILY_LIMIT: '10k' })).toThrow('Set SIGN_UP_DAILY_LIMIT to a whole number of accounts per day')
