@@ -151,9 +151,11 @@ function StatsTab() {
             </div>
           )}
         </div>
+        {/* The date range describes the selection, so it sits with the filters, not in a card. */}
+        {data && data.summary.count > 0 && <span className="ml-auto self-center text-sm tabular-nums text-muted-foreground">Active period · {activeSpan(data.summary)}</span>}
       </div>
       {/* On wide screens Summary and Totals share a row; the wide cards span both columns. */}
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-2">
         <SummaryCard data={data} />
         <StatsCard title="Totals" description="Spending summary of the entire group.">
           {!data || !c ? <Lines rows={3} /> : <Totals data={data} currency={c} />}
@@ -206,7 +208,6 @@ const Empty = ({ children }: { children: ReactNode }) => <p className="text-sm t
 function SummaryCard({ data }: { data: Overview | undefined }) {
   const c = data?.currency
   const s = data?.summary
-  const span = !s?.firstDate || !s.lastDate ? '—' : s.firstDate === s.lastDate ? formatDay(s.firstDate) : `${formatDay(s.firstDate)} – ${formatDay(s.lastDate)}`
   return (
     <StatsCard title="Summary" description="Key figures for the selected period.">
       {!s || !c ? (
@@ -214,28 +215,25 @@ function SummaryCard({ data }: { data: Overview | undefined }) {
       ) : s.count === 0 ? (
         <Empty>There are no expenses yet.</Empty>
       ) : (
-        <div>
-          <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 xl:grid-cols-2">
-            <Metric label="Expenses">{s.count}</Metric>
-            <Metric label="Average expense">{money(s.average, c)}</Metric>
-            {/* The largest expense's title wraps instead of being cut off. */}
-            <div className="col-span-2 sm:col-span-1 xl:col-span-2">
-              <Metric label="Largest expense">
-                {s.largest ? money(s.largest.amount, c) : '—'}
-                {s.largest && <div className="mt-0.5 text-xs font-normal leading-snug text-muted-foreground">{s.largest.title}</div>}
-              </Metric>
-            </div>
-          </div>
-          {/* The date range is text, not a figure: one full-width row under the figures. */}
-          <div className="mt-6 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t pt-4 text-sm">
-            <span className="text-muted-foreground">Active period</span>
-            <span className="tabular-nums">{span}</span>
+        <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 xl:grid-cols-2">
+          <Metric label="Expenses">{s.count}</Metric>
+          <Metric label="Average expense">{money(s.average, c)}</Metric>
+          {/* The largest expense's title wraps instead of being cut off. */}
+          <div className="col-span-2 sm:col-span-1 xl:col-span-2">
+            <Metric label="Largest expense">
+              {s.largest ? money(s.largest.amount, c) : '—'}
+              {s.largest && <div className="mt-0.5 text-xs font-normal leading-snug text-muted-foreground">{s.largest.title}</div>}
+            </Metric>
           </div>
         </div>
       )}
     </StatsCard>
   )
 }
+
+/** The selected period's first and last expense dates. */
+const activeSpan = (s: Overview['summary']) =>
+  !s.firstDate || !s.lastDate ? '—' : s.firstDate === s.lastDate ? formatDay(s.firstDate) : `${formatDay(s.firstDate)} – ${formatDay(s.lastDate)}`
 
 function Metric({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
@@ -278,11 +276,14 @@ function ExpensesDialog(props: Parameters<typeof LazyDialog>[0]) {
 
 function Bar({ value, max, color }: { value: number; max: number; color: string }) {
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
       <div className="h-full rounded-full" style={{ width: `${max > 0 ? Math.max(0, (value / max) * 100) : 0}%`, backgroundColor: color }} />
     </div>
   )
 }
+
+/** The three bar charts share these wide-screen columns: label, bar, amount, chevron. */
+const BAR_COLUMNS = 'lg:grid-cols-[8rem_minmax(0,1fr)_9.5rem_1rem]'
 
 /**
  * One drill-down row. On wide screens the label, bar and amount share one
@@ -295,7 +296,7 @@ function BarRow(props: { label: ReactNode; value: number; max: number; color: st
       onClick={props.onClick}
       aria-label={props.aria}
       className={cn(
-        'group -mx-2 grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_1rem] items-center gap-x-3 gap-y-1.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'group -mx-2 grid w-[calc(100%+1rem)] cursor-pointer grid-cols-[minmax(0,1fr)_auto_1rem] items-center gap-x-3 gap-y-1.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         props.columns,
       )}
     >
@@ -327,12 +328,13 @@ function OverTimeCard({ data, drill }: { data: Overview | undefined; drill: Dril
           {data.months.map((m) => (
             <BarRow
               key={m.month}
-              columns="lg:grid-cols-[5.5rem_minmax(0,1fr)_7rem_1rem]"
+              columns={BAR_COLUMNS}
               label={formatMonth(m.month)}
               aria={`Show expenses for ${formatMonth(m.month)}`}
               value={Number(m.total)}
               max={max}
-              color={chartColor(0)}
+              // Lighter than the monthly chart below, so the two month lists read as different charts.
+              color="hsl(var(--muted-foreground))"
               amount={money(m.total, c)}
               onClick={() => setMonth(m.month)}
             />
@@ -368,7 +370,7 @@ function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Dr
           {data.categories.map((x, i) => (
             <BarRow
               key={x.categoryId}
-              columns="lg:grid-cols-[11rem_minmax(0,1fr)_9.5rem_1rem]"
+              columns={BAR_COLUMNS}
               label={x.name}
               icon={<GroupIcon grouping={x.grouping} className="h-4 w-4 shrink-0 text-muted-foreground" />}
               aria={`Show expenses for ${x.name}`}
@@ -492,13 +494,13 @@ const hover = (data: { month: MonthlyMonth; category: MonthlyCategory; share: nu
 
 function StackedBars({ view, visible, colors, currency, round, includeYear }: ChartProps) {
   return (
-    <div className="max-h-[32rem] space-y-2 overflow-y-auto pr-1">
+    <div className="flex max-h-[32rem] flex-col gap-0.5 overflow-y-auto">
       {view.months.map((month) => {
         const share = ratio(month.expense, view.maxExpense, currency)
         const units = toUnits(month.expense, currency) > 0n ? Math.max(share, 0.03) : 0
         return (
           // The same grammar as "Spending over time": label, a bar on a full-width track, then the amount in a fixed column.
-          <div key={month.key} className="grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] items-center gap-3 text-sm sm:grid-cols-[6rem_minmax(0,1fr)_5rem]">
+          <div key={month.key} className={cn('grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] items-center gap-x-3 py-1.5 text-sm', BAR_COLUMNS)}>
             <div>{formatMonth(month.key, includeYear ? shortMonthYear : shortMonth)}</div>
             <div className="h-2 min-w-0 overflow-hidden rounded-full bg-muted">
               <div className="flex h-full overflow-hidden rounded-full" style={{ width: `${units * 100}%` }}>
@@ -510,6 +512,8 @@ function StackedBars({ view, visible, colors, currency, round, includeYear }: Ch
               </div>
             </div>
             <div className="text-right tabular-nums text-muted-foreground">{chartMoney({ amount: month.expense, currency, round })}</div>
+            {/* The drill-down rows' chevron column, so the amounts share one right edge. */}
+            <span aria-hidden="true" className="hidden lg:block" />
           </div>
         )
       })}
