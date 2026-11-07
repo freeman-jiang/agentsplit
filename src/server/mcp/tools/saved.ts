@@ -8,6 +8,9 @@ import { DateTime, Id, isCurrencyCode, MODE_NAMES, minorOf, Money, NonNegativeIn
 
 const Category = Schema.NullOr(Schema.Struct({ id: Schema.Int, name: Schema.String, grouping: Schema.String }))
 
+/** Set for a receipt that was deleted for good: who deleted it (their account name) and when. History keeps the pointer. */
+export const ReceiptDeleted = Schema.NullOr(Schema.Struct({ by: Schema.String, at: DateTime }))
+
 /**
  * One saved revision. `schemaVersion` is the stored format: 1 for revisions
  * from the current app, 2 for revisions v2 wrote.
@@ -39,7 +42,7 @@ export const ExpenseSnapshot = Schema.Struct({
     isReimbursement: Schema.Boolean,
     notes: NullableString,
     recurrenceRule: Schema.NullOr(RecurrenceInput),
-    documents: Schema.Array(Schema.Struct({ id: Id, url: Schema.String })),
+    documents: Schema.Array(Schema.Struct({ id: Id, url: Schema.String, deleted: Schema.optionalKey(ReceiptDeleted) })),
   }),
 })
 
@@ -106,7 +109,7 @@ export function expenseSnapshot(data: { expense: SavedExpense; groupId: string }
       isReimbursement: e.kind === 'payment',
       notes: e.notes === '' ? null : e.notes,
       recurrenceRule: RULE_NAMES[e.recurrence],
-      documents: e.documents.map((d) => ({ id: d.id, url: d.url })),
+      documents: e.documents.map((d) => ({ id: d.id, url: d.url, ...(d.deleted === undefined ? {} : { deleted: d.deleted }) })),
     },
   }
 }

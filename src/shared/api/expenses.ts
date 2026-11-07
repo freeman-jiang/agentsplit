@@ -5,6 +5,7 @@ import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
 import { CalendarDateOutput, Expense, Id, NotFound, ReadError, SplitModeSchema, Unavailable, WriteError } from './core'
+import { ReceiptTombstone } from './storage'
 
 export const Category = Schema.Struct({ id: Schema.Number, grouping: Schema.String, name: Schema.String })
 
@@ -15,6 +16,8 @@ export const ExpenseDocument = Schema.Struct({
   height: Schema.Number,
   /** Where the browser or an agent fetches the image; access is checked on every read. */
   downloadUrl: Schema.String,
+  /** Set when the receipt was deleted for good: show the tombstone instead of the image. */
+  deleted: Schema.NullOr(ReceiptTombstone),
 })
 
 const Attribution = Schema.Struct({ at: Schema.String, by: Schema.NullOr(Schema.String) })
@@ -44,6 +47,18 @@ export const Reference = Schema.Struct({
   splitModes: Schema.Array(SplitModeSchema),
   recurrence: Schema.Array(Schema.Literals(['none', 'daily', 'weekly', 'monthly'])),
   attachments: Schema.Struct({ enabled: Schema.Boolean, contentTypes: Schema.Array(Schema.String), maxBytes: Schema.Number }),
+  /** The fair-use limits (src/shared/limits.ts). */
+  limits: Schema.Struct({
+    receiptStorageBytes: Schema.Number,
+    receiptBytes: Schema.Number,
+    receiptsPerRequest: Schema.Number,
+    groupsCreated: Schema.Number,
+    participantsPerGroup: Schema.Number,
+    apiKeys: Schema.Number,
+    writesPerMinute: Schema.Number,
+    clientRegistrationsPerHour: Schema.Number,
+    fairUse: Schema.String,
+  }),
 })
 
 export class ExpensesApi extends RpcGroup.make(

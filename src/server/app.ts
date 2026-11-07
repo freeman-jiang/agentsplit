@@ -18,9 +18,10 @@ import { handleMcp } from './mcp/endpoint'
 import { removeExpiredDpopProofs } from './mcp/oauth'
 import { putUpload, removeStaleUploads } from './receipt-uploads'
 import { downloadReceipt, receiptReader, uploadReceipt } from './receipts'
+import { purgeDeletedReceipts, receiptArchive, receiptArchiveResponse } from './storage'
 import { handleAuthRoute } from './oauth-routes'
 import { materializeDue } from './recurring'
-import { Api, AppConfig, AuthMiddlewareLive } from './rpc'
+import { Api, AppConfig, AuthMiddlewareLive, ReceiptBucket } from './rpc'
 import { Forbidden } from '../shared/api'
 import { REQUEST_ID_RESPONSE_HEADER } from '../shared/ids'
 import { GROUP_DENIED, jsonError, livenessResponse, readinessResponse, robotsTxt, sameOrigin, secured, sitemapXml } from './security'
@@ -56,6 +57,7 @@ export function createApp(platform: Platform) {
       Layer.provide(AuthMiddlewareLive),
       Layer.provide(RpcSerialization.layerJson),
       Layer.provide(Layer.succeed(AppConfig, config)),
+      Layer.provide(Layer.succeed(ReceiptBucket, bucket)),
     ),
   ).handler
 
@@ -140,6 +142,28 @@ export function createApp(platform: Platform) {
     }
   }
 
+  /**
+   * Every receipt of a group as one ZIP file, at /<group>/expenses/export/receipts, for members only.
+   * The same credentials as the exports; the file streams from storage after the connection is released.
+   */
+  async function exportReceipts(data: { request: Request; group: string }): Promise<Response> {
+    const prepared = await withClient(async (client): Promise<Response | Awaited<ReturnType<typeof receiptArchive>>> => {
+      const db = makeDb(client)
+      const reader = await httpReader(db, { request: data.request, baseUrl: config.baseUrl, secret: config.secret })
+      if ('response' in reader && reader.response.status !== 401) return reader.response
+      const principal = 'principal' in reader ? reader.principal : null
+      if (!principal) return jsonError({ status: 401, message: 'Sign in required' })
+      try {
+        return await receiptArchive(db, { principal, group: decodeURIComponent(data.group) })
+      } catch (error) {
+        if (error instanceof Forbidden || error instanceof URIError) return jsonError({ status: 403, message: GROUP_DENIED })
+        throw error
+      }
+    })
+    if (prepared instanceof Response) return prepared
+    return receiptArchiveResponse({ bucket, archive: prepared, date: new Date().toISOString().slice(0, 10) })
+  }
+
   async function route(request: Request): Promise<Response> {
     const url = new URL(request.url)
     // The Effect RPC client joins its base URL with a slash, so it posts to /api/rpc/.
@@ -193,6 +217,8 @@ export function createApp(platform: Platform) {
       if (request.method !== 'PUT') return jsonError({ status: 405, message: 'Method not allowed', headers: { Allow: 'PUT' } })
       return withClient((client) => putUpload({ db: makeDb(client), bucket, request, token: uploadRoute[1] ?? '', enabled: config.documentsEnabled }))
     }
+    const receiptsRoute = /^\/(?:groups\/)?([^/]+)\/expenses\/export\/receipts$/.exec(url.pathname)
+    if (receiptsRoute && request.method === 'GET') return exportReceipts({ request, group: receiptsRoute[1] ?? '' })
     const exportRoute = /^\/(?:groups\/)?([^/]+)\/expenses\/export\/(csv|json)$/.exec(url.pathname)
     if (exportRoute && request.method === 'GET') {
       const [, group = '', format] = exportRoute
@@ -224,7 +250,8 @@ export function createApp(platform: Platform) {
      * The hourly job (src/server/server.ts runs it at minute 7). It creates due
      * recurring expenses, so reads never have to (DECISIONS.md, P-BAL-30 and
      * P-RECUR-08). A failed occurrence is logged and retried on the next run.
-     * It also removes stale upload targets and expired DPoP replay rows.
+     * It also removes stale upload targets, the objects of deleted receipts
+     * that are still in storage, and expired DPoP replay rows.
      */
     scheduled(time: Date): Promise<void> {
       return withClient(async (client) => {
@@ -237,6 +264,8 @@ export function createApp(platform: Platform) {
         if (created.length) console.log(`Created ${created.length} recurring expenses`)
         const removed = await removeStaleUploads({ db, bucket })
         if (removed) console.log(`Removed ${removed} stale receipt upload targets`)
+        const purged = await purgeDeletedReceipts({ db, bucket })
+        if (purged) console.log(`Removed ${purged} deleted receipts from storage`)
         const proofs = await removeExpiredDpopProofs(db)
         if (proofs) console.log(`Removed ${proofs} expired DPoP replay rows`)
       })

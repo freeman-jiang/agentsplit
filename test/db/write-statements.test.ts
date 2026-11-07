@@ -9,7 +9,8 @@ import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { registerRequestDb, releaseRequestDb, REQUEST_ID_HEADER } from '~/server/db'
 import { HandlersLive } from '~/server/handlers'
-import { Api, AppConfig, AuthMiddlewareLive } from '~/server/rpc'
+import { Api, AppConfig, AuthMiddlewareLive, ReceiptBucket } from '~/server/rpc'
+import { fakeBucket } from './fake-bucket'
 import { BASE, ok, SECRET, startHarness, type Harness } from './mcp-harness'
 
 const CEILING = { mcpCreate: 9, mcpUpdateNotes: 9, webUpdate: 8 }
@@ -45,6 +46,7 @@ const rpcHandler = HttpRouter.toWebHandler(
     Layer.provide(
       Layer.succeed(AppConfig, { baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret', documentsEnabled: true }),
     ),
+    Layer.provide(Layer.succeed(ReceiptBucket, fakeBucket().bucket)),
   ),
 ).handler
 

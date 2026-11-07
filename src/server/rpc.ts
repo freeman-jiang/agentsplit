@@ -1,6 +1,7 @@
 import { Cause, Context, Effect, Layer, Option } from 'effect'
 import { RpcMiddleware } from 'effect/rpc'
 import { AgentSplitApi, Conflict, Unauthorized, Unavailable } from '../shared/api'
+import type { Bucket } from './bucket'
 import { DatabaseError, REQUEST_ID_HEADER, RequestDb, requestDbFor, transaction, useDb, type Db, type DomainError } from './db'
 import type * as ledger from './ledger'
 import { sessionPrincipal } from './session'
@@ -17,6 +18,9 @@ export class AppConfig extends Context.Service<
     readonly documentsEnabled: boolean
   }
 >()('agentsplit/AppConfig') {}
+
+/** The receipts bucket, for handlers that remove receipts from storage after their write commits. */
+export class ReceiptBucket extends Context.Service<ReceiptBucket, Bucket>()('agentsplit/ReceiptBucket') {}
 
 /** The signed-in caller, or null. Resolved once per request by AuthMiddleware. */
 export class CurrentPrincipal extends Context.Service<CurrentPrincipal, ledger.Principal | null>()('agentsplit/CurrentPrincipal') {}

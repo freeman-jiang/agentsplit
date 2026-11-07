@@ -6,11 +6,12 @@ import { categories } from '../../db/schema/app'
 import { NotFound } from '../shared/api'
 import { suggestSettlements } from '../shared/balances'
 import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
+import { FAIR_USE, LIMITS } from '../shared/limits'
 import { formatMinor, minor } from '../shared/money'
 import type { Db } from './db'
-import { expenseDocumentsOf, loadExpenses, requireMember, type Principal } from './ledger'
+import { loadExpenses, requireMember, type Principal, type StoredDocument } from './ledger'
 import { MAX_RECEIPT_BYTES, receiptDownloadPath } from './receipts'
-import { balancesOf, balanceSums, iso, type BalanceSum } from './sql'
+import { balancesOf, balanceSums, documentStatesJson, iso, type BalanceSum, type Tombstone } from './sql'
 
 /** Every category, ordered by ID (P-EXP-102: the current app has no order). */
 export async function listCategories(db: Db) {
@@ -18,6 +19,7 @@ export async function listCategories(db: Db) {
 }
 
 type DetailRow = {
+  documents: (StoredDocument & { receiptId: string | null; deleted: Tombstone | null })[] | null
   added_at: string | null
   added_by: string | null
   edited_at: string | null
@@ -35,7 +37,7 @@ export async function getExpenseDetail(db: Db, data: { principal: Principal; gro
   const [expense] = await loadExpenses(db, [data.expenseId])
   if (!expense || expense.groupId !== groupId) throw new NotFound({ entity: 'expense', id: data.expenseId })
   const result = await db.execute<DetailRow & { deleted: boolean }>(sql`
-    SELECT e.deleted_at IS NOT NULL AS deleted,
+    SELECT e.deleted_at IS NOT NULL AS deleted, ${documentStatesJson(sql`e`)} AS documents,
       (SELECT ${iso(sql`a.time`)} FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = 1) AS added_at,
       ${sql.raw('(SELECT CASE WHEN a.source = \'system\' AND a.actor_name IS NULL THEN \'Automatic recurrence\' ELSE a.actor_name END FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = 1)')} AS added_by,
       (SELECT ${iso(sql`a.time`)} FROM activities a WHERE a.expense_id = e.id AND a.expense_revision = e.revision AND e.revision > 1 AND a.type = 'update_expense') AS edited_at,
@@ -46,10 +48,16 @@ export async function getExpenseDetail(db: Db, data: { principal: Principal; gro
   `)
   const [row] = result.rows
   if (!row || row.deleted) throw new NotFound({ entity: 'expense', id: data.expenseId })
-  const documents = await expenseDocumentsOf(db, data.expenseId)
   return {
     expense,
-    documents: documents.map((d) => ({ ...d, downloadUrl: receiptDownloadPath({ groupId, url: d.url }) })),
+    documents: (row.documents ?? []).map((d) => ({
+      id: d.id,
+      url: d.url,
+      width: d.width,
+      height: d.height,
+      downloadUrl: receiptDownloadPath({ groupId, url: d.url }),
+      deleted: d.deleted,
+    })),
     added: row.added_at ? { at: row.added_at, by: row.added_by } : null,
     edited: row.edited_at ? { at: row.edited_at, by: row.edited_by } : null,
     myLastEdit: row.my_last_edit,
@@ -106,6 +114,9 @@ export async function listBalances(db: Db, data: { principal: Principal; group: 
   }
 }
 
+// The sign-up cap is per instance and set by SIGN_UP_DAILY_LIMIT, so it is not reference data.
+const { signUpsPerDay: _signUpsPerDay, ...accountLimits } = LIMITS
+
 /** What an agent or the form needs to know to write an expense (P-EXP-143). */
 export async function getReference(db: Db, data: { documentsEnabled: boolean }) {
   return {
@@ -114,5 +125,6 @@ export async function getReference(db: Db, data: { documentsEnabled: boolean }) 
     splitModes: ['evenly', 'shares', 'percentage', 'amount'] as const,
     recurrence: ['none', 'daily', 'weekly', 'monthly'] as const,
     attachments: { enabled: data.documentsEnabled, contentTypes: ['image/jpeg', 'image/png'] as const, maxBytes: MAX_RECEIPT_BYTES },
+    limits: { ...accountLimits, fairUse: FAIR_USE },
   }
 }

@@ -10,6 +10,7 @@ import type { Bucket } from './bucket'
 import type { Db } from './db'
 import { randomId, randomToken, sha256Hex } from './ids'
 import type { Principal, StoredDocument } from './ledger'
+import { spaceFor } from './receipt-quota'
 import { imageInfo, NEW_URL_PREFIX, type ImageInfo } from './receipts'
 import { jsonError } from './security'
 
@@ -46,7 +47,9 @@ export class UploadError extends Error {
  * Upload targets for an expense that the caller just wrote, in the write's
  * transaction. The rows bind each target to the caller, the group and the
  * expense. With receipts off, the write keeps its result and reports
- * uploadError, as in the current app (P-TOOL-CREATEEXP-31, 32).
+ * uploadError, as in the current app (P-TOOL-CREATEEXP-31, 32). The same
+ * happens when the files would not fit the caller's receipt storage, counting
+ * the uploads that the caller can still attach.
  */
 export async function prepareUploads(
   tx: Db,
@@ -54,6 +57,9 @@ export async function prepareUploads(
 ): Promise<{ uploads: UploadTarget[]; uploadError: string | null }> {
   if (!data.requests?.length) return { uploads: [], uploadError: null }
   if (!data.enabled) return { uploads: [], uploadError: UPLOADS_FAILED }
+  const bytes = data.requests.reduce((sum, file) => sum + file.bytes, 0)
+  const full = await spaceFor(tx, { userId: data.principal.userId, bytes, lock: false, outstanding: true })
+  if (full) return { uploads: [], uploadError: full }
   const expiresAt = new Date(Date.now() + TARGET_SECONDS * 1000)
   const origin = new URL(data.baseUrl).origin
   const rows = data.requests.map((file) => {
@@ -143,7 +149,9 @@ async function storedImage(bucket: Bucket, data: { key: string; bytes: number })
  * (P-TOOL-UPDATEEXP-11 to 14). Each upload must belong to the caller, the
  * group and the expense, be stored within 24 hours, and be a JPEG or PNG of
  * its declared type. The image is registered to the group, and its upload
- * row is deleted, so an uploadId attaches once. Returns the new documents.
+ * row is deleted, so an uploadId attaches once. The images must fit the
+ * caller's receipt storage, decided under the caller's quota lock, so
+ * concurrent attaches cannot pass on the same free space. Returns the new documents.
  */
 export async function attachUploads(
   tx: Db,
@@ -175,16 +183,23 @@ export async function attachUploads(
     if (row && (row.userId !== data.principal.userId || row.groupId !== data.groupId || row.expenseId !== data.expenseId))
       throw new UploadError('FORBIDDEN', 'This upload does not belong to this user and expense')
   }
-  const documents: StoredDocument[] = []
   for (const id of ids) {
     const row = byId.get(id)
     if (!row || row.state !== 'stored') throw unfinished
     if (!row.fresh) throw new UploadError('BAD_REQUEST', 'Upload is too large or expired')
+  }
+  const bytes = rows.reduce((sum, row) => sum + row.bytes, 0)
+  const full = await spaceFor(tx, { userId: data.principal.userId, bytes, lock: true, outstanding: false })
+  if (full) throw new UploadError('PRECONDITION_FAILED', full)
+  const documents: StoredDocument[] = []
+  for (const id of ids) {
+    const row = byId.get(id)
+    if (!row) throw unfinished
     const info = await storedImage(data.bucket, row)
     // The key's extension and the stored Content-Type come from the declared type, so the content must match it.
     if (!info || `image/${info.format}` !== row.contentType) throw new UploadError('BAD_REQUEST', 'Receipts must be valid JPEG or PNG images')
     const url = `${NEW_URL_PREFIX}${row.key}`
-    await tx.insert(receipts).values({ id: randomId(), groupId: data.groupId, url, createdBy: data.principal.userId })
+    await tx.insert(receipts).values({ id: randomId(), groupId: data.groupId, url, createdBy: data.principal.userId, bytes: row.bytes })
     documents.push({ id: randomId(), url, width: info.width, height: info.height })
   }
   await tx.delete(receiptUploads).where(inArray(receiptUploads.id, ids))

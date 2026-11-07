@@ -445,18 +445,25 @@ const namesOf = (context: WriteContext) => new Map(context.people.map((p) => [p.
 
 /**
  * Replaces an expense's receipts. Every URL must be a receipt uploaded to this
- * group, as in the current app; a document keeps its ID only if it already
- * belongs to this expense, so a client cannot collide with another expense's row.
- * `saved` is the expense's receipts before the write.
+ * group, as in the current app, and not deleted for good; a document keeps its
+ * ID only if it already belongs to this expense, so a client cannot collide
+ * with another expense's row. `saved` is the expense's receipts before the write.
  */
 async function writeDocuments(tx: Db, data: { groupId: string; expenseId: string; documents: readonly StoredDocument[]; saved: readonly StoredDocument[] }) {
   const urls = [...new Set(data.documents.map((d) => d.url))]
   if (urls.length) {
-    const registered = await tx.execute<{ url: string }>(
-      sql`SELECT url FROM receipts WHERE group_id = ${data.groupId} AND url IN (${sql.join(urls.map((u) => sql`${u}`), sql`, `)})`,
+    const registered = await tx.execute<{ url: string; deleted: boolean }>(
+      sql`SELECT url, EXISTS (SELECT 1 FROM deleted_receipts d WHERE d.receipt_id = receipts.id) AS deleted
+        FROM receipts WHERE group_id = ${data.groupId} AND url IN (${sql.join(urls.map((u) => sql`${u}`), sql`, `)})`,
     )
     if (registered.rows.length !== urls.length) throw new Invalid({ message: 'Attach only receipts uploaded to this group', field: 'documents' })
+    if (registered.rows.some((r) => r.deleted)) throw new Invalid({ message: 'A receipt in this list was deleted. Remove it and save again.', field: 'documents' })
   }
+  await replaceDocuments(tx, data)
+}
+
+/** Writes the expense's receipt rows in the given order. */
+async function replaceDocuments(tx: Db, data: { expenseId: string; documents: readonly StoredDocument[]; saved: readonly StoredDocument[] }) {
   const own = new Set(data.saved.map((d) => d.id))
   if (data.saved.length) await tx.delete(expenseDocuments).where(eq(expenseDocuments.expenseId, data.expenseId))
   if (data.documents.length)
@@ -676,6 +683,37 @@ export async function updateExpense(
     })
     return stored.expense
   })
+}
+
+/**
+ * Removes receipts from a live expense as one audited revision that changes
+ * nothing else: the amounts, payers and splits stay exactly as stored. Used
+ * when a receipt is deleted for good (src/server/storage.ts). Returns false
+ * when the expense is deleted or has none of the receipts, and writes nothing then.
+ */
+export async function removeDocuments(tx: Db, data: { principal: Principal; group: string; expenseId: string; urls: ReadonlySet<string> }): Promise<boolean> {
+  const context = await loadWriteContext(tx, { principal: data.principal, group: data.group, expenseId: data.expenseId, op: 'change', idempotencyKey: null })
+  const current = context.expense
+  if (!current || current.deleted) return false
+  const documents = current.documents.filter((d) => !data.urls.has(d.url))
+  if (documents.length === current.documents.length) return false
+  const { groupId } = context.membership
+  const revision = current.value.revision + 1
+  await ensureBaseline(tx, { context, principal: data.principal })
+  await tx.update(expenses).set({ revision }).where(eq(expenses.id, data.expenseId))
+  await replaceDocuments(tx, { expenseId: data.expenseId, documents, saved: current.documents })
+  const stored = await storedExpense(tx, data.expenseId)
+  await tx.insert(activities).values({
+    id: randomId(),
+    groupId,
+    type: 'update_expense',
+    expenseId: data.expenseId,
+    expenseRevision: revision,
+    data: titleWithVendor(stored.expense),
+    snapshot: snapshot({ group: context.group, expense: stored.expense, names: namesOf(context), documents: stored.documents }),
+    ...actor(data.principal),
+  })
+  return true
 }
 
 export async function deleteExpense(

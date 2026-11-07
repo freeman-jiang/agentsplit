@@ -195,6 +195,28 @@ describe('receipts', () => {
     await run(`INSERT INTO receipts (id, group_id, url) VALUES ($1, $2, $3)`, [receipt, group, `https://app.example/api/receipts?key=${receipt}`])
     await refuses('23514', `UPDATE receipts SET created_by = 'someone' WHERE id = $1`, [receipt])
     await refuses('23514', `DELETE FROM receipts WHERE id = $1`, [receipt])
-    await refuses('23514', `TRUNCATE receipts`)
+    // The deletion table's foreign key alone refuses a plain TRUNCATE; CASCADE reaches the trigger.
+    await refuses('23514', `TRUNCATE receipts CASCADE`)
+  })
+
+  it('sets the size of a receipt stored before sizes were recorded once, and nothing else', async () => {
+    const receipt = id('receipt')
+    await run(`INSERT INTO receipts (id, group_id, url) VALUES ($1, $2, $3)`, [receipt, group, `r2://agentsplit-receipts/receipts/${receipt}.png`])
+    await refuses('23514', `UPDATE receipts SET bytes = 10, url = 'r2://agentsplit-receipts/receipts/other.png' WHERE id = $1`, [receipt])
+    await run(`UPDATE receipts SET bytes = 1234 WHERE id = $1`, [receipt])
+    await refuses('23514', `UPDATE receipts SET bytes = 99 WHERE id = $1`, [receipt])
+    await refuses('23514', `UPDATE receipts SET bytes = 0 WHERE id = $1`, [receipt])
+  })
+
+  it('keeps a receipt deletion: only its purge time can be set, once', async () => {
+    const receipt = id('receipt')
+    await run(`INSERT INTO receipts (id, group_id, url, bytes) VALUES ($1, $2, $3, 10)`, [receipt, group, `r2://agentsplit-receipts/receipts/${receipt}.png`])
+    await run(`INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at) VALUES ($1, 'Deleter', $2, true, now(), now())`, [`u-${receipt}`, `${receipt}@example.com`])
+    await run(`INSERT INTO deleted_receipts (receipt_id, deleted_by) VALUES ($1, $2)`, [receipt, `u-${receipt}`])
+    await refuses('23514', `DELETE FROM deleted_receipts WHERE receipt_id = $1`, [receipt])
+    await refuses('23514', `UPDATE deleted_receipts SET deleted_at = now() - interval '1 day' WHERE receipt_id = $1`, [receipt])
+    await run(`UPDATE deleted_receipts SET purged_at = now() WHERE receipt_id = $1`, [receipt])
+    await refuses('23514', `UPDATE deleted_receipts SET purged_at = NULL WHERE receipt_id = $1`, [receipt])
+    await refuses('23514', `TRUNCATE deleted_receipts`)
   })
 })

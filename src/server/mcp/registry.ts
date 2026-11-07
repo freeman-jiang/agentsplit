@@ -17,6 +17,8 @@ export type ToolContext = {
   readonly bucket: Bucket
   /** ENABLE_EXPENSE_DOCUMENTS: whether agents may upload receipts. */
   readonly documentsEnabled: boolean
+  /** Runs `work` after a write tool's transaction commits, such as removing deleted receipts from storage. A failure is logged. */
+  readonly afterCommit: (work: () => Promise<unknown>) => void
 }
 
 export type JsonSchema = { readonly [key: string]: JsonValue }
@@ -60,6 +62,7 @@ const NOT_FOUND: Readonly<Record<string, string>> = {
   'history boundary in this group': 'History boundary not found in this group',
   'saved expense revision at this point': 'Expense revision not found at this point',
   'group at this time': 'The group did not exist at this time',
+  receipt: 'Receipt not found',
 }
 
 /**

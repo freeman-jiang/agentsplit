@@ -261,11 +261,39 @@ export const receipts = pgTable(
       .references(() => groups.id, { onDelete: 'restrict' }),
     /** The public receipt URL; its object key in R2 is derived from it. */
     url: text().notNull(),
+    // Nullable: receipts imported from before accounts have no known uploader, and count against no one.
     createdBy: text(),
     createdAt: now(),
+    /**
+     * The stored object's size, which counts against the uploader's storage.
+     * Receipts stored before this column have 0 until scripts/backfill-receipt-bytes.ts reads their size.
+     */
+    bytes: integer().notNull().default(0),
   },
-  (t) => [unique('receipts_group_url').on(t.groupId, t.url)],
+  (t) => [
+    unique('receipts_group_url').on(t.groupId, t.url),
+    check('receipts_bytes_nonnegative', sql`${t.bytes} >= 0`),
+    // Storage usage per uploader.
+    index().on(t.createdBy),
+  ],
 )
+
+/**
+ * Receipts deleted for good. The receipt row and every history snapshot that
+ * names it stay, so history remains append-only; readers show a tombstone for
+ * these receipts instead of the image, and the object leaves storage.
+ */
+export const deletedReceipts = pgTable('deleted_receipts', {
+  receiptId: text()
+    .primaryKey()
+    .references(() => receipts.id, { onDelete: 'restrict' }),
+  deletedBy: text()
+    .notNull()
+    .references(() => user.id, { onDelete: 'restrict' }),
+  deletedAt: now(),
+  // Nullable: set once the object is removed from storage. The hourly job retries until then.
+  purgedAt: timestamp({ withTimezone: true, mode: 'date' }),
+})
 
 export const expenseDocuments = pgTable(
   'expense_documents',
