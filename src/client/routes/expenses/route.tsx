@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router'
-import { requireSignedIn } from '~/client/auth-guard'
+import { requireSignedIn } from '~/client/queries/session'
 
 // Every /expenses page needs a signed-in, verified account (the session check only accepts verified ones).
 export const Route = createFileRoute('/expenses')({

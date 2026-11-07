@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { LoginButton } from '~/client/components/login-button'
-import { meQuery } from '~/client/queries/account'
+import { meQuery } from '~/client/queries/session'
 import { searchParams, stringParam } from '~/client/search'
 import { isInvitationPath, safeNextPath } from '~/shared/account'
 import { SIGN_UP_LIMIT_CODE, signUpLimitMessage } from '~/shared/limits'

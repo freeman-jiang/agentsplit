@@ -2,18 +2,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ErrorState } from './components/error-state'
+import { ErrorState } from '../components/error-state'
 import { groupUrls } from './group-urls'
 import { addAppleSplashImages, registerServiceWorker } from './pwa'
-import { routeTree } from './routeTree.gen'
+import { routeTree } from '../routeTree.gen'
 // Geist, self-hosted: the browser fetches only the subsets a page uses (Latin is 29 KB).
 import '@fontsource-variable/geist'
 import '@fontsource-variable/geist-mono'
-import './styles.css'
+import '../styles.css'
 
 // Every visit refetches its data, as the current app does (P-EXP-20, Freeman 2026-11-05).
 // A screen first shows what this tab already holds, then the fresh answer.
-export const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 0, retry: false } } })
+const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 0, retry: false } } })
 
 const router = createRouter({
   routeTree,
