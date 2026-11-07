@@ -1,12 +1,12 @@
 // Pure account rules shared by the client and the server. No Effect import here:
 // the client bundle must stay free of the Effect runtime (BUILDING.md).
+import { invitationTokenOfPath } from './groups'
 
 export const OAUTH_READ_SCOPE = 'agentsplit:read'
 export const OAUTH_WRITE_SCOPE = 'agentsplit:write'
 export const OAUTH_SCOPES: readonly string[] = ['openid', 'profile', 'email', 'offline_access', OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE]
 
-const INVITE_PATH = /^\/invite\/[A-Za-z0-9_-]{43}$/
-export const isInvitationPath = (path: string) => INVITE_PATH.test(path)
+export const isInvitationPath = (path: string) => invitationTokenOfPath(path) !== null
 
 /**
  * A path on this origin, normalized, or null. It refuses protocol-relative

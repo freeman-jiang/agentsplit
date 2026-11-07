@@ -5,6 +5,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm'
 import { authBootstrap, oauthConnections } from '../../db/schema/app'
 import * as authSchema from '../../db/schema/auth'
 import { Forbidden, Invalid, NotFound } from '../shared/api'
+import { normalizeEmail } from '../shared/groups'
 import { LIMITS } from '../shared/limits'
 import type { Db } from './db'
 import type { Principal } from './access'
@@ -132,8 +133,8 @@ export async function bootstrapOwner(
   db: Db,
   data: { user: { id: string; email: string; emailVerified: boolean }; bootstrapEmail: string | undefined },
 ): Promise<boolean> {
-  const owner = data.bootstrapEmail?.trim().toLowerCase()
-  if (!owner || !data.user.emailVerified || data.user.email.toLowerCase() !== owner) return false
+  const owner = data.bootstrapEmail === undefined ? '' : normalizeEmail(data.bootstrapEmail)
+  if (!owner || !data.user.emailVerified || normalizeEmail(data.user.email) !== owner) return false
   const done = async (d: Db) => (await d.select({ id: authBootstrap.id }).from(authBootstrap).where(eq(authBootstrap.id, BOOTSTRAP_ID))).length > 0
   if (await done(db)) return false
   return db.transaction(async (tx) => {

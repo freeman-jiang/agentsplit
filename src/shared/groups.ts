@@ -64,5 +64,12 @@ export const segmentPath = (segment: string) => (isIdSegment(segment) ? `/groups
 
 /** An invitation email: something@something.something, without spaces. */
 export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+/** The form of an email that invitations and accounts compare: trimmed and lowercase. */
+export const normalizeEmail = (email: string) => email.trim().toLowerCase()
 /** An invitation token: 32 random bytes in base64url (P-ACCESS-14). */
 export const INVITATION_TOKEN = /^[A-Za-z0-9_-]{43}$/
+/** The token of an invitation link's path, `/invite/<token>`, or null. */
+export const invitationTokenOfPath = (path: string) => {
+  const token = path.startsWith('/invite/') ? path.slice('/invite/'.length) : null
+  return token !== null && INVITATION_TOKEN.test(token) ? token : null
+}

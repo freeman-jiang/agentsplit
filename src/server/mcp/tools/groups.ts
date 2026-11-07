@@ -13,6 +13,7 @@ import { GROUP_ID } from '../../../shared/ids'
 import { LIMITS } from '../../../shared/limits'
 import { ROLES, type Role } from '../../../shared/vocabulary'
 import { memberCte, requireActive } from '../../access'
+import { listedInvitation } from '../../invitations'
 import type { Db } from '../../db'
 import * as groups from '../../groups'
 import { participantName } from '../../people'
@@ -144,8 +145,7 @@ export const getGroup = defineTool({
           FROM memberships mb JOIN "user" u ON u.id = mb.user_id WHERE mb.group_id = g.id AND mb.active), '[]') AS members,
         CASE WHEN g.role = 'admin' THEN coalesce((
           SELECT json_agg(json_build_object('id', i.id, 'email', i.email, 'expiresAt', ${iso(sql`i.expires_at`)}, 'participantId', i.participant_id, 'participantName', i.participant_name) ORDER BY i.created_at, i.id)
-          FROM invitations i WHERE i.group_id = g.id AND i.accepted_at IS NULL AND i.revoked_at IS NULL
-            AND (g.kind = 'private' OR i.expires_at > now())), '[]') ELSE '[]' END AS invitations,
+          FROM invitations i WHERE i.group_id = g.id AND ${listedInvitation({ i: sql`i`, kind: sql`g.kind` })}), '[]') ELSE '[]' END AS invitations,
         coalesce((SELECT array_agg(p.id ORDER BY p.id) FROM participants p WHERE p.group_id = g.id
           AND (EXISTS (SELECT 1 FROM memberships mb WHERE mb.participant_id = p.id) OR EXISTS (SELECT 1 FROM invitations i WHERE i.participant_id = p.id))), '{}') AS reserved,
         coalesce((SELECT array_agg(DISTINCT x.participant_id ORDER BY x.participant_id) FROM (

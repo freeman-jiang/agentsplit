@@ -2,37 +2,31 @@
 // hidden group whose ID is the expense ID and whose people never change. Only
 // those people can see it, and repayments inside it settle only that expense.
 // Ported from the current app's src/lib/ungrouped-expenses.ts and
-// src/lib/ungrouped-access.ts; the database triggers in
-// db/migrations/0003_private_contexts.sql enforce the same rules.
-import { and, eq, isNull } from 'drizzle-orm'
-import { expenses, groups, invitations, memberships, participants, privateContexts, privatePeople } from '../../db/schema/app'
+// src/lib/ungrouped-access.ts; the write rules are in private-context.ts.
+import { and, eq } from 'drizzle-orm'
+import { expenses, groups, memberships, participants, privateContexts, privatePeople } from '../../db/schema/app'
 import { Conflict, Forbidden, Invalid, Unauthorized } from '../shared/api'
 import type { ExpenseDraft } from '../shared/expense-rules'
-import { EMAIL } from '../shared/groups'
+import { EMAIL, normalizeEmail } from '../shared/groups'
 import { LIMITS, participantLimitMessage } from '../shared/limits'
 import { requireMember, type Principal } from './access'
 import { groupSnapshot, recordGroupEvent } from './activity'
 import type { Db } from './db'
-import { invitationTokenHash, newInvitationToken } from './groups'
-import { randomId } from './ids'
+import { createInvitation, revokeInvitations } from './invitations'
 import { createExpense } from './ledger'
 import { contacts } from './people'
+import { PEOPLE_RULE } from './private-context'
 
 export type PrivatePerson =
   | { readonly kind: 'account'; readonly id: string; readonly userId: string }
   | { readonly kind: 'email'; readonly id: string; readonly name: string; readonly email: string }
 
-/** A private link, in the format of a group invitation: the secret goes to the caller once; only its hash is stored. */
-function newInvitationSecret() {
-  const secret = newInvitationToken()
-  return { secret, tokenHash: invitationTokenHash(secret) }
-}
-
 /**
  * Creates an ungrouped expense with two or more people: existing contacts by
  * account, or new people by exact email, who get a private link. The caller
- * must be one of the people, and the people must be exactly the payers and the
- * people who share the cost.
+ * must be one of the people. The private context and its people are written
+ * first, so the expense write checks the private rules (private-context.ts):
+ * the people must be exactly the payers and the people who share the cost.
  *
  * The expense ID makes this write safe to retry: a second attempt fails with
  * Conflict, and the client then opens the saved expense. The response is not
@@ -57,33 +51,23 @@ export async function createUngroupedExpense(
     if (person.kind === 'account') {
       const account = known.find((c) => c.id === person.userId)
       if (!account) throw new Invalid({ message: 'Choose an existing contact or invite someone by email.', field: 'people' })
-      return { localId: person.id, name: account.name, email: account.email.toLowerCase(), userId: account.id as string | null }
+      return { localId: person.id, name: account.name, email: normalizeEmail(account.email), userId: account.id as string | null }
     }
     const name = person.name.trim()
-    const email = person.email.trim().toLowerCase()
+    const email = normalizeEmail(person.email)
     if (!name || name.length > LIMITS.nameMax || !EMAIL.test(email)) throw new Invalid({ message: 'Enter a name and a valid email address.', field: 'people' })
     // An email that belongs to a known contact links that account; nobody needs an invitation then.
-    const account = known.find((c) => c.email.toLowerCase() === email)
+    const account = known.find((c) => normalizeEmail(c.email) === email)
     return { localId: person.id, name: account?.name ?? name, email, userId: account?.id ?? null }
   })
   // A common prefix keeps the people's local order and makes reusable labels ("me", "friend") unique.
   const stored = people.map((p) => ({ ...p, id: `${data.expenseId}_${p.localId}` }))
-  const involved = new Set([...data.expense.payers.map((p) => p.participantId), ...data.expense.shares.map((s) => s.participantId)])
-  const self = stored.find((p) => p.userId === data.principal.userId)
   if (
-    !self ||
-    !involved.has(self.localId) ||
-    stored.some((p) => !involved.has(p.localId)) ||
-    involved.size !== stored.length ||
+    !stored.some((p) => p.userId === data.principal.userId) ||
     new Set(stored.map((p) => p.localId)).size !== stored.length ||
     new Set(stored.map((p) => p.email)).size !== stored.length
   )
-    throw new Invalid({
-      message: 'Include yourself and exactly the people paying for or sharing this expense. Each person must be unique.',
-      field: 'people',
-    })
-  if (data.expense.kind !== 'expense' || data.expense.recurrence !== 'none')
-    throw new Invalid({ message: 'Create the expense first, then attach receipts or record a repayment. Ungrouped expenses do not recur.' })
+    throw new Invalid({ message: PEOPLE_RULE, field: 'people' })
 
   const [prior] = await tx
     .select({ revision: expenses.revision })
@@ -101,6 +85,9 @@ export async function createUngroupedExpense(
       p.userId ? [{ userId: p.userId, groupId, participantId: p.id, role: p.userId === data.principal.userId ? ('admin' as const) : ('member' as const) }] : [],
     ),
   )
+  // The expense row follows; its reference is checked at commit (migration 0015).
+  await tx.insert(privateContexts).values({ groupId, expenseId: data.expenseId })
+  await tx.insert(privatePeople).values(stored.map((p) => ({ participantId: p.id, groupId, email: p.email })))
   await recordGroupEvent(tx, {
     groupId,
     type: 'create_group',
@@ -121,24 +108,18 @@ export async function createUngroupedExpense(
       shares: data.expense.shares.map((s) => ({ ...s, participantId: local(s.participantId) })),
     },
   })
-  await tx.insert(privateContexts).values({ groupId, expenseId: data.expenseId })
-  await tx.insert(privatePeople).values(stored.map((p) => ({ participantId: p.id, groupId, email: p.email })))
 
   const links = []
   for (const person of stored.filter((p) => !p.userId)) {
-    const { secret, tokenHash } = newInvitationSecret()
-    const expiresAt = new Date(Date.now() + LIMITS.invitationDays * 86_400_000)
-    await tx.insert(invitations).values({
-      id: randomId(),
+    const invitation = await createInvitation(tx, {
       groupId,
       email: person.email,
       participantId: person.id,
       participantName: person.name,
-      tokenHash,
       createdBy: data.principal.userId,
-      expiresAt,
+      baseUrl: data.baseUrl,
     })
-    links.push({ email: person.email, url: new URL(`/invite/${secret}`, data.baseUrl).href, expiresAt: expiresAt.toISOString() })
+    links.push({ email: invitation.email, url: invitation.url, expiresAt: invitation.expiresAt })
   }
   return {
     expenseId: data.expenseId,
@@ -157,39 +138,24 @@ export async function createUngroupedExpense(
  */
 export async function renewPrivateInvitation(tx: Db, data: { principal: Principal; baseUrl: string; groupId: string; participantId: string }) {
   const membership = await requireMember(tx, { principal: data.principal, group: data.groupId })
+  const { groupId } = membership
   const [person] = await tx
     .select({ email: privatePeople.email, name: participants.name, joined: memberships.userId })
     .from(privatePeople)
     .innerJoin(participants, eq(participants.id, privatePeople.participantId))
     .leftJoin(memberships, and(eq(memberships.groupId, privatePeople.groupId), eq(memberships.participantId, privatePeople.participantId)))
-    .where(and(eq(privatePeople.participantId, data.participantId), eq(privatePeople.groupId, membership.groupId)))
+    .where(and(eq(privatePeople.participantId, data.participantId), eq(privatePeople.groupId, groupId)))
   if (membership.role !== 'admin' || !person) throw new Forbidden({ message: 'Only the expense creator can reissue its original invitations.' })
   if (person.joined) throw new Invalid({ message: 'This person has already joined.', field: 'participantId', reason: 'state' })
-  await tx
-    .update(invitations)
-    .set({ revokedAt: new Date() })
-    .where(and(eq(invitations.groupId, membership.groupId), eq(invitations.participantId, data.participantId), isNull(invitations.acceptedAt), isNull(invitations.revokedAt)))
-  const { secret, tokenHash } = newInvitationSecret()
-  const id = randomId()
-  const expiresAt = new Date(Date.now() + LIMITS.invitationDays * 86_400_000)
-  await tx.insert(invitations).values({
-    id,
-    groupId: membership.groupId,
+  await revokeInvitations(tx, { groupId, participantId: data.participantId })
+  const invitation = await createInvitation(tx, {
+    groupId,
     email: person.email,
     participantId: data.participantId,
     participantName: person.name,
-    tokenHash,
     createdBy: data.principal.userId,
-    expiresAt,
+    baseUrl: data.baseUrl,
   })
-  await recordGroupEvent(tx, { groupId: membership.groupId, type: 'update_group', principal: data.principal, data: 'Private expense invitation renewed' })
-  return {
-    groupId: membership.groupId,
-    id,
-    email: person.email,
-    participantId: data.participantId,
-    participantName: person.name,
-    expiresAt: expiresAt.toISOString(),
-    url: new URL(`/invite/${secret}`, data.baseUrl).href,
-  }
+  await recordGroupEvent(tx, { groupId, type: 'update_group', principal: data.principal, data: 'Private expense invitation renewed' })
+  return { groupId, ...invitation }
 }

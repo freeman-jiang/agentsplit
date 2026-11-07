@@ -2,18 +2,19 @@
 // email-bound invitations. Every function checks access itself, so the RPC
 // handlers and the MCP tools cannot skip it. Ported from the current app's
 // createGroup and updateGroup (src/lib/api.ts) and src/lib/group-access.ts.
-import { and, asc, eq, gt, inArray, isNull, ne, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, ne, sql } from 'drizzle-orm'
 import { groups, groupSlugHistory, invitations, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { Conflict, Forbidden, groupAccessDenied, Invalid, NotFound } from '../shared/api'
 import type { AccessRequest, GroupChanges, GroupCreateInput } from '../shared/api/groups'
 import type { CurrencyCode } from '../shared/currencies'
-import { INVITATION_TOKEN, normalizeSlug, slugProblem } from '../shared/groups'
+import { normalizeEmail, normalizeSlug, slugProblem } from '../shared/groups'
 import { groupLimitMessage, LIMITS, participantLimitMessage } from '../shared/limits'
 import { formatMinor, minor } from '../shared/minor'
 import type { GroupKind, Role } from '../shared/vocabulary'
 import type { Db } from './db'
-import { randomId, randomToken, sha256Hex } from './ids'
+import { randomId } from './ids'
+import { createInvitation, findInvitation, invitationProblem, listedInvitation, openInvitation, revokeInvitations, tokenOfLink } from './invitations'
 import { memberCte, requireActive, requireMember, type Principal } from './access'
 import { accessText, groupSnapshot, recordGroupEvent } from './activity'
 import { netsCte } from './balances'
@@ -109,7 +110,7 @@ export async function getGroupDetails(db: Db, data: { principal: Principal; grou
     WITH ${memberCte(data)},
     pending AS (
       SELECT i.id, i.email, i.participant_id, i.participant_name, i.expires_at FROM invitations i, g
-      WHERE i.group_id = g.id AND g.role = 'admin' AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > now()
+      WHERE i.group_id = g.id AND g.role = 'admin' AND ${listedInvitation({ i: sql`i`, kind: sql`g.kind` })}
     )
     SELECT g.*,
       coalesce((SELECT json_agg(json_build_object(
@@ -161,12 +162,6 @@ export async function getGroupDetails(db: Db, data: { principal: Principal; grou
 }
 
 // ---------- writes: settings and people ----------
-
-/** The stored form of an invitation token: hex SHA-256, as in the current app, so imported invitations keep working. */
-export const invitationTokenHash = (token: string) => sha256Hex(token)
-
-/** The secret of an invitation link: 32 random bytes in base64url without padding, 43 characters. */
-export const newInvitationToken = randomToken
 
 /** The normalized slug, null to remove it, or an Invalid error. */
 function checkedSlug(raw: string | null): string | null {
@@ -334,18 +329,11 @@ type AccessResult = {
   invitation: { id: string; email: string; participantId: string | null; participantName: string | null; expiresAt: string; url: string | null } | null
 }
 
-/** The group ID an invitation URL names, or an error. Only `<this origin>/invite/<token>` links count (P-ACCESS-42). */
-async function invitationFromUrl(tx: Db, data: { shareUrl: string; baseUrl: string }) {
-  let url: URL | null = null
-  try {
-    url = new URL(data.shareUrl)
-  } catch {
-    url = null
-  }
-  const token = url?.pathname.match(/^\/invite\/([A-Za-z0-9_-]{43})$/)?.[1]
-  if (!url || url.origin !== new URL(data.baseUrl).origin || url.username || url.password || !token)
-    throw new Invalid({ message: 'Use an email-bound invitation link from this app. A group URL does not grant access.', field: 'shareUrl' })
-  const [invitation] = await tx.select().from(invitations).where(eq(invitations.tokenHash, invitationTokenHash(token)))
+/** The invitation that a join's link names, or an error. */
+async function invitationOfLink(tx: Db, data: { shareUrl: string; baseUrl: string }) {
+  const token = tokenOfLink(data)
+  if (!token) throw new Invalid({ message: 'Use an email-bound invitation link from this app. A group URL does not grant access.', field: 'shareUrl' })
+  const invitation = await findInvitation(tx, token)
   if (!invitation) throw new NotFound({ entity: 'invitation', id: 'token' })
   return invitation
 }
@@ -375,7 +363,7 @@ async function applyAccess(
 ): Promise<{ result: AccessResult; url: string | null }> {
   const input = data.request
   const me = data.principal
-  const pendingInvitation = input.action === 'join' ? await invitationFromUrl(tx, { shareUrl: input.shareUrl, baseUrl: data.baseUrl }) : null
+  const pendingInvitation = input.action === 'join' ? await invitationOfLink(tx, { shareUrl: input.shareUrl, baseUrl: data.baseUrl }) : null
   const groupId = pendingInvitation?.groupId ?? (input.action === 'join' ? null : (await groupIdOf(tx, input.groupId)))
   if (!groupId) throw groupAccessDenied()
   const group = await lockGroup(tx, groupId)
@@ -390,7 +378,7 @@ async function applyAccess(
       const [person] = await tx.execute<{ email: string }>(
         sql`SELECT email FROM private_people WHERE group_id = ${groupId} AND participant_id = ${input.participantId}`,
       ).then((r) => r.rows)
-      if (!person || person.email !== input.email.trim().toLowerCase())
+      if (!person || person.email !== normalizeEmail(input.email))
         throw new Forbidden({ message: 'Only the original people may access this private expense.' })
     }
   }
@@ -398,9 +386,9 @@ async function applyAccess(
   if (input.action === 'join') {
     const invitation = pendingInvitation
     if (!invitation) throw groupAccessDenied()
-    if (invitation.revokedAt || invitation.expiresAt <= new Date() || invitation.email !== me.email.toLowerCase())
-      throw new Forbidden({ message: 'This invitation is expired, revoked, or addressed to a different email' })
-    if (!invitation.participantId)
+    const problem = invitationProblem({ invitation, email: me.email })
+    if (problem === 'closed') throw new Forbidden({ message: 'This invitation is expired, revoked, or addressed to a different email' })
+    if (problem === 'no-participant' || !invitation.participantId)
       throw new Invalid({ message: 'This older invitation has no participant identity. Ask an admin to issue a new invitation.', reason: 'state' })
     if (membership?.participantId && membership.participantId !== invitation.participantId)
       throw new Invalid({ message: 'Your account is already tied to another participant in this group.', reason: 'state' })
@@ -428,7 +416,7 @@ async function applyAccess(
   if (input.action !== 'leave' && membership.role !== 'admin') throw new Forbidden({ message: 'Only group admins can manage access' })
 
   if (input.action === 'invite' || input.action === 'bind_member') {
-    const email = input.email.trim().toLowerCase()
+    const email = normalizeEmail(input.email)
     const [participant] = await tx.select().from(participants).where(and(eq(participants.id, input.participantId), eq(participants.groupId, groupId)))
     if (!participant) throw new Invalid({ message: 'Choose a participant in this group.', field: 'participantId' })
     const [target] = await tx.select().from(user).where(sql`lower(${user.email}) = ${email}`)
@@ -440,17 +428,8 @@ async function applyAccess(
     const [claimed] = await tx.select({ userId: memberships.userId }).from(memberships).where(and(eq(memberships.groupId, groupId), eq(memberships.participantId, participant.id)))
     if (claimed && claimed.userId !== target?.id) throw new Invalid({ message: 'That participant is already tied to another account.', reason: 'state' })
     const [pending] = await tx
-      .select({ id: invitations.id })
-      .from(invitations)
-      .where(
-        and(
-          eq(invitations.groupId, groupId),
-          isNull(invitations.acceptedAt),
-          isNull(invitations.revokedAt),
-          gt(invitations.expiresAt, new Date()),
-          or(eq(invitations.email, email), eq(invitations.participantId, participant.id)),
-        ),
-      )
+      .execute(sql`SELECT 1 FROM invitations i WHERE i.group_id = ${groupId} AND ${openInvitation(sql`i`)} AND (i.email = ${email} OR i.participant_id = ${participant.id}) LIMIT 1`)
+      .then((result) => result.rows)
     if (pending) throw new Invalid({ message: 'An invitation already reserves this email or participant. Revoke it before making another.', reason: 'state' })
 
     if (input.action === 'bind_member') {
@@ -463,43 +442,20 @@ async function applyAccess(
     }
     if (targetAccess?.active) throw new Invalid({ message: 'That account is already a member. Bind its identity in member settings if needed.', reason: 'state' })
 
-    const token = newInvitationToken()
-    const invitation = {
-      id: randomId(),
+    const { url, ...invitation } = await createInvitation(tx, {
       groupId,
       email,
       participantId: participant.id,
       participantName: participant.name,
-      tokenHash: invitationTokenHash(token),
       createdBy: me.userId,
-      expiresAt: new Date(Date.now() + LIMITS.invitationDays * 86_400_000),
-    }
-    await tx.insert(invitations).values(invitation)
+      baseUrl: data.baseUrl,
+    })
     await log({ type: 'update_group', data: `Invitation created for ${participant.name}`, participantId: participant.id })
-    return {
-      result: {
-        groupId,
-        joined: true,
-        invitation: {
-          id: invitation.id,
-          email,
-          participantId: participant.id,
-          participantName: participant.name,
-          expiresAt: invitation.expiresAt.toISOString(),
-          url: null,
-        },
-      },
-      url: new URL(`/invite/${token}`, data.baseUrl).href,
-    }
+    return { result: { groupId, joined: true, invitation: { ...invitation, url: null } }, url }
   }
 
   if (input.action === 'revoke_invitation') {
-    const revoked = await tx
-      .update(invitations)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(invitations.id, input.invitationId), eq(invitations.groupId, groupId), isNull(invitations.acceptedAt), isNull(invitations.revokedAt)))
-      .returning({ participantName: invitations.participantName })
-    const [row] = revoked
+    const [row] = await revokeInvitations(tx, { groupId, invitationId: input.invitationId })
     if (!row) throw new NotFound({ entity: 'invitation', id: input.invitationId })
     await log({ type: 'update_group', data: `Invitation revoked${row.participantName ? ` for ${row.participantName}` : ''}` })
     return done()
@@ -541,25 +497,11 @@ async function groupIdOf(tx: Db, ref: string) {
   return result.rows[0]?.id ?? null
 }
 
-/** What the invite page shows to the signed-in visitor. Anything but a valid invitation for this account is "unavailable". */
+/** What the invite page shows to the signed-in visitor. Anything but a usable invitation for this account is "unavailable". */
 export async function previewInvitation(db: Db, data: { principal: Principal; token: string }) {
-  if (!INVITATION_TOKEN.test(data.token)) return { status: 'unavailable' as const }
-  const [row] = await db
-    .select({
-      kind: groups.kind,
-      groupName: groups.name,
-      participantName: invitations.participantName,
-      participantId: invitations.participantId,
-      email: invitations.email,
-      expiresAt: invitations.expiresAt,
-      revokedAt: invitations.revokedAt,
-    })
-    .from(invitations)
-    .innerJoin(groups, eq(groups.id, invitations.groupId))
-    .where(eq(invitations.tokenHash, invitationTokenHash(data.token)))
-    .orderBy(asc(invitations.id))
-    .limit(1)
-  if (!row || row.revokedAt || row.expiresAt <= new Date() || row.email !== data.principal.email.toLowerCase() || !row.participantId)
-    return { status: 'unavailable' as const }
-  return { status: 'valid' as const, kind: row.kind, groupName: row.groupName, participantName: row.participantName ?? '' }
+  const invitation = await findInvitation(db, data.token)
+  if (!invitation || invitationProblem({ invitation, email: data.principal.email })) return { status: 'unavailable' as const }
+  const [group] = await db.select({ kind: groups.kind, name: groups.name }).from(groups).where(eq(groups.id, invitation.groupId))
+  if (!group) return { status: 'unavailable' as const }
+  return { status: 'valid' as const, kind: group.kind, groupName: group.name, participantName: invitation.participantName ?? '' }
 }
