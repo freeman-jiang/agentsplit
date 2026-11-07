@@ -16,10 +16,10 @@ export const RecordedTime = Schema.String.check(
 )
 
 /** Pick at most one: the history boundary to read at. Reuse a returned `atActivityId` for stable pages. */
-const Boundary = {
+export const Boundary = Schema.Struct({
   asOf: Schema.optionalKey(RecordedTime),
   atActivityId: Schema.optionalKey(Id),
-}
+})
 
 const CategoryRef = Schema.Struct({ grouping: Schema.String, name: Schema.String })
 
@@ -159,27 +159,29 @@ const StatsScope = {
   to: Schema.optionalKey(CalendarDate),
 }
 
+/** Which activities a Log page reads, after the group. */
+export const ActivityQuery = Schema.Struct({
+  ...Boundary.fields,
+  cursor: Schema.optionalKey(Offset),
+  limit: PageLimit,
+  expenseId: Schema.optionalKey(Id),
+  type: Schema.optionalKey(ActivityType),
+  /** UTC calendar days of recording, inclusive. */
+  from: Schema.optionalKey(CalendarDate),
+  to: Schema.optionalKey(CalendarDate),
+  recordedFrom: Schema.optionalKey(RecordedTime),
+  recordedTo: Schema.optionalKey(RecordedTime),
+  order: Schema.optionalKey(Schema.Literals(['asc', 'desc'])),
+})
+
 export class HistoryApi extends RpcGroup.make(
   Rpc.make('history.activities', {
-    payload: {
-      groupId: Id,
-      ...Boundary,
-      cursor: Schema.optionalKey(Offset),
-      limit: PageLimit,
-      expenseId: Schema.optionalKey(Id),
-      type: Schema.optionalKey(ActivityType),
-      /** UTC calendar days of recording, inclusive. */
-      from: Schema.optionalKey(CalendarDate),
-      to: Schema.optionalKey(CalendarDate),
-      recordedFrom: Schema.optionalKey(RecordedTime),
-      recordedTo: Schema.optionalKey(RecordedTime),
-      order: Schema.optionalKey(Schema.Literals(['asc', 'desc'])),
-    },
+    payload: { groupId: Id, ...ActivityQuery.fields },
     success: ActivityPage,
     error: ReadError,
   }),
   Rpc.make('history.expense', {
-    payload: { groupId: Id, expenseId: Id, ...Boundary, revision: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))) },
+    payload: { groupId: Id, expenseId: Id, ...Boundary.fields, revision: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))) },
     success: Schema.Struct({
       expense: SavedExpense,
       /** The time of the deletion, when the selected event deleted the expense. */
@@ -189,12 +191,12 @@ export class HistoryApi extends RpcGroup.make(
     error: ReadError,
   }),
   Rpc.make('history.expenses', {
-    payload: { groupId: Id, ...Boundary, filter: HistoricalExpenseFilter, cursor: Schema.optionalKey(Offset), limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.historyPageMax })) },
+    payload: { groupId: Id, ...Boundary.fields, filter: HistoricalExpenseFilter, cursor: Schema.optionalKey(Offset), limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.historyPageMax })) },
     success: Schema.Struct({ history: HistoryView, expenses: Schema.Array(SavedExpense), hasMore: Schema.Boolean, nextCursor: Schema.Number }),
     error: ReadError,
   }),
   Rpc.make('history.balances', {
-    payload: { groupId: Id, ...Boundary },
+    payload: { groupId: Id, ...Boundary.fields },
     success: Schema.Struct({ history: HistoryView, balances: Schema.Array(Balance) }),
     error: ReadError,
   }),

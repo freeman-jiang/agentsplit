@@ -4,9 +4,8 @@
 // a row the caller cannot see is never read. The account-wide balance is in
 // balances.ts.
 import { sql, type SQL } from 'drizzle-orm'
-import { Invalid, NotFound } from '../shared/api'
-import type { CurrencyCode } from '../shared/currencies'
-import type { ExpenseKind, GroupKind, Role } from '../shared/vocabulary'
+import { Invalid, NotFound, type FeedCursor as FeedCursorSchema, type FeedFilter as FeedFilterSchema } from '../shared/api'
+import type { GroupKind, Role } from '../shared/vocabulary'
 import { groupIdOf, myMemberships, type Principal } from './core/access'
 import { attributionOf } from './activity'
 import { balanceSums, settlementsOf, type BalanceSum } from './balances'
@@ -16,21 +15,8 @@ import { listedInvitation } from './invitations'
 import { contactsSql, participantName } from './people'
 import { escapeLike, iso } from './sql'
 
-export type FeedFilter = {
-  readonly scope?: 'all' | 'grouped' | 'ungrouped'
-  readonly groupId?: string
-  readonly search?: string
-  readonly involvingMe?: boolean
-  readonly personUserId?: string
-  readonly payerUserId?: string
-  readonly currency?: CurrencyCode
-  readonly categoryId?: number
-  readonly kind?: ExpenseKind
-  readonly from?: string
-  readonly to?: string
-}
-
-export type FeedCursor = { readonly date: string; readonly createdAt: string; readonly id: string }
+export type FeedFilter = typeof FeedFilterSchema.Type
+export type FeedCursor = typeof FeedCursorSchema.Type
 
 // ---------- feed ----------
 

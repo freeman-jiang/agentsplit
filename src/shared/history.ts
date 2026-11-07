@@ -1,5 +1,8 @@
 // Saved history as readers return it (src/shared/snapshots.ts reads the
-// stored formats into it), and its display for the revision panel.
+// stored formats into it), and its display for the revision panel. The
+// contract's schemas of the same shapes are in src/shared/api/history.ts: the
+// RPC handlers and the client's revision panel make the compiler check that
+// each fits the other.
 // No Effect import: the client bundle uses this module (BUILDING.md).
 import { CURRENCIES, type CurrencyCode } from './currencies'
 import type { DecimalString } from './minor'
