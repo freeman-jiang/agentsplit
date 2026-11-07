@@ -47,7 +47,7 @@ Each area owns its own files, so areas can be built in parallel:
 The area services build on these modules in `src/server/`. Use them instead of writing their SQL again:
 
 - `access.ts`: `Principal`, `requireMember` and `memberCte`, the one group membership check.
-- `expense-read.ts`: the expense read model (`expenseColumns`, `toExpense`, `loadExpenses`) and the receipt states.
+- `expense-read.ts`: the expense read model (`expenseColumns`, `toExpense`, `loadExpenses`), what a read adds to it (`ExpenseParts`: names, receipts, attribution events), the list filter (`ExpenseFilter`) and the receipt states.
 - `activity.ts`: the activity writer, the snapshots, the access-change text, attribution and the system actor.
 - `balances.ts`: group balances, the caller's nets across groups, and balances at a recorded change.
 - `invitations.ts`: invitation tokens, expiry, creation, revocation, and when an invitation is open or usable.
@@ -59,6 +59,7 @@ The platform around them:
 - `calls.ts`: the one call runner of RPC (`rpc.ts`) and MCP (`mcp/server.ts`). `runRead` reads on the request's connection. `runWrite` takes the fair-use write budget, then runs one SERIALIZABLE transaction with retries and an after-commit list. Both turn every failure into a declared error: a database rule (23514, 23503, 23505) becomes `Invalid`, anything else is logged and becomes `Unavailable`, whose text never names the cause.
 - `config.ts`: every setting, read and checked once at start by `server.ts`.
 - `auth/`: sessions, Better Auth, API keys, OAuth tokens and agent connections (`oauth-connections.ts`), the MCP challenges, the reader of plain HTTP downloads (`httpReader`) and the one origin rule (`origin.ts`). `mcp/` depends on it, never the reverse.
+- `mcp/`: the MCP endpoint (`endpoint.ts`, `server.ts`) and the tools, listed once in `mcp/tools/index.ts`. A tool is a thin adapter: it decodes the current app's argument names with schemas from the contract and the limits (`tools/inputs.ts`), calls the same service as the RPC handler, and maps the result with `tools/wire.ts`, the one module of output schemas and wire mappers. When an agent needs a filter or a field, add it to the service; a tool has no SQL of its own, and a tool file imports no other tool file.
 - `app.ts` routes every request. The plain HTTP routes live beside it: `receipt-routes.ts` and `export-routes.ts`. `headers.ts`, `http-errors.ts`, `public-pages.ts`, `perf.ts` and `maintenance.ts` hold the response headers, the JSON errors, robots.txt, the sitemap and health checks, the performance headers and the maintenance answer.
 
 ## Rules
