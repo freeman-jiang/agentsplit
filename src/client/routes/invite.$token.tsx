@@ -9,6 +9,7 @@ import { newIdempotencyKey, rpc } from '~/client/rpc'
 import { Alert, AlertDescription } from '~/client/ui/alert'
 import { Button } from '~/client/ui/button'
 import { SECRET_TOKEN } from '~/shared/ids'
+import { invitationPath } from '~/shared/paths'
 
 export const Route = createFileRoute('/invite/$token')({
   beforeLoad: async ({ context, params, location }) => {
@@ -80,7 +81,7 @@ function AcceptInvitation({ token }: { token: string }) {
           setPending(true)
           setError(null)
           try {
-            const shareUrl = new URL(`/invite/${token}`, window.location.origin).href
+            const shareUrl = new URL(invitationPath(token), window.location.origin).href
             const result = await rpc((api) => api('groups.access', { idempotencyKey, request: { action: 'join', shareUrl } }))
             await afterWrite({ queryClient, scope: 'group', groupId: result.groupId })
             await navigate({ to: '/$group', params: { group: result.groupId } })
@@ -113,7 +114,7 @@ function SwitchAccount({ token }: { token: string }) {
           setPending(true)
           setError('')
           try {
-            await signOut({ next: `/invite/${token}` })
+            await signOut({ next: invitationPath(token) })
           } catch (cause) {
             setPending(false)
             setError(describeError(cause).message)

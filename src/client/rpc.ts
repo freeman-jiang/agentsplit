@@ -11,6 +11,7 @@ import type { Schema } from 'effect'
 import type { Rpc, RpcGroup } from 'effect/rpc'
 import type { AgentSplitApi } from '../shared/api'
 import { REQUEST_ID_RESPONSE_HEADER } from '../shared/ids'
+import { RPC_PATH } from '../shared/paths'
 
 type Rpcs = RpcGroup.Rpcs<typeof AgentSplitApi>
 type Tag = Rpcs['_tag']
@@ -80,7 +81,7 @@ async function flush() {
   timer = undefined
   let requestId: string | null = null
   try {
-    const response = await fetch('/api/rpc', {
+    const response = await fetch(RPC_PATH, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       credentials: 'same-origin',

@@ -9,7 +9,7 @@ import type pg from 'pg'
 import { todayUtc } from '../../shared/dates'
 import { REQUEST_ID_RESPONSE_HEADER } from '../../shared/ids'
 import { MCP_PATH } from '../../shared/mcp'
-import { exportRouteOf, RECEIPTS_PATH, receiptUploadTokenOf } from '../../shared/paths'
+import { AUTH_PATH, exportRouteOf, RECEIPTS_PATH, receiptUploadTokenOf, ROBOTS_PATH, RPC_PATH, SITEMAP_PATH } from '../../shared/paths'
 import { createAuth, type Auth } from '../auth/auth'
 import { httpReader } from '../auth/authenticate'
 import { METADATA_PATHS, protectedResourceMetadata } from '../auth/challenge'
@@ -132,10 +132,9 @@ export function createApp(platform: Platform) {
     const paused = config.maintenance && maintenanceResponse(request)
     if (paused) return paused
     const url = new URL(request.url)
-    // The Effect RPC client joins its base URL with a slash, so it posts to /api/rpc/.
-    if (url.pathname === '/api/rpc' || url.pathname === '/api/rpc/') {
+    if (url.pathname === RPC_PATH || url.pathname === `${RPC_PATH}/`) {
       if (!originAllowed({ request, baseUrl, cookieWrite: request.method === 'POST' })) return jsonError({ status: 403, message: 'Origin not allowed' })
-      url.pathname = '/api/rpc'
+      url.pathname = RPC_PATH
       const requestId = crypto.randomUUID()
       const rpcRequest = request.url === url.href ? request : new Request(url, { method: request.method, headers: request.headers, body: request.body })
       const response = await withConnection((db) => rpcHandler(rpcRequest, Context.make(RpcRequest, { db, requestId })), 'private, no-store')
@@ -148,10 +147,10 @@ export function createApp(platform: Platform) {
     // offline_access from it, which left Claude Code without refresh tokens (OAUTH-CLAUDE-CODE.md).
     if (METADATA_PATHS.has(url.pathname)) return protectedResourceMetadata(request, baseUrl)
     // OAuth discovery: Better Auth serves the authorization-server metadata.
-    if (url.pathname.startsWith('/api/auth/') || url.pathname.startsWith('/.well-known/')) return authHandler(request)
+    if (url.pathname.startsWith(`${AUTH_PATH}/`) || url.pathname.startsWith('/.well-known/')) return authHandler(request)
     if (HEALTH_PATHS.has(url.pathname)) return url.pathname === '/api/health/liveness' ? livenessResponse() : readinessResponse(checkDatabase)
-    if (url.pathname === '/robots.txt') return robotsTxt(baseUrl)
-    if (url.pathname === '/sitemap.xml') return sitemapXml(baseUrl)
+    if (url.pathname === ROBOTS_PATH) return robotsTxt(baseUrl)
+    if (url.pathname === SITEMAP_PATH) return sitemapXml(baseUrl)
     if (url.pathname === RECEIPTS_PATH) {
       // Not withConnection: the image streams from the bucket after the database work is done, with its own headers.
       if (request.method === 'GET')

@@ -1,4 +1,5 @@
 // The public answers that need no session: robots.txt, the sitemap, and the health checks.
+import { SITEMAP_PATH } from '../shared/paths'
 
 const TEXT = { 'Cache-Control': 'no-cache' }
 
@@ -9,7 +10,7 @@ const TEXT = { 'Cache-Control': 'no-cache' }
  */
 export const robotsTxt = (baseUrl: string) =>
   new Response(
-    ['User-agent: *', 'Allow: /$', 'Allow: /privacy', 'Allow: /sign-in', 'Disallow: /', `Sitemap: ${new URL('/sitemap.xml', baseUrl).href}`, ''].join('\n'),
+    ['User-agent: *', 'Allow: /$', 'Allow: /privacy', 'Allow: /sign-in', 'Disallow: /', `Sitemap: ${new URL(SITEMAP_PATH, baseUrl).href}`, ''].join('\n'),
     { headers: { ...TEXT, 'Content-Type': 'text/plain; charset=utf-8' } },
   )
 
