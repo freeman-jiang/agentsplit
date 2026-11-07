@@ -69,20 +69,26 @@ function GroupLayout() {
           </Link>
         </Button>
       </div>
-      <nav aria-label="Group" className="-mx-3 mb-4 flex gap-x-1 overflow-x-auto border-b px-3 [scrollbar-width:none] sm:mx-0 sm:gap-x-4 sm:px-0">
-        {TABS.map(({ to, label, Icon }) => (
-          <Link
-            key={to}
-            to={to}
-            params={{ group }}
-            className="inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 border-transparent px-2 py-3 text-sm whitespace-nowrap text-muted-foreground"
-            activeProps={{ className: 'border-primary! text-primary!' }}
-          >
-            <Icon className="hidden h-4 w-4 lg:block" aria-hidden="true" />
-            {label}
-          </Link>
-        ))}
-      </nav>
+      <div className="-mx-3 mb-4 border-b sm:mx-0">
+        {/* On narrow screens the row scrolls; the fade at the right edge shows that more tabs follow. */}
+        <nav
+          aria-label="Group"
+          className="flex gap-x-1 overflow-x-auto px-3 [mask-image:linear-gradient(to_right,#000_calc(100%-2.5rem),transparent)] [scrollbar-width:none] sm:gap-x-4 sm:px-0 sm:[mask-image:none]"
+        >
+          {TABS.map(({ to, label, Icon }) => (
+            <Link
+              key={to}
+              to={to}
+              params={{ group }}
+              className="inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 border-transparent px-2 py-3 text-sm whitespace-nowrap text-muted-foreground"
+              activeProps={{ className: 'border-primary! text-primary!' }}
+            >
+              <Icon className="hidden h-4 w-4 lg:block" aria-hidden="true" />
+              {label}
+            </Link>
+          ))}
+        </nav>
+      </div>
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_16rem]">
         <BalanceRail group={group} />
         <div className="min-w-0 md:col-start-1 md:row-start-1">

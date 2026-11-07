@@ -122,10 +122,10 @@ function Dashboard() {
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-8 sm:py-8">
       <div className="space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="font-display text-3xl tracking-tight">Dashboard</h1>
-            <p className="mt-2 text-sm text-muted-foreground">Your balances and shared expenses, in one place.</p>
+            <p className="mt-2 hidden text-sm text-muted-foreground sm:block">Your balances and shared expenses, in one place.</p>
           </div>
           <Button asChild>
             <Link to="/expenses/create">Add expense</Link>
@@ -136,16 +136,16 @@ function Dashboard() {
           <h2 className="font-display text-2xl">Expenses</h2>
           <p className="text-xs text-muted-foreground">Newest expense date first</p>
         </div>
-        <section aria-label="Filter expenses" className="space-y-4 border bg-card p-4">
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
-            <label className="space-y-2 text-sm">
+        <section aria-label="Filter expenses" className="space-y-3 border bg-card p-3 sm:space-y-4 sm:p-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
+            <label className="col-span-2 space-y-2 text-sm sm:col-span-1">
               <span>Search</span>
               <Input type="search" placeholder="Search descriptions or merchants" maxLength={200} {...select('q')} />
             </label>
             <label className="space-y-2 text-sm">
               <span>Group</span>
               <NativeSelect value={text(params.group) || 'all'} onChange={(e) => update('group', e.target.value === 'all' ? '' : e.target.value)}>
-                <option value="all">All groups and no group</option>
+                <option value="all">All expenses</option>
                 <option value="ungrouped">No group</option>
                 <option value="grouped">Any named group</option>
                 {options.data?.groups.map((g) => (

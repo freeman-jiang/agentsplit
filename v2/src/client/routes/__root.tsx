@@ -26,13 +26,19 @@ function Root() {
             <>
               <nav aria-label="Workspace" className="col-span-full row-start-2 flex flex-wrap gap-1 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:justify-end">
                 <Button variant="ghost" size="sm" asChild>
-                  <Link to="/">Dashboard</Link>
+                  <Link to="/" activeOptions={{ exact: true }} activeProps={{ className: 'bg-accent text-accent-foreground' }}>
+                    Dashboard
+                  </Link>
                 </Button>
                 <Button variant="ghost" size="sm" asChild>
-                  <Link to="/groups">Groups</Link>
+                  <Link to="/groups" activeProps={{ className: 'bg-accent text-accent-foreground' }}>
+                    Groups
+                  </Link>
                 </Button>
                 <Button variant="ghost" size="sm" asChild>
-                  <Link to="/agents">Agents</Link>
+                  <Link to="/agents" activeProps={{ className: 'bg-accent text-accent-foreground' }}>
+                    Agents
+                  </Link>
                 </Button>
               </nav>
               <div className="col-start-2 row-start-1 flex justify-end sm:col-start-3">
