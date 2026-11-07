@@ -182,11 +182,10 @@ function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewe
           <RowTitle title={e.title} payment={e.kind === 'payment'} documentCount={e.documentCount} />
           <RowMetadata parts={[e.vendor && { key: 'vendor', node: e.vendor }, { key: 'author', node: author }]} />
         </div>
-        <RowFigure className="max-sm:hidden" label={figures.paid.label} amount={paid} amountClass="text-sm text-muted-foreground" />
+        <RowFigure className="max-sm:hidden" label={figures.paid.label} amount={paid} amountClass="text-sm text-foreground/80" />
         <RowFigure
           label={figures.personal.label}
           amount={figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
-          labelClass={tones[figures.personal.tone]}
           amountClass={cn('font-semibold', tones[figures.personal.tone])}
         />
         {/* On narrow screens the paid figure sits under the title, so the right column holds only the viewer's figure. */}

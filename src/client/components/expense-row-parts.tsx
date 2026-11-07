@@ -64,7 +64,7 @@ export function RowVendor({ vendor }: { vendor: string | null | undefined }) {
 export function RowMetadata(props: { parts: ReadonlyArray<{ key: string; node: ReactNode } | false | null | undefined | ''>; testId?: string }) {
   const parts = props.parts.filter((p) => !!p)
   return (
-    <p className="mt-0.5 truncate text-xs text-muted-foreground max-sm:hidden sm:text-[13px] sm:leading-5" data-testid={props.testId}>
+    <p className="truncate text-xs text-muted-foreground max-sm:hidden sm:text-[13px] sm:leading-[18px]" data-testid={props.testId}>
       {parts.map((part, i) => (
         <Fragment key={part.key}>
           {i > 0 && ' · '}
@@ -75,7 +75,7 @@ export function RowMetadata(props: { parts: ReadonlyArray<{ key: string; node: R
   )
 }
 
-/** A label over an amount, right-aligned. The paid figure passes a smaller, muted amount, so the viewer's figure leads. */
+/** A muted label over an amount, right-aligned. Only the viewer's amount carries red or green; the paid amount is smaller, so the viewer's figure leads. */
 export function RowFigure(props: { label: string; amount: string; labelClass?: string; amountClass?: string; className?: string; testId?: string }) {
   return (
     <div className={cn('min-w-0 text-right', props.className)} data-testid={props.testId}>
