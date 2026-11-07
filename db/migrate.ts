@@ -9,9 +9,21 @@ import pg from 'pg'
 /** The SQL migrations beside this file. The image copies them to dist/migrations. */
 export const MIGRATIONS_DIR = new URL('./migrations', import.meta.url).pathname
 
-/** Applies every migration in `dir` that `pool` has not applied yet, in one transaction. */
+/**
+ * Applies every migration in `dir` that `pool` has not applied yet, in one
+ * transaction. A migration that waits more than 5 seconds for a lock (a
+ * long query of the running app holds it) fails the start with that error,
+ * instead of blocking every request behind it.
+ */
 export async function runMigrations(data: { pool: pg.Pool; dir?: string }): Promise<void> {
-  await migrate(drizzle({ client: data.pool }), { migrationsFolder: data.dir ?? MIGRATIONS_DIR })
+  const client = await data.pool.connect()
+  try {
+    await client.query(`SET lock_timeout = '5s'`)
+    await migrate(drizzle({ client }), { migrationsFolder: data.dir ?? MIGRATIONS_DIR })
+  } finally {
+    // The setting must not stay on a connection that goes back to the pool.
+    client.release(true)
+  }
 }
 
 if (import.meta.main) {
