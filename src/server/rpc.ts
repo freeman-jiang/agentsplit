@@ -1,8 +1,11 @@
 import { Cause, Context, Effect, Layer, Option } from 'effect'
 import { RpcMiddleware } from 'effect/rpc'
-import { AgentSplitApi, Conflict, Unauthorized, Unavailable } from '../shared/api'
+import { AgentSplitApi, Conflict, Invalid, Unauthorized, Unavailable } from '../shared/api'
+import { tooManyWritesMessage } from '../shared/limits'
+import type { Bucket } from './bucket'
 import { DatabaseError, REQUEST_ID_HEADER, RequestDb, requestDbFor, transaction, useDb, type Db, type DomainError } from './db'
 import type * as ledger from './ledger'
+import { takeWrite } from './rate-limit'
 import { sessionPrincipal } from './session'
 
 /** Settings from the server environment that the handlers need. */
@@ -17,6 +20,9 @@ export class AppConfig extends Context.Service<
     readonly documentsEnabled: boolean
   }
 >()('agentsplit/AppConfig') {}
+
+/** The receipts bucket, for handlers that remove receipts from storage after their write commits. */
+export class ReceiptBucket extends Context.Service<ReceiptBucket, Bucket>()('agentsplit/ReceiptBucket') {}
 
 /** The signed-in caller, or null. Resolved once per request by AuthMiddleware. */
 export class CurrentPrincipal extends Context.Service<CurrentPrincipal, ledger.Principal | null>()('agentsplit/CurrentPrincipal') {}
@@ -82,8 +88,18 @@ export const read = <A>(work: (db: Db, principal: ledger.Principal) => Promise<A
       Effect.mapError((e) => (e instanceof Conflict ? new Unavailable({ message: 'Unexpected conflict on a read' }) : e)),
     ),
   )
-/** A write in one SERIALIZABLE transaction, for a signed-in caller. */
+/**
+ * A write in one SERIALIZABLE transaction, for a signed-in caller. It first
+ * takes one write from the caller's fair-use budget, outside the transaction;
+ * a refused write changes nothing and says how long to wait.
+ */
 export const write = <A>(work: (db: Db, principal: ledger.Principal) => Promise<A>) =>
-  Effect.flatMap(requirePrincipal, (principal) => run(transaction((db) => work(db, principal))))
+  Effect.flatMap(requirePrincipal, (principal) =>
+    run(
+      Effect.flatMap(useDb((db) => takeWrite(db, principal.userId)), (wait) =>
+        wait > 0 ? Effect.fail(new Invalid({ message: tooManyWritesMessage(wait) })) : transaction((db) => work(db, principal)),
+      ),
+    ),
+  )
 
 export const Api = AgentSplitApi.middleware(AuthMiddleware)

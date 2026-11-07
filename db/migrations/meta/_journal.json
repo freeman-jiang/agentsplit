@@ -85,6 +85,13 @@
       "when": 1793909818277,
       "tag": "0011_participant_index",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794072391841,
+      "tag": "0012_receipt_bytes",
+      "breakpoints": true
     }
   ]
 }

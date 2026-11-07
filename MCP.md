@@ -81,9 +81,29 @@ Keep API keys in private client configuration. Never put a key in a prompt, a gr
 
 Both answer HTTP 429 with `Retry-After` in seconds.
 
+- **Writes per user:** about 60 per minute, a bucket that refills one write per second. The web app and every key and OAuth connection of the user share it. A write tool call over the limit fails with `TOO_MANY_REQUESTS` and changes nothing; its message says how many seconds to wait.
+- **Client registration:** dynamic client registration stays open without an account, at most 20 registrations per IP address per hour. It answers HTTP 429.
+
+## Fair-use limits
+
+AgentSplit is free, with no paid plan. These limits only stop abuse, and a normal household never reaches them. Each one has a plain error message. `get_reference_data` returns them in `limits`, and `get_storage_usage` shows the caller's use.
+
+| Limit | Value |
+| --- | --- |
+| Receipt storage per uploader | 500 MB (500 × 1024 × 1024 bytes) |
+| One receipt image | 5 MiB, JPEG or PNG |
+| Upload targets per request | 10 |
+| Named groups that one account creates | 20 |
+| People in one group | 50 |
+| API keys per account | 10 |
+| Writes per account | About 60 per minute |
+| Client registrations per IP address | 20 per hour |
+
+A receipt counts against the account that uploaded it until someone deletes it for good. Receipts from before accounts existed have no uploader and count against no one.
+
 ## Tools
 
-The 20 tools, in the order that `tools/list` gives them. Read tools need `agentsplit:read`; write tools also need `agentsplit:write`.
+The 23 tools, in the order that `tools/list` gives them. Read tools need `agentsplit:read`; write tools also need `agentsplit:write`.
 
 | Tool | Kind | Purpose |
 | --- | --- | --- |
@@ -96,7 +116,7 @@ The 20 tools, in the order that `tools/list` gives them. Read tools need `agents
 | `update_group` | write | Admins: change settings, the slug or participants, with the current `expectedRevision`. |
 | `manage_group_access` | write | Join with an invitation, leave, and (admins) invite, revoke, remove members, set roles, bind a legacy member, or renew a private invitation. |
 | `list_expenses` | read | A group's expenses, with filters and pagination, now or at a past point in history. |
-| `get_expense` | read | One expense with payers, splits, attribution and receipt download URLs, now or at a past revision. |
+| `get_expense` | read | One expense with payers, splits, attribution and receipt download URLs, now or at a past revision. A receipt that was deleted for good has `deleted` and no download URL. |
 | `create_expense` | write | Create a group or ungrouped expense, a payment, or a recurring expense. Can request receipt upload targets. |
 | `update_expense` | write | Change only the given fields, with `expectedRevision`. Attaches uploaded receipts or removes receipt references. |
 | `delete_expense` | write | Soft-delete an expense or payment. Its history stays. |
@@ -105,8 +125,11 @@ The 20 tools, in the order that `tools/list` gives them. Read tools need `agents
 | `get_spending_stats` | read | Spending totals, shares, categories, months and recurring estimates in one currency. |
 | `list_activity` | read | The append-only history, with snapshots and the previous snapshot of each change. |
 | `process_recurring_expenses` | write | Create the due recurring expenses of one group now. The hourly job also creates them. |
-| `get_reference_data` | read | Categories, currencies and their decimals, split modes, recurrence rules and receipt limits. |
+| `get_reference_data` | read | Categories, currencies and their decimals, split modes, recurrence rules, receipt limits and the fair-use limits. |
 | `export_group` | read | The whole group as CSV or JSON text. |
+| `get_storage_usage` | read | The caller's receipt storage use against the quota, and their groups created and API keys against their limits. |
+| `list_receipts` | read | The receipts the caller uploaded, largest or oldest first, with filters for group, upload time and size, and pagination. |
+| `delete_receipts` | write | Delete receipts for good, by receipt ID. Returns the bytes freed. |
 
 The input and output schemas in `tools/list` are the full reference. Unknown argument keys are refused. Reads never write; only `process_recurring_expenses` and the hourly job create recurring expenses.
 
@@ -132,7 +155,7 @@ The server instructions and the `create_expense` and `update_expense` descriptio
 
 ## Receipt uploads
 
-Receipts are JPEG or PNG, at most 5 MiB each, at most 10 per request. `get_reference_data` tells whether uploads are enabled.
+Receipts are JPEG or PNG, at most 5 MiB each, at most 10 per request. `get_reference_data` tells whether uploads are enabled. Each upload counts against the caller's receipt storage (500 MB).
 
 1. Add `uploads` to `create_expense` or `update_expense`, for example `[{ "filename": "receipt.png", "contentType": "image/png", "bytes": 12345 }]`. An `update_expense` with empty `changes` requests targets without a new revision.
 2. Read each target from the response:
@@ -153,7 +176,19 @@ Receipts are JPEG or PNG, at most 5 MiB each, at most 10 per request. `get_refer
 
 A target or an upload alone saves nothing. The hourly job deletes unattached uploads after 25 hours. If targets cannot be prepared after a write, the response keeps the committed expense and sets `uploadError`; request new targets with `update_expense` instead of creating the expense again.
 
-To download a receipt, GET its `documents[].downloadUrl` (`/api/receipts?groupId=…&url=…`) with the same credential: `X-API-Key`, or the OAuth `Authorization` header. The `url` field is a private storage pointer, not a download link. To remove a receipt, send `changes.documents` with the references to keep; old revisions keep their receipts.
+The storage quota is checked twice. When the files would not fit, counting the uploads that the caller can still attach, the write keeps its result and `uploadError` says: "You're out of receipt space (X of 500 MB). Download or delete old receipts…". If the space runs out between the target and the attach, `update_expense` fails with `PRECONDITION_FAILED` and the same message, and changes nothing.
+
+To download a receipt, GET its `documents[].downloadUrl` (`/api/receipts?groupId=…&url=…`) with the same credential: `X-API-Key`, or the OAuth `Authorization` header. The `url` field is a private storage pointer, not a download link. To download every receipt of a group as one ZIP file, GET `/<groupId>/expenses/export/receipts` with the same credential. To remove a receipt from an expense, send `changes.documents` with the references to keep; old revisions keep their receipts, and it still counts against its uploader.
+
+## Deleting receipts
+
+`delete_receipts` deletes receipts for good and frees their uploader's space. Find the IDs with `list_receipts`, or in `documents[].receiptId` of `get_expense`. Only the uploader or an admin of the receipt's group can delete a receipt.
+
+1. The image is removed from storage. If storage fails, the hourly job removes it later; the space is free at once.
+2. Each current expense that shows the receipt gets a new audited revision without it. Amounts, payers and splits do not change.
+3. History stays append-only. Old revisions and `list_activity` keep the pointer and mark it with `deleted: { by, at }`: the account name of the person who deleted it, and the time. `get_expense` gives no `downloadUrl` for it, and `/api/receipts` answers HTTP 410.
+
+A deletion cannot be undone, and the receipt cannot be attached again. Download a receipt first if it may be needed.
 
 ## Errors
 
@@ -169,7 +204,8 @@ A successful result has `structuredContent` and the same JSON as text. A failed 
 | `FORBIDDEN` | The account or connection has no access. The outcome is certain. |
 | `NOT_FOUND` | The group, expense or history point does not exist. |
 | `CONFLICT` | The record changed, or the ID exists. `recovery` is `read_current_revision`. |
-| `PRECONDITION_FAILED` | A historical read has incomplete history. |
+| `PRECONDITION_FAILED` | A historical read has incomplete history, receipts are disabled, or an attach does not fit the caller's receipt storage. |
+| `TOO_MANY_REQUESTS` | The account made more than about 60 changes in a minute. Nothing changed. `recovery` is `retry_later`; wait the seconds that the message gives. |
 | `INTERNAL_SERVER_ERROR` | An unexpected failure. For a write, `outcomeUnknown` is true and `recovery` is `read_before_retry`. |
 
 Schema failures may come back from the MCP SDK as validation errors. Responses never contain database, storage or credential details. Claim that a write succeeded only after a committed result.

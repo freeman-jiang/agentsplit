@@ -1,12 +1,12 @@
 // The Expenses tab's "Export" menu (P-EXPORT-01). The Expenses tab belongs to
 // the expenses area: render <ExportMenu group={group} /> in its toolbar.
-import { Download, FileDown, FileJson } from 'lucide-react'
+import { Download, FileArchive, FileDown, FileJson } from 'lucide-react'
 import { segmentPath } from '~/shared/groups'
 import { Button } from '~/client/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/client/ui/dropdown-menu'
 
-/** The export files open in a new tab; the Worker serves them, not the SPA. */
-export const exportHref = (data: { group: string; format: 'csv' | 'json' }) => `${segmentPath(data.group)}/expenses/export/${data.format}`
+/** The export files open in a new tab; the server serves them, not the SPA. `receipts` is a ZIP file of every receipt. */
+export const exportHref = (data: { group: string; format: 'csv' | 'json' | 'receipts' }) => `${segmentPath(data.group)}/expenses/export/${data.format}`
 
 export function ExportMenu({ group }: { group: string }) {
   return (
@@ -28,6 +28,12 @@ export function ExportMenu({ group }: { group: string }) {
           <a href={exportHref({ group, format: 'csv' })} target="_blank" rel="noopener" className="flex items-center gap-2">
             <FileDown className="h-4 w-4" />
             Export to CSV
+          </a>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <a href={exportHref({ group, format: 'receipts' })} download className="flex items-center gap-2">
+            <FileArchive className="h-4 w-4" />
+            Download all receipts
           </a>
         </DropdownMenuItem>
       </DropdownMenuContent>

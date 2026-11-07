@@ -2,11 +2,16 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import { LoginButton } from '~/client/components/login-button'
 import { meQuery } from '~/client/queries'
 import { isInvitationPath, safeNextPath } from '~/shared/account'
+import { SIGN_UP_LIMIT_CODE, signUpLimitMessage } from '~/shared/limits'
 
-type Search = { next?: string }
+/** `error` is the code Better Auth adds when Google sign-in fails and returns here. */
+type Search = { next?: string; error?: string }
 
 export const Route = createFileRoute('/sign-in')({
-  validateSearch: (search: Record<string, unknown>): Search => (typeof search['next'] === 'string' ? { next: search['next'] } : {}),
+  validateSearch: (search: Record<string, unknown>): Search => ({
+    ...(typeof search['next'] === 'string' ? { next: search['next'] } : {}),
+    ...(typeof search['error'] === 'string' ? { error: search['error'] } : {}),
+  }),
   beforeLoad: async ({ context, search }) => {
     // An agent's authorize request with prompt=login or select_account sends a
     // signed-in user here on purpose; that sign-in must happen.
@@ -16,8 +21,16 @@ export const Route = createFileRoute('/sign-in')({
   component: SignIn,
 })
 
+/** This page without the error of the last attempt: Better Auth comes back here, with the code, when sign-in fails. */
+function errorReturnPath() {
+  const here = new URL(window.location.href)
+  here.searchParams.delete('error')
+  here.searchParams.delete('error_description')
+  return here.pathname + here.search
+}
+
 function SignIn() {
-  const { next } = Route.useSearch()
+  const { next, error } = Route.useSearch()
   const destination = safeNextPath(next)
   const invitation = destination !== null && isInvitationPath(destination)
   return (
@@ -42,7 +55,17 @@ function SignIn() {
           </li>
         </ol>
       )}
-      <LoginButton label={invitation ? 'Continue with Google' : 'Sign in with Google'} selectAccount={invitation} callbackURL={destination ?? '/'} />
+      {error && (
+        <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-4 text-sm">
+          {error === SIGN_UP_LIMIT_CODE ? signUpLimitMessage : `Sign-in did not finish (${error}). Please try again.`}
+        </p>
+      )}
+      <LoginButton
+        label={invitation ? 'Continue with Google' : 'Sign in with Google'}
+        selectAccount={invitation}
+        callbackURL={destination ?? '/'}
+        errorCallbackURL={errorReturnPath()}
+      />
     </main>
   )
 }

@@ -23,11 +23,12 @@ import {
   type GroupCreateInput,
 } from '../shared/api/groups'
 import type { CurrencyCode } from '../shared/currencies'
+import { groupLimitMessage, LIMITS, participantLimitMessage } from '../shared/limits'
 import { formatMinor, minor } from '../shared/money'
 import type { Db } from './db'
 import { randomId, randomToken, sha256Hex } from './ids'
 import { actor, displayNames, idempotent, requireMember, type Principal } from './ledger'
-import { iso } from './sql'
+import { groupsCreated, iso } from './sql'
 
 type AccessInput = typeof AccessRequest.Type
 type CreateInput = typeof GroupCreateInput.Type
@@ -250,8 +251,12 @@ export async function createGroup(
     const groupId = data.groupId ?? randomId()
     const [prior] = await tx.select({ id: groups.id }).from(groups).where(eq(groups.id, groupId))
     if (prior) throw new Invalid({ message: 'Group ID is already in use; read it before retrying or choose a new ID', field: 'groupId', reason: 'state' })
+    // Fair use. Under SERIALIZABLE, two creates that both read the count cannot both commit past it.
+    const created = await tx.execute<{ count: number }>(sql`SELECT ${groupsCreated(data.principal.userId)} AS count`)
+    if ((created.rows[0]?.count ?? 0) >= LIMITS.groupsCreated) throw new Invalid({ message: groupLimitMessage })
     const creator = { id: randomId(), name: data.principal.name.trim().slice(0, 50) || 'Member' }
     const people = [creator, ...data.group.participants.map((name) => ({ id: randomId(), name }))]
+    if (people.length > LIMITS.participantsPerGroup) throw new Invalid({ message: participantLimitMessage, field: 'participants' })
     if (new Set(people.map((p) => p.name)).size !== people.length)
       throw new Invalid({ message: 'The creator is added automatically. Give each other participant a distinct name.', field: 'participants' })
     const slug = checkedSlug(data.group.slug)
@@ -350,6 +355,9 @@ async function replacePeople(tx: Db, data: { groupId: string; people: NonNullabl
         OR EXISTS (SELECT 1 FROM expense_shares x WHERE x.participant_id = d.id) AS in_expenses
     FROM (${displayNames(sql`${data.groupId}`)}) d
   `)
+  // Fair use. A group that is over the limit already can still rename or remove people.
+  if (data.people.length > LIMITS.participantsPerGroup && data.people.length > current.rows.length)
+    throw new Invalid({ message: participantLimitMessage, field: 'participants' })
   const byId = new Map(current.rows.map((p) => [p.id, p]))
   const seen = new Set<string>()
   for (const person of data.people) {

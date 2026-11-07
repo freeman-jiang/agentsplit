@@ -9,6 +9,7 @@ import { Conflict, groupAccessDenied, NotFound } from '../../../shared/api'
 import type { ExpenseDraft } from '../../../shared/expense-rules'
 import type { SavedExpense } from '../../../shared/history'
 import { GROUP_ID } from '../../../shared/ids'
+import { LIMITS } from '../../../shared/limits'
 import { formatMinor, minor } from '../../../shared/money'
 import { preferredPayer, type SplitMode } from '../../../shared/split'
 import type { Db } from '../../db'
@@ -17,11 +18,11 @@ import { randomId } from '../../ids'
 import * as ledger from '../../ledger'
 import { attachUploads, prepareUploads, UploadError } from '../../receipt-uploads'
 import { receiptDownloadPath } from '../../receipts'
-import { activitySource, displayName, documentsJson, escapeLike, involves, iso, notBaseline } from '../../sql'
+import { activitySource, displayName, documentStatesJson, escapeLike, involves, iso, notBaseline, type Tombstone } from '../../sql'
 import { createUngroupedExpense } from '../../ungrouped'
 import { PAYMENT_RULES, RECORDING_RULES } from '../instructions'
 import { defineTool, ToolError } from '../registry'
-import { categoryOf, ExpenseSnapshot, expenseSnapshot, savedPayer } from './saved'
+import { categoryOf, ExpenseSnapshot, expenseSnapshot, ReceiptDeleted, savedPayer } from './saved'
 import {
   CalendarDate,
   CurrencyCodeInput,
@@ -126,9 +127,9 @@ const Uploads = Schema.Array(
   Schema.Struct({
     filename: Schema.String.check(Schema.isBetweenLength(1, 255)),
     contentType: Schema.Literals(['image/jpeg', 'image/png']),
-    bytes: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 5_242_880 })),
+    bytes: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.receiptBytes })),
   }),
-).check(Schema.isMaxLength(10))
+).check(Schema.isMaxLength(LIMITS.receiptsPerRequest))
 
 const People = Schema.Array(
   Schema.Union([
@@ -207,9 +208,15 @@ const ExpenseDetail = Schema.Struct({
     Schema.Struct({
       id: Id,
       url: Schema.String,
-      downloadUrl: Schema.String.annotate({
-        description: 'Authenticated receipt URL. GET with X-API-Key set to the same API key; do not send the key to the storage URL.',
-      }),
+      downloadUrl: optional(
+        Schema.String.annotate({
+          description:
+            'Authenticated receipt URL. GET with X-API-Key set to the same API key; do not send the key to the storage URL. Absent when the receipt was deleted for good.',
+        }),
+      ),
+      /** The receipt's ID for list_receipts and delete_receipts; null for a legacy pointer without one. */
+      receiptId: optional(Schema.NullOr(Id)),
+      deleted: optional(ReceiptDeleted),
       // Saved revisions keep only the receipt pointer, so historical reads have no size.
       width: optional(Schema.Int),
       height: optional(Schema.Int),
@@ -315,7 +322,7 @@ type Row = {
   shares: { id: string; name: string; weight: string }[]
   events: Event[]
   document_count: number
-  documents: { id: string; url: string; width: number; height: number }[] | null
+  documents: { id: string; url: string; width: number; height: number; receiptId: string | null; deleted: Tombstone | null }[] | null
   link: { id: string; groupId: string; currentFrameExpenseId: string; nextExpenseCreatedAt: string | null; nextExpenseDate: string } | null
 }
 
@@ -338,7 +345,7 @@ const expenseSelect = (data: { detail: boolean }) => sql`
     (SELECT count(*)::int FROM expense_documents d WHERE d.expense_id = e.id) AS document_count,
     ${
       data.detail
-        ? sql`coalesce(${documentsJson(sql`e`)}, '[]') AS documents,
+        ? sql`coalesce(${documentStatesJson(sql`e`)}, '[]') AS documents,
           (SELECT json_build_object('id', l.id, 'groupId', l.group_id, 'currentFrameExpenseId', l.current_frame_expense_id,
               'nextExpenseCreatedAt', ${iso(sql`l.next_expense_created_at`)}, 'nextExpenseDate', l.next_expense_date::text || 'T00:00:00.000Z')
             FROM recurring_links l WHERE l.current_frame_expense_id = e.id) AS link`
@@ -399,9 +406,14 @@ const detail = (row: Row, data: { viewer: string; baseUrl: string }): typeof Exp
     payers: row.payers.map((p) => ({ participantId: p.id, name: p.name, amount: money(p.amount, row.currency) })),
     paidFor: row.shares.map((s) => ({ expenseId: row.id, participantId: s.id, shares: shareText(row, s.weight) })),
     documents: (row.documents ?? []).map((d) => ({
-      ...d,
+      id: d.id,
+      url: d.url,
+      width: d.width,
+      height: d.height,
       expenseId: row.id,
-      downloadUrl: `${origin(data.baseUrl)}${receiptDownloadPath({ groupId: row.group_id, url: d.url })}`,
+      receiptId: d.receiptId,
+      deleted: d.deleted,
+      ...(d.deleted ? {} : { downloadUrl: `${origin(data.baseUrl)}${receiptDownloadPath({ groupId: row.group_id, url: d.url })}` }),
     })),
     recurringExpenseLink: row.link,
   }
@@ -559,7 +571,8 @@ async function savedDetail(db: Db, data: { principal: ledger.Principal; baseUrl:
       id: d.id,
       url: d.url,
       expenseId: e.id,
-      downloadUrl: `${origin(data.baseUrl)}${receiptDownloadPath({ groupId: input.groupId, url: d.url })}`,
+      deleted: d.deleted ?? null,
+      ...(d.deleted ? {} : { downloadUrl: `${origin(data.baseUrl)}${receiptDownloadPath({ groupId: input.groupId, url: d.url })}` }),
     })),
     recurringExpenseLink: null,
   }
@@ -570,7 +583,7 @@ export const getExpense = defineTool({
   name: 'get_expense',
   kind: 'read',
   description:
-    'Read an expense, current revision, payer, attribution.createdBy and updatedBy (authenticated authors, separate from payer), splits and attached receipt pointers and downloadUrl values. Fetch downloadUrl with X-API-Key set to your API key; storage pointers are private and are kept unchanged in edits. Requires groupId and expenseId. Money and share values are exact decimal strings; receipts are permanent references. paidBy is the payer who paid the most; payers lists every payer. Optional revision, asOf timestamp, or atActivityId selects historical state (choose one). history includes the authoritative saved snapshot, recordedAt and deleted marker. A deletion revision retains the prior snapshot; expense.revision identifies the deletion event. Historical recurrence scheduling links are unavailable; use the saved recurrenceRule. Historical revisions are not current write versions.',
+    'Read an expense, current revision, payer, attribution.createdBy and updatedBy (authenticated authors, separate from payer), splits and attached receipt pointers and downloadUrl values. Fetch downloadUrl with X-API-Key set to your API key; storage pointers are private and are kept unchanged in edits. Requires groupId and expenseId. Money and share values are exact decimal strings. A receipt deleted for good has deleted { by, at } and no downloadUrl; documents[].receiptId names a receipt for delete_receipts. paidBy is the payer who paid the most; payers lists every payer. Optional revision, asOf timestamp, or atActivityId selects historical state (choose one). history includes the authoritative saved snapshot, recordedAt and deleted marker. A deletion revision retains the prior snapshot; expense.revision identifies the deletion event. Historical recurrence scheduling links are unavailable; use the saved recurrenceRule. Historical revisions are not current write versions.',
   input: Schema.Struct({
     groupId: Schema.String.check(Schema.isMinLength(1)),
     expenseId: Schema.String.check(Schema.isMinLength(1)),
@@ -730,7 +743,7 @@ export const updateExpense = defineTool({
     changes: optional(ExpenseChanges.annotate({ default: {} })),
     expectedRevision: NonNegativeInt,
     uploads: optional(Uploads),
-    attachUploadIds: optional(Schema.Array(Schema.String.check(Schema.isPattern(GROUP_ID))).check(Schema.isMaxLength(10))),
+    attachUploadIds: optional(Schema.Array(Schema.String.check(Schema.isPattern(GROUP_ID))).check(Schema.isMaxLength(LIMITS.receiptsPerRequest))),
   }),
   strict: ['', 'changes', 'uploads[]'],
   output: Schema.Struct(ExpenseWrite),
