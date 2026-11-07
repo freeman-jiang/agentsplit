@@ -9,7 +9,7 @@ import { CURRENCIES, type CurrencyCode } from '../../../shared/currencies'
 import { legacyDateTime } from '../../../shared/dates'
 import type { SavedExpense, SavedState } from '../../../shared/history'
 import { formatMinor, minor } from '../../../shared/minor'
-import { mainPayer } from '../../../shared/split'
+import { mainPayer, weightText } from '../../../shared/split'
 import { ACTIVITY_TYPE_LIST, RECURRENCE_LIST, RECURRENCE_NAMES, SPLIT_MODE_LIST, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
 import { attributionOf, type AttributionEvent } from '../../activity'
 import type { DocumentState, ReadExpense } from '../../expense-read'
@@ -271,7 +271,7 @@ export function liveSource(e: ReadExpense, names?: ReadonlyMap<string, string>):
   return {
     ...e,
     payers: e.payers.map((p) => ({ participantId: p.participantId, name: nameOf(p), amount: p.amount })),
-    shares: e.shares.map((s) => ({ participantId: s.participantId, name: nameOf(s), shares: e.splitMode === 'amount' ? money(s.weight, e.currency) : s.weight })),
+    shares: e.shares.map((s) => ({ participantId: s.participantId, name: nameOf(s), shares: weightText({ splitMode: e.splitMode, currency: e.currency, weight: s.weight }) })),
   }
 }
 

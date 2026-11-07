@@ -6,7 +6,8 @@ import { Conflict, Invalid, NotFound } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../shared/expense-rules'
 import { compareIds } from '../shared/ids'
-import { formatMinor, minor, type Minor } from '../shared/minor'
+import { weightText } from '../shared/split'
+import { formatMinor, type Minor } from '../shared/minor'
 import type { Role } from '../shared/vocabulary'
 import { memberCte, myMemberships, requireActive, requireMember, type Membership, type Principal } from './core/access'
 import { recordExpenseEvent, type SnapshotGroup } from './activity'
@@ -527,13 +528,7 @@ function patched(current: ReadExpense, patch: ExpensePatch): ExpenseDraft {
     amount,
     payers,
     splitMode: patch.splitMode ?? current.splitMode,
-    // Stored amount weights are minor units of the saved currency; the draft takes decimal text.
-    shares:
-      patch.shares ??
-      current.shares.map((s) => ({
-        participantId: s.participantId,
-        weight: current.splitMode === 'amount' ? formatMinor({ amount: minor(BigInt(s.weight)), currency: current.currency }) : s.weight,
-      })),
+    shares: patch.shares ?? current.shares.map((s) => ({ participantId: s.participantId, weight: weightText({ splitMode: current.splitMode, currency: current.currency, weight: s.weight }) })),
     recurrence: patch.recurrence ?? current.recurrence,
   }
 }

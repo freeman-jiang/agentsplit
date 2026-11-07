@@ -5,7 +5,7 @@ import type { CurrencyCode } from '~/shared/currencies'
 import { validateExpense, type ExpenseDraft, type ExpenseIssue } from '~/shared/expense-rules'
 import { formatMinor, minor, minorOrNull, sumMinor } from '~/shared/minor'
 import { compareIds } from '~/shared/ids'
-import { apportion, parseWeight, preferredPayer } from '~/shared/split'
+import { apportion, parseWeight, preferredPayer, weightText } from '~/shared/split'
 import { CATEGORY, SPLIT_MODE_NAMES, SPLIT_MODES, type ExpenseKind, type Recurrence, type SplitMode } from '~/shared/vocabulary'
 import { todayUtc } from '~/shared/dates'
 import type { FormDocument } from './expense-documents'
@@ -230,8 +230,7 @@ type SavedExpense = {
 export function stateFromExpense(data: { expense: SavedExpense; documents: readonly FormDocument[]; participants: readonly string[] }): FormState {
   const { expense } = data
   const shares = new Map(expense.shares.map((s) => [s.participantId, s.weight]))
-  // Amount splits store minor units; the form shows decimals.
-  const shown = (weight: string) => (expense.splitMode === 'amount' ? formatMinor({ amount: minor(BigInt(weight)), currency: expense.currency }) : weight)
+  const shown = (weight: string) => weightText({ splitMode: expense.splitMode, currency: expense.currency, weight })
   const [onlyPayer] = expense.payers
   return {
     kind: expense.kind,

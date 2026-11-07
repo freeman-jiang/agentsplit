@@ -9,7 +9,7 @@ import type { CurrencyCode } from './currencies'
 import type { Category, SavedExpense, SavedState } from './history'
 import { formatMinor, minor, minorOrNull, sumMinor, type Minor } from './minor'
 import { CurrencyCodeSchema } from './money'
-import { formatWeight, parseWeight, resolveShares } from './split'
+import { formatWeight, parseWeight, resolveShares, weightText } from './split'
 import { EXPENSE_KINDS, RECURRENCE_BY_NAME, RECURRENCE_LIST, RECURRENCES, SPLIT_MODE_BY_NAME, SPLIT_MODE_LIST, SPLIT_MODES, type SplitMode } from './vocabulary'
 
 // ---------- stored formats ----------
@@ -226,8 +226,7 @@ function fromV2(raw: typeof V2ExpenseSnapshot.Type, categories: ReadonlyMap<numb
   const e = raw.expense
   const currency = e.currency
   const money = (amount: string) => formatMinor({ amount: toMinor(amount, currency), currency })
-  // Amount-split weights are stored as minor units; show them as amounts.
-  const weight = (text: string) => (e.splitMode === 'amount' && /^-?\d+$/.test(text) ? formatMinor({ amount: minor(BigInt(text)), currency }) : canonicalWeight(text))
+  const weight = (text: string) => (e.splitMode === 'amount' && /^-?\d+$/.test(text) ? weightText({ splitMode: e.splitMode, currency, weight: text }) : canonicalWeight(text))
   return {
     schemaVersion: 2,
     id: e.id,
