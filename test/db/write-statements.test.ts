@@ -2,16 +2,9 @@
 // Drizzle, so a change that adds statements to a write makes it slower
 // (docs/v2/BASELINE.md, "Write CPU"). The ceilings
 // are the counts after the statement reduction; raise one only on purpose.
-import { Layer } from 'effect'
-import { HttpRouter } from 'effect/http'
-import { RpcSerialization, RpcServer } from 'effect/rpc'
 import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { registerRequestDb, releaseRequestDb, REQUEST_ID_HEADER } from '~/server/db'
-import { HandlersLive } from '~/server/handlers'
-import { Api, AppConfig, AuthMiddlewareLive, ReceiptBucket } from '~/server/rpc'
-import { fakeBucket } from './fake-bucket'
-import { BASE, ok, SECRET, startHarness, type Harness } from './mcp-harness'
+import { BASE, ok, startHarness, type Harness } from './mcp-harness'
 
 // Each write takes one token from the fair-use write budget (src/server/rate-limit.ts): one statement more than before.
 const CEILING = { mcpCreate: 10, mcpUpdateNotes: 10, webUpdate: 9 }
@@ -38,38 +31,17 @@ async function statements(work: () => Promise<unknown>): Promise<string[]> {
   return sent
 }
 
-/** The server's RPC handler (src/server/app.ts), without the HTTP server. */
-const rpcHandler = HttpRouter.toWebHandler(
-  RpcServer.layerHttp({ group: Api, path: '/api/rpc', protocol: 'http' }).pipe(
-    Layer.provide(HandlersLive),
-    Layer.provide(AuthMiddlewareLive),
-    Layer.provide(RpcSerialization.layerJson),
-    Layer.provide(
-      Layer.succeed(AppConfig, { baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret' }),
-    ),
-    Layer.provide(Layer.succeed(ReceiptBucket, fakeBucket().bucket)),
-  ),
-).handler
-
 type Exit = { _tag: 'Exit'; exit: { _tag: 'Success'; value: unknown } | { _tag: 'Failure'; cause: unknown } }
 
-/** One web RPC call on one connection, as the server serves it. */
+/** One web RPC call, through the server's request handler (src/server/app.ts). */
 async function webRpc(data: { tag: string; payload: object }) {
-  const id = crypto.randomUUID()
-  const response = await h.withDb(async (db) => {
-    registerRequestDb(id, db)
-    try {
-      return await rpcHandler(
-        new Request(`${BASE}/api/rpc`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', cookie, [REQUEST_ID_HEADER]: id },
-          body: JSON.stringify([{ _tag: 'Request', id: '1', tag: data.tag, payload: data.payload, headers: [] }]),
-        }),
-      )
-    } finally {
-      releaseRequestDb(id)
-    }
-  })
+  const response = await h.app.fetch(
+    new Request(`${BASE}/api/rpc`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie, origin: BASE },
+      body: JSON.stringify([{ _tag: 'Request', id: '1', tag: data.tag, payload: data.payload, headers: [] }]),
+    }),
+  )
   const [message] = (await response.json()) as Exit[]
   if (message?.exit._tag !== 'Success') throw new Error(`${data.tag} failed: ${JSON.stringify(message)}`)
   return message.exit.value

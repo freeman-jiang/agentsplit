@@ -4,11 +4,12 @@
 // P-BAL-30 and P-RECUR-08).
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { expenseDocuments, groups, participants, recurringLinks } from '../../db/schema/app'
+import { todayUtc } from '../shared/dates'
 import { idOfBytes } from '../shared/ids'
 import type { Recurrence } from '../shared/vocabulary'
 import { requireMember, type Principal } from './access'
 import { recordExpenseEvent } from './activity'
-import type { Db } from './db'
+import { serializable, type Db } from './db'
 import { isActiveSeries, loadExpenses } from './expense-read'
 import { randomId } from './ids'
 import { textList } from './sql'
@@ -26,7 +27,7 @@ export function nextDate(data: { from: string; rule: Exclude<Recurrence, 'none'>
     data.rule === 'monthly'
       ? new Date(Date.UTC(year, month, Math.min(data.anchorDay, daysIn(year, month))))
       : new Date(Date.UTC(year, month - 1, day + (data.rule === 'daily' ? 1 : 7)))
-  return date.toISOString().slice(0, 10)
+  return todayUtc(date)
 }
 
 const dayOf = (date: string) => Number(date.slice(8, 10))
@@ -148,20 +149,17 @@ async function materialize(tx: Db, data: { link: DueLink; principal: Principal |
 export const MAX_OCCURRENCES_PER_RUN = 50
 
 /**
- * Creates every due occurrence, one transaction each, so missed periods are
- * caught up one by one (P-RECUR-09): each occurrence opens the next link.
- * `transaction` must open a SERIALIZABLE transaction.
- *
- * With `onError` (the scheduled job), a link that fails is reported, skipped
- * for the rest of the run, and the run continues with the other links
- * (P-RECUR-24); the next run tries it again. Without it (a member's explicit
- * request), the first failure fails the call.
+ * Creates due occurrences one by one, each opening the next link, so missed
+ * periods are caught up (P-RECUR-09). `step` runs one occurrence in a
+ * transaction. With `onError`, a link that fails is reported, skipped for
+ * the rest of the run, and the run goes on with the other links (P-RECUR-24);
+ * without it, the first failure fails the call.
  */
-export async function materializeDue(data: {
+async function createDue(data: {
   today: string
   groupId?: string
-  principal?: Principal
-  transaction: <A>(work: (tx: Db) => Promise<A>) => Promise<A>
+  principal: Principal | null
+  step: <A>(work: (tx: Db) => Promise<A>) => Promise<A>
   onError?: (error: unknown, linkId: string) => void
 }): Promise<string[]> {
   const created: string[] = []
@@ -170,11 +168,11 @@ export async function materializeDue(data: {
     const attempt: { linkId: string | null } = { linkId: null }
     let step: { done: true } | { done: false; id: string | null }
     try {
-      step = await data.transaction(async (tx) => {
+      step = await data.step(async (tx) => {
         const link = await nextDueLink(tx, { today: data.today, groupId: data.groupId, skip })
         if (!link) return { done: true as const }
         attempt.linkId = link.id
-        return { done: false as const, id: await materialize(tx, { link, principal: data.principal ?? null }) }
+        return { done: false as const, id: await materialize(tx, { link, principal: data.principal }) }
       })
     } catch (error) {
       if (!data.onError || attempt.linkId === null) throw error
@@ -188,17 +186,25 @@ export async function materializeDue(data: {
   return created
 }
 
-/** A member's explicit request to create the due occurrences of one group (P-RECUR-12). */
-export async function processGroup(
-  db: Db,
-  data: { principal: Principal; group: string; today: string; transaction: <A>(work: (tx: Db) => Promise<A>) => Promise<A> },
-) {
-  const { groupId } = await requireMember(db, data)
-  return { createdExpenseIds: await materializeDue({ today: data.today, groupId, principal: data.principal, transaction: data.transaction }) }
+/**
+ * The hourly job: every due occurrence, each in its own SERIALIZABLE
+ * transaction; `groupId` limits it to one group. A failing link goes to
+ * `onError` and is skipped; the next run tries it again.
+ */
+export const materializeDue = (db: Db, data: { today: string; groupId?: string; onError: (error: unknown, linkId: string) => void }) =>
+  createDue({ ...data, principal: null, step: (work) => serializable(db, work) })
+
+/**
+ * A member's explicit request to create the due occurrences of one group
+ * (P-RECUR-12), in the caller's write transaction, so they commit together.
+ */
+export async function processGroup(tx: Db, data: { principal: Principal; groupId: string; today: string }) {
+  const { groupId } = await requireMember(tx, data)
+  return { createdExpenseIds: await createDue({ today: data.today, groupId, principal: data.principal, step: (work) => work(tx) }) }
 }
 
 /** Active series in a group: expenses with an open link, largest first (P-RECUR-25). */
-export async function listRecurring(db: Db, data: { principal: Principal; group: string }) {
+export async function listRecurring(db: Db, data: { principal: Principal; groupId: string }) {
   const { groupId } = await requireMember(db, data)
   const rows = await db.execute<{ id: string }>(sql`
     SELECT e.id

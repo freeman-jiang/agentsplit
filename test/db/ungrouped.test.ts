@@ -83,11 +83,11 @@ beforeAll(async () => {
       { userId: 'u-unverified', groupId: 'house', participantId: 'h-unverified' },
     ])
   })
-  await tx((db) => createExpense(db, { principal: bob, group: 'house', expenseId: 'only-bob', idempotencyKey: key(), expense: draft({ title: 'Only Bob', payers: paid('h-bob'), shares: even(['h-bob']) }) }))
+  await tx((db) => createExpense(db, { principal: bob, groupId: 'house', expenseId: 'only-bob', idempotencyKey: key(), expense: draft({ title: 'Only Bob', payers: paid('h-bob'), shares: even(['h-bob']) }) }))
   await tx((db) =>
     createExpense(db, {
       principal: alice,
-      group: 'house',
+      groupId: 'house',
       expenseId: 'supplies',
       idempotencyKey: key(),
       expense: draft({ title: 'Household supplies', payers: paid('h-alice'), shares: even(['h-alice', 'h-bob', 'h-carol']) }),
@@ -129,11 +129,11 @@ describe('ungrouped expenses', () => {
     for (const peer of [carol, outsider]) {
       expect(await feedIds(peer, { groupId: privateId, involvingMe: false })).toEqual([])
       await expect(tx((db) => expenseContext(db, { principal: peer, expenseId: privateId }))).rejects.toMatchObject({ _tag: 'NotFound' })
-      await expect(tx((db) => getExpense(db, { principal: peer, group: privateId, expenseId: privateId }))).rejects.toMatchObject({
+      await expect(tx((db) => getExpense(db, { principal: peer, groupId: privateId, expenseId: privateId }))).rejects.toMatchObject({
         _tag: 'Forbidden',
-        message: 'Group access denied',
+        message: 'Group not found, or you are not a member',
       })
-      await expect(tx((db) => listExpenses(db, { principal: peer, group: privateId, filter: {}, cursor: null, limit: 10 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+      await expect(tx((db) => listExpenses(db, { principal: peer, groupId: privateId, filter: {}, cursor: null, limit: 10 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
     }
     // Its own people can filter by the private context's ID (DECISIONS.md, P-FEED-18).
     expect(await feedIds(bob, { groupId: privateId })).toEqual([privateId])
@@ -163,7 +163,7 @@ describe('ungrouped expenses', () => {
     await tx((db) =>
       createExpense(db, {
         principal: alice,
-        group: 'house',
+        groupId: 'house',
         expenseId: 'new-head',
         idempotencyKey: key(),
         expense: draft({ title: 'New head', expenseDate: '2026-10-10', payers: paid('h-alice'), shares: even(['h-alice']) }),
@@ -176,13 +176,13 @@ describe('ungrouped expenses', () => {
 
   it('private access cannot be expanded or reclassified', async () => {
     await expect(
-      tx((db) => createExpense(db, { principal: alice, group: privateId, expenseId: randomId(), idempotencyKey: key(), expense: draft({ payers: paid(pAlice), shares: even([pAlice, pBob]) }) })),
+      tx((db) => createExpense(db, { principal: alice, groupId: privateId, expenseId: randomId(), idempotencyKey: key(), expense: draft({ payers: paid(pAlice), shares: even([pAlice, pBob]) }) })),
     ).rejects.toMatchObject({ _tag: 'Invalid', message: 'Create a separate ungrouped expense for a new purchase.' })
     await expect(
       tx((db) =>
         createExpense(db, {
           principal: alice,
-          group: privateId,
+          groupId: privateId,
           expenseId: randomId(),
           idempotencyKey: key(),
           expense: draft({ kind: 'payment', recurrence: 'monthly', payers: paid(pBob, '1'), shares: even([pAlice]), amount: '1' }),
@@ -202,18 +202,18 @@ describe('ungrouped expenses', () => {
 
   it('private editing preserves roster, exact money and revisions', async () => {
     await expect(
-      tx((db) => updateExpense(db, { principal: alice, group: privateId, expenseId: privateId, expectedRevision: 1, idempotencyKey: key(), expense: draft({ payers: paid(pAlice), shares: even([pAlice]) }) })),
+      tx((db) => updateExpense(db, { principal: alice, groupId: privateId, expenseId: privateId, expectedRevision: 1, idempotencyKey: key(), expense: draft({ payers: paid(pAlice), shares: even([pAlice]) }) })),
     ).rejects.toMatchObject({ message: 'The people with access to this private expense cannot be changed. Create a new expense for a different set of people.' })
     await expect(
       tx((db) =>
-        updateExpense(db, { principal: alice, group: privateId, expenseId: privateId, expectedRevision: 1, idempotencyKey: key(), expense: draft({ kind: 'payment', payers: paid(pAlice), shares: even([pBob]) }) }),
+        updateExpense(db, { principal: alice, groupId: privateId, expenseId: privateId, expectedRevision: 1, idempotencyKey: key(), expense: draft({ kind: 'payment', payers: paid(pAlice), shares: even([pBob]) }) }),
       ),
     ).rejects.toMatchObject({ message: 'Record repayments separately from the original expense.' })
     // Any of its people may edit it, not only its creator.
     const edited = await tx((db) =>
       updateExpense(db, {
         principal: bob,
-        group: privateId,
+        groupId: privateId,
         expenseId: privateId,
         expectedRevision: 1,
         idempotencyKey: key(),
@@ -223,18 +223,18 @@ describe('ungrouped expenses', () => {
     expect(edited.revision).toBe(2)
     expect(edited.shares.map((s) => s.amount)).toEqual(['30.00', '30.00'])
     await expect(
-      tx((db) => updateExpense(db, { principal: alice, group: privateId, expenseId: privateId, expectedRevision: 1, idempotencyKey: key(), expense: draft({ title: 'Stale edit', payers: paid(pAlice), shares: even([pAlice, pBob]) }) })),
+      tx((db) => updateExpense(db, { principal: alice, groupId: privateId, expenseId: privateId, expectedRevision: 1, idempotencyKey: key(), expense: draft({ title: 'Stale edit', payers: paid(pAlice), shares: even([pAlice, pBob]) }) })),
     ).rejects.toMatchObject({ _tag: 'Conflict', currentRevision: 2 })
   })
 
   it('repayment settles only the selected expense, preserving household balances', async () => {
-    const before = await tx((db) => listBalances(db, { principal: alice, group: 'house' }))
+    const before = await tx((db) => listBalances(db, { principal: alice, groupId: 'house' }))
     const owed = await tx((db) => expenseContext(db, { principal: alice, expenseId: privateId }))
     expect(owed.context?.settlements).toEqual([{ currency: 'USD', transfers: [{ from: pBob, to: pAlice, amount: '30.00' }] }])
     await tx((db) =>
       createExpense(db, {
         principal: bob,
-        group: privateId,
+        groupId: privateId,
         expenseId: 'repayment',
         idempotencyKey: key(),
         expense: draft({ kind: 'payment', title: 'Payment', amount: '30', categoryId: 1, payers: paid(pBob, '30'), shares: even([pAlice]) }),
@@ -242,8 +242,8 @@ describe('ungrouped expenses', () => {
     )
     const settled = await tx((db) => expenseContext(db, { principal: alice, expenseId: privateId }))
     expect(settled.context?.settlements).toEqual([{ currency: 'USD', transfers: [] }])
-    expect(await tx((db) => listBalances(db, { principal: alice, group: 'house' }))).toEqual(before)
-    await expect(tx((db) => deleteExpense(db, { principal: alice, group: privateId, expenseId: privateId, expectedRevision: 2, idempotencyKey: key() }))).rejects.toMatchObject({
+    expect(await tx((db) => listBalances(db, { principal: alice, groupId: 'house' }))).toEqual(before)
+    await expect(tx((db) => deleteExpense(db, { principal: alice, groupId: privateId, expenseId: privateId, expectedRevision: 2, idempotencyKey: key() }))).rejects.toMatchObject({
       message: 'Remove this expense’s recorded repayments before deleting the expense.',
     })
     // A repayment's page names the original expense it settles.
@@ -286,7 +286,7 @@ describe('ungrouped expenses', () => {
     expect((await tx((db) => expenseContext(db, { principal: bob, expenseId: id }))).context?.invitations).toEqual([])
     await expect(tx((db) => renewPrivateInvitation(db, { principal: outsider, baseUrl: BASE_URL, groupId: id, participantId: `${id}_guest` }))).rejects.toMatchObject({
       _tag: 'Forbidden',
-      message: 'Group access denied',
+      message: 'Group not found, or you are not a member',
     })
     await expect(tx((db) => renewPrivateInvitation(db, { principal: bob, baseUrl: BASE_URL, groupId: id, participantId: `${id}_guest` }))).rejects.toMatchObject({
       message: 'Only the expense creator can reissue its original invitations.',
@@ -380,7 +380,7 @@ describe('ungrouped expenses', () => {
     await tx((db) =>
       createExpense(db, {
         principal: alice,
-        group: 'house',
+        groupId: 'house',
         expenseId: 'euro',
         idempotencyKey: key(),
         expense: draft({ title: 'Euro expense', amount: '10', currency: 'EUR', payers: paid('h-alice', '10'), shares: even(['h-alice', 'h-bob']) }),
@@ -407,15 +407,15 @@ describe('ungrouped expenses', () => {
   })
 
   it('deletes the original after its repayments, and then refuses new repayments', async () => {
-    await tx((db) => deleteExpense(db, { principal: bob, group: privateId, expenseId: 'repayment', expectedRevision: 1, idempotencyKey: key() }))
-    await tx((db) => deleteExpense(db, { principal: alice, group: privateId, expenseId: privateId, expectedRevision: 2, idempotencyKey: key() }))
+    await tx((db) => deleteExpense(db, { principal: bob, groupId: privateId, expenseId: 'repayment', expectedRevision: 1, idempotencyKey: key() }))
+    await tx((db) => deleteExpense(db, { principal: alice, groupId: privateId, expenseId: privateId, expectedRevision: 2, idempotencyKey: key() }))
     const log = await tx((db) => db.execute<{ type: string }>(sql`SELECT type FROM activities WHERE group_id = ${privateId} ORDER BY sequence`))
     expect(log.rows.map((r) => r.type)).toEqual(['create_group', 'create_expense', 'update_expense', 'create_expense', 'delete_expense', 'delete_expense'])
     await expect(
       tx((db) =>
         createExpense(db, {
           principal: bob,
-          group: privateId,
+          groupId: privateId,
           expenseId: randomId(),
           idempotencyKey: key(),
           expense: draft({ kind: 'payment', amount: '1', payers: paid(pBob, '1'), shares: even([pAlice]) }),

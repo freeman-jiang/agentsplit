@@ -3,6 +3,7 @@
 // recurring expenses (DECISIONS.md, P-STATS-44).
 import { sql } from 'drizzle-orm'
 import type { CurrencyCode } from '../shared/currencies'
+import { todayUtc } from '../shared/dates'
 import { formatMinor, minor, minorOf, type Minor } from '../shared/minor'
 import * as stats from '../shared/stats'
 import { memberCte, requireActive, type Principal } from './access'
@@ -18,7 +19,7 @@ type Head = {
 }
 
 /** The group's live expenses, newest first (expense date, then creation), in the units the figures use. */
-async function load(db: Db, data: { principal: Principal; group: string }) {
+async function load(db: Db, data: { principal: Principal; groupId: string }) {
   const result = await db.execute<Head>(sql`
     WITH ${memberCte(data)}
     SELECT g.active, g.participant_id, g.default_currency,
@@ -42,7 +43,6 @@ async function load(db: Db, data: { principal: Principal; group: string }) {
   return { head, expenses }
 }
 
-const todayUtc = () => new Date().toISOString().slice(0, 10)
 
 /** The range as given, with reversed bounds swapped. */
 const normalRange = (range: stats.DateRange): stats.DateRange =>
@@ -50,7 +50,7 @@ const normalRange = (range: stats.DateRange): stats.DateRange =>
 
 export async function statsOverview(
   db: Db,
-  data: { principal: Principal; group: string; currency?: CurrencyCode; from?: string; to?: string; today?: string; participantId?: string },
+  data: { principal: Principal; groupId: string; currency?: CurrencyCode; from?: string; to?: string; today?: string; participantId?: string },
 ) {
   const { head, expenses } = await load(db, data)
   const recurringAll = expenses.filter((e) => e.activeSeries)
@@ -103,7 +103,7 @@ export async function statsOverview(
 /** The expenses behind one month bar or one category row, newest first. Payments are left out, as in the figures. */
 export async function statsExpenses(
   db: Db,
-  data: { principal: Principal; group: string; currency: CurrencyCode; from?: string; to?: string; month?: string; categoryId?: number },
+  data: { principal: Principal; groupId: string; currency: CurrencyCode; from?: string; to?: string; month?: string; categoryId?: number },
 ) {
   const { expenses } = await load(db, data)
   return stats

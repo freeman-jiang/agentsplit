@@ -22,7 +22,7 @@ export async function listCategories(db: Db) {
  * One live expense with its receipts, its attribution lines and its open
  * recurrence, for the edit screen (P-EXP-45, P-EXP-46).
  */
-export async function getExpenseDetail(db: Db, data: { principal: Principal; group: string; expenseId: string }) {
+export async function getExpenseDetail(db: Db, data: { principal: Principal; groupId: string; expenseId: string }) {
   const { groupId } = await requireMember(db, data)
   const result = await db.execute<ExpenseRow & { my_last_edit: string | null }>(sql`
     SELECT ${expenseColumns({ documents: true })},

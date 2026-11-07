@@ -86,7 +86,7 @@ describe('private contexts', () => {
         actorUserId: 'alice',
       }),
     )
-    const page = await h.withDb((db) => listActivities(db, { principal: web('alice'), group: 'old-dinner', limit: 10 }))
+    const page = await h.withDb((db) => listActivities(db, { principal: web('alice'), groupId: 'old-dinner', limit: 10 }))
     const groupStates = page.activities.flatMap((a) => (a.snapshot?._tag === 'group' ? [a.snapshot.group.currency] : []))
     expect(groupStates.sort()).toEqual(['EUR', 'USD'])
     const events = await log({ groupId: 'old-dinner' })
@@ -94,8 +94,8 @@ describe('private contexts', () => {
   })
 
   it('tells the client the expense of a private context, and get_group links to the expense page (P-GROUP-47, P-UNGROUP-39)', async () => {
-    expect(await h.withDb((db) => getGroup(db, { principal: web('alice'), group: 'private-dinner' }))).toMatchObject({ contextExpenseId: 'private-dinner' })
-    expect(await h.withDb((db) => getGroup(db, { principal: web('alice'), group: 'g1' }))).toMatchObject({ contextExpenseId: null })
+    expect(await h.withDb((db) => getGroup(db, { principal: web('alice'), groupId: 'private-dinner' }))).toMatchObject({ contextExpenseId: 'private-dinner' })
+    expect(await h.withDb((db) => getGroup(db, { principal: web('alice'), groupId: 'g1' }))).toMatchObject({ contextExpenseId: null })
     const context = await ok(h, { name: 'get_group', args: { groupId: 'private-dinner' }, headers: alice })
     expect(context['links']).toEqual({
       share: `${BASE}/expenses/private-dinner`,

@@ -99,7 +99,7 @@ export async function createUngroupedExpense(
   const local = (id: string) => toStored.get(id) ?? id
   const created = await createExpense(tx, {
     principal: data.principal,
-    group: groupId,
+    groupId,
     expenseId: data.expenseId,
     idempotencyKey: data.idempotencyKey,
     expense: {
@@ -137,7 +137,7 @@ export async function createUngroupedExpense(
  * issues another link and revokes this one.
  */
 export async function renewPrivateInvitation(tx: Db, data: { principal: Principal; baseUrl: string; groupId: string; participantId: string }) {
-  const membership = await requireMember(tx, { principal: data.principal, group: data.groupId })
+  const membership = await requireMember(tx, { principal: data.principal, groupId: data.groupId })
   const { groupId } = membership
   const [person] = await tx
     .select({ email: privatePeople.email, name: participants.name, joined: memberships.userId })

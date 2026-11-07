@@ -1,6 +1,7 @@
 // Splitting without Effect, for the client and the server alike.
 import { compareIds } from './ids'
-import { minor, sumMinor, type Minor } from './minor'
+import type { CurrencyCode } from './currencies'
+import { minor, minorOf, sumMinor, type Minor } from './minor'
 import type { SplitMode } from './vocabulary'
 
 /** A weight is an exact non-negative decimal: a share count, a percentage, or an amount. */
@@ -97,3 +98,7 @@ export function preferredPayer(payers: ReadonlyArray<{ readonly participantId: s
   if (!first) throw new SplitError('no-participants')
   return first.participantId
 }
+
+/** The payer an expense names when it shows one payer: the one who paid the most (preferredPayer), or null without payers. */
+export const mainPayer = (expense: { readonly currency: CurrencyCode; readonly payers: ReadonlyArray<{ readonly participantId: string; readonly amount: string }> }) =>
+  expense.payers.length ? preferredPayer(expense.payers.map((p) => ({ participantId: p.participantId, amount: minorOf(p.amount, expense.currency) }))) : null

@@ -4,9 +4,9 @@
 // figures, the Log and the files come from src/server/stats.ts, history.ts
 // and export.ts; this file only maps names.
 import { Schema } from 'effect'
+import { legacyDateTime } from '../../../shared/dates'
 import { LIMITS } from '../../../shared/limits'
-import { minorOf } from '../../../shared/minor'
-import { preferredPayer } from '../../../shared/split'
+import { mainPayer } from '../../../shared/split'
 import { ACTIVITY_TYPE_BY_NAME, ACTIVITY_TYPE_LIST, ACTIVITY_TYPE_NAMES, RECURRENCE_NAMES, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
 import type { Db } from '../../db'
 import { loadExpenses } from '../../expense-read'
@@ -103,7 +103,7 @@ export const getSpendingStats = defineTool({
   run: async ({ db, principal }, input) => {
     const s = await stats.statsOverview(db, {
       principal,
-      group: input.groupId,
+      groupId: input.groupId,
       ...(input.currencyCode === undefined ? {} : { currency: input.currencyCode }),
       ...(input.from === undefined ? {} : { from: input.from }),
       ...(input.to === undefined ? {} : { to: input.to }),
@@ -193,9 +193,9 @@ async function liveExpenses(db: Db, data: { groupId: string; ids: readonly strin
           amount: e.amount,
           currencyCode: e.currency,
           createdAt: e.createdAt,
-          expenseDate: `${e.expenseDate}T00:00:00.000Z`,
+          expenseDate: legacyDateTime(e.expenseDate),
           categoryId: e.categoryId,
-          paidById: e.payers.length ? preferredPayer(e.payers.map((p) => ({ participantId: p.participantId, amount: minorOf(p.amount, e.currency) }))) : '',
+          paidById: mainPayer(e) ?? '',
           originalAmount: e.originalAmount,
           originalCurrency: e.originalCurrency,
           conversionRate: e.conversionRate,
@@ -256,8 +256,8 @@ export const listActivity = defineTool({
     nextCursor: NonNegativeInt,
   }),
   run: async ({ db, principal }, input) => {
-    const { activityType, groupId: group, ...query } = input
-    const page = await history.listActivities(db, { principal, group, withActors: true, ...query, ...(activityType ? { type: ACTIVITY_TYPE_BY_NAME[activityType] } : {}) })
+    const { activityType, ...query } = input
+    const page = await history.listActivities(db, { principal, withActors: true, ...query, ...(activityType ? { type: ACTIVITY_TYPE_BY_NAME[activityType] } : {}) })
     const { groupId } = page
     const historical = input.asOf !== undefined || input.atActivityId !== undefined
     const live = historical
@@ -305,7 +305,7 @@ export const exportGroup = defineTool({
   output: Schema.Struct({ filename: Schema.String, contentType: Schema.String, content: Schema.String }),
   run: async ({ db, principal }, input) => {
     // The same file as the export.group RPC.
-    return exports.exportFile(db, { principal, group: input.groupId, format: input.format ?? 'json' })
+    return exports.exportFile(db, { principal, groupId: input.groupId, format: input.format ?? 'json' })
   },
 })
 

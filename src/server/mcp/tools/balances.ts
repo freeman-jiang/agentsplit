@@ -3,13 +3,14 @@
 // (src/trpc/routers/groups/balances/*, recurring.procedure.ts). Balances come
 // from src/server/balances.ts, recurrence from src/server/recurring.ts.
 import { Schema } from 'effect'
+import { todayUtc } from '../../../shared/dates'
 import { suggestSettlements, type Balance } from '../../../shared/balances'
 import type { CurrencyCode } from '../../../shared/currencies'
 import { LIMITS } from '../../../shared/limits'
 import { formatMinor, minor, type Minor } from '../../../shared/minor'
 import * as balances from '../../balances'
 import * as recurring from '../../recurring'
-import { defineTool, ToolError } from '../registry'
+import { defineTool } from '../registry'
 import { CurrencyCodeInput, HistoryFields, Id, Money, NullableString, RecordedTime, ShortId, symbolOf } from './shared'
 
 type Transfer = { from: string; to: string; amount: Minor }
@@ -68,20 +69,16 @@ export const getBalances = defineTool({
     ),
   }),
   run: async ({ db, principal }, input) => {
-    const scope = { principal, group: input.groupId, currency: input.currencyCode }
+    const scope = { principal, groupId: input.groupId, currency: input.currencyCode }
     if (input.asOf === undefined && input.atActivityId === undefined) {
       const current = await balances.groupBalances(db, scope)
       return { currencies: [...current.balances].map(bucket) }
     }
-    const saved = await balances
-      .historicalBalances(db, {
-        ...scope,
-        ...(input.asOf === undefined ? {} : { asOf: input.asOf }),
-        ...(input.atActivityId === undefined ? {} : { atActivityId: input.atActivityId }),
-      })
-      .catch((error: unknown) => {
-        throw error instanceof balances.IncompleteHistory ? new ToolError('PRECONDITION_FAILED', error.message) : error
-      })
+    const saved = await balances.historicalBalances(db, {
+      ...scope,
+      ...(input.asOf === undefined ? {} : { asOf: input.asOf }),
+      ...(input.atActivityId === undefined ? {} : { atActivityId: input.atActivityId }),
+    })
     return { history: saved.history, currencies: [...saved.balances].map(bucket) }
   },
 })
@@ -146,9 +143,7 @@ export const processRecurringExpenses = defineTool({
   input: Schema.Struct({ groupId: ShortId }),
   strict: [''],
   output: Schema.Struct({ createdExpenseIds: Schema.Array(Id) }),
-  run: ({ db, principal }, input) =>
-    // The tool already runs in one SERIALIZABLE transaction, so every occurrence commits with it.
-    recurring.processGroup(db, { principal, group: input.groupId, today: new Date().toISOString().slice(0, 10), transaction: (work) => work(db) }),
+  run: ({ db, principal }, input) => recurring.processGroup(db, { principal, groupId: input.groupId, today: todayUtc() }),
 })
 
 export const balanceTools = [getBalances, getParticipantBalances, processRecurringExpenses]

@@ -56,7 +56,7 @@ type GroupRow = {
  * A group with its participants, in one statement that also checks the
  * caller's membership, so the request makes one round trip.
  */
-export async function getGroup(db: Db, data: { principal: Principal; group: string }) {
+export async function getGroup(db: Db, data: { principal: Principal; groupId: string }) {
   const result = await db.execute<GroupRow>(sql`
     WITH ${memberCte(data)}
     SELECT g.id, g.slug, g.name, g.default_currency, g.information, g.revision, g.role, g.participant_id, g.active,
@@ -106,7 +106,7 @@ const decodeCursor = (text: string): Cursor => {
 
 export async function listExpenses(
   db: Db,
-  data: { principal: Principal; group: string; filter: ExpenseFilter; cursor: string | null; limit: number },
+  data: { principal: Principal; groupId: string; filter: ExpenseFilter; cursor: string | null; limit: number },
 ) {
   const f = data.filter
   const limit = Math.min(Math.max(Math.trunc(data.limit) || 50, 1), 200)
@@ -156,7 +156,7 @@ export async function listExpenses(
   }
 }
 
-export async function getExpense(db: Db, data: { principal: Principal; group: string; expenseId: string }) {
+export async function getExpense(db: Db, data: { principal: Principal; groupId: string; expenseId: string }) {
   const { groupId } = await requireMember(db, data)
   const [expense] = await loadExpenses(db, { ids: [data.expenseId], groupId })
   if (!expense || expense.deleted) throw new NotFound({ entity: 'expense', id: data.expenseId })
@@ -224,7 +224,7 @@ type ContextRow = {
  */
 export async function loadWriteContext(
   tx: Db,
-  data: { principal: Principal; group: string; expenseId: string; op: 'create' | 'change'; idempotencyKey: string | null },
+  data: { principal: Principal; groupId: string; expenseId: string; op: 'create' | 'change'; idempotencyKey: string | null },
 ): Promise<WriteContext> {
   const change = data.op === 'change'
   const none = sql`NULL::json`
@@ -267,7 +267,7 @@ export async function loadWriteContext(
 }
 
 /** The given context, or a new one. A context read for another write is a bug. */
-async function contextFor(tx: Db, data: { principal: Principal; group: string; expenseId: string; op: 'create' | 'change'; idempotencyKey: string | null; context: WriteContext | undefined }) {
+async function contextFor(tx: Db, data: { principal: Principal; groupId: string; expenseId: string; op: 'create' | 'change'; idempotencyKey: string | null; context: WriteContext | undefined }) {
   const { context, ...load } = data
   if (!context) return loadWriteContext(tx, load)
   if (context.op !== data.op || context.expenseId !== data.expenseId || context.idempotencyKey !== data.idempotencyKey)
@@ -398,7 +398,7 @@ export async function createExpense(
   tx: Db,
   data: {
     principal: Principal
-    group: string
+    groupId: string
     expenseId: string
     /** null for a caller that never retries with the same key. */
     idempotencyKey: string | null
@@ -406,7 +406,7 @@ export async function createExpense(
     documents?: readonly StoredDocument[]
   },
 ): Promise<ReadExpense> {
-  const context = await loadWriteContext(tx, { principal: data.principal, group: data.group, expenseId: data.expenseId, op: 'create', idempotencyKey: data.idempotencyKey })
+  const context = await loadWriteContext(tx, { principal: data.principal, groupId: data.groupId, expenseId: data.expenseId, op: 'create', idempotencyKey: data.idempotencyKey })
   const { groupId } = context.membership
   const documents = data.documents ?? []
   const request = { op: 'create', groupId, expenseId: data.expenseId, expense: data.expense, documents }
@@ -453,7 +453,7 @@ export async function updateExpense(
   tx: Db,
   data: {
     principal: Principal
-    group: string
+    groupId: string
     expenseId: string
     expectedRevision: number
     /** null for a caller that never retries with the same key. */
@@ -510,8 +510,8 @@ export async function updateExpense(
  * when a receipt is deleted for good (src/server/storage.ts). Returns false
  * when the expense is deleted or has none of the receipts, and writes nothing then.
  */
-export async function removeDocuments(tx: Db, data: { principal: Principal; group: string; expenseId: string; urls: ReadonlySet<string> }): Promise<boolean> {
-  const context = await loadWriteContext(tx, { principal: data.principal, group: data.group, expenseId: data.expenseId, op: 'change', idempotencyKey: null })
+export async function removeDocuments(tx: Db, data: { principal: Principal; groupId: string; expenseId: string; urls: ReadonlySet<string> }): Promise<boolean> {
+  const context = await loadWriteContext(tx, { principal: data.principal, groupId: data.groupId, expenseId: data.expenseId, op: 'change', idempotencyKey: null })
   const current = context.expense
   if (!current || current.deleted) return false
   const saved = documentsOf(current)
@@ -530,14 +530,14 @@ export async function deleteExpense(
   tx: Db,
   data: {
     principal: Principal
-    group: string
+    groupId: string
     expenseId: string
     expectedRevision: number
     /** null for a caller that never retries with the same key. */
     idempotencyKey: string | null
   },
 ): Promise<{ revision: number }> {
-  const context = await loadWriteContext(tx, { principal: data.principal, group: data.group, expenseId: data.expenseId, op: 'change', idempotencyKey: data.idempotencyKey })
+  const context = await loadWriteContext(tx, { principal: data.principal, groupId: data.groupId, expenseId: data.expenseId, op: 'change', idempotencyKey: data.idempotencyKey })
   const { groupId } = context.membership
   const request = { op: 'delete', groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision }
   return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request, previous: context.previous }, async () => {

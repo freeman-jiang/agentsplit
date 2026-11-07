@@ -99,15 +99,15 @@ beforeAll(async () => {
     ])
   })
   creation = await latestEvent('g1')
-  await tx((db) => createExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', idempotencyKey: key(), expense: draft() }))
+  await tx((db) => createExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1', idempotencyKey: key(), expense: draft() }))
   initial = await latestEvent('g1')
   await sleep(5)
-  await tx((db) => updateExpense(db, { principal: agent, group: 'g1', expenseId: 'e1', expectedRevision: 1, idempotencyKey: key(), expense: draft({ amount: '90', payers: [{ participantId: 'pa', amount: '90' }], notes: 'edited' }) }))
+  await tx((db) => updateExpense(db, { principal: agent, groupId: 'g1', expenseId: 'e1', expectedRevision: 1, idempotencyKey: key(), expense: draft({ amount: '90', payers: [{ participantId: 'pa', amount: '90' }], notes: 'edited' }) }))
   edited = await latestEvent('g1')
   await sleep(5)
   // A rename changes current names only; snapshots keep the names they saved.
   await tx((db) => db.update(participants).set({ name: 'Renamed Bob' }).where(eq(participants.id, 'pb')))
-  await tx((db) => deleteExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', expectedRevision: 2, idempotencyKey: key() }))
+  await tx((db) => deleteExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1', expectedRevision: 2, idempotencyKey: key() }))
   deletion = await latestEvent('g1')
 })
 afterAll(async () => {
@@ -116,7 +116,7 @@ afterAll(async () => {
 
 describe('saved revisions (P-HIST-44 to P-HIST-49)', () => {
   it('returns the values and names of a revision', async () => {
-    const r = await tx((db) => getSavedExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', revision: 1 }))
+    const r = await tx((db) => getSavedExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1', revision: 1 }))
     expect(r.expense.amount).toBe('60.00')
     expect(r.expense.payers[0]?.name).toBe('Alice')
     expect(r.expense.shares.find((s) => s.participantId === 'pb')?.name).toBe('Bob')
@@ -125,13 +125,13 @@ describe('saved revisions (P-HIST-44 to P-HIST-49)', () => {
   })
 
   it('returns the revision in effect at a time, after later edits and the deletion', async () => {
-    const r = await tx((db) => getSavedExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', asOf: initial.time }))
+    const r = await tx((db) => getSavedExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1', asOf: initial.time }))
     expect(r.expense.amount).toBe('60.00')
     expect(r.history.activityId).toBe(initial.id)
   })
 
   it('returns the last saved state for the deletion revision', async () => {
-    const r = await tx((db) => getSavedExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', revision: 3 }))
+    const r = await tx((db) => getSavedExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1', revision: 3 }))
     expect(r.expense.amount).toBe('90.00')
     expect(r.expense.revision).toBe(2)
     expect(r.history).toMatchObject({ revision: 3, deleted: true })
@@ -139,50 +139,50 @@ describe('saved revisions (P-HIST-44 to P-HIST-49)', () => {
   })
 
   it('keeps hiding a deleted expense from current reads (P-HIST-07, P-HIST-88)', async () => {
-    await expect(tx((db) => getExpense(db, { principal: alice, group: 'g1', expenseId: 'e1' }))).rejects.toMatchObject({ _tag: 'NotFound' })
+    await expect(tx((db) => getExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1' }))).rejects.toMatchObject({ _tag: 'NotFound' })
   })
 
   it('accepts only one selector and reports a missing revision', async () => {
-    await expect(tx((db) => getSavedExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', revision: 1, asOf: initial.time }))).rejects.toMatchObject({ _tag: 'Invalid' })
-    await expect(tx((db) => getSavedExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', revision: 55 }))).rejects.toMatchObject({ _tag: 'NotFound' })
+    await expect(tx((db) => getSavedExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1', revision: 1, asOf: initial.time }))).rejects.toMatchObject({ _tag: 'Invalid' })
+    await expect(tx((db) => getSavedExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1', revision: 55 }))).rejects.toMatchObject({ _tag: 'NotFound' })
   })
 })
 
 describe('the ledger at a boundary (P-HIST-50 to P-HIST-58)', () => {
   it('does not infer an expense from its expense date', async () => {
-    const page = await tx((db) => listSavedExpenses(db, { principal: alice, group: 'g1', atActivityId: creation.id, filter: {} }))
+    const page = await tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'g1', atActivityId: creation.id, filter: {} }))
     expect(page.expenses).toEqual([])
     expect(page.history.complete).toBe(true)
   })
 
   it('shows the expense before its deletion and not after', async () => {
-    const before = await tx((db) => listSavedExpenses(db, { principal: alice, group: 'g1', atActivityId: edited.id, filter: {} }))
+    const before = await tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'g1', atActivityId: edited.id, filter: {} }))
     expect(before.expenses.map((e) => e.amount)).toEqual(['90.00'])
-    const after = await tx((db) => listSavedExpenses(db, { principal: alice, group: 'g1', atActivityId: deletion.id, filter: {} }))
+    const after = await tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'g1', atActivityId: deletion.id, filter: {} }))
     expect(after.expenses).toEqual([])
   })
 
   it('computes balances from the saved splits', async () => {
     const at = async (atActivityId: string) =>
-      (await tx((db) => savedBalances(db, { principal: alice, group: 'g1', atActivityId }))).balances.map((b) => [b.participantId, b.net])
+      (await tx((db) => savedBalances(db, { principal: alice, groupId: 'g1', atActivityId }))).balances.map((b) => [b.participantId, b.net])
     expect(await at(initial.id)).toEqual([['pa', '30.00'], ['pb', '-30.00']])
     expect(await at(edited.id)).toEqual([['pa', '45.00'], ['pb', '-45.00']])
   })
 
   it('filters saved values before paging', async () => {
     const list = (filter: Parameters<typeof listSavedExpenses>[1]['filter']) =>
-      tx((db) => listSavedExpenses(db, { principal: alice, group: 'g1', atActivityId: initial.id, filter, limit: 1 }))
+      tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'g1', atActivityId: initial.id, filter, limit: 1 }))
     expect((await list({ search: 'original', currency: 'USD', from: '2020-01-01', to: '2020-01-01', participantId: 'pb' })).expenses).toHaveLength(1)
     expect((await list({ currency: 'JPY' })).expenses).toHaveLength(0)
     expect((await list({ payerId: 'pb' })).expenses).toHaveLength(0)
   })
 
   it('rejects bad boundaries', async () => {
-    await expect(tx((db) => listSavedExpenses(db, { principal: alice, group: 'g1', asOf: '2999-01-01T00:00:00Z', filter: {} }))).rejects.toMatchObject({ message: 'asOf cannot be in the future' })
-    await expect(tx((db) => listSavedExpenses(db, { principal: alice, group: 'g1', asOf: '2000-01-01T00:00:00Z', filter: {} }))).rejects.toMatchObject({ _tag: 'NotFound', entity: 'group at this time' })
-    await expect(tx((db) => listSavedExpenses(db, { principal: alice, group: 'g1', atActivityId: 'act-create-other', filter: {} }))).rejects.toMatchObject({ _tag: 'NotFound' })
-    await expect(tx((db) => listSavedExpenses(db, { principal: alice, group: 'other', asOf: initial.time, filter: {} }))).rejects.toMatchObject({ _tag: 'Forbidden' })
-    await expect(tx((db) => getSavedExpense(db, { principal: alice, group: 'other', expenseId: 'e1', revision: 1 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'g1', asOf: '2999-01-01T00:00:00Z', filter: {} }))).rejects.toMatchObject({ message: 'asOf cannot be in the future' })
+    await expect(tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'g1', asOf: '2000-01-01T00:00:00Z', filter: {} }))).rejects.toMatchObject({ _tag: 'NotFound', entity: 'groupAtTime' })
+    await expect(tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'g1', atActivityId: 'act-create-other', filter: {} }))).rejects.toMatchObject({ _tag: 'NotFound' })
+    await expect(tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'other', asOf: initial.time, filter: {} }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => getSavedExpense(db, { principal: alice, groupId: 'other', expenseId: 'e1', revision: 1 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
   })
 
   it('accepts only timestamps with a time zone and at most milliseconds (P-HIST-40)', () => {
@@ -197,52 +197,52 @@ describe('the ledger at a boundary (P-HIST-50 to P-HIST-58)', () => {
 
 describe('the Log (P-HIST-28 to P-HIST-39)', () => {
   it('keeps pages fixed at the returned boundary while events are added', async () => {
-    const first = await tx((db) => listActivities(db, { principal: alice, group: 'g1', limit: 1 }))
-    const full = await tx((db) => listActivities(db, { principal: alice, group: 'g1', limit: 100, atActivityId: first.atActivityId ?? '' }))
-    await tx((db) => createExpense(db, { principal: alice, group: 'g1', expenseId: 'later', idempotencyKey: key(), expense: draft({ title: 'Later backdated entry', amount: '100', currency: 'JPY', payers: [{ participantId: 'pa', amount: '100' }] }) }))
-    const next = await tx((db) => listActivities(db, { principal: alice, group: 'g1', limit: 1, cursor: first.nextCursor, atActivityId: first.atActivityId ?? '' }))
+    const first = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', limit: 1 }))
+    const full = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', limit: 100, atActivityId: first.atActivityId ?? '' }))
+    await tx((db) => createExpense(db, { principal: alice, groupId: 'g1', expenseId: 'later', idempotencyKey: key(), expense: draft({ title: 'Later backdated entry', amount: '100', currency: 'JPY', payers: [{ participantId: 'pa', amount: '100' }] }) }))
+    const next = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', limit: 1, cursor: first.nextCursor, atActivityId: first.atActivityId ?? '' }))
     expect(next.activities[0]?.id).toBe(full.activities[1]?.id)
-    const frozen = await tx((db) => listActivities(db, { principal: alice, group: 'g1', limit: 100, atActivityId: first.atActivityId ?? '' }))
+    const frozen = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', limit: 100, atActivityId: first.atActivityId ?? '' }))
     expect(frozen.activities.some((a) => a.expenseId === 'later')).toBe(false)
     expect(frozen.activities.map((a) => a.id)).toEqual(full.activities.map((a) => a.id))
   })
 
   it('filters by recording time in either order and caps at asOf', async () => {
-    const r = await tx((db) => listActivities(db, { principal: alice, group: 'g1', expenseId: 'e1', recordedFrom: edited.time, recordedTo: deletion.time, order: 'asc' }))
+    const r = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', expenseId: 'e1', recordedFrom: edited.time, recordedTo: deletion.time, order: 'asc' }))
     expect(r.activities.map((a) => a.expenseRevision)).toEqual([2, 3])
-    const capped = await tx((db) => listActivities(db, { principal: alice, group: 'g1', expenseId: 'e1', asOf: initial.time }))
+    const capped = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', expenseId: 'e1', asOf: initial.time }))
     expect(capped.activities.map((a) => a.expenseRevision)).toEqual([1])
-    await expect(tx((db) => listActivities(db, { principal: alice, group: 'g1', recordedFrom: deletion.time, recordedTo: initial.time }))).rejects.toMatchObject({ _tag: 'Invalid' })
-    await expect(tx((db) => listActivities(db, { principal: alice, group: 'g1', from: '2026-02-01', to: '2026-01-01' }))).rejects.toMatchObject({ message: 'from must be on or before to' })
+    await expect(tx((db) => listActivities(db, { principal: alice, groupId: 'g1', recordedFrom: deletion.time, recordedTo: initial.time }))).rejects.toMatchObject({ _tag: 'Invalid' })
+    await expect(tx((db) => listActivities(db, { principal: alice, groupId: 'g1', from: '2026-02-01', to: '2026-01-01' }))).rejects.toMatchObject({ message: 'from must be on or before to' })
   })
 
   it('filters by UTC recording day and type', async () => {
     const today = new Date().toISOString().slice(0, 10)
-    const r = await tx((db) => listActivities(db, { principal: alice, group: 'g1', from: today, to: today, type: 'update_expense', limit: 100 }))
+    const r = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', from: today, to: today, type: 'update_expense', limit: 100 }))
     expect(r.activities.map((a) => a.expenseRevision)).toEqual([2])
-    const old = await tx((db) => listActivities(db, { principal: alice, group: 'g1', from: '2019-06-01', to: '2019-06-01' }))
+    const old = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', from: '2019-06-01', to: '2019-06-01' }))
     expect(old.activities.map((a) => a.type)).toEqual(['create_group'])
   })
 
   it('never attaches live expense state to a historical read', async () => {
-    const r = await tx((db) => listActivities(db, { principal: alice, group: 'g1', asOf: initial.time, limit: 100 }))
+    const r = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', asOf: initial.time, limit: 100 }))
     expect(r.activities.every((a) => a.expense === null)).toBe(true)
     expect(JSON.stringify(r)).not.toContain('Later backdated entry')
-    const current = await tx((db) => listActivities(db, { principal: alice, group: 'g1', limit: 100 }))
+    const current = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', limit: 100 }))
     expect(current.activities.find((a) => a.expenseId === 'later')?.expense).toEqual({ kind: 'expense' })
     // A deleted expense has no live state, so its events do not link (P-HIST-70).
     expect(current.activities.filter((a) => a.expenseId === 'e1').every((a) => a.expense === null)).toBe(true)
   })
 
   it('returns the deletion first, with the last saved state as the previous snapshot (P-HIST-39)', async () => {
-    const r = await tx((db) => listActivities(db, { principal: alice, group: 'g1', expenseId: 'e1', limit: 100 }))
+    const r = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', expenseId: 'e1', limit: 100 }))
     const [first] = r.activities
     expect(first).toMatchObject({ type: 'delete_expense', snapshot: null })
     expect(first?.previousSnapshot?._tag === 'expense' && first.previousSnapshot.expense.amount).toBe('90.00')
   })
 
   it('reports who made each change without user IDs', async () => {
-    const r = await tx((db) => listActivities(db, { principal: alice, group: 'g1', expenseId: 'e1', order: 'asc', limit: 100 }))
+    const r = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', expenseId: 'e1', order: 'asc', limit: 100 }))
     expect(r.activities.map((a) => [a.actorName, a.verified, a.agent])).toEqual([
       ['Alice Account', true, false],
       ['Alice Account', true, true],
@@ -253,9 +253,9 @@ describe('the Log (P-HIST-28 to P-HIST-39)', () => {
   })
 
   it('returns nothing for an expense of another group', async () => {
-    const r = await tx((db) => listActivities(db, { principal: alice, group: 'other', expenseId: 'e1' }).catch((e: unknown) => e))
+    const r = await tx((db) => listActivities(db, { principal: alice, groupId: 'other', expenseId: 'e1' }).catch((e: unknown) => e))
     expect(r).toMatchObject({ _tag: 'Forbidden' })
-    const mine = await tx((db) => listActivities(db, { principal: alice, group: 'g2', expenseId: 'e1' }))
+    const mine = await tx((db) => listActivities(db, { principal: alice, groupId: 'g2', expenseId: 'e1' }))
     expect(mine.activities).toEqual([])
   })
 
@@ -267,7 +267,7 @@ describe('the Log (P-HIST-28 to P-HIST-39)', () => {
         { id: 'act-bind', groupId: 'g1', type: 'update_group', data: 'Member identity bound: u-bob / bob@example.com / pb / Bob', actorName: 'Alice Account', actorUserId: 'u-alice', source: 'web' },
       ]),
     )
-    const r = await tx((db) => listActivities(db, { principal: alice, group: 'g1', limit: 100 }))
+    const r = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', limit: 100 }))
     expect(r.activities.slice(0, 3).map((a) => a.data)).toEqual(['Member identity bound', 'join', 'Invitation created'])
     expect(JSON.stringify(r)).not.toMatch(/example\.com|u-bob/)
     const group = r.activities.find((a) => a.type === 'create_group')
@@ -329,7 +329,7 @@ describe('imported expenses and v1 snapshots', () => {
     await tx((db) =>
       updateExpense(db, {
         principal: alice,
-        group: 'g2',
+        groupId: 'g2',
         expenseId: 'v1x',
         expectedRevision: 2,
         idempotencyKey: key(),
@@ -356,7 +356,7 @@ describe('imported expenses and v1 snapshots', () => {
   })
 
   it('shows the exact previous and current allocations of every revision', async () => {
-    const r = await tx((db) => listActivities(db, { principal: alice, group: 'g2', expenseId: 'v1x', order: 'asc', limit: 100 }))
+    const r = await tx((db) => listActivities(db, { principal: alice, groupId: 'g2', expenseId: 'v1x', order: 'asc', limit: 100 }))
     const shown = r.activities.map((a) => ({
       revision: a.expenseRevision,
       current: a.snapshot?._tag === 'expense' ? describeRevision(a.snapshot.expense).splits : null,
@@ -371,7 +371,7 @@ describe('imported expenses and v1 snapshots', () => {
   })
 
   it('compares a v1 revision and the v2 revision after it field by field', async () => {
-    const r = await tx((db) => listActivities(db, { principal: alice, group: 'g2', expenseId: 'v1x', limit: 1 }))
+    const r = await tx((db) => listActivities(db, { principal: alice, groupId: 'g2', expenseId: 'v1x', limit: 1 }))
     const [a] = r.activities
     if (a?.snapshot?._tag !== 'expense' || a.previousSnapshot?._tag !== 'expense') throw new Error('Expected two expense snapshots')
     const current = describeRevision(a.snapshot.expense)
@@ -384,10 +384,10 @@ describe('imported expenses and v1 snapshots', () => {
   })
 
   it('reads imported and v2 revisions into one ledger', async () => {
-    const at = await tx((db) => listActivities(db, { principal: alice, group: 'g2', limit: 1 }))
-    const ledger = await tx((db) => historicalLedger(db, { principal: alice, group: 'g2', atActivityId: at.atActivityId ?? '' }))
+    const at = await tx((db) => listActivities(db, { principal: alice, groupId: 'g2', limit: 1 }))
+    const ledger = await tx((db) => historicalLedger(db, { principal: alice, groupId: 'g2', atActivityId: at.atActivityId ?? '' }))
     expect(ledger.history.complete).toBe(true)
-    const balances = await tx((db) => savedBalances(db, { principal: alice, group: 'g2', asOf: '2025-03-04T12:00:00Z' }))
+    const balances = await tx((db) => savedBalances(db, { principal: alice, groupId: 'g2', asOf: '2025-03-04T12:00:00Z' }))
     expect(balances.balances.map((b) => [b.participantId, b.net])).toEqual([['qa', '80.00'], ['qb', '-40.00'], ['qc', '-40.00']])
   })
 })
@@ -399,37 +399,37 @@ describe('legacy gaps (P-HIST-52, P-HIST-53, P-HIST-57)', () => {
       await db.execute(sql`INSERT INTO expense_payers (expense_id, group_id, participant_id, amount) VALUES ('legacy', 'g1', 'pa', 1200)`)
       await db.execute(sql`INSERT INTO expense_shares (expense_id, group_id, participant_id, amount, weight) VALUES ('legacy', 'g1', 'pa', 600, '1'), ('legacy', 'g1', 'pb', 600, '1')`)
     })
-    const page = await tx((db) => listSavedExpenses(db, { principal: alice, group: 'g1', atActivityId: initial.id, filter: {} }))
+    const page = await tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'g1', atActivityId: initial.id, filter: {} }))
     expect(page.history).toMatchObject({ complete: false, unavailableExpenseIds: ['legacy'] })
-    await expect(tx((db) => savedBalances(db, { principal: alice, group: 'g1', atActivityId: initial.id }))).rejects.toMatchObject({
+    await expect(tx((db) => savedBalances(db, { principal: alice, groupId: 'g1', atActivityId: initial.id }))).rejects.toMatchObject({
       message: expect.stringContaining('Historical balances are unavailable'),
     })
   })
 
   it('counts a baseline only from its recording time', async () => {
-    await tx((db) => updateExpense(db, { principal: alice, group: 'g1', expenseId: 'legacy', expectedRevision: 0, idempotencyKey: key(), expense: draft({ title: 'Legacy unknown history', amount: '12', payers: [{ participantId: 'pa', amount: '12' }], notes: 'First audited edit', expenseDate: '2001-01-01' }) }))
-    const baseline = await tx((db) => getSavedExpense(db, { principal: alice, group: 'g1', expenseId: 'legacy', revision: 0 }))
+    await tx((db) => updateExpense(db, { principal: alice, groupId: 'g1', expenseId: 'legacy', expectedRevision: 0, idempotencyKey: key(), expense: draft({ title: 'Legacy unknown history', amount: '12', payers: [{ participantId: 'pa', amount: '12' }], notes: 'First audited edit', expenseDate: '2001-01-01' }) }))
+    const baseline = await tx((db) => getSavedExpense(db, { principal: alice, groupId: 'g1', expenseId: 'legacy', revision: 0 }))
     expect(baseline.expense.amount).toBe('12.00')
-    expect((await tx((db) => listSavedExpenses(db, { principal: alice, group: 'g1', atActivityId: initial.id, filter: {} }))).history.complete).toBe(false)
-    expect((await tx((db) => listSavedExpenses(db, { principal: alice, group: 'g1', asOf: new Date().toISOString(), filter: {} }))).history.complete).toBe(true)
+    expect((await tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'g1', atActivityId: initial.id, filter: {} }))).history.complete).toBe(false)
+    expect((await tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'g1', asOf: new Date().toISOString(), filter: {} }))).history.complete).toBe(true)
   })
 
   it('keeps currencies separate and frozen after a currency edit (P-HIST-58)', async () => {
     const head = await latestEvent('g1')
-    const before = await tx((db) => savedBalances(db, { principal: alice, group: 'g1', atActivityId: head.id }))
+    const before = await tx((db) => savedBalances(db, { principal: alice, groupId: 'g1', atActivityId: head.id }))
     expect([...new Set(before.balances.map((b) => b.currency))]).toEqual(['JPY', 'USD'])
-    await tx((db) => updateExpense(db, { principal: alice, group: 'g1', expenseId: 'later', expectedRevision: 1, idempotencyKey: key(), expense: draft({ title: 'Later backdated entry', amount: '100', payers: [{ participantId: 'pa', amount: '100' }] }) }))
-    expect(await tx((db) => savedBalances(db, { principal: alice, group: 'g1', atActivityId: head.id }))).toEqual(before)
-    const after = await tx((db) => savedBalances(db, { principal: alice, group: 'g1', asOf: new Date().toISOString() }))
+    await tx((db) => updateExpense(db, { principal: alice, groupId: 'g1', expenseId: 'later', expectedRevision: 1, idempotencyKey: key(), expense: draft({ title: 'Later backdated entry', amount: '100', payers: [{ participantId: 'pa', amount: '100' }] }) }))
+    expect(await tx((db) => savedBalances(db, { principal: alice, groupId: 'g1', atActivityId: head.id }))).toEqual(before)
+    const after = await tx((db) => savedBalances(db, { principal: alice, groupId: 'g1', asOf: new Date().toISOString() }))
     expect([...new Set(after.balances.map((b) => b.currency))]).toEqual(['USD'])
   })
 
   it('pages a saved boundary stably after live edits reorder expenses (P-HIST-55)', async () => {
     const head = await latestEvent('g1')
-    const all = await tx((db) => listSavedExpenses(db, { principal: alice, group: 'g1', atActivityId: head.id, filter: {}, limit: 100 }))
-    const first = await tx((db) => listSavedExpenses(db, { principal: alice, group: 'g1', atActivityId: head.id, filter: {}, limit: 1 }))
-    await tx((db) => updateExpense(db, { principal: alice, group: 'g1', expenseId: 'later', expectedRevision: 2, idempotencyKey: key(), expense: draft({ title: 'Later backdated entry', amount: '100', payers: [{ participantId: 'pa', amount: '100' }], expenseDate: '2000-01-01' }) }))
-    const second = await tx((db) => listSavedExpenses(db, { principal: alice, group: 'g1', atActivityId: head.id, filter: {}, limit: 1, cursor: first.nextCursor }))
+    const all = await tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'g1', atActivityId: head.id, filter: {}, limit: 100 }))
+    const first = await tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'g1', atActivityId: head.id, filter: {}, limit: 1 }))
+    await tx((db) => updateExpense(db, { principal: alice, groupId: 'g1', expenseId: 'later', expectedRevision: 2, idempotencyKey: key(), expense: draft({ title: 'Later backdated entry', amount: '100', payers: [{ participantId: 'pa', amount: '100' }], expenseDate: '2000-01-01' }) }))
+    const second = await tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'g1', atActivityId: head.id, filter: {}, limit: 1, cursor: first.nextCursor }))
     expect([first.expenses[0]?.id, second.expenses[0]?.id]).toEqual(all.expenses.map((e) => e.id))
   })
 })
@@ -438,17 +438,17 @@ describe('reads have no side effects (P-HIST-59)', () => {
   it('creates no events, rows or revisions', async () => {
     const before = await counts()
     const now = new Date().toISOString()
-    await tx((db) => getSavedExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', revision: 2 }))
-    await tx((db) => listSavedExpenses(db, { principal: alice, group: 'g1', asOf: now, filter: {} }))
-    await tx((db) => savedBalances(db, { principal: alice, group: 'g1', asOf: now }))
-    await tx((db) => listActivities(db, { principal: alice, group: 'g1', limit: 100 }))
+    await tx((db) => getSavedExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1', revision: 2 }))
+    await tx((db) => listSavedExpenses(db, { principal: alice, groupId: 'g1', asOf: now, filter: {} }))
+    await tx((db) => savedBalances(db, { principal: alice, groupId: 'g1', asOf: now }))
+    await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', limit: 100 }))
     expect(await counts()).toEqual(before)
   })
 
   it('blocks every history read after access is revoked (P-HIST-38)', async () => {
     await tx((db) => db.update(memberships).set({ active: false }).where(eq(memberships.groupId, 'g1')))
-    await expect(tx((db) => getSavedExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', revision: 1 }))).rejects.toMatchObject({ _tag: 'Forbidden', message: 'Group access denied' })
-    await expect(tx((db) => listActivities(db, { principal: alice, group: 'g1' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => getSavedExpense(db, { principal: alice, groupId: 'g1', expenseId: 'e1', revision: 1 }))).rejects.toMatchObject({ _tag: 'Forbidden', message: 'Group not found, or you are not a member' })
+    await expect(tx((db) => listActivities(db, { principal: alice, groupId: 'g1' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
     await tx((db) => db.update(memberships).set({ active: true }).where(eq(memberships.groupId, 'g1')))
   })
 })

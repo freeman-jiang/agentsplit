@@ -64,7 +64,7 @@ type Head = { active: boolean | null; group_id: string; boundary_id: string | nu
 
 function requireBoundaryFound(data: { selection: Boundary; head: Head }) {
   if (data.selection.atActivityId !== undefined && data.head.boundary_id === null)
-    throw new NotFound({ entity: 'history boundary in this group', id: data.selection.atActivityId })
+    throw new NotFound({ entity: 'boundary', id: data.selection.atActivityId })
 }
 
 const boundaryTime = (data: { selection: Boundary; head: Head }) =>
@@ -120,7 +120,7 @@ export type ActivityQuery = Boundary & {
  * none is given), with each event's saved state and the state before it, in
  * one statement.
  */
-export async function listActivities(db: Db, data: { principal: Principal; group: string; withActors?: boolean } & ActivityQuery) {
+export async function listActivities(db: Db, data: { principal: Principal; groupId: string; withActors?: boolean } & ActivityQuery) {
   checkBoundary(data)
   if (data.recordedFrom && data.recordedTo && Date.parse(data.recordedFrom) > Date.parse(data.recordedTo))
     throw new Invalid({ message: 'recordedFrom must be on or before recordedTo', field: 'recordedFrom' })
@@ -202,7 +202,7 @@ type EventRow = { id: string; time: string; type: ActivityType; revision: number
  * boundary. A deletion event returns the last saved state with its deletion
  * time. Never reads the live expense row.
  */
-export async function getSavedExpense(db: Db, data: { principal: Principal; group: string; expenseId: string; revision?: number } & Boundary) {
+export async function getSavedExpense(db: Db, data: { principal: Principal; groupId: string; expenseId: string; revision?: number } & Boundary) {
   checkBoundary(data)
   const byRevision = data.revision !== undefined
   const result = await db.execute<Head & { event: EventRow | null; tombstones: Tombstones }>(sql`
@@ -226,7 +226,7 @@ export async function getSavedExpense(db: Db, data: { principal: Principal; grou
   const head = requireActive(result.rows[0])
   if (!byRevision) requireBoundaryFound({ selection: data, head })
   const event = head.event
-  if (!event) throw new NotFound({ entity: 'saved expense revision at this point', id: data.expenseId })
+  if (!event) throw new NotFound({ entity: 'revision', id: data.expenseId })
   const raw = event.snapshot ?? event.saved
   if (raw === null) throw new Invalid({ message: 'This older revision has no complete saved snapshot' })
   const state = readSnapshot({ raw, categories: categoryMap(head.categories) })
@@ -251,7 +251,7 @@ type LedgerHead = Head & { saved: { id: string; expenseId: string; type: Activit
  * but have no saved state yet (imported rows before their baseline) make the
  * view incomplete, and are listed.
  */
-export async function historicalLedger(db: Db, data: { principal: Principal; group: string } & Boundary) {
+export async function historicalLedger(db: Db, data: { principal: Principal; groupId: string } & Boundary) {
   checkBoundary(data)
   if (data.asOf === undefined && data.atActivityId === undefined) throw new Invalid({ message: 'Choose asOf or atActivityId for a historical read' })
   const result = await db.execute<LedgerHead>(sql`
@@ -277,7 +277,7 @@ export async function historicalLedger(db: Db, data: { principal: Principal; gro
   `)
   const head = requireActive(result.rows[0] as (LedgerHead & { before_group: boolean }) | undefined)
   requireBoundaryFound({ selection: data, head })
-  if (head.before_group) throw new NotFound({ entity: 'group at this time', id: data.group })
+  if (head.before_group) throw new NotFound({ entity: 'groupAtTime', id: data.groupId })
   const categories = categoryMap(head.categories)
   const expenses: SavedExpense[] = []
   // A latest event without a snapshot (other than a deletion) predates snapshots: it is not evidence.
@@ -332,7 +332,7 @@ export function filterSaved(expenses: readonly SavedExpense[], f: HistoricalFilt
 
 export async function listSavedExpenses(
   db: Db,
-  data: { principal: Principal; group: string; filter: HistoricalFilter; cursor?: number; limit?: number } & Boundary,
+  data: { principal: Principal; groupId: string; filter: HistoricalFilter; cursor?: number; limit?: number } & Boundary,
 ) {
   const ledger = await historicalLedger(db, data)
   const cursor = data.cursor ?? 0

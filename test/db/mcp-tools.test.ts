@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { activities, expenses, memberships } from '../../db/schema/app'
 import { eq } from 'drizzle-orm'
 import { MCP_TOOLS } from '~/server/mcp/tools'
-import { takeMcpRequest } from '~/server/mcp/rate-limit'
+import { takeMcpRequest } from '~/server/rate-limit'
 import current from './fixtures/current-mcp-tools.json'
 import { BASE, callTool, failure, MCP_URL, ok, rpc, startHarness, type Harness } from './mcp-harness'
 
@@ -481,6 +481,18 @@ describe('expense writes and reads', () => {
     } finally {
       await h.withDb((db) => db.execute(sql`DROP TRIGGER fail_first_attempt ON expenses; DROP FUNCTION fail_first_attempt(); DROP SEQUENCE retry_attempts;`))
     }
+  })
+
+  // A database rule answers the caller; as an outage, the agent would read the outcome as unknown and retry.
+  it('answers a write that a database CHECK refuses as BAD_REQUEST, without database detail', async () => {
+    const refund = expense({ amount: '-30', splitMode: 'BY_AMOUNT', paidFor: [{ participant: 'pa', shares: '-10' }, { participant: 'pb', shares: '-20' }] })
+    const refused = await failure(h, { name: 'create_expense', args: { groupId: 'g1', expense: refund }, headers: alice })
+    expect(refused).toEqual({
+      code: 'BAD_REQUEST',
+      message: 'The change breaks a rule of the ledger. Check the amounts, the splits and the other fields.',
+      outcomeUnknown: false,
+      recovery: 'correct_arguments',
+    })
   })
 })
 

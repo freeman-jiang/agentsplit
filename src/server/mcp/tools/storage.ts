@@ -65,7 +65,7 @@ export const listReceipts = defineTool({
       order: input.order ?? 'largest',
       cursor: input.cursor ?? 0,
       limit: input.limit ?? 50,
-      group: input.groupId,
+      groupId: input.groupId,
       olderThan: input.olderThan,
       minBytes: input.minBytes,
     })

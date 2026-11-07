@@ -5,9 +5,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { activities, groups, invitations, memberships } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { eq, sql } from 'drizzle-orm'
-import { Effect } from 'effect'
 import { accountBalances, listBalances } from '~/server/balances'
-import { makeDb, RequestDb, transaction, type Db } from '~/server/db'
+import { makeDb, serializable, type Db } from '~/server/db'
 import { sha256Hex } from '~/server/ids'
 import {
   changeAccess,
@@ -90,11 +89,11 @@ async function tx<A>(work: (db: Db) => Promise<A>): Promise<A> {
   }
 }
 
-/** Runs `work` through the server's own transaction(), with its retries. */
+/** Runs `work` through the server's own transaction, with its retries. */
 async function serverTx<A>(work: (db: Db) => Promise<A>): Promise<A> {
   const client = await pool.connect()
   try {
-    return await Effect.runPromise(transaction(work).pipe(Effect.provideService(RequestDb, makeDb(client))))
+    return await serializable(makeDb(client), work)
   } finally {
     client.release()
   }
@@ -109,9 +108,9 @@ const create = (principal: Principal, group: Partial<Parameters<typeof createGro
       group: { name: 'Home', slug: null, information: '', defaultCurrency: 'USD', participants: [], ...group },
     }),
   )
-const details = (principal: Principal, group: string) => tx((db) => getGroupDetails(db, { principal, group }))
-const update = (principal: Principal, group: string, expectedRevision: number, changes: Parameters<typeof updateGroup>[1]['changes']) =>
-  tx((db) => updateGroup(db, { principal, group, expectedRevision, idempotencyKey: key(), changes }))
+const details = (principal: Principal, groupId: string) => tx((db) => getGroupDetails(db, { principal, groupId }))
+const update = (principal: Principal, groupId: string, expectedRevision: number, changes: Parameters<typeof updateGroup>[1]['changes']) =>
+  tx((db) => updateGroup(db, { principal, groupId, expectedRevision, idempotencyKey: key(), changes }))
 const access = (principal: Principal, request: Parameters<typeof changeAccess>[1]['request']) =>
   tx((db) => changeAccess(db, { principal, baseUrl: BASE, idempotencyKey: key(), request }))
 
@@ -226,7 +225,7 @@ describe('slugs', () => {
     await tx((db) =>
       createExpense(db, {
         principal: alice,
-        group: g.id,
+        groupId: g.id,
         expenseId: `exp-${g.id}`,
         idempotencyKey: key(),
         expense: {
@@ -247,14 +246,14 @@ describe('slugs', () => {
     )
     await update(alice, g.id, 1, { slug: 'new-flat' })
     const ref = 'OLD-Flat'
-    const activity = await tx((db) => listActivities(db, { principal: alice, group: ref }))
+    const activity = await tx((db) => listActivities(db, { principal: alice, groupId: ref }))
     expect(activity.groupId).toBe(g.id)
-    expect((await tx((db) => statsOverview(db, { principal: alice, group: ref }))).total).toBe('10.00')
-    expect(JSON.parse((await tx((db) => exportJson(db, { principal: alice, group: ref }))).content).id).toBe(g.id)
-    expect((await tx((db) => listBalances(db, { principal: alice, group: ref }))).currencies).toHaveLength(1)
+    expect((await tx((db) => statsOverview(db, { principal: alice, groupId: ref }))).total).toBe('10.00')
+    expect(JSON.parse((await tx((db) => exportJson(db, { principal: alice, groupId: ref }))).content).id).toBe(g.id)
+    expect((await tx((db) => listBalances(db, { principal: alice, groupId: ref }))).currencies).toHaveLength(1)
     expect((await tx((db) => listFeed(db, { principal: alice, filter: { groupId: ref }, cursor: null, limit: 10 }))).expenses).toHaveLength(1)
     expect((await tx((db) => accountBalances(db, { principal: alice, scope: [{ groupId: ref }] }))).balances).toMatchObject([{ groupId: g.id, amount: '5.00' }])
-    await expect(tx((db) => statsOverview(db, { principal: mallory, group: ref }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => statsOverview(db, { principal: mallory, groupId: ref }))).rejects.toMatchObject({ _tag: 'Forbidden' })
   })
 
   it('does not grant access through a slug (P-GROUP-103, P-ACCESS-09)', async () => {
@@ -264,7 +263,7 @@ describe('slugs', () => {
   })
 })
 
-const getGroupBy = (principal: Principal, ref: string) => tx((db) => getGroup(db, { principal, group: ref }))
+const getGroupBy = (principal: Principal, ref: string) => tx((db) => getGroup(db, { principal, groupId: ref }))
 
 describe('settings', () => {
   it('lets only admins change settings (P-GROUP-64)', async () => {
@@ -303,7 +302,7 @@ describe('settings', () => {
     await tx((db) =>
       createExpense(db, {
         principal: alice,
-        group: g.id,
+        groupId: g.id,
         expenseId: `exp-${g.id}`,
         idempotencyKey: key(),
         expense: {
@@ -325,7 +324,7 @@ describe('settings', () => {
     await update(alice, g.id, 1, { defaultCurrency: 'EUR' })
     const after = await getGroupBy(alice, g.id)
     expect(after.defaultCurrency).toBe('EUR')
-    const { currencies } = await tx((db) => listBalances(db, { principal: alice, group: g.id }))
+    const { currencies } = await tx((db) => listBalances(db, { principal: alice, groupId: g.id }))
     expect(currencies.find((c) => c.currency === 'USD')?.balances.map((b) => b.net).sort()).toEqual(['-5.00', '5.00'])
   })
 
@@ -354,7 +353,7 @@ describe('people', () => {
     await tx((db) =>
       createExpense(db, {
         principal: alice,
-        group: g.id,
+        groupId: g.id,
         expenseId: `exp2-${g.id}`,
         idempotencyKey: key(),
         expense: {
@@ -411,7 +410,7 @@ describe('group history', () => {
   it('lists a group edit in the Log with the snapshot the history reader accepts', async () => {
     const group = await create(alice, { name: 'Logged' })
     await update(alice, group.id, 1, { name: 'Logged renamed' })
-    const page = await tx((db) => listActivities(db, { principal: alice, group: group.id }))
+    const page = await tx((db) => listActivities(db, { principal: alice, groupId: group.id }))
     const json = JSON.stringify(page)
     expect(json).toContain('Logged renamed')
     expect(json).toContain('"currency":"USD"')
@@ -434,7 +433,7 @@ describe('directory', () => {
     await tx((db) =>
       createExpense(db, {
         principal: owner,
-        group: first.id,
+        groupId: first.id,
         expenseId: `exp-dir`,
         idempotencyKey: key(),
         expense: {
@@ -492,7 +491,7 @@ describe('invitations', () => {
 
   it('binds the joiner to the invited participant as a member (P-ACCESS-41, -49, -51)', async () => {
     const { group, bobPerson } = await groupWithBob('bob-flat')
-    const m = await tx((db) => requireMember(db, { principal: bob, group: 'bob-flat' }))
+    const m = await tx((db) => requireMember(db, { principal: bob, groupId: 'bob-flat' }))
     expect(m).toEqual({ groupId: group.id, role: 'member', participantId: bobPerson.id })
     const d = await details(bob, group.id)
     expect(d.people.find((p) => p.id === bobPerson.id)).toMatchObject({ name: 'Bob', status: 'joined', email: 'bob@example.com' })
@@ -556,7 +555,7 @@ describe('invitations', () => {
     for (const shareUrl of [`${BASE}/join-me`, `https://evil.test/invite/${'a'.repeat(43)}`, `https://u:p@agentsplit.test/invite/${'a'.repeat(43)}`, 'not a url'])
       await expect(access(bob, { action: 'join', shareUrl })).rejects.toMatchObject({ _tag: 'Invalid', field: 'shareUrl' })
     await expect(access(bob, { action: 'join', shareUrl: `${BASE}/invite/${'a'.repeat(43)}` })).rejects.toMatchObject({ _tag: 'NotFound' })
-    await expect(tx((db) => requireMember(db, { principal: bob, group: g.id }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(tx((db) => requireMember(db, { principal: bob, groupId: g.id }))).rejects.toMatchObject({ _tag: 'Forbidden' })
   })
 
   it('refuses the wrong email, revoked and expired invitations (P-ACCESS-38, -44)', async () => {
@@ -624,7 +623,7 @@ describe('roles, removal and leaving', () => {
     })
     const again = await access(alice, { action: 'invite', groupId: group.id, email: 'bob@example.com', participantId: bobPerson.id })
     await access(bob, { action: 'join', shareUrl: again.invitation!.url! })
-    expect(await tx((db) => requireMember(db, { principal: bob, group: group.id }))).toMatchObject({ participantId: bobPerson.id, role: 'member' })
+    expect(await tx((db) => requireMember(db, { principal: bob, groupId: group.id }))).toMatchObject({ participantId: bobPerson.id, role: 'member' })
   })
 
   it('binds a legacy member without a participant, once (P-ACCESS-60..64)', async () => {

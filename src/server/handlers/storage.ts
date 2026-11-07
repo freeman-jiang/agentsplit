@@ -2,7 +2,6 @@
 // permanent deletion. The objects leave storage after the deleting
 // transaction commits; if that fails, the hourly job removes them.
 import { Effect, Layer } from 'effect'
-import { useDb } from '../db'
 import { Api, AppConfig, ReceiptBucket, read, write } from '../rpc'
 import * as storage from '../storage'
 
@@ -15,13 +14,12 @@ export const StorageHandlers = Layer.mergeAll(
     }),
   ),
   Api.toLayerHandler('storage.deleteReceipts', ({ receiptIds }) =>
-    Effect.gen(function* () {
-      const bucket = yield* ReceiptBucket
-      const result = yield* write((db, principal) => storage.deleteOwnReceipts(db, { principal, receiptIds }))
-      yield* useDb((db) => storage.purgeDeletedReceipts({ db, bucket, receiptIds })).pipe(
-        Effect.ignore({ log: 'Warn', message: 'Removing deleted receipts from storage failed; the hourly job retries' }),
-      )
-      return result
-    }),
+    Effect.flatMap(ReceiptBucket, (bucket) =>
+      write(async (db, principal, afterCommit) => {
+        const result = await storage.deleteOwnReceipts(db, { principal, receiptIds })
+        afterCommit((connection) => storage.purgeDeletedReceipts({ db: connection, bucket, receiptIds }))
+        return result
+      }),
+    ),
   ),
 )

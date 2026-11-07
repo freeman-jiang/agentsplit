@@ -1,4 +1,5 @@
 import { queryOptions, type QueryClient } from '@tanstack/react-query'
+import { isNotFoundEntity, NOT_FOUND_MESSAGES } from '~/shared/errors'
 import { rpc } from '../rpc'
 
 export const directoryQuery = (offset: number) =>
@@ -17,12 +18,6 @@ export const newIdempotencyKey = () => crypto.randomUUID()
 export const refreshGroups = (queryClient: QueryClient) =>
   Promise.all([queryClient.invalidateQueries({ queryKey: ['groups'] }), queryClient.invalidateQueries({ queryKey: ['group'] })])
 
-const NOT_FOUND: Record<string, string> = {
-  invitation: 'Invitation not found or no longer valid',
-  member: 'Member not found',
-  group: 'Group not found.',
-}
-
 /** The message to show for a failed call. A revision conflict asks the user to look again. */
 export function errorMessage(error: unknown): string {
   if (typeof error === 'object' && error !== null && '_tag' in error) {
@@ -31,7 +26,7 @@ export function errorMessage(error: unknown): string {
       case 'Conflict':
         return 'Someone else changed this group while you were editing. The page now shows the latest version; check it and try again.'
       case 'NotFound':
-        return NOT_FOUND[String(e.entity)] ?? 'Not found.'
+        return isNotFoundEntity(e.entity) ? NOT_FOUND_MESSAGES[e.entity] : 'Not found.'
       case 'Unauthorized':
         return 'Sign in required'
     }
