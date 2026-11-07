@@ -224,7 +224,7 @@ function GroupCard({ group, starred, archived, marks }: { group: Group; starred:
             <Button
               size="icon"
               variant="ghost"
-              className="-my-3 h-10 w-10"
+              className="-my-2 h-10 w-10"
               aria-label={starred ? `Unstar ${group.name}` : `Star ${group.name}`}
               aria-pressed={starred}
               onClick={(e) => {
@@ -236,7 +236,7 @@ function GroupCard({ group, starred, archived, marks }: { group: Group; starred:
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" className="-my-3 -mr-3 h-10 w-10" aria-label={`More actions for ${group.name}`} onClick={(e) => e.stopPropagation()}>
+                <Button size="icon" variant="ghost" className="-my-2 -mr-3 h-10 w-10" aria-label={`More actions for ${group.name}`} onClick={(e) => e.stopPropagation()}>
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
