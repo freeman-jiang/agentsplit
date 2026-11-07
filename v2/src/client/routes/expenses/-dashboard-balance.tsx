@@ -13,7 +13,7 @@ export function DashboardBalance() {
       <h2 id="dashboard-balance-title" className="text-sm font-semibold">
         Your total balance
       </h2>
-      <p className="mt-1 text-xs text-muted-foreground">Across all your groups and ungrouped expenses. Filters don’t change it.</p>
+      <p className="mt-1 hidden text-xs text-muted-foreground sm:block">Across all your groups and ungrouped expenses. Filters don’t change it.</p>
       {summary.error ? (
         <div className="mt-4 space-y-2">
           <p role="alert" className="text-sm">
@@ -40,7 +40,7 @@ export function DashboardBalance() {
                 const negative = amount.startsWith('-')
                 const zero = /^-?0(\.0+)?$/.test(amount)
                 return (
-                  <li key={currency} className="space-y-1" data-currency={currency}>
+                  <li key={currency} className="max-sm:flex max-sm:items-baseline max-sm:justify-between max-sm:gap-3 sm:space-y-1" data-currency={currency}>
                     <p className="text-xs text-muted-foreground">
                       {zero ? 'Net balance' : negative ? 'You owe' : 'You are owed'} · {currency}
                     </p>

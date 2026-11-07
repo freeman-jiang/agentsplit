@@ -162,7 +162,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
   const auto = state.splitMode === 'amount' ? autoAmounts(state, order) : new Map<string, string>()
   const allSelected = order.every((id) => state.selected[id])
   const category = reference.categories.find((c) => c.id === state.categoryId)
-  const headingVerb = props.mode === 'create' ? 'Create' : 'Edit'
+  const headingVerb = props.mode === 'create' ? 'Add' : 'Edit'
 
   // Changing the mode or the amount forgets which amounts were typed (P-MONEY-85).
   const setAmount = (amount: string) => set({ amount, edits: {}, ...(isIncome(amount) ? { kind: 'expense' as const } : {}) })
@@ -223,17 +223,14 @@ export function ExpenseForm(props: ExpenseFormProps) {
         e.preventDefault()
         void submit()
       }}
-      className="space-y-6"
+      className="space-y-4 sm:space-y-6"
     >
       <h2 className="font-display text-xl">
         {headingVerb} {noun}
       </h2>
       {props.mode === 'edit' && <Attribution detail={props.detail} />}
 
-      <section className="space-y-4 border bg-card p-4" aria-label={income ? 'Income details' : 'Expense details'}>
-        <Field id="vendor" label="Vendor (optional)" error={shown('vendor')}>
-          <Input id="vendor" placeholder="eg. Costco" maxLength={LIMITS.vendorMax} value={state.vendor} onChange={(e) => set({ vendor: e.target.value })} onBlur={() => touch('vendor')} />
-        </Field>
+      <section className="space-y-3 border bg-card p-4 sm:space-y-4" aria-label={income ? 'Income details' : 'Expense details'}>
         <Field id="title" label="Description" error={shown('title')}>
           <Input
             id="title"
@@ -244,7 +241,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
             onBlur={() => touch('title')}
           />
         </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
           <Field id="amount" label="Amount" error={shown('amount')}>
             <div className="flex gap-2">
               <Input
@@ -268,9 +265,20 @@ export function ExpenseForm(props: ExpenseFormProps) {
             </div>
           </Field>
           <Field id="date" label={income ? 'Income date' : 'Expense date'} error={shown('expenseDate')}>
-            <Input id="date" type="date" value={state.expenseDate} aria-invalid={!!shown('expenseDate')} onChange={(e) => set({ expenseDate: e.target.value })} onBlur={() => touch('expenseDate')} />
+            <Input
+              id="date"
+              type="date"
+              className="block h-12"
+              value={state.expenseDate}
+              aria-invalid={!!shown('expenseDate')}
+              onChange={(e) => set({ expenseDate: e.target.value })}
+              onBlur={() => touch('expenseDate')}
+            />
           </Field>
         </div>
+        <Field id="vendor" label="Vendor (optional)" error={shown('vendor')}>
+          <Input id="vendor" placeholder="e.g. Costco" maxLength={LIMITS.vendorMax} value={state.vendor} onChange={(e) => set({ vendor: e.target.value })} onBlur={() => touch('vendor')} />
+        </Field>
 
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">{income ? 'Received by' : 'Paid by'}</legend>
