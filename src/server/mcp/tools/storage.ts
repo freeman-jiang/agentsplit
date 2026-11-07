@@ -5,6 +5,7 @@ import { Schema } from 'effect'
 import { Id as IdInput } from '../../../shared/api'
 import { ReceiptOrder } from '../../../shared/api/storage'
 import { FAIR_USE, LIMITS } from '../../../shared/limits'
+import { absoluteUrl } from '../../../shared/paths'
 import * as storage from '../../storage'
 import { defineTool } from './registry'
 import { NoArguments, PageLimit } from './inputs'
@@ -64,7 +65,6 @@ export const listReceipts = defineTool({
   run: async ({ db, principal, baseUrl }, input) => {
     const page = await storage.listReceipts(db, {
       principal,
-      baseUrl,
       order: input.order ?? 'largest',
       cursor: input.cursor ?? 0,
       limit: input.limit ?? LIMITS.agentReceiptPage,
@@ -80,7 +80,7 @@ export const listReceipts = defineTool({
         expense: r.expense,
         bytes: r.bytes,
         uploadedAt: r.createdAt,
-        downloadUrl: r.downloadUrl,
+        downloadUrl: absoluteUrl({ baseUrl, path: r.downloadUrl }),
       })),
       hasMore: page.nextCursor !== null,
       nextCursor: page.nextCursor,

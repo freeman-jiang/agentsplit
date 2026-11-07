@@ -6,17 +6,7 @@ import { httpReader } from './auth/authenticate'
 import type { Db } from './core/db'
 import { exportCsv, exportJson } from './export'
 import { domainErrorResponse } from './core/errors'
-
-/** RFC 6266 Content-Disposition, as the `content-disposition` package writes it. */
-export function contentDisposition(name: string): string {
-  // A path separator in a group name would make some clients drop the part before it.
-  const safe = name.replace(/[/\\]/g, '_')
-  const fallback = safe.replace(/[^\x20-\x7e]/g, '_')
-  const quoted = `"${fallback.replace(/([\\"])/g, '\\$1')}"`
-  if (fallback === safe) return `attachment; filename=${quoted}`
-  const encoded = encodeURIComponent(safe).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
-  return `attachment; filename=${quoted}; filename*=UTF-8''${encoded}`
-}
+import { contentDisposition } from './headers'
 
 export async function downloadExport(data: { db: Db; request: Request; group: string; format: 'csv' | 'json'; baseUrl: string; secret: string }): Promise<Response> {
   const reader = await httpReader(data.db, { request: data.request, baseUrl: data.baseUrl, secret: data.secret, signIn: 'Sign in required' })

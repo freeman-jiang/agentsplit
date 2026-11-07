@@ -3,7 +3,7 @@
 // (src/trpc/routers/groups/balances/*, recurring.procedure.ts). Balances come
 // from src/server/balances.ts, recurrence from src/server/recurring.ts.
 import { Schema } from 'effect'
-import { Id as IdInput } from '../../../shared/api'
+import { Id as IdInput, Invalid } from '../../../shared/api'
 import { todayUtc } from '../../../shared/dates'
 import { suggestSettlements, type Balance } from '../../../shared/balances'
 import type { CurrencyCode } from '../../../shared/currencies'
@@ -74,7 +74,11 @@ export const getBalances = defineTool({
       const current = await balances.groupBalances(db, scope)
       return { currencies: [...current.balances].map(bucket) }
     }
-    const saved = await balances.historicalBalances(db, { ...scope, ...boundaryOf(input) })
+    const saved = await balances.historicalBalances(db, { ...scope, ...boundaryOf(input) }).catch((error: unknown) => {
+      throw error instanceof Invalid && error.message === balances.INCOMPLETE_HISTORY
+        ? new Invalid({ ...error, message: `${error.message} Read list_expenses at the same boundary to inspect history coverage.` })
+        : error
+    })
     return { history: saved.history, currencies: [...saved.balances].map(bucket) }
   },
 })
