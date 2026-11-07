@@ -7,7 +7,8 @@ import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '~/client/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '~/client/ui/dialog'
-import type { Reference } from '~/shared/api'
+import type { DocumentInput, Reference } from '~/shared/api'
+import type { HttpErrorBody } from '~/shared/errors'
 import { mebibytes } from '~/shared/limits'
 import { RECEIPTS_PATH, receiptDownloadPath } from '~/shared/paths'
 import { prepareReceipt, tombstoneText, type Tombstone } from './receipt-files'
@@ -15,15 +16,13 @@ import { prepareReceipt, tombstoneText, type Tombstone } from './receipt-files'
 /** `deleted` is set for a receipt that was deleted for good: it shows a tombstone, and saving needs it removed. */
 export type FormDocument = { id: string; url: string; width: number; height: number; deleted?: Tombstone | null }
 
-type Uploaded = { id: string; url: string; width: number; height: number }
-
-async function upload(data: { groupId: string; file: File }): Promise<Uploaded> {
+async function upload(data: { groupId: string; file: File }): Promise<typeof DocumentInput.Type> {
   const body = new FormData()
   body.set('groupId', data.groupId)
   body.set('file', data.file)
   const response = await fetch(RECEIPTS_PATH, { method: 'POST', body, credentials: 'same-origin' })
-  if (!response.ok) throw new Error(((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? `Upload failed (${response.status})`)
-  return (await response.json()) as Uploaded
+  if (!response.ok) throw new Error(((await response.json().catch(() => null)) as HttpErrorBody | null)?.error ?? `Upload failed (${response.status})`)
+  return (await response.json()) as typeof DocumentInput.Type
 }
 
 /** `attachments` are the server's limits for receipts (reference.get). */
