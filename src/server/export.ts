@@ -94,7 +94,6 @@ export async function exportJson(db: Db, data: { principal: Principal; groupId: 
       originalAmount: e.originalAmount,
       originalCurrency: e.originalCurrency,
       conversionRate: e.conversionRate,
-      // The payer of the whole amount; with several payers, the one who paid most.
       paidById: mainPayer(e),
       payers: e.payers.map((p) => ({ participantId: p.participantId, amount: p.amount })),
       paidFor: e.shares.map((s) => ({ participantId: s.participantId, shares: weightText({ splitMode: e.splitMode, currency: e.currency, weight: s.weight }), amount: s.amount })),

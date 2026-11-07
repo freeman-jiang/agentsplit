@@ -1,6 +1,7 @@
-// Every limit of the app, in one table. The contract schemas, the Drizzle
-// CHECKs, the MCP schemas and descriptions, the rule messages and the client
-// derive from it, and the server enforces it.
+// Every limit that a person or an agent can meet, in one table. The contract
+// schemas, the Drizzle CHECKs, the MCP schemas and descriptions, the rule
+// messages and the client derive from it, and the server enforces it.
+// Technical buffers (body envelopes, header reads) stay beside their code.
 // The fair-use limits exist only to stop abuse: AgentSplit is free, with no
 // paid tier, and they are set high enough that a household never meets them.
 // No Effect import: the client bundle uses this module (BUILDING.md).

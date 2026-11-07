@@ -520,7 +520,6 @@ async function applyAccess(
     return done()
   }
 
-  // leave, remove_member, set_role
   const targetUserId = input.action === 'leave' ? me.userId : input.userId
   const [target] = await tx
     .select({ role: memberships.role, active: memberships.active, participantId: memberships.participantId, name: user.name })

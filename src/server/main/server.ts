@@ -70,7 +70,6 @@ const server = Bun.serve({
 })
 console.log(`AgentSplit listening on ${server.url.href} for ${publicOrigin}${config.maintenance ? ' (maintenance: answering 503)' : ''}`)
 
-// The hourly job, at minute 7 of each hour.
 const hourly = startHourly({ minute: 7, run: (time) => app.scheduled(time) })
 
 // Docker sends SIGTERM, then SIGKILL after the stop grace period

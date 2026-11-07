@@ -46,7 +46,6 @@ export function loadAssets(dir: string): ReadonlyMap<string, Asset> | null {
   const present = new Set(all)
   for (const file of all) {
     const name = relative(dir, file).split('\\').join('/')
-    // The compressed copies are variants of their file.
     if (/\.(br|gz)$/.test(name)) continue
     const bytes = new Uint8Array(readFileSync(file))
     const variants: Variant[] = []

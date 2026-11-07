@@ -236,9 +236,6 @@ export const exportGroup = defineTool({
   input: Schema.Struct({ groupId: IdInput, format: optional(Schema.Literals(['json', 'csv']).annotate({ default: 'json' })) }),
   strict: [''],
   output: Schema.Struct({ filename: Schema.String, contentType: Schema.String, content: Schema.String }),
-  run: async ({ db, principal }, input) => {
-    // The same file as the export.group RPC.
-    return exports.exportFile(db, { principal, groupId: input.groupId, format: input.format ?? 'json' })
-  },
+  run: ({ db, principal }, input) => exports.exportFile(db, { principal, groupId: input.groupId, format: input.format ?? 'json' }),
 })
 

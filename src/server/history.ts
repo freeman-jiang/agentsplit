@@ -121,7 +121,6 @@ export async function listActivities(db: Db, data: { principal: Principal; group
   const where: SQL[] = [sql`a.group_id = g.id`, withinBoundary(data, sql`a`)]
   if (data.expenseId !== undefined) where.push(sql`a.expense_id = ${data.expenseId}`)
   if (data.type !== undefined) where.push(sql`a.type = ${data.type}`)
-  // Recording days are UTC calendar days.
   if (data.from) where.push(sql`a.time >= (${data.from}::date)::timestamp AT TIME ZONE 'UTC'`)
   if (data.to) where.push(sql`a.time < ((${data.to}::date + 1)::timestamp AT TIME ZONE 'UTC')`)
   if (data.recordedFrom) where.push(sql`${ms(sql`a.time`)} >= ${data.recordedFrom}::timestamptz`)

@@ -61,7 +61,6 @@ export async function downloadReceipt(data: { db: Db; bucket: Bucket; url: URL; 
 export async function uploadReceipt(data: { db: Db; bucket: Bucket; request: Request; principal: Principal | null }): Promise<Response> {
   const { principal } = data
   if (!principal) return jsonError({ status: 401, message: 'Authentication required' })
-  // Cap the body before parsing it.
   const length = Number(data.request.headers.get('content-length'))
   if (!length || length > LIMITS.receiptBytes + ENVELOPE_BYTES) return jsonError({ status: 413, message: `Receipt must be at most ${mebibytes(LIMITS.receiptBytes)}` })
   let form: FormData
