@@ -7,7 +7,9 @@ import { serializable, type Db } from '../db'
 import { assertOAuthWrite, type McpPrincipal } from './authenticate'
 import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
 import { INSTRUCTIONS } from './instructions'
-import { errorBody, type McpTool } from './registry'
+import { tooManyWritesMessage } from '../../shared/limits'
+import { takeWrite } from '../rate-limit'
+import { errorBody, ToolError, type McpTool } from './registry'
 import { MCP_TOOLS } from './tools'
 
 export const SERVER_INFO = { name: 'agentsplit', version: '0.4.0' } as const
@@ -89,6 +91,11 @@ export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: s
             after.length = 0
             await assertOAuthWrite(tx, data.principal)
             return run(tx)
+          }
+          if (tool.kind === 'write') {
+            // The fair-use write budget, shared with the web app; outside the transaction, as there.
+            const wait = await takeWrite(data.db, data.principal.userId)
+            if (wait > 0) throw new ToolError('TOO_MANY_REQUESTS', tooManyWritesMessage(wait))
           }
           const structuredContent = (tool.kind === 'write' ? await serializable(data.db, write) : await run(data.db)) as Record<string, unknown>
           for (const work of after) await work().catch((error: unknown) => console.error(`MCP tool ${tool.name}: work after the commit failed`, error))

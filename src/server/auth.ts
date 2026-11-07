@@ -1,13 +1,14 @@
 import type { OAuthProviderExtension } from '@better-auth/oauth-provider'
 import { fetchClientMetadataResource } from '@better-auth/cimd/node'
 import { betterAuth } from 'better-auth'
-import { createAuthMiddleware } from 'better-auth/api'
+import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError } from 'better-call'
-import { and, arrayContains, eq } from 'drizzle-orm'
+import { and, arrayContains, count, eq, sql } from 'drizzle-orm'
 import * as authSchema from '../../db/schema/auth'
 import { oauthConnections } from '../../db/schema/app'
 import { isSafeCallback } from '../shared/api/account'
+import { apiKeyLimitMessage, LIMITS, SIGN_UP_LIMIT_CODE, signUpLimitMessage } from '../shared/limits'
 import { bootstrapOwner } from './account'
 import { authPlugins, hashOAuthToken, OAUTH_CONNECTION_CLAIM, type ClientMetadataResourceFetch } from './auth-options'
 import type { Db } from './db'
@@ -74,6 +75,23 @@ export const cimdFetch: ClientMetadataResourceFetch = async (input, init) => {
   return new Response(body, { status: response.status, headers: response.headers })
 }
 
+/**
+ * The daily cap on new accounts (LIMITS.signUpsPerDay, or SIGN_UP_DAILY_LIMIT):
+ * at most `limit` accounts created in the last 24 hours. It runs only when
+ * Better Auth creates a user, so existing accounts always sign in. Concurrent
+ * sign-ups at the cap can pass it by a few; it is a brake on abuse, not a quota.
+ */
+export async function checkSignUpCap(db: Db, limit: number) {
+  const result = await db.execute<{ count: number }>(sql`SELECT count(*)::int AS count FROM "user" WHERE created_at > now() - interval '24 hours'`)
+  if ((result.rows[0]?.count ?? 0) >= limit) throw new APIError('FORBIDDEN', { code: SIGN_UP_LIMIT_CODE, message: signUpLimitMessage })
+}
+
+/** Refuses a new API key for an account that has LIMITS.apiKeys keys. The caller is the session, or the userId of a server call. */
+async function checkApiKeyLimit(db: Db, userId: string) {
+  const [row] = await db.select({ keys: count() }).from(authSchema.apikey).where(eq(authSchema.apikey.referenceId, userId))
+  if ((row?.keys ?? 0) >= LIMITS.apiKeys) throw new APIError('FORBIDDEN', { message: apiKeyLimitMessage })
+}
+
 export type AuthConfig = {
   readonly db: Db
   readonly baseUrl: string
@@ -82,6 +100,8 @@ export type AuthConfig = {
   readonly googleClientSecret: string
   /** The verified email that may claim the groups created before accounts existed. */
   readonly bootstrapEmail?: string | undefined
+  /** New accounts per 24 hours; LIMITS.signUpsPerDay when not set. */
+  readonly signUpDailyLimit?: number | undefined
 }
 
 export function createAuth(config: AuthConfig) {
@@ -105,6 +125,12 @@ export function createAuth(config: AuthConfig) {
       // browsers resolve to another host. Only same-origin targets pass here.
       before: createAuthMiddleware(async (ctx) => {
         const body: unknown = ctx.body
+        if (ctx.path === '/api-key/create') {
+          const session = await getSessionFromCtx(ctx)
+          const bodyUser = typeof body === 'object' && body !== null && 'userId' in body && typeof body.userId === 'string' ? body.userId : null
+          const userId = session?.user.id ?? bodyUser
+          if (userId) await checkApiKeyLimit(config.db, userId)
+        }
         if (typeof body !== 'object' || body === null) return
         for (const field of ['callbackURL', 'errorCallbackURL', 'newUserCallbackURL']) {
           const value: unknown = (body as Record<string, unknown>)[field]
@@ -114,6 +140,13 @@ export function createAuth(config: AuthConfig) {
       }),
     },
     databaseHooks: {
+      user: {
+        create: {
+          before: async () => {
+            await checkSignUpCap(config.db, config.signUpDailyLimit ?? LIMITS.signUpsPerDay)
+          },
+        },
+      },
       session: {
         create: {
           // Runs once per sign-in, never on a session lookup. A failure is logged

@@ -1,7 +1,7 @@
 // Groups and access against a real database: settings, people, slugs,
 // invitations and membership changes. Item IDs refer to docs/v2/PARITY.md.
 import type { Pool } from 'pg'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { activities, groups, invitations, memberships } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { eq, sql } from 'drizzle-orm'
@@ -22,6 +22,12 @@ import { listActivities } from '~/server/history'
 import { createExpense, getGroup, requireMember, type Principal } from '~/server/ledger'
 import { createUngroupedExpense } from '~/server/ungrouped'
 import { resetTestDatabase } from './setup'
+
+// These tests create many groups as one account; the fair-use cap has its own test (test/db/limits.test.ts).
+vi.mock('~/shared/limits', async (original) => {
+  const limits = await original<typeof import('~/shared/limits')>()
+  return { ...limits, LIMITS: { ...limits.LIMITS, groupsCreated: 1000 } }
+})
 
 let pool: Pool
 const BASE = 'https://agentsplit.test'

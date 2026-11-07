@@ -47,7 +47,7 @@ export type McpTool = {
  */
 export class ToolError extends Error {
   constructor(
-    readonly code: 'BAD_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'CONFLICT' | 'PRECONDITION_FAILED',
+    readonly code: 'BAD_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'CONFLICT' | 'PRECONDITION_FAILED' | 'TOO_MANY_REQUESTS',
     message: string,
   ) {
     super(message)
@@ -90,7 +90,8 @@ export function errorBody(data: { error: unknown; kind: 'read' | 'write' }) {
       code,
       message,
       outcomeUnknown,
-      recovery: code === 'CONFLICT' ? 'read_current_revision' : outcomeUnknown ? 'read_before_retry' : 'correct_arguments',
+      recovery:
+        code === 'CONFLICT' ? 'read_current_revision' : code === 'TOO_MANY_REQUESTS' ? 'retry_later' : outcomeUnknown ? 'read_before_retry' : 'correct_arguments',
     },
   }
 }

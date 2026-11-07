@@ -5,6 +5,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import pg from 'pg'
+import { LIMITS } from '../shared/limits'
 import { createApp } from './app'
 import { assetHandler, loadAssets } from './assets'
 import { makeDb } from './db'
@@ -21,6 +22,14 @@ function required(name: string): string {
 }
 const optional = (name: string) => process.env[name]?.trim() || undefined
 
+/** SIGN_UP_DAILY_LIMIT: new accounts per 24 hours, a whole number; LIMITS.signUpsPerDay when unset. */
+function signUpLimit(): number {
+  const text = optional('SIGN_UP_DAILY_LIMIT')
+  if (text === undefined) return LIMITS.signUpsPerDay
+  if (!/^\d+$/.test(text)) throw new Error('Set SIGN_UP_DAILY_LIMIT to a whole number of accounts per day')
+  return Number(text)
+}
+
 const config = {
   baseUrl: required('BASE_URL'),
   secret: required('BETTER_AUTH_SECRET'),
@@ -28,6 +37,7 @@ const config = {
   googleClientSecret: required('GOOGLE_CLIENT_SECRET'),
   bootstrapEmail: optional('AUTH_BOOTSTRAP_EMAIL'),
   documentsEnabled: /^(true|yes|1|on)$/i.test(optional('ENABLE_EXPENSE_DOCUMENTS') ?? ''),
+  signUpDailyLimit: signUpLimit(),
   // Off in every deployment; only performance runs set it, as in the current app.
   perfInstrumentation: optional('PERF_INSTRUMENTATION') === '1',
 }

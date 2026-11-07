@@ -2,7 +2,7 @@
 // hold it to Better Auth's own answers on the same rows.
 import { DPOP_SIGNING_ALGORITHMS } from 'better-auth/oauth2'
 import { eq } from 'drizzle-orm'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { apikey } from '../../db/schema/auth'
 import * as authOptions from '~/server/auth-options'
 import { hashApiKey, verifyApiKey } from '~/server/mcp/api-key'
@@ -10,6 +10,12 @@ import { readApiKey } from '~/server/mcp/authenticate'
 import { CHALLENGE_SCOPES, DPOP_ALGORITHMS, protectedResourceMetadata } from '~/server/mcp/challenge'
 import * as constants from '~/server/mcp/constants'
 import { BASE, startHarness, type Harness } from './mcp-harness'
+
+// These tests create many API keys for one account; the fair-use cap has its own test (test/db/limits.test.ts).
+vi.mock('~/shared/limits', async (original) => {
+  const limits = await original<typeof import('~/shared/limits')>()
+  return { ...limits, LIMITS: { ...limits.LIMITS, apiKeys: 1000 } }
+})
 
 let h: Harness
 beforeAll(async () => {
