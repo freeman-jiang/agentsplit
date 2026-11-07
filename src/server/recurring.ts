@@ -102,7 +102,7 @@ async function nextDueLink(tx: Db, data: { today: string; groupId?: string | und
  */
 async function materialize(tx: Db, data: { link: DueLink; principal: Principal | null }): Promise<string | null> {
   const { link } = data
-  const [frame] = await loadExpenses(tx, { ids: [link.current_frame_expense_id], documents: true })
+  const [frame] = await loadExpenses(tx, { ids: [link.current_frame_expense_id], parts: { documents: true } })
   if (!frame || frame.deleted || frame.recurrence === 'none') {
     await tx.delete(recurringLinks).where(eq(recurringLinks.id, link.id))
     return null
@@ -130,7 +130,7 @@ async function materialize(tx: Db, data: { link: DueLink; principal: Principal |
     nextExpenseDate: nextDate({ from: date, rule: frame.recurrence, anchorDay: link.anchor_day }),
     anchorDay: link.anchor_day,
   })
-  const [stored] = await loadExpenses(tx, { ids: [id], documents: true })
+  const [stored] = await loadExpenses(tx, { ids: [id], parts: { documents: true } })
   const [group] = await tx.select().from(groups).where(eq(groups.id, link.group_id))
   if (!stored || !group) throw new Error(`Recurring occurrence ${id} was not stored`)
   const people = await tx.select({ id: participants.id, name: participants.name }).from(participants).where(eq(participants.groupId, link.group_id))

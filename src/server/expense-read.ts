@@ -3,10 +3,11 @@
 // builds each row's parts as JSON, so the server parses one value per row
 // instead of several result sets. Minor units travel as text, never as JSON numbers.
 import { sql, type SQL } from 'drizzle-orm'
+import type { ExpenseFilter as Filter } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/minor'
 import type { ExpenseKind, Recurrence, SplitMode } from '../shared/vocabulary'
-import { actorName } from './activity'
+import { actorName, attributionEvents, type AttributionEvent } from './activity'
 import type { Db } from './db'
 import { displayName } from './people'
 import { iso, textList } from './sql'
@@ -49,11 +50,18 @@ export const involves = (who: SQL) => sql`(EXISTS (SELECT 1 FROM expense_payers 
 const partName = (part: SQL) =>
   displayName({ group: sql`${part}.group_id`, participant: sql`${part}.participant_id`, name: sql`(SELECT np.name FROM participants np WHERE np.id = ${part}.participant_id)` })
 
+/** Which expenses a list keeps (the contract's ExpenseFilter); the live and the historical lists read it alike. */
+export type ExpenseFilter = typeof Filter.Type
+
+/** What a read adds to the columns of an expense: payer and sharer names, the receipts, and the create and update events. */
+export type ExpenseParts = { readonly names?: boolean; readonly documents?: boolean; readonly attribution?: boolean }
+
 /**
  * The columns of expense row `e`. `names` adds each payer's and sharer's
- * display name; `documents` adds the receipts with their states.
+ * display name; `documents` adds the receipts with their states;
+ * `attribution` adds the events that attributionOf (activity.ts) reads.
  */
-export const expenseColumns = (parts: { names?: boolean; documents?: boolean } = {}) => {
+export const expenseColumns = (parts: ExpenseParts = {}) => {
   const name = (part: SQL) => (parts.names ? sql`, 'name', ${partName(part)}` : sql``)
   const event = (where: SQL, by: SQL) =>
     sql`(SELECT json_build_object('at', ${iso(sql`a.time`)}, 'by', ${by}) FROM activities a WHERE a.expense_id = e.id AND ${where})`
@@ -71,7 +79,8 @@ export const expenseColumns = (parts: { names?: boolean; documents?: boolean } =
   ${event(sql`a.expense_revision = e.revision AND e.revision > 1 AND a.type = 'update_expense'`, sql`a.actor_name`)} AS edited,
   (SELECT json_build_object('id', l.id, 'nextExpenseDate', l.next_expense_date::text, 'nextExpenseCreatedAt', ${iso(sql`l.next_expense_created_at`)})
     FROM recurring_links l WHERE l.current_frame_expense_id = e.id) AS link,
-  ${parts.documents ? sql`coalesce(${documentStatesJson(sql`e`)}, '[]')` : sql`NULL::json`} AS documents`
+  ${parts.documents ? sql`coalesce(${documentStatesJson(sql`e`)}, '[]')` : sql`NULL::json`} AS documents,
+  ${parts.attribution ? attributionEvents({ groupId: sql`e.group_id`, expenseId: sql`e.id` }) : sql`NULL::json`} AS events`
 }
 
 type Part = { participantId: string; amount: string; name?: string }
@@ -105,6 +114,7 @@ export type ExpenseRow = {
   edited: Event | null
   link: { id: string; nextExpenseDate: string; nextExpenseCreatedAt: string | null } | null
   documents: DocumentState[] | null
+  events: AttributionEvent[] | null
 }
 
 /** An expense row as the services return it. Money is exact decimal text in the expense's currency. */
@@ -147,6 +157,8 @@ export function toExpense(e: ExpenseRow) {
     link: e.link,
     /** null when the read did not ask for them. */
     documents: e.documents,
+    /** The create and update events for attributionOf; null when the read did not ask for them. */
+    attributionEvents: e.events,
   }
 }
 
@@ -159,10 +171,10 @@ export type ReadExpense = ReturnType<typeof toExpense>
 export const isActiveSeries = (e: ReadExpense) => e.kind === 'expense' && e.recurrence !== 'none' && e.link !== null && e.link.nextExpenseCreatedAt === null
 
 /** The given expenses in the given order; missing IDs are left out. `groupId` keeps only that group's. */
-export async function loadExpenses(db: Db, data: { ids: readonly string[]; groupId?: string; documents?: boolean; names?: boolean }) {
+export async function loadExpenses(db: Db, data: { ids: readonly string[]; groupId?: string; parts?: ExpenseParts }) {
   if (data.ids.length === 0) return []
   const result = await db.execute<ExpenseRow>(sql`
-    SELECT ${expenseColumns({ documents: data.documents ?? false, names: data.names ?? false })}
+    SELECT ${expenseColumns(data.parts)}
     FROM expenses e WHERE e.id IN (${textList(data.ids)}) ${data.groupId === undefined ? sql`` : sql`AND e.group_id = ${data.groupId}`}`)
   const byId = new Map(result.rows.map((r) => [r.id, toExpense(r)]))
   return data.ids.flatMap((id) => byId.get(id) ?? [])

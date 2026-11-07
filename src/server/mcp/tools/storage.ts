@@ -2,10 +2,13 @@
 // src/server/storage.ts, the same services as Settings, Storage and limits.
 // Receipt storage is a fair-use quota per uploader (src/shared/limits.ts).
 import { Schema } from 'effect'
+import { Id as IdInput } from '../../../shared/api'
+import { ReceiptOrder } from '../../../shared/api/storage'
 import { FAIR_USE, LIMITS } from '../../../shared/limits'
 import * as storage from '../../storage'
 import { defineTool } from '../registry'
-import { DateTime, Id, NoArguments, NonNegativeInt, NullableString, RecordedTime, ShortId } from './shared'
+import { NoArguments, PageLimit } from './inputs'
+import { DateTime, Id, NonNegativeInt, NullableString, optional, RecordedTime } from './wire'
 
 const Usage = Schema.Struct({
   receipts: Schema.Struct({
@@ -35,12 +38,12 @@ export const listReceipts = defineTool({
   description:
     'List the receipts you uploaded and have not deleted, in groups you belong to, largest first (order=largest, default) or oldest first (order=oldest). Optional groupId, olderThan (upload time) and minBytes filter them. Each has its receiptId for delete_receipts, its group, the expense that shows it (null when none does; deleted=true for a deleted expense), its size, upload time and an authenticated downloadUrl. Follow nextCursor for more.',
   input: Schema.Struct({
-    groupId: Schema.optionalKey(ShortId),
-    olderThan: Schema.optionalKey(RecordedTime.annotate({ description: 'Only receipts uploaded before this timestamp, e.g. 2026-01-01T00:00:00Z.' })),
-    minBytes: Schema.optionalKey(NonNegativeInt),
-    order: Schema.optionalKey(Schema.Literals(['largest', 'oldest'])),
-    cursor: Schema.optionalKey(NonNegativeInt),
-    limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax }))),
+    groupId: optional(IdInput),
+    olderThan: optional(RecordedTime.annotate({ description: 'Only receipts uploaded before this timestamp, e.g. 2026-01-01T00:00:00Z.' })),
+    minBytes: optional(NonNegativeInt),
+    order: optional(ReceiptOrder.annotate({ default: 'largest' })),
+    cursor: optional(NonNegativeInt.annotate({ default: 0 })),
+    limit: optional(PageLimit(LIMITS.agentReceiptPage)),
   }),
   strict: [''],
   output: Schema.Struct({
@@ -64,7 +67,7 @@ export const listReceipts = defineTool({
       baseUrl,
       order: input.order ?? 'largest',
       cursor: input.cursor ?? 0,
-      limit: input.limit ?? 50,
+      limit: input.limit ?? LIMITS.agentReceiptPage,
       groupId: input.groupId,
       olderThan: input.olderThan,
       minBytes: input.minBytes,
@@ -90,7 +93,7 @@ export const deleteReceipts = defineTool({
   kind: 'write',
   description:
     'Permanently delete receipts by receiptId (from list_receipts, or documents[].receiptId of get_expense). Only the uploader or an admin of the receipt’s group may delete it. The image is removed from storage and frees the uploader’s space. Every current expense that shows it gets a new audited revision without it; history stays append-only, so old revisions and the activity log keep the reference and show it as deleted, and downloads answer 410. This cannot be undone. Download a receipt first if it may be needed. Returns the bytes freed; an already deleted receipt frees 0.',
-  input: Schema.Struct({ receiptIds: Schema.Array(ShortId).check(Schema.isBetweenLength(1, LIMITS.pageMax)) }),
+  input: Schema.Struct({ receiptIds: Schema.Array(IdInput).check(Schema.isBetweenLength(1, LIMITS.pageMax)) }),
   strict: [''],
   output: Schema.Struct({
     deleted: Schema.Array(Schema.Struct({ receiptId: Id, bytes: NonNegativeInt })),
@@ -105,4 +108,3 @@ export const deleteReceipts = defineTool({
   },
 })
 
-export const storageTools = [getStorageUsage, listReceipts, deleteReceipts]

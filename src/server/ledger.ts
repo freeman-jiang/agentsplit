@@ -6,12 +6,12 @@ import { Conflict, Invalid, NotFound } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../shared/expense-rules'
 import { compareIds } from '../shared/ids'
-import { formatMinor, type Minor } from '../shared/minor'
-import type { ExpenseKind, Role } from '../shared/vocabulary'
+import { formatMinor, minor, type Minor } from '../shared/minor'
+import type { Role } from '../shared/vocabulary'
 import { memberCte, requireActive, requireMember, type Membership, type Principal } from './access'
 import { recordExpenseEvent, type SnapshotGroup } from './activity'
 import type { Db } from './db'
-import { expenseColumns, involves, loadExpenses, toExpense, type ExpenseRow, type ReadExpense, type StoredDocument } from './expense-read'
+import { expenseColumns, involves, loadExpenses, toExpense, type ExpenseFilter, type ExpenseParts, type ExpenseRow, type ReadExpense, type StoredDocument } from './expense-read'
 import { idempotent, storedRequestJson, type StoredRequest } from './idempotency'
 import { randomId } from './ids'
 import { displayNames } from './people'
@@ -80,18 +80,6 @@ export async function getGroup(db: Db, data: { principal: Principal; groupId: st
   }
 }
 
-export type ExpenseFilter = {
-  readonly sort?: 'date' | 'updated'
-  readonly search?: string
-  readonly participantId?: string
-  readonly payerId?: string
-  readonly currency?: CurrencyCode
-  readonly categoryId?: number
-  readonly kind?: ExpenseKind
-  readonly from?: string
-  readonly to?: string
-}
-
 type Cursor = { readonly k: string; readonly c: string; readonly i: string }
 const encodeCursor = (c: Cursor) => btoa(JSON.stringify(c))
 const decodeCursor = (text: string): Cursor => {
@@ -106,7 +94,16 @@ const decodeCursor = (text: string): Cursor => {
 
 export async function listExpenses(
   db: Db,
-  data: { principal: Principal; groupId: string; filter: ExpenseFilter; cursor: string | null; limit: number },
+  data: {
+    principal: Principal
+    groupId: string
+    filter: ExpenseFilter
+    cursor: string | null
+    /** Rows to skip after the cursor. MCP's list_expenses pages by offset, as the current app did, and sends no cursor. */
+    offset?: number
+    limit: number
+    parts?: ExpenseParts
+  },
 ) {
   const f = data.filter
   const limit = Math.min(Math.max(Math.trunc(data.limit) || 50, 1), 200)
@@ -117,9 +114,12 @@ export async function listExpenses(
     const term = escapeLike(f.search.trim())
     where.push(sql`(e.title ILIKE ${term} OR e.vendor ILIKE ${term} OR e.notes ILIKE ${term})`)
   }
+  const vendor = f.vendor?.trim()
+  if (vendor) where.push(sql`lower(e.vendor) = lower(${vendor})`)
   if (f.currency) where.push(sql`e.currency = ${f.currency}`)
   if (f.categoryId !== undefined) where.push(sql`e.category_id = ${f.categoryId}`)
   if (f.kind) where.push(sql`e.kind = ${f.kind}`)
+  if (f.recurrence) where.push(sql`e.recurrence = ${f.recurrence}`)
   if (f.from) where.push(sql`e.expense_date >= ${f.from}::date`)
   if (f.to) where.push(sql`e.expense_date <= ${f.to}::date`)
   if (f.payerId) where.push(sql`EXISTS (SELECT 1 FROM expense_payers p WHERE p.expense_id = e.id AND p.participant_id = ${f.payerId})`)
@@ -136,11 +136,11 @@ export async function listExpenses(
   // The exact PostgreSQL timestamps (microseconds) are the cursor keys.
   const result = await db.execute<ExpenseRow & { created_key: string; updated_key: string }>(sql`
     ${member}
-    SELECT ${expenseColumns()}, e.created_at::text AS created_key, e.updated_at::text AS updated_key
+    SELECT ${expenseColumns(data.parts)}, e.created_at::text AS created_key, e.updated_at::text AS updated_key
     FROM expenses e
     WHERE ${sql.join(where, sql` AND `)}
     ORDER BY ${byUpdated ? sql`e.updated_at DESC, e.id DESC` : sql`e.expense_date DESC, e.created_at DESC, e.id DESC`}
-    LIMIT ${limit + 1}
+    LIMIT ${limit + 1} OFFSET ${Math.max(Math.trunc(data.offset ?? 0), 0)}
   `)
   const rows = result.rows
   // No rows: an empty page, or not a member. Only then is the separate check needed.
@@ -156,9 +156,9 @@ export async function listExpenses(
   }
 }
 
-export async function getExpense(db: Db, data: { principal: Principal; groupId: string; expenseId: string }) {
+export async function getExpense(db: Db, data: { principal: Principal; groupId: string; expenseId: string; parts?: ExpenseParts }) {
   const { groupId } = await requireMember(db, data)
-  const [expense] = await loadExpenses(db, { ids: [data.expenseId], groupId })
+  const [expense] = await loadExpenses(db, { ids: [data.expenseId], groupId, ...(data.parts ? { parts: data.parts } : {}) })
   if (!expense || expense.deleted) throw new NotFound({ entity: 'expense', id: data.expenseId })
   return expense
 }
@@ -178,11 +178,10 @@ function resolve(draft: ExpenseDraft, people: readonly { id: string }[]): Resolv
 
 /**
  * Everything an expense write reads before it changes anything, read in one
- * statement at the start of the transaction. An MCP tool loads it, uses it,
- * and gives it to the ledger write, so no row is read twice and the write
- * makes fewer round trips.
+ * statement at the start of the transaction, so no row is read twice and the
+ * write makes fewer round trips.
  */
-export type WriteContext = {
+type WriteContext = {
   readonly op: 'create' | 'change'
   readonly expenseId: string
   readonly idempotencyKey: string | null
@@ -222,7 +221,7 @@ type ContextRow = {
  * change (update or delete), the expense row is locked FOR UPDATE, as the
  * revision check did before. A caller without an idempotency key passes null.
  */
-export async function loadWriteContext(
+async function loadWriteContext(
   tx: Db,
   data: { principal: Principal; groupId: string; expenseId: string; op: 'create' | 'change'; idempotencyKey: string | null },
 ): Promise<WriteContext> {
@@ -266,18 +265,9 @@ export async function loadWriteContext(
   }
 }
 
-/** The given context, or a new one. A context read for another write is a bug. */
-async function contextFor(tx: Db, data: { principal: Principal; groupId: string; expenseId: string; op: 'create' | 'change'; idempotencyKey: string | null; context: WriteContext | undefined }) {
-  const { context, ...load } = data
-  if (!context) return loadWriteContext(tx, load)
-  if (context.op !== data.op || context.expenseId !== data.expenseId || context.idempotencyKey !== data.idempotencyKey)
-    throw new Error(`The write context of ${context.op} ${context.expenseId} does not match ${data.op} ${data.expenseId}`)
-  return context
-}
-
 /** The expense as written, with its receipts, for the activity snapshot and the result. */
 async function storedExpense(tx: Db, expenseId: string) {
-  const [expense] = await loadExpenses(tx, { ids: [expenseId], documents: true })
+  const [expense] = await loadExpenses(tx, { ids: [expenseId], parts: { documents: true } })
   if (!expense) throw new NotFound({ entity: 'expense', id: expenseId })
   return expense
 }
@@ -433,7 +423,7 @@ export async function createExpense(
 }
 
 /** The expense to change: NotFound when it is missing or deleted, Conflict on a stale revision. */
-export function currentExpense(context: WriteContext, expectedRevision: number) {
+function currentExpense(context: WriteContext, expectedRevision: number) {
   const { expense } = context
   if (!expense || expense.deleted) throw new NotFound({ entity: 'expense', id: context.expenseId })
   if (expense.revision !== expectedRevision) throw new Conflict({ entity: 'expense', id: context.expenseId, currentRevision: expense.revision })
@@ -449,23 +439,32 @@ async function ensureBaseline(tx: Db, data: { context: WriteContext; principal: 
   if (expense && expense.revision === 0) await record(tx, { context: data.context, principal: data.principal, type: 'update_expense', expense, revision: 0 })
 }
 
+type UpdateInput = {
+  principal: Principal
+  expenseId: string
+  expectedRevision: number
+  /** null for a caller that never retries with the same key. */
+  idempotencyKey: string | null
+  expense: ExpenseDraft
+  /** The full list of receipts; undefined keeps the saved ones. */
+  documents: readonly StoredDocument[] | undefined
+}
+
 export async function updateExpense(
   tx: Db,
-  data: {
-    principal: Principal
+  data: Omit<UpdateInput, 'documents'> & {
     groupId: string
-    expenseId: string
-    expectedRevision: number
-    /** null for a caller that never retries with the same key. */
-    idempotencyKey: string | null
-    expense: ExpenseDraft
     /** The full list of receipts; omitted keeps the saved ones. */
     documents?: readonly StoredDocument[]
-    /** The write context, when the caller already loaded it. */
-    context?: WriteContext
   },
 ): Promise<ReadExpense> {
-  const context = await contextFor(tx, { ...data, op: 'change', context: data.context })
+  const context = await loadWriteContext(tx, { ...data, op: 'change' })
+  return update(tx, { ...data, documents: data.documents, context })
+}
+
+/** Rewrites the expense of a loaded context: the revision check, the rules, the rows, the recurrence and the activity. */
+async function update(tx: Db, data: UpdateInput & { context: WriteContext }): Promise<ReadExpense> {
+  const { context } = data
   const { groupId } = context.membership
   const request = { op: 'update', groupId, expenseId: data.expenseId, expectedRevision: data.expectedRevision, expense: data.expense, documents: data.documents ?? null }
   return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request, previous: context.previous }, async () => {
@@ -501,6 +500,84 @@ export async function updateExpense(
     const stored = await storedExpense(tx, data.expenseId)
     await record(tx, { context, principal: data.principal, type: 'update_expense', expense: stored, revision: revision + 1 })
     return stored
+  })
+}
+
+/**
+ * An edit of some fields: each one given replaces the saved value, and the
+ * others keep theirs. `payers` is every payer with an amount, or `{ sole }`,
+ * one payer of the whole (new) amount. `documents` is the full list of receipts.
+ */
+export type ExpensePatch = { readonly [K in Exclude<keyof ExpenseDraft, 'payers'>]?: ExpenseDraft[K] } & {
+  readonly payers?: ExpenseDraft['payers'] | { readonly sole: string }
+  readonly documents?: readonly StoredDocument[]
+}
+
+/** The saved expense with a patch applied, as one full draft that is validated again. */
+function patched(current: ReadExpense, patch: ExpensePatch): ExpenseDraft {
+  const currency = patch.currency ?? current.currency
+  const amount = patch.amount ?? current.amount
+  const moneyChanged = patch.amount !== undefined || patch.currency !== undefined
+  const [only, ...others] = current.payers
+  let payers: ExpenseDraft['payers']
+  if (patch.payers !== undefined) payers = 'sole' in patch.payers ? [{ participantId: patch.payers.sole, amount }] : patch.payers
+  else if (only && others.length === 0) payers = [{ participantId: only.participantId, amount }]
+  else if (!moneyChanged) payers = current.payers
+  else throw new Invalid({ message: 'This expense has several payers. Send payers with each payer’s new amount.' })
+  return {
+    kind: patch.kind ?? current.kind,
+    title: patch.title ?? current.title,
+    vendor: patch.vendor === undefined ? current.vendor : patch.vendor,
+    notes: patch.notes ?? current.notes,
+    categoryId: patch.categoryId ?? current.categoryId,
+    expenseDate: patch.expenseDate ?? current.expenseDate,
+    currency,
+    amount,
+    payers,
+    splitMode: patch.splitMode ?? current.splitMode,
+    // Stored amount weights are minor units of the saved currency; the draft takes decimal text.
+    shares:
+      patch.shares ??
+      current.shares.map((s) => ({
+        participantId: s.participantId,
+        weight: current.splitMode === 'amount' ? formatMinor({ amount: minor(BigInt(s.weight)), currency: current.currency }) : s.weight,
+      })),
+    recurrence: patch.recurrence ?? current.recurrence,
+  }
+}
+
+/**
+ * Edits some fields of an expense (MCP update_expense). `attach` runs after
+ * the revision check and before the write, and returns receipts to add: they
+ * join `documents`, or the saved receipts when the patch has none. A patch
+ * that changes nothing and attaches nothing adds no revision, as in the
+ * current app. Each call is new, so it takes no idempotency key.
+ */
+export async function patchExpense(
+  tx: Db,
+  data: {
+    principal: Principal
+    groupId: string
+    expenseId: string
+    expectedRevision: number
+    patch: ExpensePatch
+    attach?: (expense: ReadExpense) => Promise<readonly StoredDocument[]>
+  },
+): Promise<ReadExpense> {
+  const context = await loadWriteContext(tx, { principal: data.principal, groupId: data.groupId, expenseId: data.expenseId, op: 'change', idempotencyKey: null })
+  // A stale revision conflicts before anything is attached, so a failed call changes nothing.
+  const current = currentExpense(context, data.expectedRevision)
+  const attached = data.attach ? await data.attach(current) : []
+  const { documents: listed, ...fields } = data.patch
+  if (Object.keys(fields).length === 0 && listed === undefined && attached.length === 0) return current
+  return update(tx, {
+    principal: data.principal,
+    expenseId: data.expenseId,
+    expectedRevision: data.expectedRevision,
+    idempotencyKey: null,
+    expense: patched(current, fields),
+    documents: attached.length ? [...(listed ?? documentsOf(current)), ...attached] : listed,
+    context,
   })
 }
 

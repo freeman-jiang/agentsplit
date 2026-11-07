@@ -3,6 +3,7 @@
 // (src/trpc/routers/groups/balances/*, recurring.procedure.ts). Balances come
 // from src/server/balances.ts, recurrence from src/server/recurring.ts.
 import { Schema } from 'effect'
+import { Id as IdInput } from '../../../shared/api'
 import { todayUtc } from '../../../shared/dates'
 import { suggestSettlements, type Balance } from '../../../shared/balances'
 import type { CurrencyCode } from '../../../shared/currencies'
@@ -11,7 +12,8 @@ import { formatMinor, minor, type Minor } from '../../../shared/minor'
 import * as balances from '../../balances'
 import * as recurring from '../../recurring'
 import { defineTool } from '../registry'
-import { CurrencyCodeInput, HistoryFields, Id, Money, NullableString, RecordedTime, ShortId, symbolOf } from './shared'
+import { boundaryOf, CurrencyCodeInput, HistoryFields } from './inputs'
+import { HistoryView, Id, Money, optional, symbolOf } from './wire'
 
 type Transfer = { from: string; to: string; amount: Minor }
 
@@ -52,14 +54,12 @@ export const getBalances = defineTool({
     'Read balances and suggested repayments in separate currency buckets, optionally filtering currencyCode. Money is exact decimal text. Currency buckets must not be added or converted. Record suggestions through create_expense with isReimbursement=true: a repayment may involve several people and may be negative, as for a refund. Optional asOf timestamp or atActivityId calculates historical balances with the same splitter; missing legacy snapshots produce PRECONDITION_FAILED rather than an incomplete total.',
   input: Schema.Struct({
     ...HistoryFields,
-    groupId: Schema.String.check(Schema.isMinLength(1)),
-    currencyCode: Schema.optionalKey(CurrencyCodeInput),
+    groupId: IdInput,
+    currencyCode: optional(CurrencyCodeInput),
   }),
   strict: [''],
   output: Schema.Struct({
-    history: Schema.optionalKey(
-      Schema.Struct({ asOf: RecordedTime, atActivityId: NullableString, complete: Schema.Boolean, unavailableExpenseIds: Schema.Array(Id) }),
-    ),
+    history: optional(HistoryView),
     currencies: Schema.Array(
       Schema.Struct({
         currencyCode: Schema.String,
@@ -74,11 +74,7 @@ export const getBalances = defineTool({
       const current = await balances.groupBalances(db, scope)
       return { currencies: [...current.balances].map(bucket) }
     }
-    const saved = await balances.historicalBalances(db, {
-      ...scope,
-      ...(input.asOf === undefined ? {} : { asOf: input.asOf }),
-      ...(input.atActivityId === undefined ? {} : { atActivityId: input.atActivityId }),
-    })
+    const saved = await balances.historicalBalances(db, { ...scope, ...boundaryOf(input) })
     return { history: saved.history, currencies: [...saved.balances].map(bucket) }
   },
 })
@@ -89,8 +85,8 @@ export const getParticipantBalances = defineTool({
   description:
     'Read exact per-currency net balances. Omit groups to include every accessible named group and private expense context, without a page-size cap; provide a unique groups list to restrict the scope. Omit participantId to use your fixed membership; supply it to inspect a particular participant. totals contains server-calculated net amounts per currency across the selected scope. These totals do not settle or merge debts. unboundGroupIds means the result is incomplete and must be described as partial. Do not combine different currencies. Dashboard totals are independent of expense-list filters. Discover participant IDs with get_group.',
   input: Schema.Struct({
-    groups: Schema.optionalKey(
-      Schema.Array(Schema.Struct({ groupId: ShortId, participantId: Schema.optionalKey(ShortId) }))
+    groups: optional(
+      Schema.Array(Schema.Struct({ groupId: IdInput, participantId: optional(IdInput) }))
         .check(Schema.isMaxLength(LIMITS.pageMax))
         .check(Schema.makeFilter((list) => new Set(list.map((g) => g.groupId)).size === list.length || 'Choose each group or private context only once.'))
         .annotate({
@@ -140,10 +136,9 @@ export const processRecurringExpenses = defineTool({
   idempotent: true,
   description:
     'Explicitly materialize due recurring expenses only in the specified group, using the server clock. Returns created expense IDs. Reads never generate recurring entries; a scheduled job also creates them every hour, and repeated processing does not duplicate frames.',
-  input: Schema.Struct({ groupId: ShortId }),
+  input: Schema.Struct({ groupId: IdInput }),
   strict: [''],
   output: Schema.Struct({ createdExpenseIds: Schema.Array(Id) }),
   run: ({ db, principal }, input) => recurring.processGroup(db, { principal, groupId: input.groupId, today: todayUtc() }),
 })
 
-export const balanceTools = [getBalances, getParticipantBalances, processRecurringExpenses]
