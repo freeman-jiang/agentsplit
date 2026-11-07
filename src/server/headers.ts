@@ -6,7 +6,7 @@
  * service-worker scripts are files. Inline styles stay allowed, because the
  * UI components set style attributes. Receipts are served from this origin.
  */
-export const CONTENT_SECURITY_POLICY = [
+const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
@@ -21,7 +21,7 @@ export const CONTENT_SECURITY_POLICY = [
   "form-action 'self'",
 ].join('; ')
 
-export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
+const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   'Content-Security-Policy': CONTENT_SECURITY_POLICY,
   'X-Frame-Options': 'DENY',
   'X-Content-Type-Options': 'nosniff',

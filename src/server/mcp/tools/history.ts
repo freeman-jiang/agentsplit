@@ -11,8 +11,9 @@ import { loadExpenses } from '../../expense-read'
 import * as exports from '../../export'
 import * as history from '../../history'
 import * as stats from '../../stats'
+import { CurrencyCodeSchema } from '../../../shared/money'
 import { defineTool } from './registry'
-import { CalendarDate, CurrencyCodeInput, HistoryFields, PageLimit } from './inputs'
+import { CalendarDate, HistoryFields, PageLimit } from './inputs'
 import { ActivityTypeName, DateTime, expenseRow, ExpenseRow, Id, liveSource, money, Money, NonNegativeInt, NullableString, optional, RecordedTime, Snapshot, snapshotOf } from './wire'
 
 // ---------- get_spending_stats ----------
@@ -40,7 +41,7 @@ export const getSpendingStats = defineTool({
     participantId: optional(IdInput),
     from: optional(CalendarDate),
     to: optional(CalendarDate),
-    currencyCode: optional(CurrencyCodeInput),
+    currencyCode: optional(CurrencyCodeSchema),
   }),
   strict: [''],
   output: Schema.Struct({

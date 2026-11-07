@@ -5,13 +5,12 @@
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { expenseDocuments, groups, recurringLinks } from '../../db/schema/app'
 import { todayUtc } from '../shared/dates'
-import { idOfBytes } from '../shared/ids'
+import { idOfBytes, randomId } from '../shared/ids'
 import type { Recurrence } from '../shared/vocabulary'
 import { requireMember, type Principal } from './core/access'
 import { recordExpenseEvent } from './activity'
 import { serializable, type Db } from './core/db'
 import { documentRows, EXPENSE_FIELDS, fieldColumn, isActiveSeries, loadExpenses } from './expense-read'
-import { randomId } from './core/ids'
 import { displayNames } from './people'
 import { textList } from './sql'
 
@@ -150,7 +149,7 @@ async function materialize(tx: Db, data: { link: DueLink; principal: Principal |
 }
 
 /** The scheduled job's bound per run; the next run continues where this one stopped. */
-export const MAX_OCCURRENCES_PER_RUN = 50
+const MAX_OCCURRENCES_PER_RUN = 50
 
 /**
  * Creates due occurrences one by one, each opening the next link, so missed

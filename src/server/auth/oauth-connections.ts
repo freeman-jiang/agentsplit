@@ -11,8 +11,10 @@ import { oauthConnections } from '../../../db/schema/app'
 import * as authSchema from '../../../db/schema/auth'
 import { Forbidden } from '../../shared/api'
 import type { Db } from '../core/db'
-import { randomId, sha256Base64url } from '../core/ids'
-import { OAUTH_CONNECTION_CLAIM, OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
+import { sha256Base64url } from '../core/ids'
+import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from '../../shared/account'
+import { randomId } from '../../shared/ids'
+import { OAUTH_CONNECTION_CLAIM } from './constants'
 
 /** The Better Auth claim that creates or finds the connection of an authorization, and names it in each access token. */
 export function connectionClaims(db: Db): OAuthProviderExtension {

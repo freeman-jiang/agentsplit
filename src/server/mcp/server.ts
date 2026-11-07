@@ -5,14 +5,14 @@ import { Result } from 'effect'
 import type { Bucket } from '../bucket'
 import type { McpPrincipal } from '../auth/authenticate'
 import { assertOAuthWrite } from '../auth/oauth-connections'
-import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from '../auth/constants'
+import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from '../../shared/account'
 import { answerOf, runRead, runWrite, type AfterCommit } from '../calls'
 import type { Db } from '../core/db'
 import { INSTRUCTIONS } from './tools/instructions'
 import { errorBody, type McpTool } from './tools/registry'
 import { MCP_TOOLS } from './tools'
 
-export const SERVER_INFO = { name: 'agentsplit', version: '0.4.0' } as const
+const SERVER_INFO = { name: 'agentsplit', version: '0.4.0' } as const
 
 const READ = [{ type: 'oauth2' as const, scopes: [OAUTH_READ_SCOPE] }]
 const WRITE = [{ type: 'oauth2' as const, scopes: [OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE] }]

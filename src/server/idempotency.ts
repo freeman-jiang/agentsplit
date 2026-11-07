@@ -7,7 +7,7 @@ import type { Db } from './core/db'
 import { sha256Hex } from './core/ids'
 
 /** The principal column of a key: a person on the web and each of their agent credentials keep separate keys. */
-export const idempotencyPrincipal = (principal: Principal) => `${principal.userId}:${principal.agentKeyId ?? 'web'}`
+const idempotencyPrincipal = (principal: Principal) => `${principal.userId}:${principal.agentKeyId ?? 'web'}`
 
 /** A used idempotency key: the hash of its request, and the stored result (any JSON value). */
 export type StoredRequest = { readonly requestHash: string; readonly response: unknown }

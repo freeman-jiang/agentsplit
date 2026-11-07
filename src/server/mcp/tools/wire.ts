@@ -11,7 +11,7 @@ import type { SavedExpense, SavedState } from '../../../shared/history'
 import { formatMinor, minor } from '../../../shared/minor'
 import { mainPayer, weightText } from '../../../shared/split'
 import { ACTIVITY_TYPE_LIST, RECURRENCE_LIST, RECURRENCE_NAMES, SPLIT_MODE_LIST, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
-import { attributionOf, type AttributionEvent } from '../../activity'
+import type { attributionOf } from '../../activity'
 import type { DocumentState, ReadExpense } from '../../expense-read'
 import { absoluteUrl, receiptDownloadPath } from '../../../shared/paths'
 
@@ -320,9 +320,6 @@ const listPartsOf = (s: Source) => ({
 })
 
 type ComputedAttribution = ReturnType<typeof attributionOf>
-
-/** Who added and last edited an expense, from the events a read returned (`parts.attribution`); `viewer` gets their own last edit. */
-export const attributionOfEvents = (events: readonly AttributionEvent[] | null, viewer: string) => attributionOf({ events: events ?? [], viewer })
 
 /** The attribution in the wire form: a time without an event is left out, as in the current app. */
 export function attribution(a: ComputedAttribution): typeof Attribution.Encoded {

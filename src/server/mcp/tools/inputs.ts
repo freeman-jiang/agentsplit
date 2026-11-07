@@ -4,7 +4,6 @@
 // rules that the web app's call meets.
 import { Schema, SchemaTransformation } from 'effect'
 import { CalendarDate as ContractDate, Id, PageLimit as ContractPageLimit } from '../../../shared/api'
-import { CurrencyCodeSchema, DecimalString } from '../../../shared/money'
 import { optional, RecordedTime } from './wire'
 
 /** A tool without arguments: an object that closes to `{}`. An empty Struct would allow any value. */
@@ -12,11 +11,6 @@ export const NoArguments = Schema.Record(Schema.String, Schema.Never)
 
 /** A real calendar date, YYYY-MM-DD (2026-02-29 and 2026-09-31 are refused). */
 export const CalendarDate = ContractDate.annotate({ format: 'date' })
-
-export const CurrencyCodeInput = CurrencyCodeSchema
-
-/** An exact decimal string; JSON numbers, exponents, spaces and separators are refused. */
-export const Decimal = DecimalString
 
 /** A page size, with the tool's default when it is left out. */
 export const PageLimit = (fallback: number) => ContractPageLimit.annotate({ default: fallback })

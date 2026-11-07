@@ -4,7 +4,7 @@ import { API_KEY_HEADER } from '../../shared/mcp'
 import type { Db } from '../core/db'
 import type { Principal } from '../core/access'
 import { verifyApiKey } from './api-key'
-import { jsonError, noStore } from '../core/errors'
+import { jsonError } from '../core/errors'
 import { requestSession } from './session'
 import { challenge } from './challenge'
 import { verifyOAuthRequest } from './oauth'
@@ -72,10 +72,7 @@ export async function authenticate(db: Db, data: { request: Request; baseUrl: st
       // The current app answered a rate-limited key with 401; v2 answers 429 (DECISIONS.md, P-MCP-56).
       if (verified.code === 'RATE_LIMITED')
         return {
-          response: Response.json(
-            { error: 'API key request rate exceeded' },
-            { status: 429, headers: { ...noStore, 'Retry-After': String(Math.max(1, Math.ceil(verified.tryAgainInMs / 1000))) } },
-          ),
+          response: jsonError({ status: 429, message: 'API key request rate exceeded', headers: { 'Retry-After': String(Math.max(1, Math.ceil(verified.tryAgainInMs / 1000))) } }),
         }
       if (headers.has(API_KEY_HEADER)) return { response: challenge({ baseUrl }) }
       return await oauth(db, data)

@@ -11,7 +11,7 @@ import { createExpense, deleteExpense, getExpense, listExpenses, listGroups, upd
 import { type Principal } from '~/server/core/access'
 import { createUngroupedExpense, renewPrivateInvitation, type PrivatePerson } from '~/server/ungrouped'
 import type { ExpenseDraft } from '~/shared/expense-rules'
-import { randomId } from '~/server/core/ids'
+import { randomId } from '~/shared/ids'
 import { BASE } from '../kit/config'
 import { testDatabase, type TestDatabase } from '../kit/database'
 import { draft } from '../kit/drafts'

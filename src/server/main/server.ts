@@ -7,6 +7,7 @@ import { runMigrations } from '../../../db/migrate'
 import { createApp } from './app'
 import { assetHandler, loadAssets } from '../assets'
 import { readSettings } from '../core/config'
+import { jsonError } from '../core/errors'
 import { makeDb } from '../core/db'
 import { startHourly } from '../hourly'
 import { instrumentPool } from '../perf'
@@ -64,7 +65,7 @@ const server = Bun.serve({
   fetch: (request) => app.fetch(atPublicOrigin(request)),
   error(error) {
     console.error('Request failed', error)
-    return Response.json({ error: 'Internal server error' }, { status: 500, headers: { 'Cache-Control': 'no-store' } })
+    return jsonError({ status: 500, message: 'Internal server error' })
   },
 })
 console.log(`AgentSplit listening on ${server.url.href} for ${publicOrigin}${config.maintenance ? ' (maintenance: answering 503)' : ''}`)

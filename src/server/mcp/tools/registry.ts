@@ -92,7 +92,7 @@ function close(node: Node, path: string, strict: ReadonlySet<string>): Node {
 }
 
 /** The draft 2020-12 JSON Schema of an Effect schema, with the given object paths closed. */
-export function jsonSchemaOf(data: { schema: Schema.Top; strict?: readonly string[] }): JsonSchema {
+function jsonSchemaOf(data: { schema: Schema.Top; strict?: readonly string[] }): JsonSchema {
   const document = Schema.toJsonSchemaDocument(data.schema)
   if (Object.keys(document.definitions).length > 0) throw new Error('MCP schemas must not use shared definitions')
   const root = document.schema as Node
