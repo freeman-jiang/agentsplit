@@ -26,8 +26,8 @@ function BalancesTab() {
   return (
     <div className="flex flex-col gap-6">
       <BalancesCard currencies={data.currencies} names={names} />
-      {/* On narrow screens the payments to record come before the chart. */}
-      <div className="order-first md:order-none">
+      {/* The payments to record come before the chart. */}
+      <div className="order-first">
         <SuggestedPayments currencies={data.currencies} names={names} group={group} viewer={g.participantId} />
       </div>
     </div>

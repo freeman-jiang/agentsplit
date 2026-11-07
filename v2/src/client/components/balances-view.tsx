@@ -1,6 +1,7 @@
 // The Balances card and the suggested payments, ported from the current app's
 // balances-list.tsx and reimbursement-list.tsx. Shared by the Balances and Payments tabs.
 import { Link } from '@tanstack/react-router'
+import { cn } from '~/client/cn'
 import { money } from '~/client/components/money'
 import { Button } from '~/client/ui/button'
 import type { CurrencyBalances } from '~/shared/api'
@@ -89,7 +90,7 @@ export function SuggestedPayments(props: { currencies: Currencies; names: Names;
                     <span className="font-medium">{name(s.to)}</span>
                   </span>
                   <span className="flex w-full items-center justify-between gap-3 sm:w-auto">
-                    <span className="text-lg font-semibold tabular-nums">{money(s.amount, c.currency)}</span>
+                    <span className={cn('text-lg font-semibold tabular-nums', s.from === props.viewer && 'text-owe')}>{money(s.amount, c.currency)}</span>
                     <Button variant={s.from === props.viewer ? 'default' : 'outline'} size="sm" asChild>
                       <Link to="/$group/payments/create" params={{ group: props.group }} search={{ from: s.from, to: s.to, amount: s.amount, currencyCode: c.currency }}>
                         Record payment

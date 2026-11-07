@@ -264,12 +264,12 @@ function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
   const now = directory
   const outstanding = now.totals.filter((t) => !/^-?0(\.0+)?$/.test(t.net))
   return (
-    <Card>
+    <Card className="md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <CardHeader className="p-4 sm:p-6">
         <CardTitle className="font-sans text-sm font-semibold tracking-normal">Your balance in groups</CardTitle>
         <CardDescription className="hidden text-xs sm:block">Your combined balance across all your groups. Ungrouped expenses are on the dashboard.</CardDescription>
       </CardHeader>
-      <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+      <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0 md:pt-6 md:text-right">
         {now.unboundGroupCount > 0 && (
           <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
             Link your participant identity in {now.unboundGroupCount} {now.unboundGroupCount === 1 ? 'group' : 'groups'} to see a complete total. Only linked
@@ -281,7 +281,7 @@ function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
             {now.unboundGroupCount ? 'No outstanding balance in linked groups.' : 'You are all settled up across your groups.'}
           </p>
         ) : (
-          <ul className="flex flex-wrap gap-x-12 gap-y-5">
+          <ul className="flex flex-wrap gap-x-12 gap-y-5 md:justify-end">
             {outstanding.map(({ currency, net }) => {
               const owed = !net.startsWith('-')
               return (

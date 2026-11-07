@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { ChevronDown } from 'lucide-react'
 import { pickSearch } from '~/client/search'
 import { useEffect, useState } from 'react'
 import { LoginButton } from '~/client/components/login-button'
@@ -136,14 +137,14 @@ function Dashboard() {
           <h2 className="font-display text-xl">Expenses</h2>
           <p className="text-xs text-muted-foreground">Newest expense date first</p>
         </div>
-        <section aria-label="Filter expenses" className="space-y-3 sm:space-y-4 sm:border sm:bg-card sm:p-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
-            <label className="col-span-2 space-y-2 text-sm sm:col-span-1">
-              <span className="max-sm:sr-only">Search</span>
+        <section aria-label="Filter expenses" className="space-y-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <label className="col-span-2 text-sm sm:col-span-1">
+              <span className="sr-only">Search</span>
               <Input type="search" placeholder="Search descriptions or merchants" maxLength={200} {...select('q')} />
             </label>
-            <label className="space-y-2 text-sm">
-              <span className="max-sm:sr-only">Group</span>
+            <label className="text-sm">
+              <span className="sr-only">Group</span>
               <NativeSelect value={text(params.group) || 'all'} onChange={(e) => update('group', e.target.value === 'all' ? '' : e.target.value)}>
                 <option value="all">All expenses</option>
                 <option value="ungrouped">No group</option>
@@ -155,16 +156,19 @@ function Dashboard() {
                 ))}
               </NativeSelect>
             </label>
-            <label className="space-y-2 text-sm">
-              <span className="max-sm:sr-only">Show</span>
+            <label className="text-sm">
+              <span className="sr-only">Show</span>
               <NativeSelect value={text(params.view) === 'all' ? 'all' : 'mine'} onChange={(e) => update('view', e.target.value === 'all' ? 'all' : '')}>
                 <option value="mine">Involving me</option>
                 <option value="all">All accessible expenses</option>
               </NativeSelect>
             </label>
           </div>
-          <details open={advanced || undefined}>
-            <summary className="cursor-pointer text-sm font-medium">More filters</summary>
+          <details open={advanced || undefined} className="group">
+            <summary className="flex cursor-pointer list-none items-center gap-1 text-sm text-muted-foreground [&::-webkit-details-marker]:hidden">
+              More filters
+              <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden="true" />
+            </summary>
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <label className="space-y-2 text-sm">
                 <span>Person involved</span>

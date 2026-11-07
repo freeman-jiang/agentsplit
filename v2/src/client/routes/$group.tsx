@@ -139,12 +139,13 @@ function BalanceRail({ group, hideOnMobile, summaryOnly }: { group: string; hide
       aria-label="Group balances"
       data-testid="group-balance-summary"
       className={cn(
-        'z-20 h-fit self-start border bg-card p-3 md:sticky md:p-4 md:top-24 md:col-start-2 md:row-start-1 md:max-h-[calc(100dvh-7rem)] md:overflow-y-auto',
+        'relative z-20 h-fit self-start border bg-card p-3 md:sticky md:p-4 md:top-24 md:col-start-2 md:row-start-1 md:max-h-[calc(100dvh-7rem)] md:overflow-y-auto',
         hideOnMobile && 'max-md:hidden',
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">Group balances</h2>
+      {/* On narrow screens the heading is for screen readers and the refresh button sits in the summary row. */}
+      <div className="flex items-center justify-between gap-2 max-md:absolute max-md:end-2 max-md:top-2.5">
+        <h2 className="text-sm font-semibold max-md:sr-only">Group balances</h2>
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => void refetch()} disabled={isFetching} aria-label="Refresh balances">
           <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} aria-hidden="true" />
         </Button>
@@ -177,8 +178,8 @@ function BalanceRail({ group, hideOnMobile, summaryOnly }: { group: string; hide
             const details = <BalanceDetails entry={entry} participants={g.participants} participantId={participantId} />
             return (
               <section key={entry.currency} aria-label={`${entry.currency} balances`}>
-                <details className="group md:hidden">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                <details className="group pe-9 md:hidden">
+                  <summary className="flex min-h-7 cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
                     {summary}
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       Details

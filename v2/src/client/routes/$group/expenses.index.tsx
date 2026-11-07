@@ -195,10 +195,10 @@ function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewe
             )}
           </div>
           {/* On narrow screens the paid figure sits under the title, so the right column holds only the viewer's figure. */}
-          <div className="truncate text-xs text-muted-foreground sm:hidden">
+          <div className="truncate text-sm text-muted-foreground sm:hidden">
             {figures.paid.label} <span className="tabular-nums">{money(figures.paid.amount ?? '0', e.currency)}</span>
           </div>
-          <div className="truncate text-xs text-muted-foreground">{author}</div>
+          <div className="truncate text-xs text-muted-foreground max-sm:hidden">{author}</div>
         </div>
         <div className="shrink-0 text-right text-sm">
           <div className={cn('text-xs sm:hidden', tones[figures.personal.tone])}>{figures.personal.label}</div>
