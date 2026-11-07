@@ -50,7 +50,7 @@ export async function handleMcp(request: Request, data: { db: Db; settings: McpS
 
   let retryAfter: number
   try {
-    retryAfter = await takeMcpRequest(db, principal.userId)
+    retryAfter = await takeMcpRequest(db, { userId: principal.userId })
   } catch (error) {
     console.error('MCP rate limit failed', error)
     return jsonError({ status: 503, message: 'MCP is temporarily unavailable' })

@@ -80,7 +80,7 @@ export async function runWrite<A>(data: {
   const after: ((db: Db) => Promise<unknown>)[] = []
   let result: A
   try {
-    const wait = await takeWrite(data.db, data.principal.userId)
+    const wait = await takeWrite(data.db, { userId: data.principal.userId })
     if (wait > 0) throw new Invalid({ message: tooManyWritesMessage(wait), reason: 'rate' })
     result = await serializable(data.db, async (tx) => {
       after.length = 0

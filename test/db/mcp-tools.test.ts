@@ -3,10 +3,11 @@
 import { Schema } from 'effect'
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { activities, expenses, memberships } from '../../db/schema/app'
+import { activities, expenses, mcpRateLimits, memberships } from '../../db/schema/app'
 import { eq } from 'drizzle-orm'
 import { MCP_TOOLS } from '~/server/mcp/tools'
 import { takeMcpRequest } from '~/server/rate-limit'
+import { LIMITS } from '~/shared/limits'
 import current from './fixtures/current-mcp-tools.json'
 import { BASE, callTool, failure, MCP_URL, ok, rpc, startHarness, type Harness } from './harness'
 
@@ -549,13 +550,27 @@ describe('API keys on the endpoint', () => {
 })
 
 describe('rate limit', () => {
-  it('shares one bucket per user across keys, answers 429 with Retry-After, and refills', async () => {
+  it('takes 120 requests a minute per user, refilled two a second, at a fixed clock', async () => {
+    const at = new Date('2026-11-05T12:00:00.000Z')
+    const take = (userId: string, time: Date) => h.withDb((db) => takeMcpRequest(db, { userId, at: time }))
+    for (let i = 0; i < LIMITS.mcpRequestsPerMinute; i++) expect(await take('erin', at)).toBe(0)
+    expect(await take('erin', at)).toBe(1)
+    const half = new Date(at.getTime() + 500)
+    expect(await take('erin', half)).toBe(0)
+    expect(await take('erin', half)).toBe(1)
+    expect(await take('frank', at)).toBe(0)
+  })
+
+  it('shares one bucket per user across keys and answers 429 with Retry-After at the endpoint', async () => {
     await h.account('dave')
     const daveKey = { 'x-api-key': await h.apiKey('dave') }
     const otherKey = { 'x-api-key': await h.apiKey('dave') }
-    // 120 requests empty the bucket (the endpoint takes one per request; take the rest directly).
-    expect((await rpc(h, { method: 'tools/list', headers: daveKey })).status).toBe(200)
-    for (let i = 0; i < 119; i++) expect(await h.withDb((db) => takeMcpRequest(db, 'dave'))).toBe(0)
+    // The two keys take turns, so neither reaches its own limit of 120 a minute. The bucket refills
+    // two requests a second while this runs, so allow a few more than its size.
+    let allowed = 0
+    while (allowed < LIMITS.mcpRequestsPerMinute + 10 && (await rpc(h, { method: 'tools/list', headers: allowed % 2 ? otherKey : daveKey })).status === 200) allowed++
+    expect(allowed).toBeGreaterThanOrEqual(LIMITS.mcpRequestsPerMinute)
+    expect(allowed).toBeLessThan(LIMITS.mcpRequestsPerMinute + 10)
     for (const headers of [daveKey, otherKey]) {
       const limited = await rpc(h, { method: 'tools/call', params: { name: 'list_groups', arguments: {} }, headers })
       expect(limited.status).toBe(429)
@@ -565,16 +580,12 @@ describe('rate limit', () => {
     }
     // Another user is not affected.
     expect((await rpc(h, { method: 'tools/list', headers: alice })).status).toBe(200)
-    // Half a second refills one request.
-    await h.withDb((db) => db.execute(sql`UPDATE mcp_rate_limits SET updated_at = updated_at - interval '500 milliseconds' WHERE user_id = 'dave'`))
-    expect((await rpc(h, { method: 'tools/list', headers: daveKey })).status).toBe(200)
-    expect((await rpc(h, { method: 'tools/list', headers: daveKey })).status).toBe(429)
   })
 
   it('does not spend a bucket on unauthenticated requests', async () => {
-    const before = await h.withDb((db) => db.execute(sql`SELECT count(*)::int AS n FROM mcp_rate_limits`))
+    const buckets = () => h.withDb(async (db) => (await db.select().from(mcpRateLimits)).length)
+    const before = await buckets()
     expect((await rpc(h, { method: 'tools/list' })).status).toBe(401)
-    const after = await h.withDb((db) => db.execute(sql`SELECT count(*)::int AS n FROM mcp_rate_limits`))
-    expect(after.rows).toEqual(before.rows)
+    expect(await buckets()).toBe(before)
   })
 })
