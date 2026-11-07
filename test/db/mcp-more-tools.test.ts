@@ -2,13 +2,11 @@
 // database: the feed, profile, group and access writes, balances, history,
 // stats, export, reference data, recurrence and ungrouped creates. Parity
 // items are named in docs/v2/parity/mcp.md.
-import { Schema } from 'effect'
-import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { MCP_TOOLS } from '~/server/mcp/tools'
+import type { ExpenseCreateArgument } from '~/server/mcp/tools/expenses'
 import { mcpExpense } from '../kit/drafts'
 import { id21 } from '../kit/ids'
-import { failure, ok, startHarness, type Harness } from './harness'
+import { checked as checkedCall, failure, type Harness, startHarness } from './harness'
 
 let h: Harness
 let alice: Record<string, string>
@@ -28,24 +26,14 @@ beforeAll(async () => {
 })
 afterAll(() => h.close())
 
-const tool = (name: string) => {
-  const found = MCP_TOOLS.find((t) => t.name === name)
-  if (!found) throw new Error(name)
-  return found
-}
-/** Every result must decode with the tool's advertised output schema. */
-const checked = async (name: string, args: object, headers = alice) => {
-  const result = await ok(h, { name, args, headers })
-  Schema.decodeUnknownSync(tool(name).output as Schema.Codec<unknown>)(result)
-  return result
-}
+/** A successful call whose result decodes with the tool's advertised output schema. */
+const checked = (name: string, args: object, headers = alice) => checkedCall(h, { name, args, headers })
 
 /** A new verified account with one API key. */
 async function newAccount(userId: string, data: { name: string }) {
   await h.account(userId, { name: data.name })
-  const headers = { 'x-api-key': await h.apiKey(userId) }
-  const keys = await h.withDb((db) => db.execute<{ id: string }>(sql`SELECT id FROM apikey WHERE reference_id = ${userId}`))
-  return { userId, headers, keyId: keys.rows[0]?.id ?? '' }
+  const { key, id } = await h.apiKeyWithId(userId)
+  return { userId, headers: { 'x-api-key': key }, keyId: id }
 }
 
 /**
@@ -63,7 +51,7 @@ async function household(tag: string) {
 type Household = Awaited<ReturnType<typeof household>>
 
 /** Creates `expense` in `groupId` with a new expense ID. */
-async function create(data: { groupId: string; headers: Record<string, string>; expense: Record<string, unknown> }) {
+async function create(data: { groupId: string; headers: Record<string, string>; expense: ExpenseCreateArgument }) {
   const expenseId = newExpenseId()
   const result = await checked('create_expense', { groupId: data.groupId, expenseId, expense: data.expense }, data.headers)
   return { expenseId, result }
@@ -86,13 +74,17 @@ const settle = (hh: Household) =>
   create({
     groupId: hh.groupId,
     headers: hh.owner.headers,
-    expense: {
-      ...mcpExpense({ paidBy: hh.pb, people: [], title: 'Settle up', expenseDate: '2026-11-04', amount: '15', isReimbursement: true }),
-      paidBy: undefined,
+    expense: mcpExpense({
+      paidBy: null,
+      people: [],
+      title: 'Settle up',
+      expenseDate: '2026-11-04',
+      amount: '15',
+      isReimbursement: true,
       payers: [{ participant: hh.pb, amount: '9' }, { participant: hh.pc, amount: '6' }],
       paidFor: [{ participant: hh.pa, shares: '15' }],
       splitMode: 'BY_AMOUNT',
-    },
+    }),
   })
 
 /** Alice's expense of 30 for herself and Bob, edited to 36: revision 1 and revision 2. */

@@ -98,6 +98,8 @@ const ExpenseCreateInput = Schema.Struct({
   notes: optional(expenseFields.notes),
   recurrenceRule: optional(expenseFields.recurrenceRule.annotate({ default: RECURRENCE_NAMES.none })),
 }).annotate({ description: `The expense. ${RECORDING_RULES}` })
+/** The `expense` argument of create_expense as an agent sends it. */
+export type ExpenseCreateArgument = typeof ExpenseCreateInput.Encoded
 
 const ExpenseChanges = Schema.Struct(
   Object.fromEntries(Object.entries(expenseFields).map(([key, schema]) => [key, optional(schema)])) as {

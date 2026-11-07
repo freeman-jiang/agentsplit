@@ -11,7 +11,6 @@ import { bootstrapOwner } from '~/server/auth/owner-bootstrap'
 import { createAuth } from '~/server/auth/auth'
 import type { Principal } from '~/server/core/access'
 import { makeDb, type Db } from '~/server/core/db'
-import { createApp } from '~/server/main/app'
 import { safeNextPath } from '~/shared/account'
 import { Forbidden, Invalid, NotFound } from '~/shared/api'
 import { BASE, SECRET, testSettings } from '../kit/config'
@@ -19,7 +18,7 @@ import { testDatabase, type TestDatabase } from '../kit/database'
 import { counter } from '../kit/ids'
 import { principal, userRows } from '../kit/people'
 import { signIn } from '../kit/session'
-import { fakeBucket } from './fake-bucket'
+import { testApp } from './harness'
 
 let database: TestDatabase
 let pool: Pool
@@ -342,14 +341,7 @@ describe('sign-in destination', () => {
 
 describe('security headers and readiness', () => {
   /** The whole app on this file's database; `connect` replaces the pool's connections. */
-  const app = (connect: () => Promise<PoolClient> = () => pool.connect()) =>
-    createApp({
-      config: testSettings(),
-      connect,
-      pool: makeDb(pool),
-      bucket: fakeBucket().bucket,
-      assets: async () => new Response('SPA page', { headers: { 'Content-Type': 'text/html' } }),
-    })
+  const app = (connect?: () => Promise<PoolClient>) => testApp({ pool, ...(connect ? { connect } : {}) })
 
   // An injected script tag or eval in user content must never run.
   it('allows no inline or eval scripts on the SPA page and the API answers', async () => {

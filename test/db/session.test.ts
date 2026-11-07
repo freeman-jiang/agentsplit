@@ -6,9 +6,9 @@ import { session, user } from '../../db/schema/auth'
 import { createAuth } from '~/server/auth/auth'
 import { makeDb, type Db } from '~/server/core/db'
 import { sessionPrincipal } from '~/server/auth/session'
+import { SECRET, testSettings } from '../kit/config'
 import { testDatabase, type TestDatabase } from '../kit/database'
 
-const secret = 'test-secret-0123456789-0123456789-0123456789'
 let database: TestDatabase
 let pool: Pool
 let db: Db
@@ -37,14 +37,14 @@ afterAll(async () => {
   await database.close()
 })
 
-const signed = async (token: string, key = secret, name = 'better-auth.session_token') =>
+const signed = async (token: string, key = SECRET, name = 'better-auth.session_token') =>
   (await serializeSignedCookie(name, token, key)).split(';')[0] ?? ''
 
 it.each(['http://localhost', 'https://agentsplit.example'])('accepts and rejects the same cookies as Better Auth on %s', async (baseUrl) => {
-  const auth = createAuth({ db, baseUrl, secret, googleClientId: 'a', googleClientSecret: 'b', bootstrapEmail: undefined, signUpDailyLimit: 200 })
+  const auth = createAuth({ ...testSettings({ baseUrl }), db })
   const cases: Record<string, string | null> = {
     valid: await signed('token-valid'),
-    secureName: await signed('token-valid', secret, '__Secure-better-auth.session_token'),
+    secureName: await signed('token-valid', SECRET, '__Secure-better-auth.session_token'),
     expired: await signed('token-expired'),
     unverified: await signed('token-unverified'),
     wrongSecret: await signed('token-valid', 'another-secret-0123456789-0123456789-0123'),
@@ -55,8 +55,8 @@ it.each(['http://localhost', 'https://agentsplit.example'])('accepts and rejects
   }
   for (const [name, cookie] of Object.entries(cases)) {
     const theirs = await auth.api.getSession({ headers: new Headers(cookie ? { cookie } : {}) })
-    const ours = await sessionPrincipal(db, { cookie, secret, baseUrl })
-    // Better Auth returns unverified accounts too; AgentSplit then refuses them, as the current app does.
+    const ours = await sessionPrincipal(db, { cookie, secret: SECRET, baseUrl })
+    // Better Auth returns unverified accounts too; AgentSplit then refuses them, as v1 did.
     const expected = theirs?.user.emailVerified ? theirs.user.id : null
     expect({ name, user: ours?.userId ?? null }).toEqual({ name, user: expected })
   }
