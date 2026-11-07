@@ -11,6 +11,9 @@ import { sha256Base64url } from '../ids'
 
 type KeyRow = typeof apikey.$inferSelect
 
+/** The number of API keys an account has, for the fair-use limit (LIMITS.apiKeys): every row it owns. */
+export const apiKeyCount = (userId: string) => sql`(SELECT count(*)::int FROM apikey k WHERE k.reference_id = ${userId})`
+
 /** The key's account, read in the same statement as the key. */
 export type KeyOwner = { readonly id: string; readonly name: string; readonly email: string; readonly verified: boolean }
 
@@ -18,9 +21,6 @@ export type ApiKeyResult =
   | { readonly valid: true; readonly key: KeyRow; readonly owner: KeyOwner | null }
   | { readonly valid: false; readonly code: 'INVALID_API_KEY' | 'KEY_DISABLED' | 'KEY_EXPIRED' | 'USAGE_EXCEEDED' }
   | { readonly valid: false; readonly code: 'RATE_LIMITED'; readonly tryAgainInMs: number }
-
-/** Better Auth's defaultKeyHasher: base64url(sha256(key)) without padding. */
-export const hashApiKey = (key: string) => sha256Base64url(key)
 
 const byId = (id: string) => eq(apikey.id, id)
 
@@ -98,7 +98,8 @@ export async function verifyApiKey(db: Db, rawKey: string): Promise<ApiKeyResult
     .select({ key: apikey, owner: { id: user.id, name: user.name, email: user.email, verified: user.emailVerified } })
     .from(apikey)
     .leftJoin(user, eq(user.id, apikey.referenceId))
-    .where(eq(apikey.key, hashApiKey(rawKey)))
+    // Better Auth's defaultKeyHasher.
+    .where(eq(apikey.key, sha256Base64url(rawKey)))
     .limit(1)
   if (!found) return { valid: false, code: 'INVALID_API_KEY' }
   const { key, owner } = found

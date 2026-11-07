@@ -1,6 +1,6 @@
 // OAuth discovery and challenges for the MCP resource: the protected-resource
 // metadata and the 401 and 403 WWW-Authenticate challenges.
-import { jsonError } from '../security'
+import { jsonError } from '../http-errors'
 import { mcpResource, oauthIssuer, OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
 
 /**
@@ -23,7 +23,7 @@ export const METADATA_PATHS = new Set(['/.well-known/oauth-protected-resource', 
 /**
  * RFC 9728 protected-resource metadata, as Better Auth's MCP plugin builds it,
  * plus offline_access in scopes_supported. The plugin filters offline_access
- * out of this document, so the Worker serves it instead.
+ * out of this document, so the server serves it instead.
  */
 export function protectedResourceMetadata(request: Request, baseUrl: string): Response {
   if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405, headers: { Allow: 'GET, HEAD' } })

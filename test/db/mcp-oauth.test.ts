@@ -5,8 +5,8 @@ import { and, eq, sql } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { expenses, memberships } from '../../db/schema/app'
 import { oauthConsent } from '../../db/schema/auth'
-import { revokeOAuthConnection } from '~/server/auth'
-import { removeExpiredDpopProofs } from '~/server/mcp/oauth'
+import { revokeOAuthConnection } from '~/server/auth/oauth-connections'
+import { removeExpiredDpopProofs } from '~/server/auth/oauth'
 import { BASE, callTool, failure, MCP_URL, ok, rpc, SECRET, startHarness, type Harness } from './mcp-harness'
 
 /** Claude Code's published Client ID Metadata Document, as served on 2026-11-05. */
@@ -129,7 +129,7 @@ describe('Claude Code flow emulation', () => {
   })
 
   it('2. discovery lists offline_access and the authorization server', async () => {
-    const { protectedResourceMetadata } = await import('~/server/mcp/challenge')
+    const { protectedResourceMetadata } = await import('~/server/auth/challenge')
     const meta = (await protectedResourceMetadata(new Request(`${BASE}/.well-known/oauth-protected-resource/api/mcp`), BASE).json()) as { scopes_supported: string[]; authorization_servers: string[] }
     expect(meta.scopes_supported).toEqual(['agentsplit:read', 'agentsplit:write', 'offline_access'])
     expect(meta.authorization_servers).toEqual([`${BASE}/api/auth`])
@@ -333,7 +333,7 @@ describe('dynamic client registration', () => {
 
 describe('write recheck', () => {
   it('refuses a write whose connection was revoked after authentication', async () => {
-    const { assertOAuthWrite } = await import('~/server/mcp/authenticate')
+    const { assertOAuthWrite } = await import('~/server/auth/oauth-connections')
     const t = await connect()
     const connectionId = (JSON.parse(atob(t.access_token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/') ?? '')) as Record<string, string>)['https://agentsplit.app/connection'] ?? ''
     const principal = { userId: 'alice', name: 'Alice', email: 'alice@example.com', source: 'agent' as const, agentKeyId: `oauth:${connectionId}`, scopes: ['agentsplit:read', 'agentsplit:write'], oauthConnectionId: connectionId }

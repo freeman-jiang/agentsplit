@@ -1,15 +1,13 @@
 // Who is calling the MCP endpoint: an API key or an OAuth access token, with
 // the current app's rules (src/lib/mcp/authenticate.ts, src/lib/api-key-header.ts).
-import { sql } from 'drizzle-orm'
-import { Forbidden } from '../../shared/api'
 import type { Db } from '../db'
 import type { Principal } from '../access'
 import { verifyApiKey } from './api-key'
-import { jsonError, noStore } from '../security'
-import { requestSession } from '../session'
+import { jsonError, noStore } from '../http-errors'
+import { requestSession } from './session'
 import { challenge } from './challenge'
-import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
-import { verifyOAuthRequest, type OAuthResult } from './oauth'
+import { verifyOAuthRequest } from './oauth'
+import type { OAuthResult } from './oauth-connections'
 
 /** The ledger principal, plus the OAuth connection and its scope ceiling. API keys have neither. */
 export type McpPrincipal = Principal & { readonly scopes: readonly string[] | null; readonly oauthConnectionId: string | null }
@@ -32,23 +30,6 @@ export function readApiKey(headers: Headers): string | undefined {
   if (bearer !== undefined && !validKey(bearer)) return undefined
   if (direct !== null && bearer !== undefined && direct !== bearer) return undefined
   return direct ?? bearer
-}
-
-/**
- * Rechecks, inside a write's transaction, that an OAuth connection is live and
- * its consent still allows changes, so a revocation that races the request
- * cannot let the write commit (the current app's assertOAuthWriteAccess).
- */
-export async function assertOAuthWrite(tx: Db, principal: McpPrincipal) {
-  if (!principal.oauthConnectionId) return
-  const result = await tx.execute<{ ok: boolean }>(sql`
-    SELECT EXISTS (
-      SELECT 1 FROM oauth_connections c
-      JOIN oauth_consent o ON o.user_id = c.user_id AND o.client_id = c.client_id AND o.scopes @> ARRAY[${OAUTH_READ_SCOPE}, ${OAUTH_WRITE_SCOPE}]::text[]
-      WHERE c.id = ${principal.oauthConnectionId} AND c.revoked_at IS NULL AND c.user_id = ${principal.userId}
-    ) AS ok`)
-  if (!result.rows[0]?.ok || !principal.scopes?.includes(OAUTH_WRITE_SCOPE))
-    throw new Forbidden({ message: 'This OAuth connection no longer has write permission' })
 }
 
 const unavailable = () => jsonError({ status: 503, message: 'Authentication is temporarily unavailable' })
@@ -113,13 +94,19 @@ export async function authenticate(db: Db, data: { request: Request; baseUrl: st
  * The caller of a read that agents also make over plain HTTP (receipts and
  * exports). An `X-API-Key` or `Authorization` header takes the MCP path and
  * the session cookie is then ignored, as in the current app (P-AUTH-45,
- * P-AUTH-47). A failed agent credential gives the MCP endpoint's answer.
+ * P-AUTH-47). A failed agent credential keeps the MCP endpoint's answer (403,
+ * 429, 503); a refused or missing credential gets 401 with the route's
+ * `signIn` text, as the current app answered.
  */
-export async function httpReader(
-  db: Db,
-  data: { request: Request; baseUrl: string; secret: string },
-): Promise<{ readonly principal: Principal | null } | { readonly response: Response }> {
+export type Reader = { readonly principal: Principal } | { readonly response: Response }
+
+export async function httpReader(db: Db, data: { request: Request; baseUrl: string; secret: string; signIn: string }): Promise<Reader> {
   const headers = data.request.headers
-  if (headers.has('x-api-key') || headers.has('authorization')) return authenticate(db, { request: data.request, baseUrl: data.baseUrl })
-  return { principal: await requestSession(db, data) }
+  const signIn = () => ({ response: jsonError({ status: 401, message: data.signIn }) })
+  if (headers.has('x-api-key') || headers.has('authorization')) {
+    const result = await authenticate(db, { request: data.request, baseUrl: data.baseUrl })
+    return 'response' in result && result.response.status === 401 ? signIn() : result
+  }
+  const principal = await requestSession(db, data)
+  return principal ? { principal } : signIn()
 }

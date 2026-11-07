@@ -1,14 +1,15 @@
 // The signed-in user's account: profile, API keys, connected apps, and the
 // one-time owner bootstrap. This module does not import Better Auth: the RPC
 // handlers do not call Better Auth (docs/v2/BUILDING.md).
-import { and, eq, isNull, sql } from 'drizzle-orm'
-import { authBootstrap, oauthConnections } from '../../db/schema/app'
+import { and, eq, sql } from 'drizzle-orm'
+import { authBootstrap } from '../../db/schema/app'
 import * as authSchema from '../../db/schema/auth'
 import { Forbidden, Invalid, NotFound } from '../shared/api'
 import { normalizeEmail } from '../shared/groups'
 import { LIMITS } from '../shared/limits'
 import type { Db } from './db'
 import type { Principal } from './access'
+import { revokeOAuthConnection } from './auth/oauth-connections'
 import { iso } from './sql'
 
 type AccountRow = {
@@ -51,7 +52,7 @@ export async function getAccount(db: Db, data: { principal: Principal }): Promis
     FROM "user" u WHERE u.id = ${data.principal.userId}
   `)
   const row = result.rows[0]
-  if (!row) throw new NotFound({ entity: 'user', id: data.principal.userId })
+  if (!row) throw new NotFound({ entity: 'account', id: data.principal.userId })
   return row.account
 }
 
@@ -64,7 +65,7 @@ export async function updateProfile(db: Db, data: { principal: Principal; name: 
     .select({ verified: authSchema.user.emailVerified })
     .from(authSchema.user)
     .where(eq(authSchema.user.id, data.principal.userId))
-  if (!current) throw new NotFound({ entity: 'user', id: data.principal.userId })
+  if (!current) throw new NotFound({ entity: 'account', id: data.principal.userId })
   if (!current.verified) throw new Forbidden({ message: 'Verify your email before setting your display name.' })
   const [profile] = await db
     .update(authSchema.user)
@@ -76,7 +77,7 @@ export async function updateProfile(db: Db, data: { principal: Principal; name: 
       email: authSchema.user.email,
       emailVerified: authSchema.user.emailVerified,
     })
-  if (!profile) throw new NotFound({ entity: 'user', id: data.principal.userId })
+  if (!profile) throw new NotFound({ entity: 'account', id: data.principal.userId })
   return { profile }
 }
 
@@ -88,18 +89,6 @@ export async function revokeApiKey(db: Db, data: { principal: Principal; keyId: 
     .returning({ id: authSchema.apikey.id })
   if (deleted.length === 0) throw new NotFound({ entity: 'apiKey', id: data.keyId })
   return { revoked: true as const }
-}
-
-/** Keeps the grant tombstone, so old JWTs and racing refreshes never regain access. */
-export async function revokeOAuthConnection(db: Db, data: { userId: string; clientId: string }) {
-  await db.transaction(async (tx) => {
-    await tx
-      .update(oauthConnections)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(oauthConnections.userId, data.userId), eq(oauthConnections.clientId, data.clientId), isNull(oauthConnections.revokedAt)))
-    for (const table of [authSchema.oauthAccessToken, authSchema.oauthRefreshToken, authSchema.oauthConsent])
-      await tx.delete(table).where(and(eq(table.userId, data.userId), eq(table.clientId, data.clientId)))
-  })
 }
 
 export async function revokeConnection(db: Db, data: { principal: Principal; clientId: string }) {

@@ -1,9 +1,9 @@
 // Generates db/schema/auth.ts from Better Auth's own table definitions for the
-// plugin set in src/server/auth-options.ts. Run after upgrading Better Auth:
+// plugin set in src/server/auth/auth-options.ts. Run after upgrading Better Auth:
 //   bun scripts/gen-auth-schema.ts
 import { writeFileSync } from 'node:fs'
 import { getSchema } from 'better-auth/db'
-import { authPlugins } from '../src/server/auth-options'
+import { authPlugins } from '../src/server/auth/auth-options'
 
 type Field = {
   type: string | string[]

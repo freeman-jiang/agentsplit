@@ -1,65 +1,19 @@
-import type { OAuthProviderExtension } from '@better-auth/oauth-provider'
 import { fetchClientMetadataResource } from '@better-auth/cimd/node'
 import { betterAuth } from 'better-auth'
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError } from 'better-call'
-import { and, arrayContains, count, eq, sql } from 'drizzle-orm'
-import * as authSchema from '../../db/schema/auth'
-import { oauthConnections } from '../../db/schema/app'
-import { isSafeCallback } from '../shared/account'
-import { apiKeyLimitMessage, LIMITS, SIGN_UP_LIMIT_CODE, signUpLimitMessage } from '../shared/limits'
-import { bootstrapOwner } from './account'
-import { authPlugins, hashOAuthToken, OAUTH_CONNECTION_CLAIM, type ClientMetadataResourceFetch } from './auth-options'
-import type { Db } from './db'
-import { randomId } from './ids'
+import { eq, sql } from 'drizzle-orm'
+import * as authSchema from '../../../db/schema/auth'
+import { isSafeCallback } from '../../shared/account'
+import { apiKeyLimitMessage, LIMITS, SIGN_UP_LIMIT_CODE, signUpLimitMessage } from '../../shared/limits'
+import { bootstrapOwner } from '../account'
+import type { AuthSettings } from '../config'
+import type { Db } from '../db'
+import { apiKeyCount } from './api-key'
+import { authPlugins, type ClientMetadataResourceFetch } from './auth-options'
+import { connectionClaims } from './oauth-connections'
 
-/**
- * Ties every access token to a revocable connection, one per authorization.
- * Ported from the current app's src/lib/oauth-connections.ts.
- */
-function connectionClaims(db: Db): OAuthProviderExtension {
-  return {
-    claims: {
-      accessToken: async ({ user, client, grantType, ctx, scopes }) => {
-        if (!user?.emailVerified || !['authorization_code', 'refresh_token'].includes(grantType ?? ''))
-          throw new APIError('FORBIDDEN', { error: 'access_denied', error_description: 'A verified account grant is required' })
-        const body = ctx.body as Record<string, unknown>
-        let authorizationCodeId: string | null | undefined
-        if (grantType === 'authorization_code' && typeof body['code'] === 'string') authorizationCodeId = hashOAuthToken(body['code'])
-        if (grantType === 'refresh_token' && typeof body['refresh_token'] === 'string') {
-          const [refresh] = await db
-            .select()
-            .from(authSchema.oauthRefreshToken)
-            .where(eq(authSchema.oauthRefreshToken.token, hashOAuthToken(body['refresh_token'])))
-          if (refresh?.userId === user.id && refresh.clientId === client.clientId) authorizationCodeId = refresh.authorizationCodeId
-        }
-        if (!authorizationCodeId) throw new APIError('BAD_REQUEST', { error: 'invalid_grant' })
-        const [consent] = await db
-          .select({ id: authSchema.oauthConsent.id })
-          .from(authSchema.oauthConsent)
-          .where(
-            and(
-              eq(authSchema.oauthConsent.userId, user.id),
-              eq(authSchema.oauthConsent.clientId, client.clientId),
-              arrayContains(authSchema.oauthConsent.scopes, scopes),
-            ),
-          )
-        if (!consent) throw new APIError('FORBIDDEN', { error: 'access_denied', error_description: 'Consent is no longer active' })
-        await db
-          .insert(oauthConnections)
-          .values({ id: randomId(), authorizationCodeId, userId: user.id, clientId: client.clientId, scopes })
-          .onConflictDoNothing({ target: oauthConnections.authorizationCodeId })
-        const [connection] = await db.select().from(oauthConnections).where(eq(oauthConnections.authorizationCodeId, authorizationCodeId))
-        if (!connection || connection.revokedAt || connection.userId !== user.id || connection.clientId !== client.clientId)
-          throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Connection revoked; connect again' })
-        return { [OAUTH_CONNECTION_CLAIM]: connection.id }
-      },
-    },
-  }
-}
-
-export { revokeOAuthConnection } from './account'
 
 /**
  * CIMD metadata fetch. A container can reach the private networks around it
@@ -88,25 +42,12 @@ export async function checkSignUpCap(db: Db, limit: number) {
 
 /** Refuses a new API key for an account that has LIMITS.apiKeys keys. The caller is the session, or the userId of a server call. */
 async function checkApiKeyLimit(db: Db, userId: string) {
-  const [row] = await db.select({ keys: count() }).from(authSchema.apikey).where(eq(authSchema.apikey.referenceId, userId))
-  if ((row?.keys ?? 0) >= LIMITS.apiKeys) throw new APIError('FORBIDDEN', { message: apiKeyLimitMessage })
+  const result = await db.execute<{ keys: number }>(sql`SELECT ${apiKeyCount(userId)} AS keys`)
+  if ((result.rows[0]?.keys ?? 0) >= LIMITS.apiKeys) throw new APIError('FORBIDDEN', { message: apiKeyLimitMessage })
 }
 
-export type AuthConfig = {
-  readonly db: Db
-  readonly baseUrl: string
-  readonly secret: string
-  readonly googleClientId: string
-  readonly googleClientSecret: string
-  /** The verified email that may claim the groups created before accounts existed. */
-  readonly bootstrapEmail?: string | undefined
-  /** New accounts per 24 hours; LIMITS.signUpsPerDay when not set. */
-  readonly signUpDailyLimit?: number | undefined
-}
-
-export function createAuth(config: AuthConfig) {
-  if (config.secret.length < 32 || !config.baseUrl || !config.googleClientId || !config.googleClientSecret)
-    throw new Error('Google sign-in is not configured')
+/** Better Auth with the app's plugins and hooks. The settings were checked at start (config.ts). */
+export function createAuth(config: AuthSettings & { readonly db: Db }) {
   return betterAuth({
     appName: 'AgentSplit',
     baseURL: config.baseUrl,
@@ -143,7 +84,7 @@ export function createAuth(config: AuthConfig) {
       user: {
         create: {
           before: async () => {
-            await checkSignUpCap(config.db, config.signUpDailyLimit ?? LIMITS.signUpsPerDay)
+            await checkSignUpCap(config.db, config.signUpDailyLimit)
           },
         },
       },
