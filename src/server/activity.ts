@@ -109,6 +109,17 @@ export function attributionOf(data: { events: readonly AttributionEvent[]; viewe
  */
 export const accessText = (data: { action: string; whom: string }) => `${data.action}: ${data.whom}`
 
+/**
+ * The text of an invitation change. It names the participant, never the
+ * email, and has no ": ", so readers show it in full.
+ */
+export const invitationText = (data: { action: 'created' | 'revoked'; participantName: string | null }) =>
+  `Invitation ${data.action}${data.participantName ? ` for ${data.participantName}` : ''}`
+
+/** The create_group text of a private context, and the text of its renewed invitation. */
+export const PRIVATE_CONTEXT_TEXT = 'Private expense'
+export const PRIVATE_INVITATION_RENEWED = 'Private expense invitation renewed'
+
 const ACCESS_TYPES: ReadonlySet<ActivityType> = new Set(['join_group', 'leave_group', 'update_group'])
 
 /**

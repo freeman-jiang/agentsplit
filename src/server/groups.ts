@@ -15,7 +15,7 @@ import type { Db } from './core/db'
 import { randomId } from './core/ids'
 import { createInvitation, findInvitation, invitationProblem, listedInvitation, openInvitation, revokeInvitations, tokenOfLink } from './invitations'
 import { groupIdOf, memberCte, myMemberships, requireActive, requireMember, type Principal } from './core/access'
-import { accessText, groupSnapshot, recordGroupEvent } from './activity'
+import { accessText, groupSnapshot, invitationText, recordGroupEvent } from './activity'
 import { formatTotals, netsCte, totalsJson } from './balances'
 import { idempotent } from './idempotency'
 import { displayNames } from './people'
@@ -509,14 +509,14 @@ async function applyAccess(
       createdBy: me.userId,
       baseUrl: data.baseUrl,
     })
-    await log({ type: 'update_group', data: `Invitation created for ${participant.name}`, participantId: participant.id })
+    await log({ type: 'update_group', data: invitationText({ action: 'created', participantName: participant.name }), participantId: participant.id })
     return { result: { groupId, joined: true, invitation: { ...invitation, url: null } }, url }
   }
 
   if (input.action === 'revoke_invitation') {
     const [row] = await revokeInvitations(tx, { groupId, invitationId: input.invitationId })
     if (!row) throw new NotFound({ entity: 'pendingInvitation', id: input.invitationId })
-    await log({ type: 'update_group', data: `Invitation revoked${row.participantName ? ` for ${row.participantName}` : ''}` })
+    await log({ type: 'update_group', data: invitationText({ action: 'revoked', participantName: row.participantName }) })
     return done()
   }
 
