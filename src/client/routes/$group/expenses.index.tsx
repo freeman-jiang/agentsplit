@@ -181,7 +181,7 @@ function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewe
           <RowTitle title={e.title} payment={e.kind === 'payment'} documentCount={e.documentCount} />
           <RowMetadata parts={[e.vendor && { key: 'vendor', node: e.vendor }, { key: 'author', node: author }]} />
         </div>
-        <RowFigure className="max-sm:hidden" label={figures.paid.label} amount={paid} />
+        <RowFigure className="max-sm:hidden" label={figures.paid.label} amount={paid} amountClass="text-sm text-muted-foreground" />
         <RowFigure
           label={figures.personal.label}
           amount={figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}

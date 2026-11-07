@@ -98,7 +98,7 @@ export function FeedCard({ expense }: { expense: Item }) {
           ]}
         />
       </div>
-      <RowFigure className="max-sm:hidden" testId="expense-paid" label={figures.paid.label} amount={amount(figures.paid)} labelClass={tone(figures.paid)} amountClass={tone(figures.paid)} />
+      <RowFigure className="max-sm:hidden" testId="expense-paid" label={figures.paid.label} amount={amount(figures.paid)} labelClass={tone(figures.paid)} amountClass={cn('text-sm text-muted-foreground', tone(figures.paid))} />
       <RowFigure testId="expense-personal" label={figures.personal.label} amount={amount(figures.personal)} labelClass={tone(figures.personal)} amountClass={cn('font-semibold', tone(figures.personal))} />
       {/* On narrow screens the paid figure and the group sit under the title and use the width under the viewer's figure too. */}
       <RowNarrowLine>
