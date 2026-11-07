@@ -127,7 +127,7 @@ Proofs:
 
 | Items | Status | Proof or reason |
 | --- | --- | --- |
-| 01 | Done | `ENABLE_EXPENSE_DOCUMENTS` (true, yes, 1 or on), set to `true` in `wrangler.jsonc`, and reported by `reference.get`. |
+| 01 | Changed | Receipts are always on (Freeman, 2026-11-07): the `ENABLE_EXPENSE_DOCUMENTS` setting is gone, and `reference.get` reports `attachments.enabled: true`. |
 | 02–05, 07 | Done | `browser` (upload of a synthetic PNG, thumbnail through `/api/receipts`). |
 | 06 | Done, without a carousel | A thumbnail opens one image with "Delete document" and "Close". |
 | 08 | Done | `DocumentInput` in the core contract. |
@@ -145,5 +145,5 @@ Proofs:
 | 39 | Changed | Size and completeness are checked at the PUT; the content must also match the declared type. |
 | 40 | Changed | No copy: the one PUT writes the final key, and the target is spent after it. |
 | 42, 43 | Changed | Nothing to clean up after a failed attach: the transaction rolls back and the uploads stay attachable. The upload row is deleted at attach. The hourly cron deletes targets older than 25 hours and their objects. |
-| 44 | Changed | The R2 binding is always there. Uploads fail with PRECONDITION_FAILED "Receipts are disabled" only when `ENABLE_EXPENSE_DOCUMENTS` is off. |
+| 44 | Changed | The bucket is always there and receipts are always on, so uploads never fail with "Receipts are disabled". |
 | 45–54 | Not ported | The AI features are off (group E). |

@@ -30,8 +30,8 @@ export const getReferenceData = defineTool({
       fairUse: Schema.String,
     }),
   }),
-  run: async ({ db, documentsEnabled }) => {
-    const reference = await expenses.getReference(db, { documentsEnabled })
+  run: async ({ db }) => {
+    const reference = await expenses.getReference(db)
     return {
       categories: reference.categories.map((c) => ({ id: c.id, name: c.name, grouping: c.grouping })),
       currencies: reference.currencies.map((c) => ({ code: c.code, name: c.name, symbol: c.symbol, decimalPlaces: c.decimals })),

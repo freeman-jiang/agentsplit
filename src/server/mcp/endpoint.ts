@@ -40,7 +40,7 @@ function hostAllowed(request: Request, baseUrl: string) {
   return host === expected.host && (!origin || origin === expected.origin)
 }
 
-export async function handleMcp(request: Request, data: { db: Db; baseUrl: string; bucket: Bucket; documentsEnabled: boolean }): Promise<Response> {
+export async function handleMcp(request: Request, data: { db: Db; baseUrl: string; bucket: Bucket }): Promise<Response> {
   const { db, baseUrl } = data
   if (!baseUrl) return jsonError({ status: 503, message: 'Authentication is not configured' })
   if (!hostAllowed(request, baseUrl)) return jsonError({ status: 403, message: 'Origin or host is not allowed' })
@@ -77,7 +77,7 @@ export async function handleMcp(request: Request, data: { db: Db; baseUrl: strin
     return Response.json({ jsonrpc: '2.0', id, error: { code: -32020, message: 'MCP-Protocol-Version is required' } }, { status: 400, headers: noStore })
   }
 
-  const handler = createMcpHandler(() => createServer({ db, principal, baseUrl, bucket: data.bucket, documentsEnabled: data.documentsEnabled }), { responseMode: 'json' })
+  const handler = createMcpHandler(() => createServer({ db, principal, baseUrl, bucket: data.bucket }), { responseMode: 'json' })
   try {
     const forward = request.method === 'POST' ? new Request(request.url, { method: 'POST', headers: request.headers, body: text }) : request
     const response = await handler.fetch(forward, body === undefined ? {} : { parsedBody: body })

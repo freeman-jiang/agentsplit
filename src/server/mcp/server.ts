@@ -72,7 +72,7 @@ const outputOf = (tool: McpTool): StandardSchemaWithJSON => ({
 
 const SCHEMAS = new Map(MCP_TOOLS.map((tool) => [tool.name, { input: inputOf(tool), output: outputOf(tool) }]))
 
-export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: string; bucket: Bucket; documentsEnabled: boolean }): McpServer {
+export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: string; bucket: Bucket }): McpServer {
   const server = new McpServer(SERVER_INFO, { instructions: INSTRUCTIONS })
   for (const tool of MCP_TOOLS) {
     const schemas = SCHEMAS.get(tool.name)
@@ -86,7 +86,7 @@ export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: s
           const after: ((db: Db) => Promise<unknown>)[] = []
           const afterCommit = (work: (db: Db) => Promise<unknown>) => void after.push(work)
           const run = (db: Db) =>
-            tool.run({ db, principal: data.principal, baseUrl: data.baseUrl, bucket: data.bucket, documentsEnabled: data.documentsEnabled, afterCommit }, args)
+            tool.run({ db, principal: data.principal, baseUrl: data.baseUrl, bucket: data.bucket, afterCommit }, args)
           const write = async (tx: Db) => {
             after.length = 0
             await assertOAuthWrite(tx, data.principal)

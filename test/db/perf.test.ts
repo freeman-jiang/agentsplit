@@ -25,7 +25,6 @@ const config = (perfInstrumentation: boolean): Config => ({
   secret: 'test-secret-0123456789abcdef0123456789abcdef',
   googleClientId: 'test',
   googleClientSecret: 'test',
-  documentsEnabled: false,
   bootstrapEmail: undefined,
   perfInstrumentation,
 })

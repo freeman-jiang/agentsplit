@@ -15,8 +15,6 @@ export type ToolContext = {
   readonly baseUrl: string
   /** The receipts bucket, for upload attachment. */
   readonly bucket: Bucket
-  /** ENABLE_EXPENSE_DOCUMENTS: whether agents may upload receipts. */
-  readonly documentsEnabled: boolean
   /**
    * Runs `work` on the request's connection after a write tool's transaction
    * commits, such as removing deleted receipts from storage. A failure is logged.

@@ -33,12 +33,10 @@ export async function startHarness() {
   }
   /** The in-memory receipts bucket. */
   const r2 = fakeBucket()
-  /** ENABLE_EXPENSE_DOCUMENTS of the in-process Worker. */
-  const documents = { enabled: true }
-  const mcp = (request: Request) => withDb((db) => handleMcp(request, { db, baseUrl: BASE, bucket: r2.bucket, documentsEnabled: documents.enabled }))
+  const mcp = (request: Request) => withDb((db) => handleMcp(request, { db, baseUrl: BASE, bucket: r2.bucket }))
   /** The whole request handler of src/server/app.ts, for the plain HTTP routes (exports, receipts). */
   const app = createApp({
-    config: { baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret', documentsEnabled: true, bootstrapEmail: undefined, perfInstrumentation: false },
+    config: { baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret', bootstrapEmail: undefined, perfInstrumentation: false },
     connect: () => pool.connect(),
     pool: makeDb(pool),
     bucket: r2.bucket,
@@ -111,7 +109,7 @@ export async function startHarness() {
     return result.groupId
   }
 
-  return { pool, withDb, r2, documents, mcp, app, auth, authApi, account, apiKey, group, privateContext, close: () => pool.end() }
+  return { pool, withDb, r2, mcp, app, auth, authApi, account, apiKey, group, privateContext, close: () => pool.end() }
 }
 
 let nextId = 1

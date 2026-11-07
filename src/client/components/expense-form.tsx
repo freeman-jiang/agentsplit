@@ -432,7 +432,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
                 <Textarea id="notes" rows={4} value={state.notes} onChange={(e) => set({ notes: e.target.value })} onBlur={() => touch('notes')} />
               </Field>
               {/* A new private expense has no context to store receipts in yet (P-UNGROUP-14, P-UNGROUP-15). */}
-              {reference.attachments.enabled && !(isPrivate && props.mode === 'create') && (
+              {!(isPrivate && props.mode === 'create') && (
                 <div className="space-y-1.5">
                   <p className="text-sm font-medium">Receipts</p>
                   <p className="text-xs text-muted-foreground">See and attach receipts to the {noun}.</p>

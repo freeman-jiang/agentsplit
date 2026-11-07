@@ -350,18 +350,6 @@ describe('expense writes and reads', () => {
     expect(none.message).toBe('Supply groupId for a group expense, or people for an ungrouped expense.')
   })
 
-  it('returns an upload error, not targets, while receipts are off, and keeps the expense', async () => {
-    h.documents.enabled = false
-    try {
-      const created = await checked('create_expense', { groupId: 'g1', expenseId: id21(4), uploads: [{ filename: 'r.png', contentType: 'image/png', bytes: 10 }], expense: expense({ title: 'Cafe' }) })
-      expect(created['revision']).toBe(1)
-      expect(created['uploads']).toEqual([])
-      expect(created['uploadError']).toBe('Expense saved, but upload targets could not be prepared. Retry update_expense with the current revision and upload requests.')
-    } finally {
-      h.documents.enabled = true
-    }
-  })
-
   it('edits only the given fields, checks the revision, and skips no-op revisions', async () => {
     const changed = await checked('update_expense', { groupId: 'g1', expenseId: id21(1), expectedRevision: 1, changes: { amount: '45', notes: 'Includes tip' } })
     expect(changed).toEqual({ expenseId: id21(1), revision: 2, amount: '45.00', currencyCode: 'USD', uploads: [], uploadError: null })

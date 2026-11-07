@@ -1,7 +1,7 @@
 import { Effect, Layer } from 'effect'
 import * as expenses from '../expenses'
 import * as recurring from '../recurring'
-import { Api, AppConfig, read } from '../rpc'
+import { Api, read } from '../rpc'
 import { useDb } from '../db'
 import { Unavailable } from '../../shared/api'
 
@@ -13,12 +13,7 @@ const reference = <A>(work: Parameters<typeof useDb<A>>[0]) =>
 
 export const ExpensesHandlers = Layer.mergeAll(
   Api.toLayerHandler('categories.list', () => reference((db) => expenses.listCategories(db))),
-  Api.toLayerHandler('reference.get', () =>
-    Effect.gen(function* () {
-      const config = yield* AppConfig
-      return yield* reference((db) => expenses.getReference(db, { documentsEnabled: config.documentsEnabled }))
-    }),
-  ),
+  Api.toLayerHandler('reference.get', () => reference((db) => expenses.getReference(db))),
   Api.toLayerHandler('expenses.detail', ({ groupId, expenseId }) =>
     read((db, principal) => expenses.getExpenseDetail(db, { principal, group: groupId, expenseId })),
   ),

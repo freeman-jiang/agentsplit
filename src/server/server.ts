@@ -36,7 +36,6 @@ const config = {
   googleClientId: required('GOOGLE_CLIENT_ID'),
   googleClientSecret: required('GOOGLE_CLIENT_SECRET'),
   bootstrapEmail: optional('AUTH_BOOTSTRAP_EMAIL'),
-  documentsEnabled: /^(true|yes|1|on)$/i.test(optional('ENABLE_EXPENSE_DOCUMENTS') ?? ''),
   signUpDailyLimit: signUpLimit(),
   // Off in every deployment; only performance runs set it, as in the current app.
   perfInstrumentation: optional('PERF_INSTRUMENTATION') === '1',
@@ -83,7 +82,7 @@ const app = createApp({ config, connect: () => pool.connect(), pool: makeDb(pool
 /**
  * The request as the app must see it: at the public origin. The proxy ends
  * TLS, so Bun sees http and the internal host; OAuth checks (DPoP's htu)
- * need the URL the client used, as on Workers.
+ * need the URL the client used.
  */
 function atPublicOrigin(request: Request): Request {
   const url = new URL(request.url)
@@ -105,8 +104,7 @@ const server = Bun.serve({
 })
 console.log(`AgentSplit listening on ${server.url.href} for ${publicOrigin}${maintenance ? ' (maintenance: answering 503)' : ''}`)
 
-// The hourly job, at minute 7 of each hour (the Worker's cron was "7 * * * *").
-// It pauses in maintenance, so nothing writes while the cutover imports.
+// The hourly job, at minute 7 of each hour. It pauses in maintenance, so nothing writes then.
 const hourly = startHourly({ minute: 7, run: (time) => (maintenance ? Promise.resolve() : app.scheduled(time)) })
 
 // Docker sends SIGTERM, then SIGKILL after the stop grace period

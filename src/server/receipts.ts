@@ -162,11 +162,9 @@ export async function uploadReceipt(data: {
   principal: Principal | null
   request: Request
   baseUrl: string
-  enabled: boolean
 }): Promise<Response> {
   if (!sameOrigin({ request: data.request, baseUrl: data.baseUrl })) return jsonError({ status: 403, message: 'Origin not allowed' })
   if (!data.principal) return jsonError({ status: 401, message: 'Authentication required' })
-  if (!data.enabled) return jsonError({ status: 403, message: 'Receipts are disabled' })
   // Cap the body before parsing it.
   const length = Number(data.request.headers.get('content-length'))
   if (!length || length > MAX_RECEIPT_BYTES + ENVELOPE_BYTES) return jsonError({ status: 413, message: 'Receipt must be at most 5 MiB' })

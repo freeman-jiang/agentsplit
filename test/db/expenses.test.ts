@@ -381,11 +381,10 @@ describe('receipt endpoints', () => {
       f.set('file', new File([bytes], 'receipt.png', { type: 'image/jpeg' }))
       return f
     }
-    const upload = async (request: Promise<Request>, principal: Principal | null = alice, enabled = true) => uploadReceipt({ db, bucket, principal, request: await request, baseUrl: base, enabled })
+    const upload = async (request: Promise<Request>, principal: Principal | null = alice) => uploadReceipt({ db, bucket, principal, request: await request, baseUrl: base })
     try {
       expect((await upload(post({ origin: 'https://evil.example', body: form('g1', png(1, 1)) }))).status).toBe(403)
       expect((await upload(post({ body: form('g1', png(1, 1)) }), null)).status).toBe(401)
-      expect((await upload(post({ body: form('g1', png(1, 1)) }), alice, false)).status).toBe(403)
       expect((await upload(post({ body: form('g1', png(1, 1)), length: String(6 * 1024 * 1024) }))).status).toBe(413)
       expect((await upload(post({ body: form('g2', png(1, 1)) }))).status).toBe(403)
       const bad = await upload(post({ body: form('g1', new TextEncoder().encode('not an image at all, really')) }))

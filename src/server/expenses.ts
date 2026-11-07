@@ -117,14 +117,14 @@ export async function listBalances(db: Db, data: { principal: Principal; group: 
 // The sign-up cap is per instance and set by SIGN_UP_DAILY_LIMIT, so it is not reference data.
 const { signUpsPerDay: _signUpsPerDay, ...accountLimits } = LIMITS
 
-/** What an agent or the form needs to know to write an expense (P-EXP-143). */
-export async function getReference(db: Db, data: { documentsEnabled: boolean }) {
+/** What an agent or the form needs to know to write an expense (P-EXP-143). Receipts are always on. */
+export async function getReference(db: Db) {
   return {
     categories: await listCategories(db),
     currencies: (Object.keys(CURRENCIES) as CurrencyCode[]).map((code) => ({ code, ...CURRENCIES[code] })),
     splitModes: ['evenly', 'shares', 'percentage', 'amount'] as const,
     recurrence: ['none', 'daily', 'weekly', 'monthly'] as const,
-    attachments: { enabled: data.documentsEnabled, contentTypes: ['image/jpeg', 'image/png'] as const, maxBytes: MAX_RECEIPT_BYTES },
+    attachments: { enabled: true, contentTypes: ['image/jpeg', 'image/png'] as const, maxBytes: MAX_RECEIPT_BYTES },
     limits: { ...accountLimits, fairUse: FAIR_USE },
   }
 }

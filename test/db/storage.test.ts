@@ -61,7 +61,7 @@ async function upload(principal: Principal, image = png(40, 30)) {
     body: bytes,
     headers: { origin: BASE, 'content-type': encoded.headers.get('content-type') ?? '', 'content-length': String(bytes.byteLength) },
   })
-  return h.withDb((db) => uploadReceipt({ db, bucket: h.r2.bucket, principal, request, baseUrl: BASE, enabled: true }))
+  return h.withDb((db) => uploadReceipt({ db, bucket: h.r2.bucket, principal, request, baseUrl: BASE }))
 }
 
 let filler = 0

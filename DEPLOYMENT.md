@@ -48,7 +48,7 @@ Set these in the Coolify resource environment. Never commit, print or paste thei
 
 v2 does not read `STORAGE_HOST`, `MCP_ACCESS_GRANTS`, `AUTH_BOOTSTRAP_LEGACY_USER_ID` or `BETTER_AUTH_TELEMETRY`. Keep them, because the old Compose file needs them for a rollback.
 
-The Compose file and the image set the other settings of `src/server/server.ts`: `DATABASE_URL`, `ENABLE_EXPENSE_DOCUMENTS=true`, `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_BUCKET`, `S3_UPLOAD_REGION`, `PORT`, `CLIENT_DIR` and `MIGRATIONS_DIR`. `DATABASE_POOL_SIZE` (default 10) and `HOST` (default `0.0.0.0`) are optional. A missing required setting stops the server at start with its name.
+The Compose file and the image set the other settings of `src/server/server.ts`: `DATABASE_URL`, `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_BUCKET`, `S3_UPLOAD_REGION`, `PORT`, `CLIENT_DIR` and `MIGRATIONS_DIR`. `DATABASE_POOL_SIZE` (default 10) and `HOST` (default `0.0.0.0`) are optional. A missing required setting stops the server at start with its name.
 
 ## Deploy
 

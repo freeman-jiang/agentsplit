@@ -21,8 +21,6 @@ const ATTACH_HOURS = 24
 /** The first read for the image header. Phone JPEGs carry their frame header well inside it. */
 const HEADER_BYTES = 256 * 1024
 
-export const UPLOADS_FAILED = 'Expense saved, but upload targets could not be prepared. Retry update_expense with the current revision and upload requests.'
-
 export type UploadRequest = { readonly filename: string; readonly contentType: 'image/jpeg' | 'image/png'; readonly bytes: number }
 export type UploadTarget = {
   uploadId: string
@@ -46,17 +44,15 @@ export class UploadError extends Error {
 /**
  * Upload targets for an expense that the caller just wrote, in the write's
  * transaction. The rows bind each target to the caller, the group and the
- * expense. With receipts off, the write keeps its result and reports
- * uploadError, as in the current app (P-TOOL-CREATEEXP-31, 32). The same
- * happens when the files would not fit the caller's receipt storage, counting
- * the uploads that the caller can still attach.
+ * expense. When the files would not fit the caller's receipt storage, counting
+ * the uploads that the caller can still attach, the write keeps its result and
+ * reports uploadError, as in the current app (P-TOOL-CREATEEXP-31, 32).
  */
 export async function prepareUploads(
   tx: Db,
-  data: { principal: Principal; groupId: string; expenseId: string; requests: readonly UploadRequest[] | undefined; baseUrl: string; enabled: boolean },
+  data: { principal: Principal; groupId: string; expenseId: string; requests: readonly UploadRequest[] | undefined; baseUrl: string },
 ): Promise<{ uploads: UploadTarget[]; uploadError: string | null }> {
   if (!data.requests?.length) return { uploads: [], uploadError: null }
-  if (!data.enabled) return { uploads: [], uploadError: UPLOADS_FAILED }
   const bytes = data.requests.reduce((sum, file) => sum + file.bytes, 0)
   const full = await spaceFor(tx, { userId: data.principal.userId, bytes, lock: false, outstanding: true })
   if (full) return { uploads: [], uploadError: full }
@@ -101,8 +97,7 @@ export async function prepareUploads(
  * so a second PUT with the same URL fails. The body streams into the bucket,
  * and the stored size must be the declared size. If the write fails, the target is free again until it expires.
  */
-export async function putUpload(data: { db: Db; bucket: Bucket; request: Request; token: string; enabled: boolean }): Promise<Response> {
-  if (!data.enabled) return jsonError({ status: 403, message: 'Receipts are disabled' })
+export async function putUpload(data: { db: Db; bucket: Bucket; request: Request; token: string }): Promise<Response> {
   if (!/^[A-Za-z0-9_-]{43}$/.test(data.token)) return jsonError({ status: 403, message: 'This upload URL is not valid, was used, or has expired' })
   const claimed = await data.db
     .update(receiptUploads)
@@ -155,11 +150,10 @@ async function storedImage(bucket: Bucket, data: { key: string; bytes: number })
  */
 export async function attachUploads(
   tx: Db,
-  data: { principal: Principal; groupId: string; expenseId: string; uploadIds: readonly string[]; bucket: Bucket; enabled: boolean },
+  data: { principal: Principal; groupId: string; expenseId: string; uploadIds: readonly string[]; bucket: Bucket },
 ): Promise<StoredDocument[]> {
   const ids = [...new Set(data.uploadIds)]
   if (!ids.length) return []
-  if (!data.enabled) throw new UploadError('PRECONDITION_FAILED', 'Receipts are disabled')
   const rows = await tx
     .select({
       id: receiptUploads.id,

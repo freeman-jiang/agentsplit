@@ -18,7 +18,6 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?Set GOOGLE_CLIENT_SECRET}
       AUTH_BOOTSTRAP_EMAIL: ${AUTH_BOOTSTRAP_EMAIL:-}
-      ENABLE_EXPENSE_DOCUMENTS: 'true'
       # The cutover's freeze: 503 for everything but /api/health (docs/v2/CUTOVER.md).
       AGENTSPLIT_MAINTENANCE: ${AGENTSPLIT_MAINTENANCE:-}
       # New accounts per 24 hours; empty means 200 (src/shared/limits.ts).
