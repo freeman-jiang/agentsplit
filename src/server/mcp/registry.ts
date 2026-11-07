@@ -17,8 +17,11 @@ export type ToolContext = {
   readonly bucket: Bucket
   /** ENABLE_EXPENSE_DOCUMENTS: whether agents may upload receipts. */
   readonly documentsEnabled: boolean
-  /** Runs `work` after a write tool's transaction commits, such as removing deleted receipts from storage. A failure is logged. */
-  readonly afterCommit: (work: () => Promise<unknown>) => void
+  /**
+   * Runs `work` on the request's connection after a write tool's transaction
+   * commits, such as removing deleted receipts from storage. A failure is logged.
+   */
+  readonly afterCommit: (work: (db: Db) => Promise<unknown>) => void
 }
 
 export type JsonSchema = { readonly [key: string]: JsonValue }

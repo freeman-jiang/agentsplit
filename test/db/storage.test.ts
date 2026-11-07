@@ -232,8 +232,21 @@ describe('permanent receipt deletion', () => {
     await expect(tx((db) => deleteReceipts(db, { principal: cara, receiptIds: [other.id, mine.id] }))).rejects.toMatchObject({ _tag: 'Forbidden' })
     expect(await usage('bob')).toBe(128)
     expect((await tx((db) => deleteReceipts(db, { principal: alice, receiptIds: [mine.id] }))).freedBytes).toBe(64)
-    expect((await tx((db) => deleteReceipts(db, { principal: bob, receiptIds: [other.id] }))).freedBytes).toBe(64)
-    expect(await usage('bob')).toBe(0)
+    expect(await usage('bob')).toBe(64)
+  })
+
+  it('deletes through the agent tool and removes the object from storage after the commit', async () => {
+    const uploaded = (await (await upload(bob)).json()) as { id: string; url: string }
+    const key = uploaded.url.replace('r2://agentsplit-receipts/', '')
+    const bobKey = { 'x-api-key': await h.apiKey('bob') }
+    const listed = await ok(h, { name: 'list_receipts', args: { order: 'oldest' }, headers: bobKey })
+    expect((listed['receipts'] as { receiptId: string }[]).map((r) => r.receiptId)).toContain(uploaded.id)
+    const before = await usage('bob')
+    const deleted = await ok(h, { name: 'delete_receipts', args: { receiptIds: [uploaded.id] }, headers: bobKey })
+    expect(deleted).toEqual({ deleted: [{ receiptId: uploaded.id, bytes: 64 }], freedBytes: 64, usedBytes: before - 64 })
+    expect(h.r2.objects.has(key)).toBe(false)
+    const purged = await h.withDb(async (db) => (await db.execute<{ purged: boolean }>(sql`SELECT purged_at IS NOT NULL AS purged FROM deleted_receipts WHERE receipt_id = ${uploaded.id}`)).rows[0])
+    expect(purged).toEqual({ purged: true })
   })
 })
 
