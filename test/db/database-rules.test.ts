@@ -8,8 +8,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as app from '../../db/schema/app'
 import { CURRENCIES } from '~/shared/currencies'
 import { LIMITS } from '~/shared/limits'
-import { resetTestDatabase } from './setup'
+import { testDatabase, type TestDatabase } from '../kit/database'
 
+let database: TestDatabase
 let pool: Pool
 let n = 0
 const id = (prefix: string) => `${prefix}-${++n}`
@@ -49,7 +50,8 @@ async function insertClient(clientId: string) {
 }
 
 beforeAll(async () => {
-  pool = await resetTestDatabase()
+  database = await testDatabase()
+  pool = database.pool
   await tx(async (c) => {
     await c.query(`INSERT INTO groups (id, kind, name, default_currency) VALUES ($1, 'named', 'Test', 'USD'), ($2, 'named', 'Other', 'USD')`, [group, other])
     await c.query(`INSERT INTO participants (id, group_id, name) VALUES ($1, $2, 'Alice'), ($3, $4, 'Carol')`, [alice, group, carol, other])
@@ -68,7 +70,7 @@ beforeAll(async () => {
   await insertUser(owner)
 })
 afterAll(async () => {
-  await pool.end()
+  await database.close()
 })
 
 describe('foreign keys', () => {

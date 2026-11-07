@@ -3,28 +3,20 @@
 // in ungrouped.test.ts.
 import { Schema } from 'effect'
 import { eq } from 'drizzle-orm'
-import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { activities, groups, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { accountBalances } from '~/server/balances'
-import { makeDb, type Db } from '~/server/core/db'
+import type { Db } from '~/server/core/db'
 import { expenseContext, feedOptions, listFeed, type FeedFilter } from '~/server/feed'
 import { createExpense, updateExpense } from '~/server/ledger'
 import { type Principal } from '~/server/core/access'
 import { AccountBalances, ExpenseContext, FeedOptions, FeedPage } from '~/shared/api'
 import type { ExpenseDraft } from '~/shared/expense-rules'
-import { resetTestDatabase } from './setup'
+import { testDatabase, type TestDatabase } from '../kit/database'
 
-let pool: Pool
-async function tx<A>(work: (db: Db) => Promise<A>): Promise<A> {
-  const client = await pool.connect()
-  try {
-    return await makeDb(client).transaction(work, { isolationLevel: 'serializable' })
-  } finally {
-    client.release()
-  }
-}
+let database: TestDatabase
+const tx = <A>(work: (db: Db) => Promise<A>) => database.tx(work)
 
 const alice: Principal = { userId: 'u-alice', name: 'Alice', email: 'alice@example.com', source: 'web', agentKeyId: null }
 const bob: Principal = { userId: 'u-bob', name: 'Bob', email: 'bob@example.com', source: 'agent', agentKeyId: 'key-1' }
@@ -51,7 +43,7 @@ const ids = async (filter: FeedFilter, p: Principal = alice) =>
   (await tx((db) => listFeed(db, { principal: p, filter: { involvingMe: false, ...filter }, cursor: null, limit: 100 }))).expenses.map((e) => e.id)
 
 beforeAll(async () => {
-  pool = await resetTestDatabase()
+  database = await testDatabase()
   await tx(async (db) => {
     const now = new Date()
     await db.insert(user).values([
@@ -76,7 +68,7 @@ beforeAll(async () => {
   await create(alice, 'e-eur', { currency: 'EUR', title: 'Euro snacks', expenseDate: '2026-09-01' })
 })
 afterAll(async () => {
-  await pool.end()
+  await database.close()
 })
 
 describe('feed', () => {

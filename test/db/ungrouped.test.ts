@@ -1,31 +1,23 @@
 // The current app's scripts/test-ungrouped-expenses.ts scenarios, ported to v2:
 // feed privacy, private contexts, invitations, ordering and settlement.
 import { eq, sql } from 'drizzle-orm'
-import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { expenses, groups, invitations, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { accountBalances, listBalances } from '~/server/balances'
-import { makeDb, type Db } from '~/server/core/db'
+import type { Db } from '~/server/core/db'
 import { expenseContext, feedOptions, listFeed } from '~/server/feed'
 import { createExpense, deleteExpense, getExpense, listExpenses, listGroups, updateExpense } from '~/server/ledger'
 import { type Principal } from '~/server/core/access'
 import { createUngroupedExpense, renewPrivateInvitation, type PrivatePerson } from '~/server/ungrouped'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { randomId } from '~/server/core/ids'
-import { resetTestDatabase } from './setup'
+import { testDatabase, type TestDatabase } from '../kit/database'
 
-let pool: Pool
+let database: TestDatabase
 const BASE_URL = 'http://localhost:5183'
 
-async function tx<A>(work: (db: Db) => Promise<A>): Promise<A> {
-  const client = await pool.connect()
-  try {
-    return await makeDb(client).transaction(work, { isolationLevel: 'serializable' })
-  } finally {
-    client.release()
-  }
-}
+const tx = <A>(work: (db: Db) => Promise<A>) => database.tx(work)
 
 const principal = (name: string): Principal => ({ userId: `u-${name.toLowerCase()}`, name, email: `${name.toLowerCase()}@example.com`, source: 'web', agentKeyId: null })
 const alice = principal('Alice')
@@ -62,7 +54,7 @@ const feedIds = async (p: Principal, filter: Parameters<typeof listFeed>[1]['fil
   (await tx((db) => listFeed(db, { principal: p, filter, cursor: null, limit }))).expenses.map((e) => e.id)
 
 beforeAll(async () => {
-  pool = await resetTestDatabase()
+  database = await testDatabase()
   await tx(async (db) => {
     const now = new Date()
     await db.insert(user).values(
@@ -105,7 +97,7 @@ beforeAll(async () => {
   )
 })
 afterAll(async () => {
-  await pool.end()
+  await database.close()
 })
 
 describe('ungrouped expenses', () => {

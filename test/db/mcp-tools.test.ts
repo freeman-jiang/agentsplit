@@ -8,7 +8,7 @@ import { eq } from 'drizzle-orm'
 import { MCP_TOOLS } from '~/server/mcp/tools'
 import { takeMcpRequest } from '~/server/rate-limit'
 import current from './fixtures/current-mcp-tools.json'
-import { BASE, callTool, failure, MCP_URL, ok, rpc, startHarness, type Harness } from './mcp-harness'
+import { BASE, callTool, failure, MCP_URL, ok, rpc, startHarness, type Harness } from './harness'
 
 let h: Harness
 let alice: Record<string, string>
@@ -101,19 +101,19 @@ describe('protocol', () => {
       ...(name ? { 'Mcp-Name': name } : {}),
     }
     const body = JSON.stringify(modern(method, name))
-    const r = await h.mcp(new Request(MCP_URL, { method: 'POST', headers, body }))
+    const r = await h.fetch(new Request(MCP_URL, { method: 'POST', headers, body }))
     expect(r.status).toBe(200)
     const reply = (await r.json()) as { result: { tools?: unknown[]; isError?: boolean } }
     if (name) expect(reply.result.isError).not.toBe(true)
     else expect(reply.result.tools).toHaveLength(MCP_TOOLS.length)
-    const mismatch = await h.mcp(new Request(MCP_URL, { method: 'POST', headers: { ...headers, 'Mcp-Method': 'wrong-method' }, body }))
+    const mismatch = await h.fetch(new Request(MCP_URL, { method: 'POST', headers: { ...headers, 'Mcp-Method': 'wrong-method' }, body }))
     expect(mismatch.status).toBe(400)
     expect(((await mismatch.json()) as { error: { code: number } }).error.code).toBe(-32020)
   })
 
   it('requires MCP-Protocol-Version on modern requests, with the request ID', async () => {
     const body = { ...modern('tools/list'), id: 'modern-check' }
-    const r = await h.mcp(
+    const r = await h.fetch(
       new Request(MCP_URL, { method: 'POST', headers: { ...alice, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'Mcp-Method': 'tools/list' }, body: JSON.stringify(body) }),
     )
     expect(r.status).toBe(400)
@@ -125,18 +125,18 @@ describe('protocol', () => {
     const headers = { ...alice, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' }
     const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
     for (const extra of [{ origin: 'https://evil.example' }, { host: 'evil.example' }]) {
-      const r = await h.mcp(new Request(MCP_URL, { method: 'POST', headers: { ...headers, ...extra }, body }))
+      const r = await h.fetch(new Request(MCP_URL, { method: 'POST', headers: { ...headers, ...extra }, body }))
       expect(r.status).toBe(403)
       expect(await r.json()).toEqual({ error: 'Origin or host is not allowed' })
       expect(r.headers.get('cache-control')).toBe('no-store')
     }
-    const same = await h.mcp(new Request(MCP_URL, { method: 'POST', headers: { ...headers, origin: BASE }, body }))
+    const same = await h.fetch(new Request(MCP_URL, { method: 'POST', headers: { ...headers, origin: BASE }, body }))
     expect(same.status).toBe(200)
   })
 
   it('answers GET and DELETE with the SDK’s stateless 405', async () => {
     for (const method of ['GET', 'DELETE']) {
-      const r = await h.mcp(new Request(MCP_URL, { method, headers: alice }))
+      const r = await h.fetch(new Request(MCP_URL, { method, headers: alice }))
       expect(r.status).toBe(405)
       expect(r.headers.get('cache-control')).toBe('no-store')
     }
@@ -497,7 +497,7 @@ describe('expense writes and reads', () => {
 })
 
 describe('API keys on the endpoint', () => {
-  const list = (headers: Record<string, string>) => h.mcp(new Request(MCP_URL, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18', ...headers }, body: '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' }))
+  const list = (headers: Record<string, string>) => h.fetch(new Request(MCP_URL, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18', ...headers }, body: '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' }))
   it('accepts the raw key in X-API-Key or Bearer, or both when equal', async () => {
     const key = alice['x-api-key'] ?? ''
     expect((await list({ 'x-api-key': key })).status).toBe(200)

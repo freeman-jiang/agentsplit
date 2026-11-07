@@ -6,15 +6,17 @@ import { session, user } from '../../db/schema/auth'
 import { createAuth } from '~/server/auth/auth'
 import { makeDb, type Db } from '~/server/core/db'
 import { sessionPrincipal } from '~/server/auth/session'
-import { resetTestDatabase } from './setup'
+import { testDatabase, type TestDatabase } from '../kit/database'
 
 const secret = 'test-secret-0123456789-0123456789-0123456789'
+let database: TestDatabase
 let pool: Pool
 let db: Db
 let release: () => void
 
 beforeAll(async () => {
-  pool = await resetTestDatabase()
+  database = await testDatabase()
+  pool = database.pool
   const client = await pool.connect()
   release = () => client.release()
   db = makeDb(client)
@@ -32,7 +34,7 @@ beforeAll(async () => {
 })
 afterAll(async () => {
   release()
-  await pool.end()
+  await database.close()
 })
 
 const signed = async (token: string, key = secret, name = 'better-auth.session_token') =>

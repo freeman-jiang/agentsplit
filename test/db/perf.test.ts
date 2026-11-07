@@ -1,39 +1,27 @@
 // Performance runs read the database work of a request from its headers
 // (P-PWA-49). A missing header only shows up as an empty column in a report.
-import { Pool } from 'pg'
+import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createApp } from '../../src/server/main/app'
-import type { AppSettings } from '../../src/server/core/config'
 import { makeDb } from '../../src/server/core/db'
 import { instrumentPool, withPerfCounters } from '../../src/server/perf'
+import { testSettings } from '../kit/config'
+import { testDatabase, type TestDatabase } from '../kit/database'
 import { fakeBucket } from './fake-bucket'
-import { resetTestDatabase } from './setup'
 
+let database: TestDatabase
 let pool: Pool
 beforeAll(async () => {
-  // The listener wraps new connections only, as in server.ts, so it goes on a pool with none open.
-  const migrated = await resetTestDatabase()
-  await migrated.end()
-  pool = new Pool({ connectionString: migrated.options.connectionString, max: 2 })
+  database = await testDatabase()
+  pool = database.pool
+  // The listener wraps new connections only, as in server.ts; the new pool has none open yet.
   instrumentPool(pool)
 })
-afterAll(async () => {
-  await pool.end()
-})
-
-const config = (perfInstrumentation: boolean): AppSettings => ({
-  baseUrl: 'https://app.example',
-  secret: 'test-secret-0123456789abcdef0123456789abcdef',
-  googleClientId: 'test',
-  googleClientSecret: 'test',
-  bootstrapEmail: undefined,
-  signUpDailyLimit: 200,
-  perfInstrumentation,
-})
+afterAll(() => database.close())
 
 const appWith = (perfInstrumentation: boolean) =>
   createApp({
-    config: config(perfInstrumentation),
+    config: testSettings({ baseUrl: 'https://app.example', perfInstrumentation }),
     connect: () => pool.connect(),
     pool: makeDb(pool),
     bucket: fakeBucket().bucket,

@@ -14,7 +14,7 @@ import { type Principal } from '~/server/core/access'
 import { V2GroupSnapshot } from '~/shared/snapshots'
 import { randomId } from '~/server/core/ids'
 import { minor } from '~/shared/minor'
-import { BASE, failure, ok, startHarness, type Harness } from './mcp-harness'
+import { BASE, failure, ok, startHarness, type Harness } from './harness'
 
 let h: Harness
 let alice: Record<string, string>
@@ -58,7 +58,7 @@ const create = (data: { id: number; title?: string; vendor?: string }) =>
 
 type Activity = { id: string; activityType: string; data: string | null; source: string; expenseRevision: number | null; snapshot: Record<string, unknown> | null }
 const log = async (args: Record<string, unknown>) => (await ok(h, { name: 'list_activity', args: { order: 'asc', limit: 100, ...args }, headers: alice }))['activities'] as Activity[]
-const download = (path: string, headers: Record<string, string> = {}) => h.app.fetch(new Request(`${BASE}${path}`, { headers }))
+const download = (path: string, headers: Record<string, string> = {}) => h.fetch(new Request(`${BASE}${path}`, { headers }))
 
 describe('private contexts', () => {
   it('stores the create_group snapshot in the shape the history reader expects (P-HIST-03)', async () => {

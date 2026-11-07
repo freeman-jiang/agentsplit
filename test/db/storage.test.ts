@@ -14,7 +14,7 @@ import { receiptUsage, spaceFor } from '~/server/receipt-quota'
 import { downloadReceipt, uploadReceipt } from '~/server/receipt-routes'
 import { deleteReceipts, purgeDeletedReceipts } from '~/server/storage'
 import { LIMITS } from '~/shared/limits'
-import { BASE, failure, ok, startHarness, type Harness } from './mcp-harness'
+import { BASE, failure, ok, startHarness, type Harness } from './harness'
 
 let h: Harness
 const web = (id: string, name: string): Principal => ({ userId: id, name, email: `${id}@example.com`, source: 'web', agentKeyId: null })
@@ -62,7 +62,7 @@ async function upload(principal: Principal, image = png(40, 30)) {
     body: bytes,
     headers: { origin: BASE, 'content-type': encoded.headers.get('content-type') ?? '', 'content-length': String(bytes.byteLength) },
   })
-  return h.withDb((db) => uploadReceipt({ db, bucket: h.r2.bucket, principal, request }))
+  return h.withDb((db) => uploadReceipt({ db, bucket: h.storage.bucket, principal, request }))
 }
 
 let filler = 0
@@ -111,7 +111,7 @@ describe('receipt storage quota', () => {
     expect(await usage('erin')).toBeLessThanOrEqual(LIMITS.receiptStorageBytes)
     // A refused upload leaves no object behind.
     const stored = await h.withDb((db) => db.select({ url: receipts.url }).from(receipts).where(eq(receipts.createdBy, 'erin')))
-    const keys = [...h.r2.objects.keys()].filter((k) => stored.some((r) => r.url.endsWith(k)))
+    const keys = [...h.storage.objects.keys()].filter((k) => stored.some((r) => r.url.endsWith(k)))
     expect(keys).toHaveLength(1)
   })
 
@@ -161,7 +161,7 @@ describe('receipt storage quota', () => {
     expect(second).toMatchObject({ revision: 1, uploads: [] })
     expect(second['uploadError']).toMatch(/^You're out of receipt space/)
 
-    const put = await h.app.fetch(new Request(target.url, { method: 'PUT', headers: target.headers, body: image }))
+    const put = await h.fetch(new Request(target.url, { method: 'PUT', headers: target.headers, body: image }))
     expect(put.status).toBe(200)
     await fill('hank', 50)
     const refused = await failure(h, { name: 'update_expense', args: { groupId: 'g2', expenseId: 'q0000000000000000000a', expectedRevision: 1, attachUploadIds: [target.uploadId] }, headers: hank })
@@ -179,15 +179,15 @@ describe('permanent receipt deletion', () => {
     await tx((db) => updateExpense(db, { principal: alice, groupId: 'g1', expenseId, expectedRevision: 1, idempotencyKey: null, expense: draft('Two people') }))
     expect(await usage('bob')).toBe(64)
     const key = uploaded.url.replace('r2://agentsplit-receipts/', '')
-    expect(h.r2.objects.has(key)).toBe(true)
+    expect(h.storage.objects.has(key)).toBe(true)
 
     const history = () => h.withDb(async (db) => (await db.execute<{ id: string; row: string }>(sql`SELECT id, row_to_json(a)::text AS row FROM activities a WHERE group_id = 'g1' ORDER BY sequence`)).rows)
     const before = await history()
 
     const result = await tx((db) => deleteReceipts(db, { principal: bob, receiptIds: [uploaded.id] }))
     expect(result).toEqual({ deleted: [{ receiptId: uploaded.id, bytes: 64 }], freedBytes: 64 })
-    expect(await h.withDb((db) => purgeDeletedReceipts({ db, bucket: h.r2.bucket, receiptIds: [uploaded.id] }))).toBe(1)
-    expect(h.r2.objects.has(key)).toBe(false)
+    expect(await h.withDb((db) => purgeDeletedReceipts({ db, bucket: h.storage.bucket, receiptIds: [uploaded.id] }))).toBe(1)
+    expect(h.storage.objects.has(key)).toBe(false)
     expect(await usage('bob')).toBe(0)
 
     // Every earlier activity is byte for byte the same; one new revision removes the receipt.
@@ -206,7 +206,7 @@ describe('permanent receipt deletion', () => {
     expect(created?._tag === 'expense' ? created.expense.documents : null).toEqual([{ id: expect.any(String), url: uploaded.url, deleted: tombstone }])
 
     const download = await h.withDb((db) =>
-      downloadReceipt({ db, bucket: h.r2.bucket, reader: { principal: alice }, url: new URL(`${BASE}/api/receipts?${new URLSearchParams({ groupId: 'g1', url: uploaded.url })}`) }),
+      downloadReceipt({ db, bucket: h.storage.bucket, reader: { principal: alice }, url: new URL(`${BASE}/api/receipts?${new URLSearchParams({ groupId: 'g1', url: uploaded.url })}`) }),
     )
     expect(download.status).toBe(410)
     expect(((await download.json()) as { error: string }).error).toMatch(/^Receipt deleted by Bob on \d{4}-\d\d-\d\d$/)
@@ -245,7 +245,7 @@ describe('permanent receipt deletion', () => {
     const before = await usage('bob')
     const deleted = await ok(h, { name: 'delete_receipts', args: { receiptIds: [uploaded.id] }, headers: bobKey })
     expect(deleted).toEqual({ deleted: [{ receiptId: uploaded.id, bytes: 64 }], freedBytes: 64, usedBytes: before - 64 })
-    expect(h.r2.objects.has(key)).toBe(false)
+    expect(h.storage.objects.has(key)).toBe(false)
     const purged = await h.withDb(async (db) => (await db.execute<{ purged: boolean }>(sql`SELECT purged_at IS NOT NULL AS purged FROM deleted_receipts WHERE receipt_id = ${uploaded.id}`)).rows[0])
     expect(purged).toEqual({ purged: true })
   })

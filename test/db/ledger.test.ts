@@ -1,30 +1,22 @@
-import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { groups, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { listBalances } from '~/server/balances'
-import { makeDb, type Db } from '~/server/core/db'
+import type { Db } from '~/server/core/db'
 import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense } from '~/server/ledger'
 import { type Principal } from '~/server/core/access'
-import { resetTestDatabase, testUsers } from './setup'
+import { testDatabase, type TestDatabase } from '../kit/database'
+import { userRows } from '../kit/people'
 
-let pool: Pool
+let database: TestDatabase
 const alice: Principal = { userId: 'u-alice', name: 'Alice', email: 'a@example.com', source: 'web', agentKeyId: null }
 const mallory: Principal = { userId: 'u-mallory', name: 'Mallory', email: 'm@example.com', source: 'web', agentKeyId: null }
 
-/** Runs `work` in a SERIALIZABLE transaction, as the server does. */
-async function tx<A>(work: (db: Db) => Promise<A>): Promise<A> {
-  const client = await pool.connect()
-  try {
-    return await makeDb(client).transaction(work, { isolationLevel: 'serializable' })
-  } finally {
-    client.release()
-  }
-}
+const tx = <A>(work: (db: Db) => Promise<A>) => database.tx(work)
 
 beforeAll(async () => {
-  pool = await resetTestDatabase()
+  database = await testDatabase()
   await tx(async (db) => {
     await db.insert(groups).values({ id: 'g1', kind: 'named', slug: 'home', name: 'Home', defaultCurrency: 'USD' })
     await db.insert(participants).values([
@@ -32,12 +24,12 @@ beforeAll(async () => {
       { id: 'pb', groupId: 'g1', name: 'Bob' },
       { id: 'pc', groupId: 'g1', name: 'Cara' },
     ])
-    await db.insert(user).values(testUsers([alice]))
+    await db.insert(user).values(userRows([alice]))
     await db.insert(memberships).values({ userId: alice.userId, groupId: 'g1', role: 'admin', participantId: 'pa' })
   })
 })
 afterAll(async () => {
-  await pool.end()
+  await database.close()
 })
 
 const draft = (over: Partial<ExpenseDraft> = {}): ExpenseDraft => ({

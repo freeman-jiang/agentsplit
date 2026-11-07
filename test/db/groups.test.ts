@@ -1,12 +1,11 @@
 // Groups and access against a real database: settings, people, slugs,
 // invitations and membership changes. Item IDs refer to docs/v2/PARITY.md.
-import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { activities, groups, invitations, memberships } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { eq, sql } from 'drizzle-orm'
 import { accountBalances, listBalances } from '~/server/balances'
-import { makeDb, serializable, type Db } from '~/server/core/db'
+import type { Db } from '~/server/core/db'
 import { sha256Hex } from '~/server/core/ids'
 import {
   changeAccess,
@@ -23,7 +22,7 @@ import { createExpense, getGroup } from '~/server/ledger'
 import { requireMember, type Principal } from '~/server/core/access'
 import { statsOverview } from '~/server/stats'
 import { createUngroupedExpense } from '~/server/ungrouped'
-import { resetTestDatabase } from './setup'
+import { testDatabase, type TestDatabase } from '../kit/database'
 
 // These tests create many groups as one account; the fair-use cap has its own test (test/db/limits.test.ts).
 vi.mock('~/shared/limits', async (original) => {
@@ -31,7 +30,7 @@ vi.mock('~/shared/limits', async (original) => {
   return { ...limits, LIMITS: { ...limits.LIMITS, groupsCreated: 1000 } }
 })
 
-let pool: Pool
+let database: TestDatabase
 const BASE = 'https://agentsplit.test'
 
 /** A real private expense context: the owner and one invited friend, the owner paid 10.00 evenly. */
@@ -74,30 +73,7 @@ let n = 0
 const key = () => `key-${++n}-${Math.random().toString(36).slice(2)}`
 
 /** Runs `work` in a SERIALIZABLE transaction and retries serialization failures, as the server does. */
-async function tx<A>(work: (db: Db) => Promise<A>): Promise<A> {
-  for (let attempt = 0; ; attempt++) {
-    const client = await pool.connect()
-    try {
-      return await makeDb(client).transaction(work, { isolationLevel: 'serializable' })
-    } catch (error) {
-      const code = (error as { cause?: { code?: string } }).cause?.code
-      if (attempt < 4 && (code === '40001' || code === '40P01')) continue
-      throw error
-    } finally {
-      client.release()
-    }
-  }
-}
-
-/** Runs `work` through the server's own transaction, with its retries. */
-async function serverTx<A>(work: (db: Db) => Promise<A>): Promise<A> {
-  const client = await pool.connect()
-  try {
-    return await serializable(makeDb(client), work)
-  } finally {
-    client.release()
-  }
-}
+const tx = <A>(work: (db: Db) => Promise<A>) => database.tx(work)
 
 const create = (principal: Principal, group: Partial<Parameters<typeof createGroup>[1]['group']> = {}, groupId: string | null = null) =>
   tx((db) =>
@@ -125,7 +101,7 @@ async function groupWithBob(slug: string | null = null) {
 }
 
 beforeAll(async () => {
-  pool = await resetTestDatabase()
+  database = await testDatabase()
   const now = new Date()
   await tx((db) =>
     db.insert(user).values(
@@ -134,7 +110,7 @@ beforeAll(async () => {
   )
 })
 afterAll(async () => {
-  await pool.end()
+  await database.close()
 })
 
 describe('creating groups', () => {
@@ -196,7 +172,7 @@ describe('slugs', () => {
 
   it('lets exactly one of two concurrent creates claim a slug (P-GROUP-96)', async () => {
     const claim = (principal: Principal) =>
-      serverTx((db) =>
+      tx((db) =>
         createGroup(db, { principal, groupId: null, idempotencyKey: key(), group: { name: 'Race', slug: 'race-slug', information: '', defaultCurrency: 'USD', participants: [] } }),
       )
     const results = await Promise.allSettled([claim(alice), claim(bob)])

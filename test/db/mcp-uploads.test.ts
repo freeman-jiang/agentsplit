@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { receipts, receiptUploads } from '../../db/schema/app'
 import { putUpload } from '~/server/receipt-routes'
 import { removeStaleUploads } from '~/server/receipt-uploads'
-import { BASE, failure, ok, startHarness, type Harness } from './mcp-harness'
+import { BASE, failure, ok, startHarness, type Harness } from './harness'
 
 let h: Harness
 let alice: Record<string, string>
@@ -64,7 +64,7 @@ const put = (target: Target, body: Uint8Array<ArrayBuffer>, headers = target.hea
   h.withDb((db) =>
     putUpload({
       db,
-      bucket: h.r2.bucket,
+      bucket: h.storage.bucket,
       request: new Request(target.url, { method: 'PUT', headers, body }),
       token: new URL(target.url).pathname.split('/').pop() ?? '',
     }),
@@ -104,7 +104,7 @@ describe('agent receipt uploads', () => {
     expect(document?.url).toMatch(/^r2:\/\/agentsplit-receipts\/receipts\/[A-Za-z0-9_-]{21}\.png$/)
 
     // GET downloadUrl with the agent's own key, and with another member's bearer key.
-    const download = (headers: Record<string, string>) => h.app.fetch(new Request(document?.downloadUrl ?? '', { headers }))
+    const download = (headers: Record<string, string>) => h.fetch(new Request(document?.downloadUrl ?? '', { headers }))
     const image200 = await download(alice)
     expect(image200.status).toBe(200)
     expect(image200.headers.get('content-type')).toBe('image/png')
@@ -226,9 +226,9 @@ describe('agent receipt uploads', () => {
     if (!stale) throw new Error('no target')
     expect((await put(stale, image)).status).toBe(200)
     const [row] = await h.withDb((db) => db.select({ key: receiptUploads.key }).from(receiptUploads).where(eq(receiptUploads.id, stale.uploadId)))
-    expect(h.r2.objects.has(row?.key ?? '')).toBe(true)
+    expect(h.storage.objects.has(row?.key ?? '')).toBe(true)
     await h.withDb((db) => db.update(receiptUploads).set({ createdAt: sql`now() - interval '26 hours'` }).where(eq(receiptUploads.id, stale.uploadId)))
-    expect(await h.withDb((db) => removeStaleUploads({ db, bucket: h.r2.bucket }))).toBe(1)
-    expect(h.r2.objects.has(row?.key ?? '')).toBe(false)
+    expect(await h.withDb((db) => removeStaleUploads({ db, bucket: h.storage.bucket }))).toBe(1)
+    expect(h.storage.objects.has(row?.key ?? '')).toBe(false)
   })
 })

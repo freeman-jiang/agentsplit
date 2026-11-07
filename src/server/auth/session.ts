@@ -10,7 +10,7 @@ import type { Db } from '../core/db'
 import type { Principal } from '../core/access'
 
 /** Better Auth reads one name: the __Secure- form when the app runs on HTTPS. */
-const cookieName = (baseUrl: string) =>
+export const sessionCookieName = (baseUrl: string) =>
   baseUrl.startsWith('https:') ? '__Secure-better-auth.session_token' : 'better-auth.session_token'
 
 const keys = new Map<string, Promise<CryptoKey>>()
@@ -27,7 +27,7 @@ const keyFor = (secret: string) => {
 export async function verifiedSessionToken(data: { cookie: string | null; secret: string; baseUrl: string }): Promise<string | null> {
   if (!data.cookie) return null
   const cookies = parseCookies(data.cookie)
-  const value = cookies.get(cookieName(data.baseUrl))
+  const value = cookies.get(sessionCookieName(data.baseUrl))
   if (!value) return null
   const at = value.lastIndexOf('.')
   if (at < 1) return null

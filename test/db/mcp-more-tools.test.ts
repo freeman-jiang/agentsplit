@@ -6,7 +6,7 @@ import { Schema } from 'effect'
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { MCP_TOOLS } from '~/server/mcp/tools'
-import { failure, ok, startHarness, type Harness } from './mcp-harness'
+import { failure, ok, startHarness, type Harness } from './harness'
 
 let h: Harness
 let alice: Record<string, string>
