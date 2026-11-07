@@ -192,7 +192,8 @@ export type ExpenseRow = {
   vendor: string | null
   notes: string
   category_id: number
-  category: { id: number; name: string; grouping: string } | null
+  /** categories.id is a foreign key of the row, so the category exists. */
+  category: { id: number; name: string; grouping: string }
   expense_date: string
   currency: CurrencyCode
   amount: string
