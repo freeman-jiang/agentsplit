@@ -179,7 +179,6 @@ function LogTab() {
           return (
             <div key={key}>
               <h3 className="eyebrow">{label}</h3>
-              {/* Faint lines tie each event to its revision line. */}
               <div className="divide-y divide-border/50">
                 {items.map((activity) => (
                   <LogItem key={activity.id} group={group} groupId={groupId} activity={activity} showDate={key !== 'today' && key !== 'yesterday'} />

@@ -259,7 +259,6 @@ function GroupCard({ group, starred, archived, marks }: { group: Group; starred:
 /** The caller's balance across every membership, one amount per currency (P-BAL-102..105). */
 function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
   const outstanding = directory.totals.filter((t) => !isZero(t.net))
-  // The same left-aligned stack as the dashboard balance.
   return (
     <Card className="p-4 sm:px-6 sm:py-5">
       <div className="flex items-baseline justify-between gap-4">

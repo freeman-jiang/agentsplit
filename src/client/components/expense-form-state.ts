@@ -257,7 +257,6 @@ export type Prefill = {
 
 /**
  * A new expense: the saved split defaults, the viewer as payer, and any URL prefill (P-EXP-66, P-EXP-71, P-EXP-96).
- * A new private expense has no group (`groupId: null`), so it starts with everyone, evenly.
  */
 export function newExpenseState(data: { groupId: string | null; participants: readonly string[]; viewer: string | null; defaultCurrency: CurrencyCode; prefill: Prefill }): FormState {
   const defaults = data.groupId === null ? everyoneEvenly(data.participants) : loadSplitDefaults({ groupId: data.groupId, participants: data.participants })

@@ -34,7 +34,6 @@ export const stringParam: Param<string> = (value) => (typeof value === 'string' 
 
 export const nonEmptyParam: Param<string> = (value) => (typeof value === 'string' && value ? value : undefined)
 
-/** A number, from a number or numeric text. */
 export const numberParam: Param<number> = (value) => {
   const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN
   return Number.isFinite(n) ? n : undefined
@@ -45,7 +44,6 @@ export const positiveIntegerParam: Param<number> = (value) => {
   return n !== undefined && Number.isInteger(n) && n > 0 ? n : undefined
 }
 
-/** A currency code from the registry. */
 export const currencyParam: Param<CurrencyCode> = (value) =>
   typeof value === 'string' && isCurrencyCode(value) ? value : undefined
 
@@ -57,7 +55,6 @@ export const oneOf =
 /** Filled by the suggested payments' "Record payment" links (P-BAL-49, P-BAL-71) and the repayment links (P-UNGROUP-72). */
 export const paymentSearch = searchParams({ from: textParam, to: textParam, amount: textParam, currencyCode: currencyParam })
 
-/** The payment form's prefill from those params. */
 export function paymentPrefill(search: ReturnType<typeof paymentSearch>) {
   return {
     ...(search.from === undefined ? {} : { from: String(search.from) }),

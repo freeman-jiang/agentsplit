@@ -69,7 +69,6 @@ export function ExpenseRow(props: {
           </div>
         )}
         <RowTitle title={e.title} payment={e.kind === 'payment'} documentCount={e.documentCount} />
-        {/* One metadata line: what the title is about, where it is, and who wrote it. */}
         <Metadata
           parts={[
             context && { key: 'context', node: context },
