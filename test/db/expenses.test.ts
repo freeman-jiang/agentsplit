@@ -12,7 +12,7 @@ import { makeDb, sqlState } from '~/server/core/db'
 import type { Principal } from '~/server/core/access'
 import { jsonError } from '~/server/core/errors'
 import type { StoredDocument } from '~/server/expense-read'
-import { getExpenseContext, getExpenseDetail, listCategories } from '~/server/expenses'
+import { locateExpense, getExpenseDetail, listCategories } from '~/server/expenses'
 import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense } from '~/server/ledger'
 import { downloadReceipt, uploadReceipt } from '~/server/receipt-routes'
 import { RECEIPT_REFUSED } from '~/server/receipts'
@@ -197,8 +197,8 @@ describe('expense writes', () => {
   it('finds an expense from any accessible group, and nothing for others', async () => {
     const expenseId = nextExpense()
     await home.create({ expenseId })
-    expect(await tx((db) => getExpenseContext(db, { principal: bob, expenseId }))).toMatchObject({ groupId: home.groupId, slug: home.slug, kind: 'expense' })
-    await expect(tx((db) => getExpenseContext(db, { principal: mallory, expenseId }))).rejects.toMatchObject({ _tag: 'NotFound' })
+    expect(await tx((db) => locateExpense(db, { principal: bob, expenseId }))).toMatchObject({ groupId: home.groupId, slug: home.slug, kind: 'expense' })
+    await expect(tx((db) => locateExpense(db, { principal: mallory, expenseId }))).rejects.toMatchObject({ _tag: 'NotFound' })
     await expect(tx((db) => getExpenseDetail(db, { principal: mallory, groupId: home.groupId, expenseId }))).rejects.toMatchObject({ _tag: 'Forbidden' })
   })
 })

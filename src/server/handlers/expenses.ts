@@ -11,7 +11,7 @@ export const ExpensesHandlers = Layer.mergeAll(
   Api.toLayerHandler('expenses.detail', ({ groupId, expenseId }) =>
     read((db, principal) => expenses.getExpenseDetail(db, { principal, groupId, expenseId })),
   ),
-  Api.toLayerHandler('expenses.locate', ({ expenseId }) => read((db, principal) => expenses.getExpenseContext(db, { principal, expenseId }))),
+  Api.toLayerHandler('expenses.locate', ({ expenseId }) => read((db, principal) => expenses.locateExpense(db, { principal, expenseId }))),
   Api.toLayerHandler('balances.list', ({ groupId, currency }) =>
     read((db, principal) => balances.listBalances(db, { principal, groupId, ...(currency ? { currency } : {}) })),
   ),

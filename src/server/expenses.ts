@@ -51,7 +51,7 @@ export async function getExpenseDetail(db: Db, data: { principal: Principal; gro
 }
 
 /** Where an expense lives, for any group the caller can access (P-EXP-142). */
-export async function getExpenseContext(db: Db, data: { principal: Principal; expenseId: string }) {
+export async function locateExpense(db: Db, data: { principal: Principal; expenseId: string }) {
   const result = await db.execute<{ group_id: string; slug: string | null; kind: ExpenseKind; title: string }>(sql`
     SELECT e.group_id, g.slug, e.kind, e.title FROM expenses e
     JOIN groups g ON g.id = e.group_id
