@@ -8,16 +8,14 @@ import { and, eq, isNull, sql, type SQL } from 'drizzle-orm'
 import { activities, expenses, groups, invitations, memberships, participants, privateContexts, privatePeople } from '../../db/schema/app'
 import { Conflict, Forbidden, Invalid, Unauthorized } from '../shared/api'
 import type { ExpenseDraft } from '../shared/expense-rules'
-import type { V2GroupSnapshot } from '../shared/history'
+import { EMAIL } from '../shared/groups'
 import { LIMITS, participantLimitMessage } from '../shared/limits'
+import type { V2GroupSnapshot } from '../shared/snapshots'
 import type { Db } from './db'
 import { contacts } from './feed'
 import { groupSnapshotOf, invitationTokenHash, newInvitationToken } from './groups'
 import { randomId } from './ids'
 import { actor, createExpense, requireMember, type Principal } from './ledger'
-
-const INVITATION_DAYS = 7
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export type PrivatePerson =
   | { readonly kind: 'account'; readonly id: string; readonly userId: string }
@@ -62,7 +60,7 @@ export async function createUngroupedExpense(
     }
     const name = person.name.trim()
     const email = person.email.trim().toLowerCase()
-    if (!name || name.length > 50 || !EMAIL.test(email)) throw new Invalid({ message: 'Enter a name and a valid email address.', field: 'people' })
+    if (!name || name.length > LIMITS.nameMax || !EMAIL.test(email)) throw new Invalid({ message: 'Enter a name and a valid email address.', field: 'people' })
     // An email that belongs to a known contact links that account; nobody needs an invitation then.
     const account = known.find((c) => c.email.toLowerCase() === email)
     return { localId: person.id, name: account?.name ?? name, email, userId: account?.id ?? null }
@@ -132,7 +130,7 @@ export async function createUngroupedExpense(
   const links = []
   for (const person of stored.filter((p) => !p.userId)) {
     const { secret, tokenHash } = newInvitationSecret()
-    const expiresAt = new Date(Date.now() + INVITATION_DAYS * 86_400_000)
+    const expiresAt = new Date(Date.now() + LIMITS.invitationDays * 86_400_000)
     await tx.insert(invitations).values({
       id: randomId(),
       groupId,
@@ -176,7 +174,7 @@ export async function renewPrivateInvitation(tx: Db, data: { principal: Principa
     .where(and(eq(invitations.groupId, membership.groupId), eq(invitations.participantId, data.participantId), isNull(invitations.acceptedAt), isNull(invitations.revokedAt)))
   const { secret, tokenHash } = newInvitationSecret()
   const id = randomId()
-  const expiresAt = new Date(Date.now() + INVITATION_DAYS * 86_400_000)
+  const expiresAt = new Date(Date.now() + LIMITS.invitationDays * 86_400_000)
   await tx.insert(invitations).values({
     id,
     groupId: membership.groupId,

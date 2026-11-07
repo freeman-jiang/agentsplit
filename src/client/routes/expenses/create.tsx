@@ -13,6 +13,8 @@ import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
 import { randomId } from '~/shared/ids'
 import type { FeedOptions, Reference, UngroupedResult } from '~/shared/api'
+import { EMAIL } from '~/shared/groups'
+import { LIMITS } from '~/shared/limits'
 
 export const Route = createFileRoute('/expenses/create')({
   loader: ({ context }) => {
@@ -25,7 +27,6 @@ export const Route = createFileRoute('/expenses/create')({
 type Person = { id: string; name: string; email: string; userId?: string }
 type Options = typeof FeedOptions.Type
 type Invitations = (typeof UngroupedResult.Type)['invitations']
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function NewExpense() {
   const options = useQuery(feedOptionsQuery)
@@ -86,7 +87,7 @@ function ExpenseSetup({ options }: { options: Options }) {
     )
   const addInvited = () => {
     const normalized = email.trim().toLowerCase()
-    if (!name.trim() || name.trim().length > 50 || !EMAIL.test(normalized)) return setError('Enter a name and a valid email address.')
+    if (!name.trim() || name.trim().length > LIMITS.nameMax || !EMAIL.test(normalized)) return setError('Enter a name and a valid email address.')
     if (people.some((p) => p.email.toLowerCase() === normalized)) return setError('That person is already included.')
     // A known contact's email links that account, so no invitation is needed.
     const existing = options.people.find((p) => p.email.toLowerCase() === normalized)
@@ -163,7 +164,7 @@ function ExpenseSetup({ options }: { options: Options }) {
             <div className="space-y-3 pt-2 pb-3">
               <label className="block space-y-2 text-sm">
                 <span>Name</span>
-                <Input value={name} maxLength={50} onChange={(e) => setName(e.target.value)} />
+                <Input value={name} maxLength={LIMITS.nameMax} onChange={(e) => setName(e.target.value)} />
               </label>
               <label className="block space-y-2 text-sm">
                 <span>Email</span>

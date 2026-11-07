@@ -1,11 +1,18 @@
-// The typed contract between the SPA and the Worker. MCP tools call the same
+// The typed contract between the SPA and the server. MCP tools call the same
 // domain services, so these schemas also describe agent writes.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
+import { LIMITS } from '../limits'
 import { CurrencyCodeSchema, DecimalOutput, DecimalString } from '../money'
-import { SPLIT_MODES } from '../split'
+import { EXPENSE_KINDS, GROUP_KINDS, RECURRENCES, ROLES, SPLIT_MODES } from '../vocabulary'
 
 export const SplitModeSchema = Schema.Literals(SPLIT_MODES)
+export const RecurrenceSchema = Schema.Literals(RECURRENCES)
+export const ExpenseKindSchema = Schema.Literals(EXPENSE_KINDS)
+export const RoleSchema = Schema.Literals(ROLES)
+export const GroupKindSchema = Schema.Literals(GROUP_KINDS)
+/** Search text in a list filter. */
+export const SearchText = Schema.String.check(Schema.isMaxLength(LIMITS.searchMax))
 
 // ---------- errors ----------
 
@@ -64,7 +71,7 @@ export const GroupSummary = Schema.Struct({
   slug: Schema.NullOr(Schema.String),
   name: Schema.String,
   defaultCurrency: CurrencyCodeSchema,
-  role: Schema.Literals(['admin', 'member']),
+  role: RoleSchema,
   /** The caller's participant in this group, when bound. */
   participantId: Schema.NullOr(Schema.String),
 })
@@ -98,7 +105,7 @@ export const Expense = Schema.Struct({
   id: Schema.String,
   groupId: Schema.String,
   revision: Schema.Number,
-  kind: Schema.Literals(['expense', 'payment']),
+  kind: ExpenseKindSchema,
   title: Schema.String,
   vendor: Schema.NullOr(Schema.String),
   notes: Schema.String,
@@ -109,7 +116,7 @@ export const Expense = Schema.Struct({
   splitMode: SplitModeSchema,
   payers: Schema.Array(Part),
   shares: Schema.Array(SharePart),
-  recurrence: Schema.Literals(['none', 'daily', 'weekly', 'monthly']),
+  recurrence: RecurrenceSchema,
   createdAt: Timestamp,
   updatedAt: Timestamp,
   documentCount: Schema.Number,
@@ -122,12 +129,12 @@ export const ExpenseSort = Schema.Literals(['date', 'updated'])
 
 export const ExpenseFilter = Schema.Struct({
   sort: Schema.optionalKey(ExpenseSort),
-  search: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+  search: Schema.optionalKey(SearchText),
   participantId: Schema.optionalKey(Id),
   payerId: Schema.optionalKey(Id),
   currency: Schema.optionalKey(CurrencyCodeSchema),
   categoryId: Schema.optionalKey(Schema.Number),
-  kind: Schema.optionalKey(Schema.Literals(['expense', 'payment'])),
+  kind: Schema.optionalKey(ExpenseKindSchema),
   from: Schema.optionalKey(CalendarDate),
   to: Schema.optionalKey(CalendarDate),
 })
@@ -148,20 +155,20 @@ export const DocumentInput = Schema.Struct({
 
 /** What a client sends to create or replace an expense. Amounts are exact decimal strings. */
 export const ExpenseInput = Schema.Struct({
-  kind: Schema.Literals(['expense', 'payment']),
-  title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
-  vendor: Schema.NullOr(Schema.String.check(Schema.isMaxLength(200))),
-  notes: Schema.String.check(Schema.isMaxLength(10_000)),
+  kind: ExpenseKindSchema,
+  title: Schema.String.check(Schema.isBetweenLength(LIMITS.titleMin, LIMITS.titleMax)),
+  vendor: Schema.NullOr(Schema.String.check(Schema.isMaxLength(LIMITS.vendorMax))),
+  notes: Schema.String.check(Schema.isMaxLength(LIMITS.notesMax)),
   categoryId: Schema.Number,
   expenseDate: CalendarDate,
   currency: CurrencyCodeSchema,
   amount: DecimalString,
   /** Who paid, and how much each; amounts sum to `amount`. */
-  payers: Schema.Array(PartInput).check(Schema.isMinLength(1)),
+  payers: Schema.Array(PartInput).check(Schema.isBetweenLength(1, LIMITS.participantsPerGroup)),
   splitMode: SplitModeSchema,
   /** Who shares the cost, with each person's weight: a share count, a percentage, or an exact amount. */
-  shares: Schema.Array(Schema.Struct({ participantId: Id, weight: Schema.String })).check(Schema.isMinLength(1)),
-  recurrence: Schema.Literals(['none', 'daily', 'weekly', 'monthly']),
+  shares: Schema.Array(Schema.Struct({ participantId: Id, weight: Schema.String })).check(Schema.isBetweenLength(1, LIMITS.participantsPerGroup)),
+  recurrence: RecurrenceSchema,
   /** The full list of receipts. Omitted on an update: keep the saved receipts. */
   documents: Schema.optionalKey(Schema.Array(DocumentInput).check(Schema.isMaxLength(100))),
 })

@@ -29,7 +29,7 @@ v2 runs on Coolify on the Oracle host, as the current app does (DECISIONS.md, "H
 ## Money
 
 - Every amount is an integer count of minor units (`bigint`). The currency registry in `src/shared/currencies.ts` is generated from the current app's data, so the decimal places of each currency are the same.
-- The API accepts and returns exact decimal strings. `parseMinor` rejects more decimals than the currency allows.
+- The API accepts and returns exact decimal strings. `minorOrNull` (src/shared/minor.ts) rejects more decimals than the currency allows.
 - Splits use the current app's rule, ported to integers in `src/shared/split.ts`: each part is floored, and the leftover units go first to the payer, then by largest remainder, then by position. Participants are ordered by ID with the JavaScript `<` comparison, as in the current app. An amount split whose parts do not add up to the total falls back to a proportional split, as in the current app.
 - With multiple payers, the leftover unit goes to the payer who paid the most, then to the smallest ID. With one payer this is the current rule.
 - `test/legacy/differential.test.ts` runs the current app's `getExpenseShares` and `getSuggestedReimbursements` on random expenses and requires identical results.

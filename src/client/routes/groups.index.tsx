@@ -12,6 +12,7 @@ import { Card, CardDescription, CardTitle } from '~/client/ui/card'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/client/ui/dropdown-menu'
 import type { Directory } from '~/shared/api'
 import { groupRef } from '~/shared/groups'
+import { LIMITS } from '~/shared/limits'
 
 type Search = { access?: 'denied'; offset?: number }
 
@@ -170,7 +171,7 @@ function Groups() {
       {(offset > 0 || data.nextOffset !== null) && (
         <div className="flex gap-3">
           {offset > 0 && (
-            <Button variant="outline" onClick={() => navigate({ search: (s) => ({ ...s, offset: Math.max(0, offset - 100) }) })}>
+            <Button variant="outline" onClick={() => navigate({ search: (s) => ({ ...s, offset: Math.max(0, offset - LIMITS.directoryPage) }) })}>
               Previous groups
             </Button>
           )}

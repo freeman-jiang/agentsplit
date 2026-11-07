@@ -1,8 +1,9 @@
 // Pure group rules shared by the client and the server. No Effect import here:
 // the client bundle must stay free of the Effect runtime (BUILDING.md).
+import { LIMITS } from './limits'
 
 /** Root routes and infrastructure names a group cannot claim (P-GROUP-94). */
-export const RESERVED_GROUP_SLUGS: ReadonlySet<string> = new Set([
+const RESERVED_GROUP_SLUGS: ReadonlySet<string> = new Set([
   'sign-in',
   'api',
   'groups',
@@ -32,11 +33,11 @@ export const RESERVED_GROUP_SLUGS: ReadonlySet<string> = new Set([
 /** A slug is trimmed and lowercased before it is checked and stored (P-GROUP-92). */
 export const normalizeSlug = (slug: string) => slug.trim().toLowerCase()
 
-const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/
+const SLUG_PATTERN = new RegExp(`^[a-z0-9](?:[a-z0-9-]{${LIMITS.slugMin - 2},${LIMITS.slugMax - 2}}[a-z0-9])$`)
 
 /** The problem with a normalized, non-empty slug, or null if it is valid. */
 export function slugProblem(slug: string): string | null {
-  if (!SLUG_PATTERN.test(slug)) return 'Use 3–63 lowercase letters, numbers or hyphens; start and end with a letter or number.'
+  if (!SLUG_PATTERN.test(slug)) return `Use ${LIMITS.slugMin}–${LIMITS.slugMax} lowercase letters, numbers or hyphens; start and end with a letter or number.`
   if (RESERVED_GROUP_SLUGS.has(slug)) return 'This URL is reserved.'
   return null
 }
@@ -61,6 +62,7 @@ export const isIdSegment = (segment: string) => segment !== '' && !SLUG_PATTERN.
 /** The URL path of the group that a route segment names. */
 export const segmentPath = (segment: string) => (isIdSegment(segment) ? `/groups/${encodeURIComponent(segment)}` : `/${encodeURIComponent(segment)}`)
 
-export const INVITATION_DAYS = 7
+/** An invitation email: something@something.something, without spaces. */
+export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 /** An invitation token: 32 random bytes in base64url (P-ACCESS-14). */
 export const INVITATION_TOKEN = /^[A-Za-z0-9_-]{43}$/

@@ -6,12 +6,12 @@ import { cimd } from '@better-auth/cimd'
 import { mcp } from '@better-auth/mcp'
 import type { OAuthProviderExtension } from '@better-auth/oauth-provider'
 import { jwt } from 'better-auth/plugins/jwt'
-import { OAUTH_SCOPES } from '../shared/api/account'
+import { OAUTH_SCOPES } from '../shared/account'
 import { LIMITS } from '../shared/limits'
 import { sha256Base64url } from './ids'
 
 // The consent page needs the scopes too, so they live in the shared contract.
-export { OAUTH_READ_SCOPE, OAUTH_SCOPES, OAUTH_WRITE_SCOPE } from '../shared/api/account'
+export { OAUTH_READ_SCOPE, OAUTH_SCOPES, OAUTH_WRITE_SCOPE } from '../shared/account'
 export const OAUTH_CONNECTION_CLAIM = 'https://agentsplit.app/connection'
 
 export const mcpResource = (baseUrl: string) => new URL('/api/mcp', baseUrl).href
@@ -56,7 +56,7 @@ export function authPlugins(config: {
     apiKey({
       defaultPrefix: 'agentsplit_',
       enableSessionForAPIKeys: false,
-      rateLimit: { enabled: true, timeWindow: 60_000, maxRequests: 120 },
+      rateLimit: { enabled: true, timeWindow: 60_000, maxRequests: LIMITS.apiKeyRequestsPerMinute },
       keyExpiration: { defaultExpiresIn: null },
     }),
   ]

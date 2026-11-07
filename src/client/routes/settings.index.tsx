@@ -10,7 +10,7 @@ import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
-import { API_KEY_NAME_MAX, PROFILE_NAME_MAX } from '~/shared/account'
+import { LIMITS } from '~/shared/limits'
 
 export const Route = createFileRoute('/settings/')({
   loader: ({ context }) => Promise.all([context.queryClient.ensureQueryData(accountQuery), context.queryClient.ensureQueryData(storageUsageQuery)]),
@@ -63,7 +63,7 @@ function Profile(props: { name: string; email: string }) {
         <Input
           id="account-display-name"
           value={displayName}
-          maxLength={PROFILE_NAME_MAX}
+          maxLength={LIMITS.nameMax}
           required
           aria-describedby="account-name-help"
           onChange={(event) => {
@@ -178,7 +178,7 @@ function ApiKeys(props: { keys: readonly Key[] }) {
           <Input
             aria-label="Key name"
             placeholder="e.g. My Codex"
-            maxLength={API_KEY_NAME_MAX}
+            maxLength={LIMITS.apiKeyNameMax}
             required
             value={label}
             onChange={(event) => setLabel(event.target.value)}

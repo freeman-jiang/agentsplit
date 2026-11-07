@@ -2,7 +2,7 @@
 // src/server/storage.ts, the same services as Settings, Storage and limits.
 // Receipt storage is a fair-use quota per uploader (src/shared/limits.ts).
 import { Schema } from 'effect'
-import { FAIR_USE } from '../../../shared/limits'
+import { FAIR_USE, LIMITS } from '../../../shared/limits'
 import * as storage from '../../storage'
 import { defineTool } from '../registry'
 import { DateTime, Id, NoArguments, NonNegativeInt, NullableString, RecordedTime, ShortId } from './shared'
@@ -40,7 +40,7 @@ export const listReceipts = defineTool({
     minBytes: Schema.optionalKey(NonNegativeInt),
     order: Schema.optionalKey(Schema.Literals(['largest', 'oldest'])),
     cursor: Schema.optionalKey(NonNegativeInt),
-    limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))),
+    limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax }))),
   }),
   strict: [''],
   output: Schema.Struct({
@@ -90,7 +90,7 @@ export const deleteReceipts = defineTool({
   kind: 'write',
   description:
     'Permanently delete receipts by receiptId (from list_receipts, or documents[].receiptId of get_expense). Only the uploader or an admin of the receipt’s group may delete it. The image is removed from storage and frees the uploader’s space. Every current expense that shows it gets a new audited revision without it; history stays append-only, so old revisions and the activity log keep the reference and show it as deleted, and downloads answer 410. This cannot be undone. Download a receipt first if it may be needed. Returns the bytes freed; an already deleted receipt frees 0.',
-  input: Schema.Struct({ receiptIds: Schema.Array(ShortId).check(Schema.isBetweenLength(1, 100)) }),
+  input: Schema.Struct({ receiptIds: Schema.Array(ShortId).check(Schema.isBetweenLength(1, LIMITS.pageMax)) }),
   strict: [''],
   output: Schema.Struct({
     deleted: Schema.Array(Schema.Struct({ receiptId: Id, bytes: NonNegativeInt })),

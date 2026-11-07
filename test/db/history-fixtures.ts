@@ -5,7 +5,8 @@
 import { activities, expensePayers, expenses, expenseShares } from '../../db/schema/app'
 import type { Db } from '~/server/db'
 import { randomId } from '~/server/ids'
-import { minor } from '~/shared/money'
+import { minor } from '~/shared/minor'
+import type { StoredActivitySource } from '~/shared/vocabulary'
 
 export type V1Expense = {
   id: string
@@ -73,7 +74,7 @@ export const v1GroupSnapshot = (g: { id: string; name: string; slug: string | nu
 export async function insertImportedExpense(
   tx: Db,
   data: {
-    revisions: { snapshot: V1Expense; type: 'create_expense' | 'update_expense'; time: string; actorName?: string; actorUserId?: string; source?: string }[]
+    revisions: { snapshot: V1Expense; type: 'create_expense' | 'update_expense'; time: string; actorName?: string; actorUserId?: string; source?: StoredActivitySource }[]
     current: {
       kind: 'expense' | 'payment'
       amount: bigint

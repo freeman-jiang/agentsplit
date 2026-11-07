@@ -4,7 +4,8 @@
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { authBootstrap, oauthConnections } from '../../db/schema/app'
 import * as authSchema from '../../db/schema/auth'
-import { Forbidden, Invalid, NotFound, PROFILE_NAME_MAX } from '../shared/api'
+import { Forbidden, Invalid, NotFound } from '../shared/api'
+import { LIMITS } from '../shared/limits'
 import type { Db } from './db'
 import type { Principal } from './ledger'
 import { iso } from './sql'
@@ -56,8 +57,8 @@ export async function getAccount(db: Db, data: { principal: Principal }): Promis
 /** Sets the one global display name of the caller. Past snapshots and audit names keep the old name. */
 export async function updateProfile(db: Db, data: { principal: Principal; name: string }) {
   const name = data.name.trim()
-  if (name.length < 1 || name.length > PROFILE_NAME_MAX)
-    throw new Invalid({ message: `Display name must be 1 to ${PROFILE_NAME_MAX} characters`, field: 'name' })
+  if (name.length < 1 || name.length > LIMITS.nameMax)
+    throw new Invalid({ message: `Display name must be 1 to ${LIMITS.nameMax} characters`, field: 'name' })
   const [current] = await db
     .select({ verified: authSchema.user.emailVerified })
     .from(authSchema.user)

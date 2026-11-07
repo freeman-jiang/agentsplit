@@ -3,6 +3,7 @@
 // uploaded, and permanent receipt deletion (src/server/storage.ts).
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
+import { LIMITS } from '../limits'
 import { Id, ReadError, WriteError } from './core'
 
 /** A receipt deleted for good: readers show who deleted it and when, instead of the image. */
@@ -40,13 +41,13 @@ export class StorageApi extends RpcGroup.make(
     payload: {
       order: ReceiptOrder,
       cursor: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-      limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 })),
+      limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax })),
     },
     success: Schema.Struct({ receipts: Schema.Array(OwnReceipt), nextCursor: Schema.NullOr(Schema.Number) }),
     error: ReadError,
   }),
   Rpc.make('storage.deleteReceipts', {
-    payload: { receiptIds: Schema.Array(Id).check(Schema.isBetweenLength(1, 100)) },
+    payload: { receiptIds: Schema.Array(Id).check(Schema.isBetweenLength(1, LIMITS.pageMax)) },
     success: Schema.Struct({
       deleted: Schema.Array(Schema.Struct({ receiptId: Schema.String, bytes: Schema.Number })),
       freedBytes: Schema.Number,

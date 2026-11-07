@@ -10,6 +10,7 @@ import { Button } from '~/client/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '~/client/ui/card'
 import { Input } from '~/client/ui/input'
 import { groupRef } from '~/shared/groups'
+import { LIMITS } from '~/shared/limits'
 
 export const Route = createFileRoute('/groups/create')({
   beforeLoad: async ({ context }) => {
@@ -68,7 +69,7 @@ function CreateGroup() {
                     id={`participant-${person.key}`}
                     className="text-base"
                     placeholder="New"
-                    maxLength={50}
+                    maxLength={LIMITS.nameMax}
                     value={person.name}
                     onChange={(e) => setPeople((list) => list.map((p) => (p.key === person.key ? { ...p, name: e.target.value } : p)))}
                   />
@@ -87,7 +88,7 @@ function CreateGroup() {
             </ul>
           </CardContent>
           <CardFooter>
-            <Button type="button" variant="secondary" disabled={people.length >= 99} onClick={() => setPeople((list) => [...list, { key: nextRow++, name: '' }])}>
+            <Button type="button" variant="secondary" disabled={people.length >= LIMITS.participantsPerGroup - 1} onClick={() => setPeople((list) => [...list, { key: nextRow++, name: '' }])}>
               Add participant
             </Button>
           </CardFooter>

@@ -1,10 +1,10 @@
 // Small pieces the MCP tool areas share: wire formats of the current app.
-import { Result, Schema } from 'effect'
+import { Schema } from 'effect'
+import { RecordedTime as HistoryRecordedTime } from '../../../shared/api/history'
 import { CURRENCIES, type CurrencyCode } from '../../../shared/currencies'
 import { isRealDate } from '../../../shared/expense-rules'
-import { formatMinor, minor, parseMinor, type Minor } from '../../../shared/money'
-import { RecordedTime as HistoryRecordedTime } from '../../../shared/api/history'
-import { MODE_NAMES, RULE_NAMES, type SplitMode } from '../../../shared/split'
+import { DECIMAL, formatMinor, minor, minorOrNull, type Minor } from '../../../shared/minor'
+import { RECURRENCE_LIST, SPLIT_MODE_LIST } from '../../../shared/vocabulary'
 
 /** The app origin, without a trailing slash, for links. */
 export const origin = (baseUrl: string) => new URL(baseUrl).origin
@@ -20,20 +20,15 @@ export const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 /** Money in output: an exact decimal string in the stated currency. */
 export const Money = Schema.String.annotate({ description: 'Exact decimal string in the stated currency, e.g. 12.34' })
 
-// ---------- vocabulary: the current app's names for v2 values ----------
-
-export const MODES = { EVENLY: 'evenly', BY_SHARES: 'shares', BY_PERCENTAGE: 'percentage', BY_AMOUNT: 'amount' } as const satisfies Record<string, SplitMode>
-export const RULES = { NONE: 'none', DAILY: 'daily', WEEKLY: 'weekly', MONTHLY: 'monthly' } as const
-export { MODE_NAMES, RULE_NAMES }
-export type Rule = keyof typeof RULE_NAMES
+// ---------- the current app's names for v2 values (src/shared/vocabulary.ts) ----------
 
 const CODES = Object.keys(CURRENCIES) as [CurrencyCode, ...CurrencyCode[]]
 export const CurrencyCodeInput = Schema.Literals(CODES)
-export const SplitModeInput = Schema.Literals(['EVENLY', 'BY_SHARES', 'BY_PERCENTAGE', 'BY_AMOUNT'])
-export const RecurrenceInput = Schema.Literals(['NONE', 'DAILY', 'WEEKLY', 'MONTHLY'])
+export const SplitModeInput = Schema.Literals(SPLIT_MODE_LIST)
+export const RecurrenceInput = Schema.Literals(RECURRENCE_LIST)
 
 /** An exact decimal string; JSON numbers, exponents, spaces and separators are refused. */
-export const Decimal = Schema.String.check(Schema.isMaxLength(32), Schema.isPattern(/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/))
+export const Decimal = Schema.String.check(Schema.isMaxLength(32), Schema.isPattern(DECIMAL))
 
 /** A real calendar date, YYYY-MM-DD (2026-02-29 and 2026-09-31 are refused). */
 export const CalendarDate = Schema.String.check(
@@ -58,9 +53,9 @@ export const money = (amount: string, currency: string) =>
 
 /** Minor units of decimal text that the server formatted; it always fits its currency. */
 export const minorOf = (amount: string, currency: CurrencyCode): Minor => {
-  const parsed = parseMinor({ amount, currency })
-  if (Result.isFailure(parsed)) throw new Error(`${amount} is not a ${currency} amount`)
-  return parsed.success
+  const value = minorOrNull({ amount, currency })
+  if (value === null) throw new Error(`${amount} is not a ${currency} amount`)
+  return value
 }
 
 export const isCurrencyCode = (code: string): code is CurrencyCode => code in CURRENCIES

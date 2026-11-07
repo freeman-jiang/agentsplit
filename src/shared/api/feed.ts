@@ -3,9 +3,23 @@
 // ungrouped form of create_expense call the same services.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
-import { CurrencyCodeSchema, DecimalOutput } from '../money'
 import { GROUP_ID } from '../ids'
-import { CalendarDate, Expense, ExpenseInput, Id, IdempotencyKey, Participant, ReadError, WriteError } from './core'
+import { LIMITS } from '../limits'
+import { CurrencyCodeSchema, DecimalOutput } from '../money'
+import {
+  CalendarDate,
+  Expense,
+  ExpenseInput,
+  ExpenseKindSchema,
+  GroupKindSchema,
+  Id,
+  IdempotencyKey,
+  Participant,
+  ReadError,
+  RoleSchema,
+  SearchText,
+  WriteError,
+} from './core'
 
 // ---------- feed ----------
 
@@ -22,7 +36,7 @@ export const FeedFilter = Schema.Struct({
   /** One named group or one private context. */
   groupId: Schema.optionalKey(Id),
   /** Case-insensitive substring of the title or the vendor. */
-  search: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+  search: Schema.optionalKey(SearchText),
   /** Keep expenses that the caller pays for or shares. Default true, in the UI and for agents. */
   involvingMe: Schema.optionalKey(Schema.Boolean),
   /** An account (user) ID: keep expenses that this account pays for or shares. */
@@ -31,7 +45,7 @@ export const FeedFilter = Schema.Struct({
   payerUserId: Schema.optionalKey(Id),
   currency: Schema.optionalKey(CurrencyCodeSchema),
   categoryId: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
-  kind: Schema.optionalKey(Schema.Literals(['expense', 'payment'])),
+  kind: Schema.optionalKey(ExpenseKindSchema),
   /** Inclusive bounds on the expense date. */
   from: Schema.optionalKey(CalendarDate),
   to: Schema.optionalKey(CalendarDate),
@@ -72,7 +86,7 @@ export const AccountBalances = Schema.Struct({
     Schema.Struct({
       groupId: Schema.String,
       groupName: Schema.String,
-      kind: Schema.Literals(['named', 'private']),
+      kind: GroupKindSchema,
       currency: CurrencyCodeSchema,
       participantId: Schema.String,
       participantName: Schema.String,
@@ -111,8 +125,8 @@ export const PendingInvitation = Schema.Struct({
 export const ExpenseContext = Schema.Struct({
   expense: Expense,
   attribution: Attribution,
-  group: Schema.Struct({ ...GroupRef.fields, kind: Schema.Literals(['named', 'private']) }),
-  role: Schema.Literals(['admin', 'member']),
+  group: Schema.Struct({ ...GroupRef.fields, kind: GroupKindSchema }),
+  role: RoleSchema,
   participantId: Schema.NullOr(Schema.String),
   /** Every participant of the group or context, with current display names. */
   participants: Schema.Array(Participant),
@@ -139,7 +153,7 @@ export const PrivatePerson = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal('email'),
     id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(42)),
-    /** Trimmed by the server; 1 to 50 characters. */
+    /** Trimmed by the server; then 1 to LIMITS.nameMax characters. */
     name: Schema.String.check(Schema.isMaxLength(200)),
     /** Trimmed and lowercased by the server. */
     email: Schema.String.check(Schema.isMaxLength(320)),
@@ -164,7 +178,7 @@ export class FeedApi extends RpcGroup.make(
     payload: {
       filter: FeedFilter,
       cursor: Schema.NullOr(FeedCursor),
-      limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 })),
+      limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax })),
     },
     success: FeedPage,
     error: ReadError,
@@ -176,7 +190,7 @@ export class FeedApi extends RpcGroup.make(
     payload: {
       expenseId: Schema.String.check(Schema.isPattern(GROUP_ID)),
       idempotencyKey: IdempotencyKey,
-      people: Schema.Array(PrivatePerson).check(Schema.isMinLength(2), Schema.isMaxLength(100)),
+      people: Schema.Array(PrivatePerson).check(Schema.isBetweenLength(2, LIMITS.participantsPerGroup)),
       /** Payers and shares name people by their local IDs. */
       expense: ExpenseInput,
     },

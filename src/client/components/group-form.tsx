@@ -6,8 +6,9 @@ import { Input } from '~/client/ui/input'
 import { Label } from '~/client/ui/label'
 import { NativeSelect } from '~/client/ui/native-select'
 import { Textarea } from '~/client/ui/textarea'
-import { normalizeSlug, slugProblem } from '~/shared/groups'
 import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
+import { normalizeSlug, slugProblem } from '~/shared/groups'
+import { LIMITS } from '~/shared/limits'
 
 export type GroupFormValues = { name: string; slug: string; information: string; defaultCurrency: CurrencyCode }
 
@@ -18,7 +19,12 @@ function problems(values: GroupFormValues) {
   const name = values.name.trim()
   const slug = normalizeSlug(values.slug)
   return {
-    name: name.length < 2 ? 'Enter at least 2 characters.' : name.length > 50 ? 'Enter at most 50 characters.' : null,
+    name:
+      name.length < LIMITS.groupNameMin
+        ? `Enter at least ${LIMITS.groupNameMin} characters.`
+        : name.length > LIMITS.nameMax
+          ? `Enter at most ${LIMITS.nameMax} characters.`
+          : null,
     slug: slug ? slugProblem(slug) : null,
   }
 }
@@ -93,7 +99,7 @@ export function GroupForm(props: {
               id="group-name"
               className="h-11"
               placeholder="Summer vacations"
-              maxLength={50}
+              maxLength={LIMITS.nameMax}
               value={values.name}
               aria-invalid={touched && !!issues.name}
               aria-describedby="group-name-help"
@@ -112,7 +118,7 @@ export function GroupForm(props: {
               placeholder="maple"
               autoCapitalize="none"
               autoCorrect="off"
-              maxLength={63}
+              maxLength={LIMITS.slugMax}
               value={values.slug}
               aria-invalid={touched && !!issues.slug}
               aria-describedby="group-slug-help"
@@ -149,7 +155,7 @@ export function GroupForm(props: {
             <Textarea
               id="group-information"
               rows={2}
-              maxLength={10_000}
+              maxLength={LIMITS.informationMax}
               placeholder="What information is relevant to group participants?"
               value={values.information}
               onChange={(e) => set('information', e.target.value)}

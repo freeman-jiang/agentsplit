@@ -4,14 +4,15 @@
 import { sql } from 'drizzle-orm'
 import { groupAccessDenied } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
-import { formatMinor, minor, type Minor } from '../shared/money'
+import { formatMinor, minor, type Minor } from '../shared/minor'
 import * as stats from '../shared/stats'
+import type { ExpenseKind, Recurrence } from '../shared/vocabulary'
 import type { Db } from './db'
 import type { Principal } from './ledger'
 
 type Row = {
   id: string
-  kind: 'expense' | 'payment'
+  kind: ExpenseKind
   title: string
   vendor: string | null
   expenseDate: string
@@ -21,7 +22,7 @@ type Row = {
   categoryId: number
   grouping: string
   name: string
-  recurrence: 'none' | 'daily' | 'weekly' | 'monthly'
+  recurrence: Recurrence
   /** Recurring and still the current frame of its series. */
   activeRecurring: boolean
   payers: { participantId: string; amount: string }[]

@@ -1,13 +1,14 @@
 import { useRouter } from '@tanstack/react-router'
 import type { AnchorHTMLAttributes } from 'react'
 import { segmentPath } from '~/shared/groups'
+import type { ExpenseKind } from '~/shared/vocabulary'
 
 /**
  * The editor of an expense or a payment (P-HIST-70: payments open the payment
  * editor), under the group path the user is on. These routes belong to the
  * expenses area; until they exist they fall through to the group's index.
  */
-export const expenseHref = (data: { group: string; expenseId: string; kind: 'expense' | 'payment' }) =>
+export const expenseHref = (data: { group: string; expenseId: string; kind: ExpenseKind }) =>
   `${segmentPath(data.group)}/${data.kind === 'payment' ? 'payments' : 'expenses'}/${encodeURIComponent(data.expenseId)}/edit`
 
 /**

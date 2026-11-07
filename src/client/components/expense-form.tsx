@@ -20,8 +20,9 @@ import { NativeSelect } from '~/client/ui/native-select'
 import { Textarea } from '~/client/ui/textarea'
 import type { ExpenseDetail, Group, Reference } from '~/shared/api'
 import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
-import { LIMITS } from '~/shared/expense-rules'
-import type { SplitMode } from '~/shared/split'
+import { LIMITS } from '~/shared/limits'
+import { DECIMAL } from '~/shared/minor'
+import type { SplitMode } from '~/shared/vocabulary'
 import { DeleteDialog } from './delete-dialog'
 import { ExpenseDocuments } from './expense-documents'
 import { amountInput, autoAmounts, check, involvesEveryone, isIncome, payerRemainder, saveSplitDefaults, toDraft, toInput, type ExpenseInputData, type FormState } from './expense-form-state'
@@ -568,7 +569,7 @@ const formatZero = (currency: CurrencyCode) => (CURRENCIES[currency].decimals ? 
 /** The wide-screen summary (P-EXP-48). */
 function Summary(props: { state: FormState; names: ReadonlyMap<string, string>; hint: string }) {
   const { state } = props
-  const valid = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(state.amount.trim())
+  const valid = DECIMAL.test(state.amount.trim())
   // Without a valid amount the total shows a muted zero, like the field's placeholder.
   const amount = money(valid ? state.amount.trim() : formatZero(state.currency), state.currency)
   const payers =

@@ -5,8 +5,10 @@
 // and export.ts; this file only maps names.
 import { Schema } from 'effect'
 import { sql } from 'drizzle-orm'
-import { minor } from '../../../shared/money'
+import { LIMITS } from '../../../shared/limits'
+import { minor } from '../../../shared/minor'
 import { preferredPayer } from '../../../shared/split'
+import { ACTIVITY_TYPE_BY_NAME, ACTIVITY_TYPE_LIST, ACTIVITY_TYPE_NAMES, RECURRENCE_NAMES, SPLIT_MODE_NAMES, type ExpenseKind, type Recurrence, type SplitMode } from '../../../shared/vocabulary'
 import * as exports from '../../export'
 import * as history from '../../history'
 import { iso } from '../../sql'
@@ -19,15 +21,12 @@ import {
   DateTime,
   HistoryFields,
   Id,
-  MODE_NAMES,
   money,
   Money,
   NonNegativeInt,
   NullableString,
   RecordedTime,
   RecurrenceInput,
-  type Rule,
-  RULE_NAMES,
   ShortId,
   SplitModeInput,
 } from './shared'
@@ -144,7 +143,7 @@ export const getSpendingStats = defineTool({
         count: s.recurring.count,
         estimatedMonthly: s.recurring.monthly,
         estimatedYearly: s.recurring.yearly,
-        byPeriod: s.recurring.byPeriod.map((p) => ({ period: RULE_NAMES[p.period], count: p.count, total: p.total })),
+        byPeriod: s.recurring.byPeriod.map((p) => ({ period: RECURRENCE_NAMES[p.period], count: p.count, total: p.total })),
       },
     }
   },
@@ -152,17 +151,7 @@ export const getSpendingStats = defineTool({
 
 // ---------- list_activity ----------
 
-const TYPES = {
-  CREATE_GROUP: 'create_group',
-  JOIN_GROUP: 'join_group',
-  LEAVE_GROUP: 'leave_group',
-  UPDATE_GROUP: 'update_group',
-  CREATE_EXPENSE: 'create_expense',
-  UPDATE_EXPENSE: 'update_expense',
-  DELETE_EXPENSE: 'delete_expense',
-} as const satisfies Record<string, history.ActivityType>
-const TYPE_NAMES = Object.fromEntries(Object.entries(TYPES).map(([name, type]) => [type, name])) as { [K in keyof typeof TYPES as (typeof TYPES)[K]]: K }
-const ActivityTypeInput = Schema.Literals(Object.keys(TYPES) as [keyof typeof TYPES, ...(keyof typeof TYPES)[]])
+const ActivityTypeInput = Schema.Literals(ACTIVITY_TYPE_LIST)
 
 /** The live expense beside a current Log entry (the current app's `expense` convenience field). */
 const LiveExpense = Schema.Struct({
@@ -201,10 +190,10 @@ type LiveRow = {
   original_amount: string | null
   original_currency: string | null
   conversion_rate: string | null
-  kind: 'expense' | 'payment'
-  split_mode: keyof typeof MODE_NAMES
+  kind: ExpenseKind
+  split_mode: SplitMode
   notes: string
-  recurrence: Rule
+  recurrence: Recurrence
   link_id: string | null
   revision: number
   payers: { participantId: string; amount: string }[]
@@ -239,9 +228,9 @@ async function liveExpenses(db: Parameters<typeof history.listActivities>[0], da
         originalCurrency: e.original_currency,
         conversionRate: e.conversion_rate,
         isReimbursement: e.kind === 'payment',
-        splitMode: MODE_NAMES[e.split_mode],
+        splitMode: SPLIT_MODE_NAMES[e.split_mode],
         notes: e.notes === '' ? null : e.notes,
-        recurrenceRule: RULE_NAMES[e.recurrence],
+        recurrenceRule: RECURRENCE_NAMES[e.recurrence],
         recurringExpenseLinkId: e.link_id,
         deletedAt: null,
         revision: e.revision,
@@ -262,7 +251,7 @@ export const listActivity = defineTool({
     order: optional(Schema.Literals(['asc', 'desc']).annotate({ default: 'desc' })),
     groupId: ShortId,
     cursor: optional(NonNegativeInt.annotate({ default: 0 })),
-    limit: optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 })).annotate({ default: 5 })),
+    limit: optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax })).annotate({ default: 5 })),
     expenseId: optional(ShortId),
     from: optional(CalendarDate),
     to: optional(CalendarDate),
@@ -296,7 +285,7 @@ export const listActivity = defineTool({
   }),
   run: async ({ db, principal }, input) => {
     const { activityType, groupId, ...query } = input
-    const page = await history.listActivities(db, { principal, group: groupId, withActors: true, ...query, ...(activityType ? { type: TYPES[activityType] } : {}) })
+    const page = await history.listActivities(db, { principal, group: groupId, withActors: true, ...query, ...(activityType ? { type: ACTIVITY_TYPE_BY_NAME[activityType] } : {}) })
     const historical = input.asOf !== undefined || input.atActivityId !== undefined
     const live = historical
       ? new Map<string, typeof LiveExpense.Encoded>()
@@ -310,7 +299,7 @@ export const listActivity = defineTool({
           id: a.id,
           groupId,
           time: a.time,
-          activityType: TYPE_NAMES[a.type],
+          activityType: ACTIVITY_TYPE_NAMES[a.type],
           participantId: a.participantId,
           expenseId: a.expenseId,
           data: a.data,

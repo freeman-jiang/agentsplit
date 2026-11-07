@@ -19,6 +19,7 @@ import { Textarea } from '~/client/ui/textarea'
 import type { ExpenseDetail } from '~/shared/api'
 import type { CurrencyCode } from '~/shared/currencies'
 import { validateExpense, type ExpenseDraft } from '~/shared/expense-rules'
+import { DECIMAL } from '~/shared/minor'
 import { DeleteDialog } from './delete-dialog'
 import { CurrencySelect, leavePage, type FormGroup, type GroupTarget, type PageTarget } from './expense-form'
 import { toInput } from './expense-form-state'
@@ -34,6 +35,9 @@ export type PaymentPrefill = { from?: string; to?: string; amount?: string; curr
 /** A payment saves in its group or private context, which exists already, so it never needs `create`. */
 export type PaymentTarget = GroupTarget | Omit<PageTarget, 'create' | 'privateExpense'>
 
+
+/** A decimal amount without a sign. */
+const unsigned = (text: string) => DECIMAL.test(text) && !text.startsWith('-')
 export function PaymentForm(
   props: { group: FormGroup; target: PaymentTarget } & ({ mode: 'create'; expenseId: string; prefill: PaymentPrefill } | { mode: 'edit'; detail: DetailData; onReload: () => void }),
 ) {
@@ -59,7 +63,7 @@ export function PaymentForm(
     setFailure(null)
     if (!from || !to) return setError('Choose a sender and recipient.')
     if (from === to) return setError('Sender and recipient must be different people.')
-    if (!/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(amount.trim()) || /^0(?:\.0*)?$/.test(amount.trim())) return setError('Enter an amount greater than zero.')
+    if (!unsigned(amount.trim()) || /^0(?:\.0*)?$/.test(amount.trim())) return setError('Enter an amount greater than zero.')
     const draft: ExpenseDraft = {
       kind: 'payment',
       title: saved?.title ?? 'Payment',
@@ -202,7 +206,7 @@ export function PaymentForm(
       {amount && /^\d/.test(amount) && from && to && from !== to && (
         <p className="text-sm text-muted-foreground">
           {group.participants.find((p) => p.id === from)?.name} pays {group.participants.find((p) => p.id === to)?.name}{' '}
-          {/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(amount.trim()) ? money(amount.trim(), currency) : ''}
+          {unsigned(amount.trim()) ? money(amount.trim(), currency) : ''}
         </p>
       )}
     </form>

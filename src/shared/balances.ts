@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import type { CurrencyCode } from './currencies'
-import { minor, type Minor } from './money'
+import { minor, type Minor } from './minor'
 import { compareIds } from './split'
 
 /** One ledger entry as balances see it: who paid and who owes, in one currency. */
@@ -12,7 +12,7 @@ export type LedgerEntry = {
 
 export type Balance = { readonly paid: Minor; readonly owed: Minor; readonly net: Minor }
 
-export class LedgerImbalanceError extends Schema.TaggedError<LedgerImbalanceError>()(
+class LedgerImbalanceError extends Schema.TaggedError<LedgerImbalanceError>()(
   'LedgerImbalanceError',
   { currency: Schema.String, net: Schema.String },
 ) {}

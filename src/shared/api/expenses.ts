@@ -1,10 +1,12 @@
 // The expenses area: categories, the edit screen's detail read, balances with
 // suggested settlements, recurring series, and reference data. Expense writes
 // themselves (create, update, delete) are in core.ts.
-import { Schema } from 'effect'
+import { Record, Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
+import { FAIR_USE_LIMITS } from '../limits'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
-import { CalendarDateOutput, Expense, Id, NotFound, ReadError, SplitModeSchema, Unavailable, WriteError } from './core'
+import { RECEIPT_CONTENT_TYPES } from '../vocabulary'
+import { CalendarDateOutput, Expense, ExpenseKindSchema, Id, NotFound, ReadError, RecurrenceSchema, SplitModeSchema, Unavailable, WriteError } from './core'
 import { ReceiptTombstone } from './storage'
 
 export const Category = Schema.Struct({ id: Schema.Number, grouping: Schema.String, name: Schema.String })
@@ -45,20 +47,11 @@ export const Reference = Schema.Struct({
   categories: Schema.Array(Category),
   currencies: Schema.Array(Schema.Struct({ code: CurrencyCodeSchema, name: Schema.String, symbol: Schema.String, decimals: Schema.Number })),
   splitModes: Schema.Array(SplitModeSchema),
-  recurrence: Schema.Array(Schema.Literals(['none', 'daily', 'weekly', 'monthly'])),
-  attachments: Schema.Struct({ enabled: Schema.Boolean, contentTypes: Schema.Array(Schema.String), maxBytes: Schema.Number }),
-  /** The fair-use limits (src/shared/limits.ts). */
-  limits: Schema.Struct({
-    receiptStorageBytes: Schema.Number,
-    receiptBytes: Schema.Number,
-    receiptsPerRequest: Schema.Number,
-    groupsCreated: Schema.Number,
-    participantsPerGroup: Schema.Number,
-    apiKeys: Schema.Number,
-    writesPerMinute: Schema.Number,
-    clientRegistrationsPerHour: Schema.Number,
-    fairUse: Schema.String,
-  }),
+  recurrence: Schema.Array(RecurrenceSchema),
+  /** Receipts are always on; `enabled` stays for the current app's agents. */
+  attachments: Schema.Struct({ enabled: Schema.Boolean, contentTypes: Schema.Array(Schema.Literals(RECEIPT_CONTENT_TYPES)), maxBytes: Schema.Number }),
+  /** The fair-use limits (FAIR_USE_LIMITS in src/shared/limits.ts). */
+  limits: Schema.Struct({ ...Record.map(FAIR_USE_LIMITS, () => Schema.Number), fairUse: Schema.String }),
 })
 
 export class ExpensesApi extends RpcGroup.make(
@@ -68,7 +61,7 @@ export class ExpensesApi extends RpcGroup.make(
   // Which group an expense belongs to, for links that know only the expense ID.
   Rpc.make('expenses.locate', {
     payload: { expenseId: Id },
-    success: Schema.Struct({ groupId: Schema.String, slug: Schema.NullOr(Schema.String), kind: Schema.Literals(['expense', 'payment']), title: Schema.String }),
+    success: Schema.Struct({ groupId: Schema.String, slug: Schema.NullOr(Schema.String), kind: ExpenseKindSchema, title: Schema.String }),
     error: Schema.Union([ReadError, NotFound]),
   }),
   Rpc.make('balances.list', {

@@ -3,23 +3,18 @@
 // (createGroup, updateGroup) and src/lib/group-access.ts.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
-import { CurrencyCodeSchema, DecimalOutput } from '../money'
-import { Id, IdempotencyKey, ReadError, WriteError } from './core'
-
-// ---------- rules shared by the form and the server ----------
-
-import { INVITATION_TOKEN } from '../groups'
+import { EMAIL, INVITATION_TOKEN } from '../groups'
 import { GROUP_ID } from '../ids'
+import { LIMITS } from '../limits'
+import { CurrencyCodeSchema, DecimalOutput } from '../money'
+import { GroupKindSchema, Id, IdempotencyKey, ReadError, RoleSchema as Role, WriteError } from './core'
 
-export * from '../groups'
-
-const GroupName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(2, 50))
-const Information = Schema.String.check(Schema.isMaxLength(10_000))
-const PersonName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(1, 50))
+const GroupName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(LIMITS.groupNameMin, LIMITS.nameMax))
+const Information = Schema.String.check(Schema.isMaxLength(LIMITS.informationMax))
+const PersonName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(1, LIMITS.nameMax))
 /** A slug as typed; the server normalizes and checks it. Empty or null removes it. */
-const SlugInput = Schema.NullOr(Schema.String.check(Schema.isMaxLength(80)))
-const Email = Schema.String.check(Schema.isMaxLength(254), Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/))
-const Role = Schema.Literals(['admin', 'member'])
+const SlugInput = Schema.NullOr(Schema.String.check(Schema.isMaxLength(LIMITS.slugMax)))
+const Email = Schema.String.check(Schema.isMaxLength(254), Schema.isPattern(EMAIL))
 const Timestamp = Schema.String // ISO 8601, UTC
 
 // ---------- shapes ----------
@@ -66,7 +61,7 @@ export const Invitation = Schema.Struct({
 })
 
 export const GroupDetails = Schema.Struct({
-  kind: Schema.Literals(['named', 'private']),
+  kind: GroupKindSchema,
   id: Schema.String,
   slug: Schema.NullOr(Schema.String),
   name: Schema.String,
@@ -88,7 +83,7 @@ export const GroupCreateInput = Schema.Struct({
   information: Information,
   defaultCurrency: CurrencyCodeSchema,
   /** Other participants; the creator is added automatically. */
-  participants: Schema.Array(PersonName).check(Schema.isMaxLength(99)),
+  participants: Schema.Array(PersonName).check(Schema.isMaxLength(LIMITS.participantsPerGroup - 1)),
 })
 
 export const GroupChanges = Schema.Struct({
@@ -101,7 +96,7 @@ export const GroupChanges = Schema.Struct({
    * them), entries without one add a person, and people left out are removed.
    */
   participants: Schema.optionalKey(
-    Schema.Array(Schema.Struct({ id: Schema.optionalKey(Id), name: PersonName })).check(Schema.isBetweenLength(1, 100)),
+    Schema.Array(Schema.Struct({ id: Schema.optionalKey(Id), name: PersonName })).check(Schema.isBetweenLength(1, LIMITS.participantsPerGroup)),
   ),
 })
 
@@ -131,7 +126,7 @@ export const AccessResult = Schema.Struct({
 export const InvitationPreview = Schema.Union([
   Schema.Struct({
     status: Schema.Literal('valid'),
-    kind: Schema.Literals(['named', 'private']),
+    kind: GroupKindSchema,
     groupName: Schema.String,
     participantName: Schema.String,
   }),

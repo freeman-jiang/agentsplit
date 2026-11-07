@@ -6,8 +6,9 @@
 import { Schema } from 'effect'
 import { computeBalances, suggestSettlements } from '../../../shared/balances'
 import type { CurrencyCode } from '../../../shared/currencies'
-import { savedEntry } from '../../../shared/history'
-import { formatMinor, minor, type Minor } from '../../../shared/money'
+import { LIMITS } from '../../../shared/limits'
+import { formatMinor, minor, type Minor } from '../../../shared/minor'
+import { savedEntry } from '../../../shared/snapshots'
 import * as expenses from '../../expenses'
 import * as feed from '../../feed'
 import * as history from '../../history'
@@ -102,7 +103,7 @@ export const getParticipantBalances = defineTool({
   input: Schema.Struct({
     groups: Schema.optionalKey(
       Schema.Array(Schema.Struct({ groupId: ShortId, participantId: Schema.optionalKey(ShortId) }))
-        .check(Schema.isMaxLength(100))
+        .check(Schema.isMaxLength(LIMITS.pageMax))
         .check(Schema.makeFilter((list) => new Set(list.map((g) => g.groupId)).size === list.length || 'Choose each group or private context only once.'))
         .annotate({
           description:

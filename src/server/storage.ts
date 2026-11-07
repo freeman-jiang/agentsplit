@@ -7,6 +7,7 @@ import { eq, sql, type SQL } from 'drizzle-orm'
 import { deletedReceipts, groups } from '../../db/schema/app'
 import { Forbidden, NotFound } from '../shared/api'
 import { LIMITS } from '../shared/limits'
+import type { GroupKind, Role } from '../shared/vocabulary'
 import type { Bucket } from './bucket'
 import type { Db } from './db'
 import { contentDisposition } from './export'
@@ -52,7 +53,7 @@ type ReceiptRow = {
   id: string
   group_id: string
   group_name: string
-  group_kind: 'named' | 'private'
+  group_kind: GroupKind
   url: string
   bytes: number
   created_at: string
@@ -112,7 +113,7 @@ export async function listReceipts(
   }
 }
 
-type DeleteRow = { id: string; group_id: string; url: string; created_by: string | null; bytes: number; role: 'admin' | 'member' | null; active: boolean; deleted: boolean }
+type DeleteRow = { id: string; group_id: string; url: string; created_by: string | null; bytes: number; role: Role | null; active: boolean; deleted: boolean }
 
 /**
  * Deletes receipts for good, in the caller's transaction. Each receipt must be

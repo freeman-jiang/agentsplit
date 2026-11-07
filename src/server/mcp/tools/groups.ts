@@ -8,16 +8,16 @@ import { sql } from 'drizzle-orm'
 import { CURRENCIES, type CurrencyCode } from '../../../shared/currencies'
 import { groupAccessDenied, NotFound } from '../../../shared/api'
 import { AccessRequest, GroupChanges, GroupCreateInput } from '../../../shared/api/groups'
-import { groupPath } from '../../../shared/groups'
+import { EMAIL, groupPath } from '../../../shared/groups'
 import { GROUP_ID } from '../../../shared/ids'
+import { LIMITS } from '../../../shared/limits'
+import { ROLES, type Role } from '../../../shared/vocabulary'
 import type { Db } from '../../db'
 import * as groups from '../../groups'
 import { displayName, iso } from '../../sql'
 import { renewPrivateInvitation } from '../../ungrouped'
 import { defineTool, ToolError } from '../registry'
 import { DateTime, Id, isCurrencyCode, NonNegativeInt, NullableString, origin } from './shared'
-
-const MAX_GROUPS = 100
 
 /** The current group wire shape. `currency` is the currency's symbol; v2 stores only the code. */
 const GroupFields = {
@@ -61,9 +61,9 @@ export const listGroups = defineTool({
   description:
     'List named groups available to your user; ungrouped private contexts are excluded. Use list_all_expenses to discover both grouped and ungrouped expenses. Keys inherit the same memberships. Page with nextCursor while hasMore is true; optionally supply a subset of groupIds.',
   input: Schema.Struct({
-    groupIds: Schema.optionalKey(Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))).check(Schema.isMaxLength(MAX_GROUPS))),
+    groupIds: Schema.optionalKey(Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))).check(Schema.isMaxLength(LIMITS.pageMax))),
     cursor: Schema.optionalKey(NonNegativeInt.annotate({ default: 0 })),
-    limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: MAX_GROUPS })).annotate({ default: MAX_GROUPS })),
+    limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax })).annotate({ default: LIMITS.pageMax })),
   }),
   strict: [''],
   output: Schema.Struct({
@@ -71,7 +71,7 @@ export const listGroups = defineTool({
     hasMore: Schema.Boolean,
     nextCursor: NonNegativeInt,
   }),
-  run: async ({ db, principal }, { groupIds, cursor = 0, limit = MAX_GROUPS }) => {
+  run: async ({ db, principal }, { groupIds, cursor = 0, limit = LIMITS.pageMax }) => {
     const requested = groupIds ? [...new Set(groupIds)] : null
     // A requested ID outside the caller's memberships fails the whole call, as in the current app.
     if (requested?.length) {
@@ -98,7 +98,7 @@ export const listGroups = defineTool({
 })
 
 type DetailsRow = GroupRow & {
-  role: 'admin' | 'member'
+  role: Role
   participant_id: string | null
   context_expense_id: string | null
   participants: { id: string; name: string; groupId: string }[]
@@ -215,14 +215,14 @@ function contract<S extends Schema.Top & Schema.ConstraintDecoder<unknown>>(sche
   return decoded.success
 }
 
-const Slug = Schema.NullOr(Schema.String.check(Schema.isMaxLength(63))).annotate({
+const Slug = Schema.NullOr(Schema.String.check(Schema.isMaxLength(LIMITS.slugMax))).annotate({
   description: 'Optional unique group URL slug, e.g. maple. Set null or empty string to remove it.',
 })
 const CurrencyCodeField = Schema.Union([Schema.NullOr(Schema.String.check(Schema.isBetweenLength(3, 3))), Schema.Literal('')])
 const GroupInputFields = {
-  name: Schema.String.check(Schema.isBetweenLength(2, 50)),
+  name: Schema.String.check(Schema.isBetweenLength(LIMITS.groupNameMin, LIMITS.nameMax)),
   slug: Slug,
-  information: Schema.String.check(Schema.isMaxLength(10_000)),
+  information: Schema.String.check(Schema.isMaxLength(LIMITS.informationMax)),
   currency: Schema.String.check(Schema.isBetweenLength(1, 5)),
   currencyCode: CurrencyCodeField,
 }
@@ -240,7 +240,7 @@ export const createGroup = defineTool({
       information: Schema.optionalKey(GroupInputFields.information),
       currency: GroupInputFields.currency,
       currencyCode: Schema.optionalKey(GroupInputFields.currencyCode),
-      participants: Schema.Array(Schema.Struct({ name: Schema.String.check(Schema.isBetweenLength(1, 50)) })).check(Schema.isMaxLength(99)),
+      participants: Schema.Array(Schema.Struct({ name: Schema.String.check(Schema.isBetweenLength(1, LIMITS.nameMax)) })).check(Schema.isMaxLength(LIMITS.participantsPerGroup - 1)),
     }),
     groupId: Schema.optionalKey(Schema.String.check(Schema.isPattern(GROUP_ID))),
   }),
@@ -276,8 +276,8 @@ export const updateGroup = defineTool({
       currency: Schema.optionalKey(GroupInputFields.currency),
       currencyCode: Schema.optionalKey(GroupInputFields.currencyCode),
       participants: Schema.optionalKey(
-        Schema.Array(Schema.Struct({ id: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))), name: Schema.String.check(Schema.isBetweenLength(1, 50)) })).check(
-          Schema.isBetweenLength(1, 100),
+        Schema.Array(Schema.Struct({ id: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))), name: Schema.String.check(Schema.isBetweenLength(1, LIMITS.nameMax)) })).check(
+          Schema.isBetweenLength(1, LIMITS.participantsPerGroup),
         ),
       ),
     }),
@@ -323,13 +323,13 @@ const AccessInput = Schema.Struct({
   shareUrl: Schema.optionalKey(
     Schema.String.check(Schema.isMaxLength(2000)).annotate({ format: 'uri', description: 'For join: the email-bound invitation URL, not a group URL.' }),
   ),
-  email: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(254), Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)).annotate({ format: 'email' })),
+  email: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(254), Schema.isPattern(EMAIL)).annotate({ format: 'email' })),
   invitationId: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
   userId: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(128))),
   participantId: Schema.optionalKey(
     Schema.String.check(Schema.isBetweenLength(1, 64)).annotate({ description: 'The existing participant to invite or bind. A membership identity cannot later be switched.' }),
   ),
-  role: Schema.optionalKey(Schema.Literals(['admin', 'member'])),
+  role: Schema.optionalKey(Schema.Literals(ROLES)),
 }).check(
   Schema.makeFilter((input) => {
     const missing = REQUIRED[input.action].filter((field) => !input[field])
@@ -349,7 +349,7 @@ export const manageGroupAccess = defineTool({
   name: 'manage_group_access',
   kind: 'write',
   description:
-    'Manage membership: join with an email-bound invitation shareUrl; leave with groupId. Admin actions: invite with groupId, email and participantId (an existing unclaimed participant) (returns a single-use URL valid for 7 days; share it with the intended person), revoke_invitation with invitationId, remove_member with userId, set_role with userId and role=admin|member. Read members, their fixed participantId, and pending invitations with get_group. For an unbound legacy member only, an admin can bind_member with userId, verified email and participantId. For a private ungrouped expense, renew_invitation with groupId and participantId atomically replaces its invitation, including an expired one; only its original email can be invited. For a new named-group participant, first call update_group preserving all existing participants, then invite the returned participantId. This returns a link and sends no email. joined is true only after a join. Identity bindings cannot be changed; removal retains the identity and history. The last admin cannot leave or be demoted. A group URL grants no access. Changes apply immediately to all user keys; ledger history is preserved. Invitations are not idempotent: do not blindly retry an uncertain invite; inspect get_group first.',
+    `Manage membership: join with an email-bound invitation shareUrl; leave with groupId. Admin actions: invite with groupId, email and participantId (an existing unclaimed participant) (returns a single-use URL valid for ${LIMITS.invitationDays} days; share it with the intended person), revoke_invitation with invitationId, remove_member with userId, set_role with userId and role=admin|member. Read members, their fixed participantId, and pending invitations with get_group. For an unbound legacy member only, an admin can bind_member with userId, verified email and participantId. For a private ungrouped expense, renew_invitation with groupId and participantId atomically replaces its invitation, including an expired one; only its original email can be invited. For a new named-group participant, first call update_group preserving all existing participants, then invite the returned participantId. This returns a link and sends no email. joined is true only after a join. Identity bindings cannot be changed; removal retains the identity and history. The last admin cannot leave or be demoted. A group URL grants no access. Changes apply immediately to all user keys; ledger history is preserved. Invitations are not idempotent: do not blindly retry an uncertain invite; inspect get_group first.`,
   input: AccessInput,
   strict: [''],
   output: Schema.Struct({

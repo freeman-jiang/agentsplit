@@ -2,11 +2,13 @@
 // the Stats tab and exports. Reads only: none of these procedures writes.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
+import { LIMITS } from '../limits'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
-import { Balance, CalendarDate, CalendarDateOutput, Id, Participant, ReadError, SplitModeSchema } from './core'
+import { ACTIVITY_TYPES, RECURRING_PERIODS } from '../vocabulary'
+import { Balance, CalendarDate, CalendarDateOutput, ExpenseKindSchema, Id, Participant, ReadError, RecurrenceSchema, SearchText, SplitModeSchema } from './core'
 import { ReceiptTombstone } from './storage'
 
-export const ActivityType = Schema.Literals(['create_group', 'join_group', 'leave_group', 'update_group', 'create_expense', 'update_expense', 'delete_expense'])
+export const ActivityType = Schema.Literals(ACTIVITY_TYPES)
 
 /** A recorded-change time with a time zone and at most millisecond precision, such as 2026-10-01T15:00:00Z. Not an expense date. */
 export const RecordedTime = Schema.String.check(
@@ -19,7 +21,6 @@ const Boundary = {
   atActivityId: Schema.optionalKey(Id),
 }
 
-const Recurrence = Schema.Literals(['none', 'daily', 'weekly', 'monthly'])
 const CategoryRef = Schema.Struct({ grouping: Schema.String, name: Schema.String })
 
 /** One saved expense revision, read from either snapshot format. Money is decimal text at the currency's precision. */
@@ -27,7 +28,7 @@ export const SavedExpense = Schema.Struct({
   schemaVersion: Schema.Literals([1, 2]),
   id: Schema.String,
   revision: Schema.Number,
-  kind: Schema.Literals(['expense', 'payment']),
+  kind: ExpenseKindSchema,
   title: Schema.String,
   vendor: Schema.NullOr(Schema.String),
   notes: Schema.String,
@@ -40,7 +41,7 @@ export const SavedExpense = Schema.Struct({
   payers: Schema.Array(Schema.Struct({ participantId: Schema.String, name: Schema.String, amount: DecimalOutput })),
   splitMode: SplitModeSchema,
   shares: Schema.Array(Schema.Struct({ participantId: Schema.String, name: Schema.String, amount: DecimalOutput, weight: Schema.String })),
-  recurrence: Recurrence,
+  recurrence: RecurrenceSchema,
   originalAmount: Schema.NullOr(Schema.String),
   originalCurrency: Schema.NullOr(Schema.String),
   conversionRate: Schema.NullOr(Schema.String),
@@ -83,7 +84,7 @@ export const Activity = Schema.Struct({
   /** The revision before this one, also when it is outside the page. */
   previousSnapshot: Schema.NullOr(SavedState),
   /** The live expense, for current reads of an expense that is not deleted; always null for historical reads. */
-  expense: Schema.NullOr(Schema.Struct({ kind: Schema.Literals(['expense', 'payment']) })),
+  expense: Schema.NullOr(Schema.Struct({ kind: ExpenseKindSchema })),
 })
 
 export const ActivityPage = Schema.Struct({
@@ -104,24 +105,24 @@ export const HistoryView = Schema.Struct({
 })
 
 export const HistoricalExpenseFilter = Schema.Struct({
-  search: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+  search: Schema.optionalKey(SearchText),
   /** Exact vendor, ignoring case. */
-  vendor: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+  vendor: Schema.optionalKey(SearchText),
   currency: Schema.optionalKey(CurrencyCodeSchema),
   categoryId: Schema.optionalKey(Schema.Number),
   payerId: Schema.optionalKey(Id),
   participantId: Schema.optionalKey(Id),
-  kind: Schema.optionalKey(Schema.Literals(['expense', 'payment'])),
-  recurrence: Schema.optionalKey(Recurrence),
+  kind: Schema.optionalKey(ExpenseKindSchema),
+  recurrence: Schema.optionalKey(RecurrenceSchema),
   from: Schema.optionalKey(CalendarDate),
   to: Schema.optionalKey(CalendarDate),
 })
 
 const Offset = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
-const PageLimit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))
+const PageLimit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax }))
 
 const Amount = DecimalOutput
-const StatsRow = Schema.Struct({ id: Schema.String, kind: Schema.Literals(['expense', 'payment']), title: Schema.String, vendor: Schema.NullOr(Schema.String), amount: Amount, expenseDate: CalendarDateOutput, currency: CurrencyCodeSchema })
+const StatsRow = Schema.Struct({ id: Schema.String, kind: ExpenseKindSchema, title: Schema.String, vendor: Schema.NullOr(Schema.String), amount: Amount, expenseDate: CalendarDateOutput, currency: CurrencyCodeSchema })
 const MonthlyCategory = Schema.Struct({
   key: Schema.String,
   categoryId: Schema.NullOr(Schema.Number),
@@ -157,7 +158,7 @@ export const StatsOverview = Schema.Struct({
   categories: Schema.Array(Schema.Struct({ categoryId: Schema.Number, grouping: Schema.String, name: Schema.String, total: Amount, percent: Schema.Number })),
   recurring: Schema.Struct({
     count: Schema.Number,
-    byPeriod: Schema.Array(Schema.Struct({ period: Schema.Literals(['daily', 'weekly', 'monthly']), count: Schema.Number, total: Amount })),
+    byPeriod: Schema.Array(Schema.Struct({ period: Schema.Literals(RECURRING_PERIODS), count: Schema.Number, total: Amount })),
     monthly: Amount,
     yearly: Amount,
   }),
@@ -200,7 +201,7 @@ export class HistoryApi extends RpcGroup.make(
     error: ReadError,
   }),
   Rpc.make('history.expenses', {
-    payload: { groupId: Id, ...Boundary, filter: HistoricalExpenseFilter, cursor: Schema.optionalKey(Offset), limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))) },
+    payload: { groupId: Id, ...Boundary, filter: HistoricalExpenseFilter, cursor: Schema.optionalKey(Offset), limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.historyPageMax }))) },
     success: Schema.Struct({ history: HistoryView, expenses: Schema.Array(SavedExpense), hasMore: Schema.Boolean, nextCursor: Schema.Number }),
     error: ReadError,
   }),

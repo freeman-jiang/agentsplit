@@ -9,9 +9,10 @@ import { Conflict, groupAccessDenied, NotFound } from '../../../shared/api'
 import type { ExpenseDraft } from '../../../shared/expense-rules'
 import type { SavedExpense } from '../../../shared/history'
 import { GROUP_ID } from '../../../shared/ids'
-import { LIMITS } from '../../../shared/limits'
-import { formatMinor, minor } from '../../../shared/money'
-import { preferredPayer, type SplitMode } from '../../../shared/split'
+import { LIMITS, mebibytes } from '../../../shared/limits'
+import { formatMinor, minor } from '../../../shared/minor'
+import { preferredPayer } from '../../../shared/split'
+import { RECURRENCE_BY_NAME, RECURRENCE_NAMES, SPLIT_MODE_BY_NAME, SPLIT_MODE_NAMES, RECEIPT_CONTENT_TYPES, type ExpenseKind, type Recurrence, type SplitMode } from '../../../shared/vocabulary'
 import type { Db } from '../../db'
 import * as history from '../../history'
 import { randomId } from '../../ids'
@@ -31,8 +32,6 @@ import {
   HistoryFields,
   Id,
   minorOf,
-  MODE_NAMES,
-  MODES,
   money,
   Money,
   NonNegativeInt,
@@ -40,9 +39,6 @@ import {
   origin,
   RecordedTime,
   RecurrenceInput,
-  type Rule,
-  RULE_NAMES,
-  RULES,
   ShortId,
   SplitModeInput,
 } from './shared'
@@ -64,10 +60,10 @@ const DOCUMENTS = Schema.Array(
 const expenseFields = {
   currencyCode: CurrencyCodeInput,
   expenseDate: CalendarDate.annotate({ description: 'Calendar date in YYYY-MM-DD format' }),
-  title: Schema.String.check(Schema.isBetweenLength(2, 200)).annotate({
+  title: Schema.String.check(Schema.isBetweenLength(LIMITS.titleMin, LIMITS.titleMax)).annotate({
     description: 'A short title for the purchase, such as "Dinner at Nopa". Keep it short; put the calculation in notes.',
   }),
-  vendor: Schema.NullOr(Schema.String).annotate({
+  vendor: Schema.NullOr(Schema.String.check(Schema.isMaxLength(LIMITS.vendorMax))).annotate({
     description:
       'Optional merchant name, e.g. Costco. Keep the purchase description in title without repeating vendor. Set null or empty string to clear.',
   }),
@@ -78,13 +74,13 @@ const expenseFields = {
   }),
   paidBy: Schema.String.annotate({ description: 'The participant ID of the one person who paid the whole amount. Use payers instead when several people paid.' }),
   payers: Schema.Array(Schema.Struct({ participant: Participant, amount: Decimal }))
-    .check(Schema.isBetweenLength(1, 100))
+    .check(Schema.isBetweenLength(1, LIMITS.participantsPerGroup))
     .annotate({
       description:
         'Instead of paidBy, when several people paid: each payer’s participant ID and exact amount. The amounts add up to amount.',
     }),
   paidFor: Schema.Array(Schema.Struct({ participant: Participant, shares: Decimal }))
-    .check(Schema.isBetweenLength(1, 100))
+    .check(Schema.isBetweenLength(1, LIMITS.participantsPerGroup))
     .annotate({
       description:
         'Everyone who shares the cost, with their share. Include the payer with their share, unless the payer paid only for other people. shares: "1" each for EVENLY, relative weights for BY_SHARES, percentages summing to "100" for BY_PERCENTAGE, exact amounts summing to amount for BY_AMOUNT.',
@@ -92,7 +88,7 @@ const expenseFields = {
   splitMode: SplitModeInput,
   isReimbursement: Schema.Boolean,
   documents: DOCUMENTS,
-  notes: Schema.String.check(Schema.isMaxLength(5000)).annotate({
+  notes: Schema.String.check(Schema.isMaxLength(LIMITS.notesMax)).annotate({
     description:
       'The full calculation, so that a person can recalculate every number: each item, tax, tip, discount, and how each person’s share was found.',
   }),
@@ -126,7 +122,7 @@ const ExpenseChanges = Schema.Struct(
 const Uploads = Schema.Array(
   Schema.Struct({
     filename: Schema.String.check(Schema.isBetweenLength(1, 255)),
-    contentType: Schema.Literals(['image/jpeg', 'image/png']),
+    contentType: Schema.Literals(RECEIPT_CONTENT_TYPES),
     bytes: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.receiptBytes })),
   }),
 ).check(Schema.isMaxLength(LIMITS.receiptsPerRequest))
@@ -137,11 +133,11 @@ const People = Schema.Array(
     Schema.Struct({
       kind: Schema.Literal('email'),
       id: Schema.String.check(Schema.isBetweenLength(1, 42)),
-      name: Schema.String.check(Schema.isBetweenLength(1, 50)),
+      name: Schema.String.check(Schema.isBetweenLength(1, LIMITS.nameMax)),
       email: Schema.String.annotate({ format: 'email' }),
     }),
   ]),
-).check(Schema.isBetweenLength(2, 100))
+).check(Schema.isBetweenLength(2, LIMITS.participantsPerGroup))
 
 // ---------- outputs ----------
 
@@ -302,7 +298,7 @@ type Row = {
   id: string
   group_id: string
   revision: number
-  kind: 'expense' | 'payment'
+  kind: ExpenseKind
   title: string
   vendor: string | null
   notes: string
@@ -315,7 +311,7 @@ type Row = {
   original_currency: string | null
   conversion_rate: string | null
   split_mode: SplitMode
-  recurrence: Rule
+  recurrence: Recurrence
   created_at: string
   deleted_at: string | null
   payers: { id: string; name: string; amount: string }[]
@@ -372,8 +368,8 @@ const common = (row: Row) => ({
   originalAmount: row.original_amount === null || row.original_currency === null ? null : money(row.original_amount, row.original_currency),
   originalCurrency: row.original_currency,
   isReimbursement: row.kind === 'payment',
-  splitMode: MODE_NAMES[row.split_mode],
-  recurrenceRule: RULE_NAMES[row.recurrence],
+  splitMode: SPLIT_MODE_NAMES[row.split_mode],
+  recurrenceRule: RECURRENCE_NAMES[row.recurrence],
   category: row.category,
 })
 
@@ -440,8 +436,8 @@ const historicalCommon = (e: SavedExpense) => ({
   originalAmount: e.originalAmount,
   originalCurrency: e.originalCurrency,
   isReimbursement: e.kind === 'payment',
-  splitMode: MODE_NAMES[e.splitMode],
-  recurrenceRule: RULE_NAMES[e.recurrence],
+  splitMode: SPLIT_MODE_NAMES[e.splitMode],
+  recurrenceRule: RECURRENCE_NAMES[e.recurrence],
   category: categoryOf(e),
 })
 
@@ -471,9 +467,9 @@ export const listExpenses = defineTool({
     ...HistoryFields,
     groupId: ShortId,
     cursor: optional(NonNegativeInt),
-    limit: optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))),
-    filter: optional(Schema.String.check(Schema.isMaxLength(200))),
-    vendor: optional(Schema.String.check(Schema.isBetweenLength(1, 100)).annotate({ description: 'Exact merchant name, case-insensitive.' })),
+    limit: optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: LIMITS.pageMax }))),
+    filter: optional(Schema.String.check(Schema.isMaxLength(LIMITS.searchMax))),
+    vendor: optional(Schema.String.check(Schema.isBetweenLength(1, LIMITS.vendorMax)).annotate({ description: 'Exact merchant name, case-insensitive.' })),
     currencyCode: optional(CurrencyCodeInput),
     categoryId: optional(NonNegativeInt),
     paidById: optional(ShortId),
@@ -504,7 +500,7 @@ export const listExpenses = defineTool({
           ...(input.paidById === undefined ? {} : { payerId: input.paidById }),
           ...(input.participantId === undefined ? {} : { participantId: input.participantId }),
           ...(input.isReimbursement === undefined ? {} : { kind: input.isReimbursement ? ('payment' as const) : ('expense' as const) }),
-          ...(input.recurrenceRule === undefined ? {} : { recurrence: RULES[input.recurrenceRule] }),
+          ...(input.recurrenceRule === undefined ? {} : { recurrence: RECURRENCE_BY_NAME[input.recurrenceRule] }),
           ...(input.from === undefined ? {} : { from: input.from }),
           ...(input.to === undefined ? {} : { to: input.to }),
         },
@@ -519,7 +515,7 @@ export const listExpenses = defineTool({
     if (input.currencyCode) where.push(sql`e.currency = ${input.currencyCode}`)
     if (input.categoryId !== undefined) where.push(sql`e.category_id = ${input.categoryId}`)
     if (input.isReimbursement !== undefined) where.push(sql`e.kind = ${input.isReimbursement ? 'payment' : 'expense'}`)
-    if (input.recurrenceRule) where.push(sql`e.recurrence = ${RULES[input.recurrenceRule]}`)
+    if (input.recurrenceRule) where.push(sql`e.recurrence = ${RECURRENCE_BY_NAME[input.recurrenceRule]}`)
     if (input.from) where.push(sql`e.expense_date >= ${input.from}::date`)
     if (input.to) where.push(sql`e.expense_date <= ${input.to}::date`)
     if (input.paidById) where.push(sql`EXISTS (SELECT 1 FROM expense_payers p WHERE p.expense_id = e.id AND p.participant_id = ${input.paidById})`)
@@ -629,9 +625,9 @@ function draftOf(input: ExpenseInput): ExpenseDraft {
     currency: input.currencyCode,
     amount: input.amount,
     payers: payersOf({ paidBy: input.paidBy, payers: input.payers, amount: input.amount }),
-    splitMode: MODES[input.splitMode ?? 'EVENLY'],
+    splitMode: SPLIT_MODE_BY_NAME[input.splitMode ?? 'EVENLY'],
     shares: input.paidFor.map((p) => ({ participantId: p.participant, weight: p.shares })),
-    recurrence: RULES[input.recurrenceRule ?? 'NONE'],
+    recurrence: RECURRENCE_BY_NAME[input.recurrenceRule ?? 'NONE'],
   }
 }
 
@@ -645,7 +641,7 @@ function mergedDraft(current: ledger.ApiExpense, changes: Changes): ExpenseDraft
   else if (current.payers.length === 1 && current.payers[0]) payers = [{ participantId: current.payers[0].participantId, amount }]
   else if (!moneyChanged) payers = current.payers
   else throw new ToolError('BAD_REQUEST', 'This expense has several payers. Send payers with each payer’s new amount.')
-  const splitMode = changes.splitMode ? MODES[changes.splitMode] : current.splitMode
+  const splitMode = changes.splitMode ? SPLIT_MODE_BY_NAME[changes.splitMode] : current.splitMode
   return {
     kind: changes.isReimbursement === undefined ? current.kind : changes.isReimbursement ? 'payment' : 'expense',
     title: changes.title ?? current.title,
@@ -664,7 +660,7 @@ function mergedDraft(current: ledger.ApiExpense, changes: Changes): ExpenseDraft
           participantId: s.participantId,
           weight: current.splitMode === 'amount' ? formatMinor({ amount: minor(BigInt(s.weight)), currency: current.currency }) : s.weight,
         })),
-    recurrence: changes.recurrenceRule ? RULES[changes.recurrenceRule] : current.recurrence,
+    recurrence: changes.recurrenceRule ? RECURRENCE_BY_NAME[changes.recurrenceRule] : current.recurrence,
   }
 }
 
@@ -675,7 +671,7 @@ export const createExpense = defineTool({
   name: 'create_expense',
   kind: 'write',
   destructive: false,
-  description: `Create a group or ungrouped expense with expense. ${RECORDING_RULES} groupId is optional: when present, use the existing participant IDs from get_group and omit people. When omitted, supply people including yourself: each has a unique local id label (1-42 characters, e.g. me or friend) plus kind=account/userId from get_expense_options, or kind=email/name/email for a new invitee. expense.paidBy and paidFor.participant then refer to these local labels. Labels may be reused across expenses; the result maps them to stored participantId values for later operations. Ungrouped creation returns groupId as a private accounting context and invitation links; it sends no messages, requires isReimbursement=false and recurrenceRule=NONE, and receipts are added after saving. Optional vendor is the merchant; title describes the purchase without repeating vendor. Money is a decimal string at face value in currencyCode. One payer: paidBy. Several payers: payers with each exact amount, adding up to amount. Split modes: EVENLY, BY_SHARES (relative weights), BY_PERCENTAGE (sum 100), BY_AMOUNT (sum amount). ${PAYMENT_RULES} Recurrence uses NONE/DAILY/WEEKLY/MONTHLY. Optional uploads file metadata (JPEG or PNG, at most 5 MiB, at most 10 files) returns PUT targets; you may ignore them. PUT the file bytes once to each target url with exactly its headers, no API key, before expiresAt (300 seconds); a used or expired url is refused. Then attach the uploadIds within 24 hours with update_expense, the current revision and attachUploadIds. No receipt is saved merely by requesting a target or uploading. Supply a stable 21-character expenseId and read it before retrying an uncertain create.`,
+  description: `Create a group or ungrouped expense with expense. ${RECORDING_RULES} groupId is optional: when present, use the existing participant IDs from get_group and omit people. When omitted, supply people including yourself: each has a unique local id label (1-42 characters, e.g. me or friend) plus kind=account/userId from get_expense_options, or kind=email/name/email for a new invitee. expense.paidBy and paidFor.participant then refer to these local labels. Labels may be reused across expenses; the result maps them to stored participantId values for later operations. Ungrouped creation returns groupId as a private accounting context and invitation links; it sends no messages, requires isReimbursement=false and recurrenceRule=NONE, and receipts are added after saving. Optional vendor is the merchant; title describes the purchase without repeating vendor. Money is a decimal string at face value in currencyCode. One payer: paidBy. Several payers: payers with each exact amount, adding up to amount. Split modes: EVENLY, BY_SHARES (relative weights), BY_PERCENTAGE (sum 100), BY_AMOUNT (sum amount). ${PAYMENT_RULES} Recurrence uses NONE/DAILY/WEEKLY/MONTHLY. Optional uploads file metadata (JPEG or PNG, at most ${mebibytes(LIMITS.receiptBytes)}, at most ${LIMITS.receiptsPerRequest} files) returns PUT targets; you may ignore them. PUT the file bytes once to each target url with exactly its headers, no API key, before expiresAt (${LIMITS.uploadTargetSeconds} seconds); a used or expired url is refused. Then attach the uploadIds within ${LIMITS.uploadAttachHours} hours with update_expense, the current revision and attachUploadIds. No receipt is saved merely by requesting a target or uploading. Supply a stable 21-character expenseId and read it before retrying an uncertain create.`,
   input: Schema.Struct({
     groupId: optional(
       Schema.String.check(Schema.isMinLength(1)).annotate({
@@ -736,7 +732,7 @@ export const createExpense = defineTool({
 export const updateExpense = defineTool({
   name: 'update_expense',
   kind: 'write',
-  description: `Partially edit an expense using changes and its current expectedRevision from get_expense. Omitted fields stay unchanged. ${RECORDING_RULES} Set vendor to null or empty string to clear it. To change who paid, send paidBy (one payer) or payers (several, each with an amount); an expense with several payers needs payers again when its amount changes. Use documents to retain/remove existing receipt references. Optional uploads returns PUT targets for this expense. PUT the file bytes once to each target url with exactly its headers, no API key, before expiresAt (300 seconds); a used or expired url is refused. attachUploadIds then adds those uploaded images to this expense in one audited revision; only your own uploads for this expense can be attached, each once. Empty changes can request targets without changing the expense. Edits are audited; a stale revision fails rather than overwriting another edit.`,
+  description: `Partially edit an expense using changes and its current expectedRevision from get_expense. Omitted fields stay unchanged. ${RECORDING_RULES} Set vendor to null or empty string to clear it. To change who paid, send paidBy (one payer) or payers (several, each with an amount); an expense with several payers needs payers again when its amount changes. Use documents to retain/remove existing receipt references. Optional uploads returns PUT targets for this expense. PUT the file bytes once to each target url with exactly its headers, no API key, before expiresAt (${LIMITS.uploadTargetSeconds} seconds); a used or expired url is refused. attachUploadIds then adds those uploaded images to this expense in one audited revision; only your own uploads for this expense can be attached, each once. Empty changes can request targets without changing the expense. Edits are audited; a stale revision fails rather than overwriting another edit.`,
   input: Schema.Struct({
     expenseId: Schema.String.check(Schema.isMinLength(1)),
     groupId: Schema.String.check(Schema.isMinLength(1)),

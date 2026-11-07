@@ -5,7 +5,7 @@
 import { sql } from 'drizzle-orm'
 import { receipts } from '../../db/schema/app'
 import { Forbidden } from '../shared/api'
-import { LIMITS } from '../shared/limits'
+import { LIMITS, mebibytes } from '../shared/limits'
 import type { Bucket } from './bucket'
 import type { Db } from './db'
 import { randomId } from './ids'
@@ -15,7 +15,6 @@ import { spaceFor } from './receipt-quota'
 import { GROUP_DENIED, jsonError, sameOrigin } from './security'
 import type { Tombstone } from './sql'
 
-export const MAX_RECEIPT_BYTES = LIMITS.receiptBytes
 /** The multipart envelope may add this much to the image. */
 const ENVELOPE_BYTES = 64 * 1024
 const MAX_PIXELS = 40_000_000
@@ -167,7 +166,7 @@ export async function uploadReceipt(data: {
   if (!data.principal) return jsonError({ status: 401, message: 'Authentication required' })
   // Cap the body before parsing it.
   const length = Number(data.request.headers.get('content-length'))
-  if (!length || length > MAX_RECEIPT_BYTES + ENVELOPE_BYTES) return jsonError({ status: 413, message: 'Receipt must be at most 5 MiB' })
+  if (!length || length > LIMITS.receiptBytes + ENVELOPE_BYTES) return jsonError({ status: 413, message: `Receipt must be at most ${mebibytes(LIMITS.receiptBytes)}` })
   let form: FormData
   try {
     form = await data.request.formData()
@@ -179,9 +178,9 @@ export async function uploadReceipt(data: {
   if (typeof groupId !== 'string' || typeof file === 'string' || file === null) return jsonError({ status: 400, message: 'Group and image are required' })
   const member = await memberOrNull(data.db, { principal: data.principal, group: groupId })
   if (!member) return jsonError({ status: 403, message: GROUP_DENIED })
-  const invalid = () => jsonError({ status: 400, message: 'Could not upload receipt. Use a JPEG or PNG image up to 5 MiB.' })
+  const invalid = () => jsonError({ status: 400, message: `Could not upload receipt. Use a JPEG or PNG image up to ${mebibytes(LIMITS.receiptBytes)}.` })
   const bytes = new Uint8Array(await file.arrayBuffer())
-  const info = bytes.length && bytes.length <= MAX_RECEIPT_BYTES ? imageInfo(bytes) : null
+  const info = bytes.length && bytes.length <= LIMITS.receiptBytes ? imageInfo(bytes) : null
   if (!info) return invalid()
   const { userId } = data.principal
   const full = (message: string) => jsonError({ status: 413, message })
