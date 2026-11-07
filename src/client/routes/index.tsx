@@ -15,6 +15,7 @@ import { DisclosureSummary } from '~/client/ui/disclosure'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
 import type { FeedFilter, FeedItem } from '~/shared/api'
+import { CALENDAR_DATE } from '~/shared/dates'
 import { LIMITS } from '~/shared/limits'
 import { DashboardBalance } from './expenses/-dashboard-balance'
 
@@ -71,7 +72,6 @@ function Landing() {
 }
 
 const text = (value: string | number | undefined) => textOf(value) ?? ''
-const DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
 
 /** The URL's filters as a feed filter, or the message to show instead of the list. */
 function toFilter(s: SearchParams, search: string): { filter: typeof FeedFilter.Type } | { error: string } {
@@ -83,7 +83,7 @@ function toFilter(s: SearchParams, search: string): { filter: typeof FeedFilter.
   const [from, to] = [text(s.from), text(s.to)]
   if (currency && !currencyCode) return { error: 'Choose a supported currency.' }
   if (category && !/^\d+$/.test(category)) return { error: 'Choose a category from the list.' }
-  if ((from && !DATE.test(from)) || (to && !DATE.test(to))) return { error: 'Use a calendar date, YYYY-MM-DD.' }
+  if ((from && !CALENDAR_DATE.test(from)) || (to && !CALENDAR_DATE.test(to))) return { error: 'Use a calendar date, YYYY-MM-DD.' }
   if (from && to && from > to) return { error: 'The start date must be on or before the end date.' }
   return {
     filter: {
