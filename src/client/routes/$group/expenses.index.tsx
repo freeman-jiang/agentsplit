@@ -145,7 +145,7 @@ function ExpensesTab() {
           {sections.map((section) => (
             <div key={section.key}>
               {section.label && <h3 className="eyebrow">{section.label}</h3>}
-              <ul className="divide-y overflow-hidden rounded-2xl border dark:divide-white/15">
+              <ul className="divide-y overflow-hidden rounded-2xl border bg-card">
                 {section.expenses.map((e) => (
                   <ExpenseCard key={e.id} expense={e} group={group} viewer={g.participantId} names={names} />
                 ))}
