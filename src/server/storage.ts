@@ -10,7 +10,7 @@ import { LIMITS } from '../shared/limits'
 import type { GroupKind, Role } from '../shared/vocabulary'
 import type { Bucket } from './bucket'
 import type { Db } from './core/db'
-import { requireMember, type Principal } from './core/access'
+import { myMemberships, requireMember, type Principal } from './core/access'
 import { apiKeyCount } from './auth/api-key'
 import { removeDocuments } from './ledger'
 import { receiptUsage } from './receipt-quota'
@@ -24,7 +24,7 @@ export const DELETE_DENIED = 'Only the person who uploaded a receipt, or an admi
 export async function storageUsage(db: Db, data: { principal: Principal }) {
   const result = await db.execute<{ bytes: string; count: number; elsewhere: string; groups: number; keys: number }>(sql`
     WITH mine AS (
-      SELECT r.bytes, EXISTS (SELECT 1 FROM memberships m WHERE m.group_id = r.group_id AND m.user_id = ${data.principal.userId} AND m.active) AS member
+      SELECT r.bytes, EXISTS (SELECT 1 FROM ${myMemberships(data.principal.userId)} m WHERE m.group_id = r.group_id) AS member
       FROM receipts r
       WHERE r.created_by = ${data.principal.userId} AND NOT EXISTS (SELECT 1 FROM deleted_receipts d WHERE d.receipt_id = r.id)
     )
@@ -93,7 +93,7 @@ export async function listReceipts(
         WHERE e.group_id = r.group_id AND d.url = r.url
         ORDER BY e.deleted_at IS NULL DESC, e.updated_at DESC, e.id LIMIT 1) AS expense
     FROM receipts r
-    JOIN memberships m ON m.group_id = r.group_id AND m.user_id = ${data.principal.userId} AND m.active
+    JOIN ${myMemberships(data.principal.userId)} m ON m.group_id = r.group_id
     JOIN groups g ON g.id = r.group_id
     WHERE ${sql.join(where, sql` AND `)}
     ORDER BY ${data.order === 'largest' ? sql`r.bytes DESC, r.created_at, r.id` : sql`r.created_at, r.id`}
@@ -129,9 +129,9 @@ export async function deleteReceipts(tx: Db, data: { principal: Principal; recei
   const { userId } = data.principal
   if (!ids.length) return { deleted: [], freedBytes: 0 }
   const result = await tx.execute<DeleteRow>(sql`
-    SELECT r.id, r.group_id, r.url, r.created_by, r.bytes, m.role, coalesce(m.active, false) AS active,
+    SELECT r.id, r.group_id, r.url, r.created_by, r.bytes, m.role, m.group_id IS NOT NULL AS active,
       EXISTS (SELECT 1 FROM deleted_receipts d WHERE d.receipt_id = r.id) AS deleted
-    FROM receipts r LEFT JOIN memberships m ON m.group_id = r.group_id AND m.user_id = ${userId}
+    FROM receipts r LEFT JOIN ${myMemberships(userId)} m ON m.group_id = r.group_id
     WHERE r.id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
   `)
   const byId = new Map(result.rows.map((r) => [r.id, r]))

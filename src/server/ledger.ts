@@ -1,14 +1,14 @@
 // Ledger reads and writes. Every function checks group access itself, so the
 // RPC handlers and the MCP tools cannot skip it. Writes take a transaction.
-import { and, asc, eq, notInArray, sql, type SQL } from 'drizzle-orm'
-import { expenseDocuments, expensePayers, expenses, expenseShares, groups, memberships } from '../../db/schema/app'
+import { and, eq, notInArray, sql, type SQL } from 'drizzle-orm'
+import { expenseDocuments, expensePayers, expenses, expenseShares } from '../../db/schema/app'
 import { Conflict, Invalid, NotFound } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../shared/expense-rules'
 import { compareIds } from '../shared/ids'
 import { formatMinor, minor, type Minor } from '../shared/minor'
 import type { Role } from '../shared/vocabulary'
-import { memberCte, requireActive, requireMember, type Membership, type Principal } from './core/access'
+import { memberCte, myMemberships, requireActive, requireMember, type Membership, type Principal } from './core/access'
 import { recordExpenseEvent, type SnapshotGroup } from './activity'
 import type { Db } from './core/db'
 import { expenseColumns, involves, loadExpenses, toExpense, type ExpenseFilter, type ExpenseParts, type ExpenseRow, type ReadExpense, type StoredDocument } from './expense-read'
@@ -22,20 +22,12 @@ import { escapeLike, textList } from './sql'
 // ---------- reads ----------
 
 export async function listGroups(db: Db, principal: Principal) {
-  return db
-    .select({
-      id: groups.id,
-      slug: groups.slug,
-      name: groups.name,
-      defaultCurrency: groups.defaultCurrency,
-      role: memberships.role,
-      participantId: memberships.participantId,
-    })
-    .from(memberships)
-    .innerJoin(groups, eq(groups.id, memberships.groupId))
-    .where(and(eq(memberships.userId, principal.userId), eq(memberships.active, true), eq(groups.kind, 'named')))
-    .orderBy(asc(groups.name), asc(groups.id))
-    .then((rows) => rows.map((r) => ({ ...r, defaultCurrency: r.defaultCurrency as CurrencyCode })))
+  const result = await db.execute<{ id: string; slug: string | null; name: string; default_currency: CurrencyCode; role: Role; participant_id: string | null }>(sql`
+    SELECT g.id, g.slug, g.name, g.default_currency, m.role, m.participant_id
+    FROM ${myMemberships(principal.userId)} m JOIN groups g ON g.id = m.group_id
+    WHERE g.kind = 'named'
+    ORDER BY g.name, g.id`)
+  return result.rows.map((r) => ({ id: r.id, slug: r.slug, name: r.name, defaultCurrency: r.default_currency, role: r.role, participantId: r.participant_id }))
 }
 
 type GroupRow = {

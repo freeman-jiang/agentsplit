@@ -1,6 +1,7 @@
 // People: the names shown for participants, and the accounts a caller may add
 // to an ungrouped expense.
 import { sql, type SQL } from 'drizzle-orm'
+import { myMemberships } from './core/access'
 import type { Db } from './core/db'
 
 /**
@@ -31,7 +32,7 @@ export const contactsSql = (userId: string) => sql`
   WHERE u.email_verified AND (u.id = ${userId} OR u.id IN (
     SELECT pm.user_id FROM memberships pm
     WHERE pm.active AND pm.participant_id IS NOT NULL
-      AND pm.group_id IN (SELECT group_id FROM memberships WHERE user_id = ${userId} AND active)))`
+      AND pm.group_id IN (SELECT group_id FROM ${myMemberships(userId)} mine)))`
 
 export async function contacts(db: Db, data: { userId: string }) {
   const result = await db.execute<{ id: string; name: string; email: string }>(contactsSql(data.userId))

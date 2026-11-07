@@ -10,7 +10,7 @@ import { compareIds } from '../shared/ids'
 import { formatMinor, minor } from '../shared/minor'
 import { savedEntry } from '../shared/snapshots'
 import type { GroupKind } from '../shared/vocabulary'
-import { groupIdOf, memberCte, requireMember, type Principal } from './core/access'
+import { groupIdOf, memberCte, myMemberships, requireMember, type Principal } from './core/access'
 import type { Db } from './core/db'
 import { historicalLedger, type Boundary } from './history'
 import { participantName } from './people'
@@ -136,8 +136,7 @@ export async function accountBalances(db: Db, data: { principal: Principal; scop
     WITH s AS (SELECT DISTINCT ${groupIdOf(sql`s.ref`)} AS group_id, s.participant_id FROM json_to_recordset(${scope ?? '[]'}::json) AS s(ref text, participant_id text)),
     mine AS (
       SELECT m.group_id, ${scope ? sql`coalesce(s.participant_id, m.participant_id)` : sql`m.participant_id`} AS participant_id
-      FROM memberships m ${scope ? sql`JOIN s ON s.group_id = m.group_id` : sql``}
-      WHERE m.user_id = ${data.principal.userId} AND m.active
+      FROM ${myMemberships(data.principal.userId)} m ${scope ? sql`JOIN s ON s.group_id = m.group_id` : sql``}
     ),
     ${netsCte}
     SELECT json_build_object(

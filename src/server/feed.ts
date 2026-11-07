@@ -7,7 +7,7 @@ import { sql, type SQL } from 'drizzle-orm'
 import { Invalid, NotFound } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import type { ExpenseKind, GroupKind, Role } from '../shared/vocabulary'
-import { groupIdOf, type Principal } from './core/access'
+import { groupIdOf, myMemberships, type Principal } from './core/access'
 import { attributionOf } from './activity'
 import { balanceSums, settlementsOf, type BalanceSum } from './balances'
 import type { Db } from './core/db'
@@ -90,7 +90,7 @@ export async function listFeed(db: Db, data: { principal: Principal; filter: Fee
         WHERE p.id IN (SELECT participant_id FROM expense_payers WHERE expense_id = e.id
           UNION SELECT participant_id FROM expense_shares WHERE expense_id = e.id)), '[]') AS people
     FROM expenses e
-    JOIN memberships m ON m.group_id = e.group_id AND m.user_id = ${data.principal.userId} AND m.active
+    JOIN ${myMemberships(data.principal.userId)} m ON m.group_id = e.group_id
     JOIN groups g ON g.id = e.group_id
     LEFT JOIN private_contexts pc ON pc.group_id = g.id
     LEFT JOIN expenses ce ON ce.id = pc.expense_id
@@ -127,7 +127,7 @@ export async function feedOptions(db: Db, data: { principal: Principal }) {
   const result = await db.execute<{ result: OptionsRow }>(sql`
     SELECT json_build_object(
       'groups', coalesce((SELECT json_agg(json_build_object('id', g.id, 'name', g.name, 'slug', g.slug) ORDER BY g.name, g.id)
-        FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${me} AND m.active WHERE g.kind = 'named'), '[]'),
+        FROM groups g JOIN ${myMemberships(me)} m ON m.group_id = g.id WHERE g.kind = 'named'), '[]'),
       'people', coalesce((SELECT json_agg(json_build_object('id', c.id, 'name', c.name, 'email', c.email) ORDER BY c.name, c.id)
         FROM (${contactsSql(me)}) c), '[]'),
       'categories', coalesce((SELECT json_agg(json_build_object('id', c.id, 'grouping', c.grouping, 'name', c.name) ORDER BY c.id)
@@ -173,7 +173,7 @@ export async function expenseContext(db: Db, data: { principal: Principal; expen
         FROM invitations i JOIN participants ip ON ip.id = i.participant_id
         WHERE i.group_id = g.id AND ${listedInvitation({ i: sql`i`, kind: sql`g.kind` })}), '[]') END AS invitations
     FROM expenses e
-    JOIN memberships m ON m.group_id = e.group_id AND m.user_id = ${data.principal.userId} AND m.active
+    JOIN ${myMemberships(data.principal.userId)} m ON m.group_id = e.group_id
     JOIN groups g ON g.id = e.group_id
     LEFT JOIN private_contexts pc ON pc.group_id = g.id
     LEFT JOIN expenses ce ON ce.id = pc.expense_id
