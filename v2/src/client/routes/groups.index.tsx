@@ -108,7 +108,7 @@ function useGroupMarks() {
 
 function GroupsPage({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto w-full max-w-4xl space-y-4 px-3 py-6 sm:px-8">
+    <main className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 sm:px-8">
       <div className="flex items-center justify-between gap-2">
         <h1 className="flex-1 font-display text-3xl font-normal tracking-tight">
           <Link to="/groups">My groups</Link>
@@ -266,7 +266,7 @@ function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="font-sans text-sm font-medium tracking-normal text-muted-foreground">Your total balance</CardTitle>
+        <CardTitle className="font-sans text-sm font-semibold tracking-normal">Your total balance</CardTitle>
         <CardDescription className="text-xs">Your combined balance across all your groups.</CardDescription>
       </CardHeader>
       <CardContent>

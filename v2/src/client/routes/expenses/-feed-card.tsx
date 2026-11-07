@@ -66,9 +66,9 @@ export function FeedCard({ expense }: { expense: Item }) {
       params={{ expenseId: expense.id }}
       data-testid="expense-card"
       data-expense-id={expense.id}
-      className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 gap-y-3 border-b px-3 py-4 transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring sm:grid-cols-[2rem_2.5rem_minmax(0,1fr)_minmax(7rem,auto)_minmax(7rem,auto)] sm:items-center sm:gap-x-4"
+      className="grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-x-3 border-b px-3 py-4 transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring sm:grid-cols-[2rem_2.5rem_minmax(0,1fr)_minmax(7rem,auto)_minmax(7rem,auto)] sm:items-center sm:gap-x-4"
     >
-      <time dateTime={expense.expenseDate} className="row-span-2 text-center text-muted-foreground sm:row-span-1">
+      <time dateTime={expense.expenseDate} className="text-center text-muted-foreground">
         <span className="block text-[10px] uppercase tracking-wide">{month.format(date)}</span>
         <span className="block text-xl leading-tight tabular-nums">{date.getUTCDate()}</span>
         <span className="sr-only">{date.getUTCFullYear()}</span>
@@ -117,16 +117,21 @@ export function FeedCard({ expense }: { expense: Item }) {
           {attributionLine(expense.attribution)}
         </p>
       </div>
-      <div className="col-start-2 grid grid-cols-2 gap-3 sm:col-start-auto sm:contents">
+      {/* On narrow screens the viewer's figure leads a right-aligned column, as on the group page. */}
+      <div className="flex max-w-[7rem] flex-col items-end text-right sm:contents">
         {[figures.paid, figures.personal].map((figure, i) => (
-          <div key={i} className="min-w-0 sm:text-right" data-testid={i === 0 ? 'expense-paid' : 'expense-personal'}>
+          <div
+            key={i}
+            className={cn('max-w-full min-w-0 sm:text-right', i === 1 ? 'order-first sm:order-none' : 'mt-1 sm:mt-0')}
+            data-testid={i === 0 ? 'expense-paid' : 'expense-personal'}
+          >
             <div className="truncate text-xs text-muted-foreground" title={figure.label}>
               {figure.label}
             </div>
             <div
               className={cn(
-                'mt-0.5 text-sm tabular-nums sm:text-base',
-                i === 1 && 'font-semibold',
+                'mt-0.5 tabular-nums sm:text-base',
+                i === 1 ? 'text-sm font-semibold' : 'text-xs text-muted-foreground sm:text-foreground',
                 figure.tone === 'positive' && 'text-owed',
                 figure.tone === 'negative' && 'text-owe',
               )}

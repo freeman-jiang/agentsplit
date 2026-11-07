@@ -120,8 +120,8 @@ function Dashboard() {
   const advanced = ADVANCED.some((key) => params[key] !== undefined)
   const select = (key: Key) => ({ value: text(params[key]), onChange: (e: { target: { value: string } }) => update(key, e.target.value) })
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-8 sm:py-8">
-      <div className="space-y-6">
+    <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+      <div className="space-y-4 sm:space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="font-display text-3xl tracking-tight">Dashboard</h1>
@@ -133,7 +133,7 @@ function Dashboard() {
         </div>
         <DashboardBalance />
         <div className="flex items-baseline justify-between gap-3">
-          <h2 className="font-display text-2xl">Expenses</h2>
+          <h2 className="font-display text-xl">Expenses</h2>
           <p className="text-xs text-muted-foreground">Newest expense date first</p>
         </div>
         <section aria-label="Filter expenses" className="space-y-3 border bg-card p-3 sm:space-y-4 sm:p-4">

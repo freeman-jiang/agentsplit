@@ -14,7 +14,7 @@ const size = (amount: string) => Math.abs(Number(amount.replace('.', '')))
 export function BalancesCard(props: { currencies: Currencies; names: Names }) {
   return (
     <section className="border bg-card p-4" aria-labelledby="balances-title">
-      <h2 id="balances-title" className="font-medium">
+      <h2 id="balances-title" className="text-sm font-semibold">
         Balances
       </h2>
       <p className="mb-3 text-sm text-muted-foreground">Net balance per person, across all group expenses.</p>
@@ -66,11 +66,12 @@ export function BalancesCard(props: { currencies: Currencies; names: Names }) {
 }
 
 /** "<from> owes <to>" per currency with a "Record payment" link that prefills the payment (P-BAL-47..49). */
-export function SuggestedPayments(props: { currencies: Currencies; names: Names; group: string }) {
+export function SuggestedPayments(props: { currencies: Currencies; names: Names; group: string; viewer: string | null }) {
+  const name = (id: string) => (id === props.viewer ? 'You' : (props.names.get(id) ?? 'Unknown'))
   const pending = props.currencies.filter((c) => c.settlements.length > 0)
   return (
     <section className="border bg-card p-4" aria-labelledby="suggested-title">
-      <h2 id="suggested-title" className="font-medium">
+      <h2 id="suggested-title" className="text-sm font-semibold">
         Suggested payments
       </h2>
       <p className="mb-3 text-sm text-muted-foreground">Record these payments to settle the group.</p>
@@ -84,11 +85,12 @@ export function SuggestedPayments(props: { currencies: Currencies; names: Names;
               {c.settlements.map((s) => (
                 <li key={`${s.from}-${s.to}`} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm" data-testid="suggestion">
                   <span>
-                    <strong>{props.names.get(s.from) ?? 'Unknown'}</strong> owes <strong>{props.names.get(s.to) ?? 'Unknown'}</strong>
+                    <span className="font-medium">{name(s.from)}</span> {s.from === props.viewer ? 'owe' : 'owes'}{' '}
+                    <span className="font-medium">{name(s.to)}</span>
                   </span>
-                  <span className="flex items-center gap-3">
-                    <span className="font-semibold tabular-nums">{money(s.amount, c.currency)}</span>
-                    <Button variant="outline" size="sm" asChild>
+                  <span className="flex w-full items-center justify-between gap-3 sm:w-auto">
+                    <span className="text-lg font-semibold tabular-nums">{money(s.amount, c.currency)}</span>
+                    <Button variant={s.from === props.viewer ? 'default' : 'outline'} size="sm" asChild>
                       <Link to="/$group/payments/create" params={{ group: props.group }} search={{ from: s.from, to: s.to, amount: s.amount, currencyCode: c.currency }}>
                         Record payment
                       </Link>

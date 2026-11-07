@@ -1,6 +1,6 @@
 import { requireSignedIn } from '~/client/queries/account'
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
-import { createFileRoute, Link, Outlet, redirect } from '@tanstack/react-router'
+import { createFileRoute, Link, Outlet, redirect, useRouterState } from '@tanstack/react-router'
 import { ArrowLeftRight, BarChart3, ChevronDown, Info, Receipt, RefreshCw, Scale, ScrollText, Settings, Users } from 'lucide-react'
 import { cn } from '~/client/cn'
 import { money } from '~/client/components/money'
@@ -54,10 +54,12 @@ const TABS = [
 function GroupLayout() {
   const { group } = Route.useParams()
   const { data: g } = useSuspenseQuery(groupQuery(group))
+  // On a phone the expense and payment forms need the whole screen; the rail stays on the tabs.
+  const onForm = useRouterState({ select: (s) => s.matches.some((m) => FORM_ROUTES.has(m.routeId)) })
   return (
-    <div className="mx-auto w-full max-w-6xl px-3 py-6 sm:px-8">
+    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-8">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h1 className="min-w-0 truncate font-display text-2xl">
+        <h1 className="min-w-0 truncate font-display text-2xl sm:text-3xl">
           <Link to="/$group" params={{ group }}>
             {g.name}
           </Link>
@@ -69,11 +71,11 @@ function GroupLayout() {
           </Link>
         </Button>
       </div>
-      <div className="-mx-3 mb-4 border-b sm:mx-0">
+      <div className="-mx-4 mb-4 border-b sm:mx-0">
         {/* On narrow screens the row scrolls; the fade at the right edge shows that more tabs follow. */}
         <nav
           aria-label="Group"
-          className="flex gap-x-1 overflow-x-auto px-3 [mask-image:linear-gradient(to_right,#000_calc(100%-2.5rem),transparent)] [scrollbar-width:none] sm:gap-x-4 sm:px-0 sm:[mask-image:none]"
+          className="flex gap-x-1 overflow-x-auto px-4 [mask-image:linear-gradient(to_right,#000_calc(100%-2.5rem),transparent)] [scrollbar-width:none] sm:gap-x-4 sm:px-0 sm:[mask-image:none]"
         >
           {TABS.map(({ to, label, Icon }) => (
             <Link
@@ -90,7 +92,7 @@ function GroupLayout() {
         </nav>
       </div>
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_16rem]">
-        <BalanceRail group={group} />
+        <BalanceRail group={group} hideOnMobile={onForm} />
         <div className="min-w-0 md:col-start-1 md:row-start-1">
           <Outlet />
         </div>
@@ -98,6 +100,8 @@ function GroupLayout() {
     </div>
   )
 }
+
+const FORM_ROUTES = new Set(['/$group/expenses/create', '/$group/expenses/$expenseId/edit', '/$group/payments/create', '/$group/payments/$expenseId/edit'])
 
 type Entry = typeof CurrencyBalances.Type
 type Person = { readonly id: string; readonly name: string }
@@ -121,7 +125,7 @@ function amountClass(amount: string) {
  * group-balance-summary.tsx. It reads its own balances query, so a failed load
  * stays in the rail. On narrow screens each currency is a closed <details>.
  */
-function BalanceRail({ group }: { group: string }) {
+function BalanceRail({ group, hideOnMobile }: { group: string; hideOnMobile: boolean }) {
   const { data: g } = useSuspenseQuery(groupQuery(group))
   // As in the current app: fresh balances on mount and on window focus (P-BAL-58).
   // The data is stale after one second, so the rail does not fetch again right
@@ -132,7 +136,10 @@ function BalanceRail({ group }: { group: string }) {
     <aside
       aria-label="Group balances"
       data-testid="group-balance-summary"
-      className="z-20 h-fit self-start border bg-card p-3 md:sticky md:p-4 md:top-24 md:col-start-2 md:row-start-1 md:max-h-[calc(100dvh-7rem)] md:overflow-y-auto"
+      className={cn(
+        'z-20 h-fit self-start border bg-card p-3 md:sticky md:p-4 md:top-24 md:col-start-2 md:row-start-1 md:max-h-[calc(100dvh-7rem)] md:overflow-y-auto',
+        hideOnMobile && 'max-md:hidden',
+      )}
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">Group balances</h2>
@@ -154,12 +161,12 @@ function BalanceRail({ group }: { group: string }) {
           {data.currencies.map((entry) => {
             const ownTotal = participantId === null ? null : (entry.balances.find((b) => b.participantId === participantId)?.net ?? '0')
             const summary = (
-              <div className="min-w-0">
+              <div className="min-w-0 max-md:flex max-md:items-baseline max-md:gap-2">
                 <div className="text-xs text-muted-foreground">
                   {ownTotal === null ? 'Group net balances' : netLabel(ownTotal, true)} · {entry.currency}
                 </div>
                 {ownTotal !== null && (
-                  <div className={cn('mt-1 text-xl font-semibold tabular-nums', amountClass(ownTotal))} data-testid="summary-personal-net">
+                  <div className={cn('mt-1 text-lg font-semibold tabular-nums max-md:mt-0 md:text-xl', amountClass(ownTotal))} data-testid="summary-personal-net">
                     {money(abs(ownTotal), entry.currency)}
                   </div>
                 )}
