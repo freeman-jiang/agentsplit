@@ -108,9 +108,9 @@ function useGroupMarks() {
 
 function GroupsPage({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 sm:px-8">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="flex-1 font-display text-3xl font-normal tracking-tight">
+    <main className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 sm:px-8 sm:py-8">
+      <div className="flex items-start justify-between gap-2">
+        <h1 className="flex-1 font-display text-3xl tracking-tight">
           <Link to="/groups">My groups</Link>
         </h1>
         <Button asChild>
