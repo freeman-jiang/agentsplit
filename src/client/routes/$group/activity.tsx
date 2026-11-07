@@ -192,9 +192,12 @@ function LogTab() {
           return (
             <div key={key}>
               <h3 className="eyebrow">{label}</h3>
-              {items.map((activity) => (
-                <LogItem key={activity.id} group={group} groupId={g.id} activity={activity} showDate={key !== 'today' && key !== 'yesterday'} />
-              ))}
+              {/* Faint lines tie each event to its revision line. */}
+              <div className="divide-y divide-border/50">
+                {items.map((activity) => (
+                  <LogItem key={activity.id} group={group} groupId={g.id} activity={activity} showDate={key !== 'today' && key !== 'yesterday'} />
+                ))}
+              </div>
             </div>
           )
         })}
@@ -215,7 +218,7 @@ function LogItem({ group, groupId, activity, showDate }: { group: string; groupI
   return (
     // -mx-2: the text lines up with the headings, and the hover surface reaches past it.
     <div
-      className={cn('-mx-2 flex items-start gap-3 rounded-lg px-2 py-2 text-sm hover:bg-accent', href && 'cursor-pointer')}
+      className={cn('group -mx-2 flex items-start gap-3 px-2 py-2 text-sm hover:bg-accent sm:py-2.5', href && 'cursor-pointer')}
       onClick={href ? () => router.history.push(href) : undefined}
       data-testid="log-item"
     >
@@ -237,7 +240,7 @@ function LogItem({ group, groupId, activity, showDate }: { group: string; groupI
         <ActivityRevision activity={activity} groupId={groupId} />
       </div>
       {href && (
-        <AppLink href={href} onClick={(e) => e.stopPropagation()} aria-label="Open expense" className="hidden h-5 w-5 shrink-0 self-center text-muted-foreground hover:text-foreground sm:flex">
+        <AppLink href={href} onClick={(e) => e.stopPropagation()} aria-label="Open expense" className="hidden h-5 w-5 shrink-0 self-center text-muted-foreground/40 group-hover:text-foreground sm:flex">
           <ChevronRight className="h-4 w-4" />
         </AppLink>
       )}

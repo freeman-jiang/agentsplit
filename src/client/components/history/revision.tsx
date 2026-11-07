@@ -36,7 +36,7 @@ export function ActivityRevision({ activity, groupId }: { activity: ActivityItem
   if (state._tag === 'group') {
     const g = state.group
     return (
-      <details onClick={stop} className={cn(disclosure, 'mt-1 text-xs')}>
+      <details onClick={stop} className={cn(disclosure, 'mt-1 text-xs sm:border-l sm:border-border/60 sm:pl-3')}>
         <DisclosureSummary quiet>View saved group settings</DisclosureSummary>
         <div className="mt-2 space-y-1 rounded-xl bg-muted/50 p-3">
           <p>
@@ -55,7 +55,8 @@ export function ActivityRevision({ activity, groupId }: { activity: ActivityItem
   const previous = activity.snapshot?._tag === 'expense' && activity.previousSnapshot?._tag === 'expense' ? describeRevision(activity.previousSnapshot.expense) : undefined
   const deleted = activity.type === 'delete_expense'
   return (
-    <details onClick={stop} className={cn(disclosure, 'mt-1 text-xs')} data-testid="revision">
+    // Indented under a faint rule, so the details read as part of the event above.
+    <details onClick={stop} className={cn(disclosure, 'mt-1 text-xs sm:border-l sm:border-border/60 sm:pl-3')} data-testid="revision">
       <DisclosureSummary quiet>
         View saved revision {saved.revision}
         {deleted ? ' · Deleted' : ''}
