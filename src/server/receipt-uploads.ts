@@ -96,7 +96,8 @@ export async function storeUpload(data: {
   token: string
   contentType: string | undefined
   contentLength: string | null
-  body: ReadableStream<Uint8Array> | null
+  /** The request body, read only after the target is claimed. */
+  body: () => ReadableStream<Uint8Array> | null
 }): Promise<{ etag: string }> {
   if (!/^[A-Za-z0-9_-]{43}$/.test(data.token)) throw new Forbidden({ message: NOT_VALID })
   const claimed = await data.db
@@ -108,13 +109,14 @@ export async function storeUpload(data: {
   if (!target) throw new Forbidden({ message: NOT_VALID })
   const release = () => data.db.update(receiptUploads).set({ state: 'pending' }).where(eq(receiptUploads.id, target.id))
   // The current app signed these two headers into the URL, so storage refused other values.
-  if (data.contentType !== target.contentType || data.contentLength !== String(target.bytes) || !data.body) {
+  const body = data.body()
+  if (data.contentType !== target.contentType || data.contentLength !== String(target.bytes) || !body) {
     await release()
     throw new Invalid({ message: `Send exactly the headers of the upload target: Content-Type ${target.contentType} and Content-Length ${target.bytes}` })
   }
   let stored: { size: number; etag: string } | null = null
   try {
-    stored = await data.bucket.put(target.key, data.body, { contentType: target.contentType })
+    stored = await data.bucket.put(target.key, body, { contentType: target.contentType })
   } catch (error) {
     console.error('Receipt upload to storage failed', error)
   }

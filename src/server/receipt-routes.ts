@@ -83,7 +83,8 @@ export async function putUpload(data: { db: Db; bucket: Bucket; request: Request
       token: data.token,
       contentType: data.request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase(),
       contentLength: data.request.headers.get('content-length'),
-      body: data.request.body,
+      // Taken after the claim: Bun's server stored an incomplete object when the stream was taken before the claim's query.
+      body: () => data.request.body,
     })
     return new Response(null, { status: 200, headers: { 'Cache-Control': 'no-store', ETag: etag } })
   } catch (error) {
