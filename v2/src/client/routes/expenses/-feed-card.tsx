@@ -65,11 +65,11 @@ export function FeedCard({ expense }: { expense: Item }) {
       params={{ expenseId: expense.id }}
       data-testid="expense-card"
       data-expense-id={expense.id}
-      className="grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-x-3 border-b px-3 py-4 transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring sm:grid-cols-[2rem_2.5rem_minmax(0,1fr)_minmax(7rem,auto)_minmax(7rem,auto)] sm:items-center sm:gap-x-4"
+      className="grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-x-3 px-3 py-3 transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-ring sm:grid-cols-[2rem_2.5rem_minmax(0,1fr)_minmax(7rem,auto)_minmax(7rem,auto)] sm:gap-x-4 sm:px-4"
     >
-      <time dateTime={expense.expenseDate} className="text-center text-muted-foreground">
-        <span className="block text-xs uppercase tracking-wide">{month.format(date)}</span>
-        <span className="block text-xl leading-tight tabular-nums">{date.getUTCDate()}</span>
+      <time dateTime={expense.expenseDate} className="text-center leading-tight">
+        <span className="block text-xs text-muted-foreground uppercase">{month.format(date)}</span>
+        <span className="block text-lg tabular-nums">{date.getUTCDate()}</span>
         <span className="sr-only">{date.getUTCFullYear()}</span>
       </time>
       <span className="hidden h-10 w-10 items-center justify-center bg-muted text-primary sm:flex">
@@ -97,6 +97,10 @@ export function FeedCard({ expense }: { expense: Item }) {
             </span>
           )}
         </div>
+        {/* On narrow screens the paid figure sits under the title, so the right column holds only the viewer's figure. */}
+        <p className="truncate text-xs text-muted-foreground sm:hidden">
+          {figures.paid.label} <span className="tabular-nums">{figures.paid.amount === null ? '—' : money(figures.paid.amount, expense.currency)}</span>
+        </p>
         {/* The group sits in the metadata line, so the title stays on the first lines of the row. */}
         <p className="truncate text-xs text-muted-foreground" data-testid="expense-metadata">
           {expense.group ? (
@@ -111,21 +115,23 @@ export function FeedCard({ expense }: { expense: Item }) {
           · {attributionLine(expense.attribution)}
         </p>
       </div>
-      {/* On narrow screens the viewer's figure leads a right-aligned column, as on the group page. */}
-      <div className="flex max-w-[7rem] flex-col items-end text-right sm:contents">
+      <div className="flex flex-col items-end text-right sm:contents">
         {[figures.paid, figures.personal].map((figure, i) => (
           <div
             key={i}
-            className={cn('max-w-full min-w-0 sm:text-right', i === 1 ? 'order-first sm:order-none' : 'mt-1 sm:mt-0')}
+            className={cn('min-w-0 sm:text-right', i === 0 && 'max-sm:hidden')}
             data-testid={i === 0 ? 'expense-paid' : 'expense-personal'}
           >
-            <div className="truncate text-xs text-muted-foreground" title={figure.label}>
+            <div
+              className={cn('truncate text-xs text-muted-foreground', figure.tone === 'positive' && 'text-owed', figure.tone === 'negative' && 'text-owe')}
+              title={figure.label}
+            >
               {figure.label}
             </div>
             <div
               className={cn(
-                'mt-0.5 tabular-nums sm:text-base',
-                i === 1 ? 'text-base font-semibold' : 'text-xs text-muted-foreground sm:text-foreground',
+                'mt-0.5 text-base tabular-nums',
+                i === 1 && 'font-semibold',
                 figure.tone === 'positive' && 'text-owed',
                 figure.tone === 'negative' && 'text-owe',
               )}

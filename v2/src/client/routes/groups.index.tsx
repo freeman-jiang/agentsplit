@@ -265,11 +265,11 @@ function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
   const outstanding = now.totals.filter((t) => !/^-?0(\.0+)?$/.test(t.net))
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="font-sans text-sm font-semibold tracking-normal">Your total balance</CardTitle>
-        <CardDescription className="text-xs">Your combined balance across all your groups.</CardDescription>
+      <CardHeader className="p-4 sm:p-6">
+        <CardTitle className="font-sans text-sm font-semibold tracking-normal">Your balance in groups</CardTitle>
+        <CardDescription className="hidden text-xs sm:block">Your combined balance across all your groups. Ungrouped expenses are on the dashboard.</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
         {now.unboundGroupCount > 0 && (
           <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
             Link your participant identity in {now.unboundGroupCount} {now.unboundGroupCount === 1 ? 'group' : 'groups'} to see a complete total. Only linked
@@ -285,8 +285,10 @@ function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
             {outstanding.map(({ currency, net }) => {
               const owed = !net.startsWith('-')
               return (
-                <li key={currency} className="space-y-1">
-                  <span className="block text-xs font-medium text-muted-foreground">{owed ? 'You are owed' : 'You owe'}</span>
+                <li key={currency} className="max-sm:flex max-sm:items-baseline max-sm:justify-between max-sm:gap-3 sm:space-y-1">
+                  <span className="block text-xs text-muted-foreground">
+                    {owed ? 'You are owed' : 'You owe'} · {currency}
+                  </span>
                   <span className={cn('block text-3xl font-semibold tabular-nums sm:text-4xl', owed ? 'text-owed' : 'text-owe')}>
                     {money(owed ? net : net.slice(1), currency)}
                   </span>
