@@ -38,7 +38,7 @@ Each area owns its own files, so areas can be built in parallel:
 2. **Register the contract:** add the group to the `CoreApi.merge(...)` call in `src/shared/api.ts` and re-export it. This is a one-line edit.
 3. **Domain service:** `src/server/<area>.ts` holds the functions. Each takes `(db, { principal, groupId, ... })`, where `groupId` is the caller's group reference (an ID or a slug), checks access itself, and returns values or throws the shared domain errors (`Forbidden`, `NotFound`, `Conflict`, `Invalid`). It never builds an HTTP response.
 4. **Handlers:** `src/server/handlers/<area>.ts` exports a layer of `Api.toLayerHandler(tag, ...)` calls built with `read`, `write` and `publicRead` from `src/server/rpc.ts`. Add it to `Layer.mergeAll` in `src/server/main/app.ts` (a one-line edit).
-5. **Client:** queries in `src/client/queries/<area>.ts` (`queryOptions` and `infiniteQueryOptions`), screens as TanStack Router file routes under `src/client/routes/`. Replace the placeholder route of your screen.
+5. **Client:** queries in `src/client/queries/<area>.ts` (`queryOptions` and `infiniteQueryOptions`) with keys from `queries/keys.ts`, screens as TanStack Router file routes under `src/client/routes/`. Replace the placeholder route of your screen.
 6. **Tests:** `test/db/<area>.test.ts` for services against a real database, and the parity record below.
 7. **Parity record:** `docs/v2/parity/<area>.md` lists every PARITY.md item you covered, with the test that proves it, and every item you could not cover, with the reason.
 
@@ -65,6 +65,19 @@ The platform around them:
 - `mcp/`: the MCP endpoint (`endpoint.ts`, `server.ts`) and the tools in `mcp/tools/`: `defineTool` and the error body (`registry.ts`), the server instructions (`instructions.ts`), and the tools, listed once in `index.ts`. A tool is a thin adapter: it decodes the current app's argument names with schemas from the contract and the limits (`tools/inputs.ts`), calls the same service as the RPC handler, and maps the result with `tools/wire.ts`, the one module of output schemas and wire mappers. When an agent needs a filter or a field, add it to the service; a tool has no SQL of its own, and a tool file imports no other tool file.
 - The plain HTTP routes that `main/app.ts` serves: `receipt-routes.ts` and `export-routes.ts`. `headers.ts`, `public-pages.ts`, `perf.ts` and `maintenance.ts` hold the response headers, robots.txt, the sitemap and health checks, the performance headers and the maintenance answer.
 
+## Client modules
+
+The client reaches the server only through `rpc()` (`src/client/rpc.ts`), which rejects with an `RpcError`: a declared error of the contract, or an `RpcFailure` when no declared answer came back. Use these modules instead of writing their logic again:
+
+- `queries/keys.ts`: every query key, and `afterWrite({ scope, groupId })`, the one rule for what a write makes stale. A group's keys start with its ID, never its URL slug, so one write refreshes the group's pages, the dashboard, the directory and the `/expenses` pages. `scope: 'account'` (the display name, a receipt deleted for good) refreshes everything. Never call `invalidateQueries` after a write.
+- Group pages read the group's ID from the route context (`Route.useRouteContext().groupId`), which `routes/$group.tsx` resolves from the URL segment; the URL segment (`params.group`) is only for links.
+- `errors.ts`: `describeError`, the one text for a failed call, from the error table in `src/shared/errors.ts`.
+- `components/entry-write.ts`: saving and deleting an expense or a payment. A target (`useGroupTarget`, `usePageTarget`, or one with its own `save`) says where the entry lives and where the form goes afterwards; the hook keeps one idempotency key per draft and treats a failed create whose entry exists as already saved.
+- `components/expense-row/` (the one expense row, its figures and attribution line), `components/balance/` (net labels and tones, the totals, the balance chart and the settlement lists), `components/log/` (the revision panel and the expense log), and `editor-link.ts` (the typed link to an entry's editor).
+- `dates.ts` (the two "today" rules, the formatters, the first day of the week), `search.ts` (search-param parsers for `validateSearch`), `auth-guard.ts` (`requireSignedIn`, `signOut`), `theme.ts` and `hooks.ts` (`useDebounced`, `useInfiniteScroll`).
+- `ui/`: the UI kit, including `CurrencySelect`, `Segmented`, `CopyButton` and `DisclosureSummary`. Confirm a destructive action with `components/delete-dialog.tsx`, never `window.confirm`.
+- A route's own parts sit beside it in files that start with `-`, such as `routes/$group/-stats-dialog.tsx`; the router ignores them.
+
 ## Rules
 
 ### Correctness
@@ -85,7 +98,7 @@ The Workers Free CPU limit no longer applies (DECISIONS.md, "Hosting changes to 
 - Do not call Better Auth on the RPC path. The session is already resolved by the middleware.
 - Load large libraries only where they are needed, with a dynamic `import()`.
 - Keep the client fast: route-level code splitting (automatic), data preloaded on hover (`defaultPreload: 'intent'`), and no full page loads inside the app.
-- Never import `effect` at runtime in `src/client/`, directly or through `src/shared`: the modules the client imports (`vocabulary`, `limits`, `errors`, `dates`, `minor`, `split`, `expense-rules`, `history`, `stats`, `groups`, `account`, `ids`, `currencies`) stay Effect-free, and the Schema parts live beside them (`money.ts`, `snapshots.ts`, `api/`). Use `import type` from the contract, and call the server through `rpc()` from `src/client/rpc.ts`. Route options (`validateSearch`, `beforeLoad`) stay in the main chunk, so keep them free of large libraries. Contract outputs must be JSON-identical (no `Date` or `bigint` transforms); `src/client/rpc.ts` checks this at compile time. CI fails when the up-front JavaScript exceeds 150 KB gzip (`scripts/check-bundle.ts`).
+- Never import `effect` at runtime in `src/client/`, directly or through `src/shared`: the modules the client imports (`vocabulary`, `limits`, `errors`, `dates`, `minor`, `split`, `expense-rules`, `history`, `stats`, `groups`, `account`, `ids`, `currencies`, `mcp`) stay Effect-free, and the Schema parts live beside them (`money.ts`, `snapshots.ts`, `api/`). Use `import type` from the contract, and call the server through `rpc()` from `src/client/rpc.ts`. Route options (`validateSearch`, `beforeLoad`) stay in the main chunk, so keep them free of large libraries. Contract outputs must be JSON-identical (no `Date` or `bigint` transforms); `src/client/rpc.ts` checks this at compile time. CI fails when the up-front JavaScript exceeds 150 KB gzip (`scripts/check-bundle.ts`).
 
 ### Behavior
 

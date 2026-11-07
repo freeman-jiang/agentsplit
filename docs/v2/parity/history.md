@@ -106,5 +106,5 @@ History rows keep the format that wrote them. Imported rows have `schemaVersion:
 ## Open questions
 
 1. v2 snapshots (`snapshot` in `ledger.ts`) store the document count, not the document pointers or the original amount and rate. The revision panel cannot link the attachments of v2 revisions. Add `documents` to the v2 snapshot when receipts land?
-2. The editor routes are assumed to be `/<group>/expenses/<id>/edit` and `/<group>/payments/<id>/edit` (`expenseHref` in `components/history/app-link.tsx`). The expenses area must use them, or change that one helper.
+2. Resolved: the Log and the Stats drill-down open the editors through the typed `editorLink` in `src/client/editor-link.ts`, which the expense list uses too.
 3. `scripts/seed-synthetic.ts` refuses `agentsplit_dev_<area>` names, which BUILDING.md tells areas to use.
