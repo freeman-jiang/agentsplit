@@ -128,7 +128,7 @@ export function PaymentForm(
   return (
     <form
       noValidate
-      className="space-y-4 border bg-card p-4"
+      className="space-y-4 rounded-2xl border bg-card p-4"
       onSubmit={(e) => {
         e.preventDefault()
         void submit()

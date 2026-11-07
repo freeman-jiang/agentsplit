@@ -19,7 +19,7 @@ function Configuration(props: { title: string; description: string; code: string
         <CopyButton text={props.code} title={props.copyLabel} />
       </div>
       <p className="text-sm text-muted-foreground">{props.description}</p>
-      <pre className="whitespace-pre-wrap break-all border bg-card p-4 text-xs leading-relaxed sm:text-sm">
+      <pre className="whitespace-pre-wrap break-all rounded-2xl border bg-card p-4 text-xs leading-relaxed sm:text-sm">
         <code>{props.code}</code>
       </pre>
     </section>
@@ -46,13 +46,13 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
         <h1 className="font-display text-3xl tracking-tight sm:text-4xl">Set up your agent</h1>
         <p className="text-muted-foreground">Choose one way to connect. Both use your AgentSplit account and current group permissions.</p>
         <div className="grid gap-4 sm:grid-cols-2">
-          <a href="#oauth" className="space-y-2 border bg-card p-4">
+          <a href="#oauth" className="space-y-2 rounded-2xl border bg-card p-4">
             <h2 className="font-medium">OAuth · Recommended</h2>
             <p className="text-sm text-muted-foreground">
               For ChatGPT, Claude, and clients with browser sign-in. Sign in with Google and approve access.
             </p>
           </a>
-          <a href="#api-key" className="space-y-2 border bg-card p-4">
+          <a href="#api-key" className="space-y-2 rounded-2xl border bg-card p-4">
             <h2 className="font-medium">API key</h2>
             <p className="text-sm text-muted-foreground">
               For scripts, automation, or manual client setup. Create a key and paste it into your client’s settings.
@@ -61,7 +61,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
         </div>
       </header>
 
-      <div className="flex items-center gap-3 border bg-card p-4">
+      <div className="flex items-center gap-3 rounded-2xl border bg-card p-4">
         <div className="min-w-0 flex-1">
           <p className="mb-1 text-xs text-muted-foreground">MCP server URL · Use this for either method</p>
           <code className="break-all text-sm">{endpoint}</code>
@@ -87,7 +87,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
               </li>
               <li>
                 Fill in these fields:
-                <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 border bg-card p-3">
+                <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 rounded-2xl border bg-card p-3">
                   <dt className="text-muted-foreground">Name</dt>
                   <dd>AgentSplit</dd>
                   <dt className="text-muted-foreground">Description</dt>
@@ -134,7 +134,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
               </li>
               <li>
                 Use these authentication settings, then click <strong>Add</strong>:
-                <dl className="mt-2 space-y-2 border bg-card p-3">
+                <dl className="mt-2 space-y-2 rounded-2xl border bg-card p-3">
                   <div>
                     <dt className="text-muted-foreground">Authentication</dt>
                     <dd>Sign in now</dd>
@@ -191,7 +191,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
         <p className="text-sm">
           Add the MCP server URL above. Under <strong>Headers</strong>, enter:
         </p>
-        <div className="space-y-3 border bg-card p-4 text-sm">
+        <div className="space-y-3 rounded-2xl border bg-card p-4 text-sm">
           <div className="flex items-center justify-between gap-3">
             <span>
               Header name: <code>X-API-Key</code>

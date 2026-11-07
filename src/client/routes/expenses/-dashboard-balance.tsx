@@ -11,7 +11,7 @@ export function DashboardBalance() {
   return (
     <section
       aria-labelledby="dashboard-balance-title"
-      className="border bg-card p-4 sm:px-6 sm:py-6 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-x-8"
+      className="rounded-2xl border bg-card p-4 sm:px-6 sm:py-6 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-x-8"
       data-testid="dashboard-balance"
     >
       <div>
