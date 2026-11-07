@@ -3,17 +3,18 @@
 // ungrouped form of create_expense call the same services.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
-import { GROUP_ID } from '../ids'
 import { LIMITS } from '../limits'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
 import {
   CalendarDate,
+  CategoryId,
   Expense,
   ExpenseInput,
   ExpenseKindSchema,
   GroupKindSchema,
   Id,
   IdempotencyKey,
+  NewId,
   Participant,
   ReadError,
   RoleSchema,
@@ -44,7 +45,7 @@ export const FeedFilter = Schema.Struct({
   /** An account (user) ID: keep expenses that this account paid. */
   payerUserId: Schema.optionalKey(Id),
   currency: Schema.optionalKey(CurrencyCodeSchema),
-  categoryId: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  categoryId: Schema.optionalKey(CategoryId),
   kind: Schema.optionalKey(ExpenseKindSchema),
   /** Inclusive bounds on the expense date. */
   from: Schema.optionalKey(CalendarDate),
@@ -156,9 +157,12 @@ export const PrivatePerson = Schema.Union([
     /** Trimmed by the server; then 1 to LIMITS.nameMax characters. */
     name: Schema.String.check(Schema.isMaxLength(200)),
     /** Trimmed and lowercased by the server. */
-    email: Schema.String.check(Schema.isMaxLength(320)),
+    email: Schema.String.check(Schema.isMaxLength(320)).annotate({ format: 'email' }),
   }),
 ])
+
+/** The people of a new ungrouped expense, the caller included. */
+export const PrivatePeople = Schema.Array(PrivatePerson).check(Schema.isBetweenLength(2, LIMITS.participantsPerGroup))
 
 export const UngroupedResult = Schema.Struct({
   expenseId: Schema.String,
@@ -188,9 +192,9 @@ export class FeedApi extends RpcGroup.make(
   Rpc.make('expenses.context', { payload: { expenseId: Id }, success: ExpenseContext, error: ReadError }),
   Rpc.make('expenses.createUngrouped', {
     payload: {
-      expenseId: Schema.String.check(Schema.isPattern(GROUP_ID)),
+      expenseId: NewId,
       idempotencyKey: IdempotencyKey,
-      people: Schema.Array(PrivatePerson).check(Schema.isBetweenLength(2, LIMITS.participantsPerGroup)),
+      people: PrivatePeople,
       /** Payers and shares name people by their local IDs. */
       expense: ExpenseInput,
     },

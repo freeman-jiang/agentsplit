@@ -2,7 +2,7 @@
 import { Schema } from 'effect'
 import { RecordedTime as HistoryRecordedTime } from '../../../shared/api/history'
 import { CURRENCIES, type CurrencyCode } from '../../../shared/currencies'
-import { isRealDate } from '../../../shared/expense-rules'
+import { isRealDate } from '../../../shared/dates'
 import { DECIMAL, formatMinor, minor } from '../../../shared/minor'
 import { RECURRENCE_LIST, SPLIT_MODE_LIST } from '../../../shared/vocabulary'
 

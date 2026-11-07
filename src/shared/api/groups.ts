@@ -4,17 +4,18 @@
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { EMAIL, INVITATION_TOKEN } from '../groups'
-import { GROUP_ID } from '../ids'
 import { LIMITS } from '../limits'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
-import { GroupKindSchema, Id, IdempotencyKey, ReadError, RoleSchema as Role, WriteError } from './core'
+import { GroupKindSchema, Id, IdempotencyKey, NewId, ReadError, RoleSchema as Role, WriteError } from './core'
 
-const GroupName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(LIMITS.groupNameMin, LIMITS.nameMax))
-const Information = Schema.String.check(Schema.isMaxLength(LIMITS.informationMax))
-const PersonName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(1, LIMITS.nameMax))
+export const GroupName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(LIMITS.groupNameMin, LIMITS.nameMax))
+export const Information = Schema.String.check(Schema.isMaxLength(LIMITS.informationMax))
+export const PersonName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(1, LIMITS.nameMax))
 /** A slug as typed; the server normalizes and checks it. Empty or null removes it. */
-const SlugInput = Schema.NullOr(Schema.String.check(Schema.isMaxLength(LIMITS.slugMax)))
-const Email = Schema.String.check(Schema.isMaxLength(254), Schema.isPattern(EMAIL))
+export const SlugInput = Schema.NullOr(Schema.String.check(Schema.isMaxLength(LIMITS.slugMax)))
+export const Email = Schema.String.check(Schema.isMaxLength(254), Schema.isPattern(EMAIL))
+/** An invitation link from this app, as a person pastes it. */
+export const ShareUrl = Schema.String.check(Schema.isMaxLength(2000))
 const Timestamp = Schema.String // ISO 8601, UTC
 
 // ---------- shapes ----------
@@ -104,7 +105,7 @@ export const GroupWritten = Schema.Struct({ id: Schema.String, slug: Schema.Null
 
 export const AccessRequest = Schema.Union([
   /** Joins with an email-bound invitation URL from this app. */
-  Schema.Struct({ action: Schema.Literal('join'), shareUrl: Schema.String.check(Schema.isMaxLength(2000)) }),
+  Schema.Struct({ action: Schema.Literal('join'), shareUrl: ShareUrl }),
   Schema.Struct({ action: Schema.Literal('leave'), groupId: Id }),
   Schema.Struct({ action: Schema.Literal('invite'), groupId: Id, email: Email, participantId: Id }),
   Schema.Struct({ action: Schema.Literal('revoke_invitation'), groupId: Id, invitationId: Id }),
@@ -141,7 +142,7 @@ export class GroupsApi extends RpcGroup.make(
   Rpc.make('groups.create', {
     payload: {
       /** Optional caller-chosen ID, 21 URL-safe characters. */
-      groupId: Schema.NullOr(Schema.String.check(Schema.isPattern(GROUP_ID))),
+      groupId: Schema.NullOr(NewId),
       idempotencyKey: IdempotencyKey,
       group: GroupCreateInput,
     },

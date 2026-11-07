@@ -3,6 +3,8 @@
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { GROUP_DENIED, INVALID_REASONS, NOT_FOUND_ENTITIES } from '../errors'
+import { isRealDate } from '../dates'
+import { GROUP_ID } from '../ids'
 import { LIMITS } from '../limits'
 import { CurrencyCodeSchema, DecimalOutput, DecimalString } from '../money'
 import { EXPENSE_KINDS, GROUP_KINDS, RECURRENCES, ROLES, SPLIT_MODES } from '../vocabulary'
@@ -46,10 +48,15 @@ export const WriteError = Schema.Union([Unauthorized, Forbidden, NotFound, Confl
 // ---------- shapes ----------
 
 export const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))
+/** A caller-chosen ID for a new record: 21 URL-safe characters, the format of randomId(). */
+export const NewId = Schema.String.check(Schema.isPattern(GROUP_ID))
 /** A client-chosen key that makes a write safe to retry. */
 export const IdempotencyKey = Schema.String.check(Schema.isMinLength(8), Schema.isMaxLength(128))
-/** A calendar date, YYYY-MM-DD. */
-export const CalendarDate = Schema.String.check(Schema.isPattern(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/))
+/** A real calendar date, YYYY-MM-DD: 2026-02-29 and 2026-09-31 are refused before they reach SQL. */
+export const CalendarDate = Schema.String.check(
+  Schema.isPattern(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/),
+  Schema.makeFilter((value: string) => isRealDate(value) || 'Invalid calendar date'),
+)
 /** A calendar date the server produces from a DATE column; not checked again on encode. */
 export const CalendarDateOutput = Schema.String
 const Timestamp = Schema.String // ISO 8601, UTC
@@ -123,14 +130,22 @@ export const Expense = Schema.Struct({
 
 export const ExpenseSort = Schema.Literals(['date', 'updated'])
 
+export const CategoryId = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+
+/** Which expenses a list keeps; the live list (ledger.ts) and the historical one (history.ts) read the same filter. */
 export const ExpenseFilter = Schema.Struct({
   sort: Schema.optionalKey(ExpenseSort),
+  /** Case-insensitive substring of the title, the vendor or the notes. */
   search: Schema.optionalKey(SearchText),
+  /** Exact vendor, ignoring case and the spaces around it. */
+  vendor: Schema.optionalKey(SearchText),
   participantId: Schema.optionalKey(Id),
   payerId: Schema.optionalKey(Id),
   currency: Schema.optionalKey(CurrencyCodeSchema),
-  categoryId: Schema.optionalKey(Schema.Number),
+  categoryId: Schema.optionalKey(CategoryId),
   kind: Schema.optionalKey(ExpenseKindSchema),
+  recurrence: Schema.optionalKey(RecurrenceSchema),
+  /** Inclusive bounds on the expense date. */
   from: Schema.optionalKey(CalendarDate),
   to: Schema.optionalKey(CalendarDate),
 })
@@ -144,10 +159,13 @@ export const ExpensePage = Schema.Struct({
 /** A receipt attached to an expense. The URL must name a receipt uploaded to the same group. */
 export const DocumentInput = Schema.Struct({
   id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
-  url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2000)),
+  url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2000)).annotate({ format: 'uri' }),
   width: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
   height: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
 })
+
+/** An expense's full list of receipts. */
+export const Documents = Schema.Array(DocumentInput).check(Schema.isMaxLength(LIMITS.documentsPerExpense))
 
 /** What a client sends to create or replace an expense. Amounts are exact decimal strings. */
 export const ExpenseInput = Schema.Struct({
@@ -155,7 +173,7 @@ export const ExpenseInput = Schema.Struct({
   title: Schema.String.check(Schema.isBetweenLength(LIMITS.titleMin, LIMITS.titleMax)),
   vendor: Schema.NullOr(Schema.String.check(Schema.isMaxLength(LIMITS.vendorMax))),
   notes: Schema.String.check(Schema.isMaxLength(LIMITS.notesMax)),
-  categoryId: Schema.Number,
+  categoryId: CategoryId,
   expenseDate: CalendarDate,
   currency: CurrencyCodeSchema,
   amount: DecimalString,
@@ -166,7 +184,7 @@ export const ExpenseInput = Schema.Struct({
   shares: Schema.Array(Schema.Struct({ participantId: Id, weight: Schema.String })).check(Schema.isBetweenLength(1, LIMITS.participantsPerGroup)),
   recurrence: RecurrenceSchema,
   /** The full list of receipts. Omitted on an update: keep the saved receipts. */
-  documents: Schema.optionalKey(Schema.Array(DocumentInput).check(Schema.isMaxLength(100))),
+  documents: Schema.optionalKey(Documents),
 })
 
 // ---------- procedures ----------

@@ -43,6 +43,12 @@ export const LIMITS = {
   notesMax: 5_000,
   /** The largest absolute amount, in major units of any currency. */
   amountMax: 10_000_000,
+  /** The longest decimal text of an amount or a share. */
+  decimalMax: 32,
+  /** Receipt pointers on one expense. */
+  documentsPerExpense: 100,
+  /** The file name of a receipt upload. */
+  receiptFilenameMax: 255,
 
   // Names and group settings.
   /** Group, person and profile names. */
@@ -67,6 +73,10 @@ export const LIMITS = {
   directoryPage: 100,
   /** The most saved expenses that one historical list request reads. */
   historyPageMax: 200,
+  // The current app's MCP page sizes, when an agent gives no limit.
+  agentExpensePage: 10,
+  agentActivityPage: 5,
+  agentReceiptPage: 50,
 
   // Times.
   invitationDays: 7,
