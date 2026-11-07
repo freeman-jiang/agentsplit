@@ -108,7 +108,7 @@ function useGroupMarks() {
 
 function GroupsPage({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 sm:px-8 sm:py-8">
+    <main className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 sm:space-y-6 sm:px-8 sm:py-8">
       <div className="flex items-start justify-between gap-2">
         <h1 className="flex-1 font-display text-3xl tracking-tight">
           <Link to="/groups">My groups</Link>
@@ -181,7 +181,7 @@ function Groups() {
           )}
         </div>
       )}
-      <div className="space-y-6 pt-2">
+      <div className="space-y-6 max-sm:pt-2">
         {starred.length > 0 && (
           <section>
             <h2 className="eyebrow">Starred groups</h2>
