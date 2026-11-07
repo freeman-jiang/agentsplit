@@ -11,7 +11,7 @@ import { getSavedExpense, listActivities } from '~/server/history'
 import { createExpense, updateExpense } from '~/server/ledger'
 import { type Principal } from '~/server/access'
 import { receiptUsage, spaceFor } from '~/server/receipt-quota'
-import { downloadReceipt, uploadReceipt } from '~/server/receipts'
+import { downloadReceipt, uploadReceipt } from '~/server/receipt-routes'
 import { deleteReceipts, purgeDeletedReceipts } from '~/server/storage'
 import { LIMITS } from '~/shared/limits'
 import { BASE, failure, ok, startHarness, type Harness } from './mcp-harness'
@@ -62,7 +62,7 @@ async function upload(principal: Principal, image = png(40, 30)) {
     body: bytes,
     headers: { origin: BASE, 'content-type': encoded.headers.get('content-type') ?? '', 'content-length': String(bytes.byteLength) },
   })
-  return h.withDb((db) => uploadReceipt({ db, bucket: h.r2.bucket, principal, request, baseUrl: BASE }))
+  return h.withDb((db) => uploadReceipt({ db, bucket: h.r2.bucket, principal, request }))
 }
 
 let filler = 0
@@ -175,8 +175,8 @@ describe('permanent receipt deletion', () => {
     const uploaded = (await (await upload(bob, png(64, 48))).json()) as { id: string; url: string; width: number; height: number }
     const document = { id: 'new', url: uploaded.url, width: uploaded.width, height: uploaded.height }
     const expenseId = 'd0000000000000000000a'
-    await tx((db) => createExpense(db, { principal: bob, group: 'g1', expenseId, idempotencyKey: null, expense: draft(''), documents: [document] }))
-    await tx((db) => updateExpense(db, { principal: alice, group: 'g1', expenseId, expectedRevision: 1, idempotencyKey: null, expense: draft('Two people') }))
+    await tx((db) => createExpense(db, { principal: bob, groupId: 'g1', expenseId, idempotencyKey: null, expense: draft(''), documents: [document] }))
+    await tx((db) => updateExpense(db, { principal: alice, groupId: 'g1', expenseId, expectedRevision: 1, idempotencyKey: null, expense: draft('Two people') }))
     expect(await usage('bob')).toBe(64)
     const key = uploaded.url.replace('r2://agentsplit-receipts/', '')
     expect(h.r2.objects.has(key)).toBe(true)
@@ -194,19 +194,19 @@ describe('permanent receipt deletion', () => {
     const after = await history()
     expect(after.slice(0, before.length)).toEqual(before)
     expect(after).toHaveLength(before.length + 1)
-    const detail = await h.withDb((db) => getExpenseDetail(db, { principal: alice, group: 'g1', expenseId }))
+    const detail = await h.withDb((db) => getExpenseDetail(db, { principal: alice, groupId: 'g1', expenseId }))
     expect(detail.expense).toMatchObject({ revision: 3, amount: '20.00', documentCount: 0 })
     expect(detail.documents).toEqual([])
 
     const tombstone = { by: 'Bob', at: expect.stringMatching(/^\d{4}-\d\d-\d\dT/) }
-    const saved = await h.withDb((db) => getSavedExpense(db, { principal: alice, group: 'g1', expenseId, revision: 1 }))
+    const saved = await h.withDb((db) => getSavedExpense(db, { principal: alice, groupId: 'g1', expenseId, revision: 1 }))
     expect(saved.expense.documents).toEqual([{ id: expect.any(String), url: uploaded.url, deleted: tombstone }])
-    const log = await h.withDb((db) => listActivities(db, { principal: alice, group: 'g1', expenseId, order: 'asc', limit: 10 }))
+    const log = await h.withDb((db) => listActivities(db, { principal: alice, groupId: 'g1', expenseId, order: 'asc', limit: 10 }))
     const created = log.activities[0]?.snapshot
     expect(created?._tag === 'expense' ? created.expense.documents : null).toEqual([{ id: expect.any(String), url: uploaded.url, deleted: tombstone }])
 
     const download = await h.withDb((db) =>
-      downloadReceipt({ db, bucket: h.r2.bucket, principal: alice, url: new URL(`${BASE}/api/receipts?${new URLSearchParams({ groupId: 'g1', url: uploaded.url })}`) }),
+      downloadReceipt({ db, bucket: h.r2.bucket, reader: { principal: alice }, url: new URL(`${BASE}/api/receipts?${new URLSearchParams({ groupId: 'g1', url: uploaded.url })}`) }),
     )
     expect(download.status).toBe(410)
     expect(((await download.json()) as { error: string }).error).toMatch(/^Receipt deleted by Bob on \d{4}-\d\d-\d\d$/)
@@ -219,7 +219,7 @@ describe('permanent receipt deletion', () => {
 
     // The receipt cannot be attached again, and a second delete frees nothing.
     await expect(
-      tx((db) => updateExpense(db, { principal: bob, group: 'g1', expenseId, expectedRevision: 3, idempotencyKey: null, expense: draft('Two people'), documents: [document] })),
+      tx((db) => updateExpense(db, { principal: bob, groupId: 'g1', expenseId, expectedRevision: 3, idempotencyKey: null, expense: draft('Two people'), documents: [document] })),
     ).rejects.toMatchObject({ _tag: 'Invalid', field: 'documents' })
     expect(await tx((db) => deleteReceipts(db, { principal: bob, receiptIds: [uploaded.id] }))).toEqual({ deleted: [{ receiptId: uploaded.id, bytes: 0 }], freedBytes: 0 })
   })

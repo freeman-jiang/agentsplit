@@ -5,8 +5,8 @@
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { receipts, receiptUploads } from '../../db/schema/app'
-import { putUpload, removeStaleUploads } from '~/server/receipt-uploads'
-import { downloadReceipt, receiptReader } from '~/server/receipts'
+import { putUpload } from '~/server/receipt-routes'
+import { removeStaleUploads } from '~/server/receipt-uploads'
 import { BASE, failure, ok, startHarness, type Harness } from './mcp-harness'
 
 let h: Harness
@@ -104,12 +104,7 @@ describe('agent receipt uploads', () => {
     expect(document?.url).toMatch(/^r2:\/\/agentsplit-receipts\/receipts\/[A-Za-z0-9_-]{21}\.png$/)
 
     // GET downloadUrl with the agent's own key, and with another member's bearer key.
-    const download = (headers: Record<string, string>) =>
-      h.withDb(async (db) => {
-        const request = new Request(document?.downloadUrl ?? '', { headers })
-        const principal = await receiptReader(db, { request, baseUrl: BASE, secret: 'unused' })
-        return downloadReceipt({ db, bucket: h.r2.bucket, principal, url: new URL(request.url) })
-      })
+    const download = (headers: Record<string, string>) => h.app.fetch(new Request(document?.downloadUrl ?? '', { headers }))
     const image200 = await download(alice)
     expect(image200.status).toBe(200)
     expect(image200.headers.get('content-type')).toBe('image/png')
@@ -117,6 +112,12 @@ describe('agent receipt uploads', () => {
     expect((await download(bob)).status).toBe(200)
     expect((await download(mallory)).status).toBe(403)
     expect((await download({ 'x-api-key': 'agentsplit_not-a-real-key-0123456789abcdef' })).status).toBe(401)
+    // A key at its rate limit keeps the endpoint's 429, so the agent waits instead of thinking its key is revoked.
+    await h.withDb((db) => db.execute(sql`UPDATE apikey SET request_count = 1000, last_request = now() WHERE reference_id = 'alice'`))
+    const limited = await download(alice)
+    expect(limited.status).toBe(429)
+    expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0)
+    await h.withDb((db) => db.execute(sql`UPDATE apikey SET request_count = 0 WHERE reference_id = 'alice'`))
   })
 
   it('keeps or removes receipts with documents, and refuses a receipt of another group', async () => {

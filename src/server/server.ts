@@ -5,75 +5,42 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import pg from 'pg'
-import { LIMITS } from '../shared/limits'
 import { createApp } from './app'
 import { assetHandler, loadAssets } from './assets'
+import { readSettings } from './config'
 import { makeDb } from './db'
 import { startHourly } from './hourly'
 import { maintenanceResponse } from './maintenance'
-import { countQueries } from './perf'
+import { instrumentPool } from './perf'
 import { s3Bucket } from './s3'
 
-/** A required setting. A missing one stops the server at start, with its name. */
-function required(name: string): string {
-  const value = process.env[name]?.trim()
-  if (!value) throw new Error(`Set ${name}`)
-  return value
-}
-const optional = (name: string) => process.env[name]?.trim() || undefined
-
-/** SIGN_UP_DAILY_LIMIT: new accounts per 24 hours, a whole number; LIMITS.signUpsPerDay when unset. */
-function signUpLimit(): number {
-  const text = optional('SIGN_UP_DAILY_LIMIT')
-  if (text === undefined) return LIMITS.signUpsPerDay
-  if (!/^\d+$/.test(text)) throw new Error('Set SIGN_UP_DAILY_LIMIT to a whole number of accounts per day')
-  return Number(text)
-}
-
-const config = {
-  baseUrl: required('BASE_URL'),
-  secret: required('BETTER_AUTH_SECRET'),
-  googleClientId: required('GOOGLE_CLIENT_ID'),
-  googleClientSecret: required('GOOGLE_CLIENT_SECRET'),
-  bootstrapEmail: optional('AUTH_BOOTSTRAP_EMAIL'),
-  signUpDailyLimit: signUpLimit(),
-  // Off in every deployment; only performance runs set it, as in the current app.
-  perfInstrumentation: optional('PERF_INSTRUMENTATION') === '1',
-}
+const settings = readSettings(process.env)
+const { app: config, maintenance } = settings
 const publicOrigin = new URL(config.baseUrl).origin
-const maintenance = /^(true|yes|1|on)$/i.test(optional('AGENTSPLIT_MAINTENANCE') ?? '')
 
 // One pool for the process. RPC, MCP, receipt and export requests each take
 // one connection and return it when the response is complete. Better Auth
 // takes connections from the pool for each of its own queries.
 const pool = new pg.Pool({
-  connectionString: required('DATABASE_URL'),
-  max: Number(optional('DATABASE_POOL_SIZE') ?? 10),
+  connectionString: settings.databaseUrl,
+  max: settings.poolSize,
   connectionTimeoutMillis: 5_000,
   idleTimeoutMillis: 60_000,
 })
 // An idle connection that fails (a database restart) is removed from the pool; without a listener it would end the process.
 pool.on('error', (error) => console.error('Idle database connection failed', error))
-if (config.perfInstrumentation) pool.on('connect', countQueries)
+if (config.perfInstrumentation) instrumentPool(pool)
 
 // The image sets MIGRATIONS_DIR, so each start applies new migrations before
 // it takes requests, as the current app's container runs prisma migrate deploy.
-const migrations = optional('MIGRATIONS_DIR')
-if (migrations) {
-  await migrate(drizzle({ client: pool }), { migrationsFolder: migrations })
+if (settings.migrationsDir) {
+  await migrate(drizzle({ client: pool }), { migrationsFolder: settings.migrationsDir })
   console.log('Migrations applied')
 }
 
-const bucket = s3Bucket({
-  endpoint: required('S3_UPLOAD_ENDPOINT'),
-  region: optional('S3_UPLOAD_REGION') ?? 'garage',
-  bucket: optional('S3_UPLOAD_BUCKET') ?? 'agentsplit-receipts',
-  accessKeyId: required('S3_UPLOAD_KEY'),
-  secretAccessKey: required('S3_UPLOAD_SECRET'),
-})
+const bucket = s3Bucket(settings.s3)
 
-const clientDir = optional('CLIENT_DIR') ?? 'dist/client'
-const assets = loadAssets(clientDir)
+const assets = loadAssets(settings.clientDir)
 // The dev server has no client build: Vite serves the client and sends only API paths here.
 const staticFiles = assets ? assetHandler(assets) : async () => new Response('No client build', { status: 404 })
 
@@ -91,9 +58,9 @@ function atPublicOrigin(request: Request): Request {
 }
 
 const server = Bun.serve({
-  hostname: optional('HOST') ?? '0.0.0.0',
-  port: Number(optional('PORT') ?? 3000),
-  // The largest body is a 5 MiB receipt in its multipart envelope.
+  hostname: settings.host,
+  port: settings.port,
+  // The largest body is a receipt (LIMITS.receiptBytes) in its multipart envelope.
   maxRequestBodySize: 8 * 1024 * 1024,
   idleTimeout: 60,
   fetch: (request) => (maintenance && maintenanceResponse(request)) || app.fetch(atPublicOrigin(request)),

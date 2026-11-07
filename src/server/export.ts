@@ -5,8 +5,9 @@
 // name in both file names (P-EXPORT-15).
 import { sql } from 'drizzle-orm'
 import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
+import { legacyDateTime, todayUtc } from '../shared/dates'
 import { formatMinor, minor, minorOf } from '../shared/minor'
-import { preferredPayer } from '../shared/split'
+import { mainPayer } from '../shared/split'
 import { RECURRENCE_NAMES, SPLIT_MODE_NAMES, type ActivityType, type SplitMode } from '../shared/vocabulary'
 import { memberCte, requireActive, type Principal } from './access'
 import { activitySource, activityText, savedTitle } from './activity'
@@ -40,7 +41,7 @@ type Head = {
 }
 
 /** The group and its live expenses in the export order: expense date, creation time, then ID, oldest first. */
-async function load(db: Db, data: { principal: Principal; group: string; activities: boolean }) {
+async function load(db: Db, data: { principal: Principal; groupId: string; activities: boolean }) {
   const result = await db.execute<Head>(sql`
     WITH ${memberCte(data)}
     SELECT g.active, g.id, g.name, g.slug, g.information, g.default_currency,
@@ -74,23 +75,11 @@ const SPLIT_LABEL: Record<SplitMode, string> = {
 
 // ---------- file names ----------
 
-/** RFC 6266 Content-Disposition, as the `content-disposition` package writes it. */
-export function contentDisposition(name: string): string {
-  // A path separator in a group name would make some clients drop the part before it.
-  const safe = name.replace(/[/\\]/g, '_')
-  const fallback = safe.replace(/[^\x20-\x7e]/g, '_')
-  const quoted = `"${fallback.replace(/([\\"])/g, '\\$1')}"`
-  if (fallback === safe) return `attachment; filename=${quoted}`
-  const encoded = encodeURIComponent(safe).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
-  return `attachment; filename=${quoted}; filename*=UTF-8''${encoded}`
-}
-
-const today = () => new Date().toISOString().slice(0, 10)
 export const exportFileName = (data: { group: string; format: 'csv' | 'json'; date: string }) => `AgentSplit Export - ${data.group} - ${data.date}.${data.format}`
 
 // ---------- JSON ----------
 
-export async function exportJson(db: Db, data: { principal: Principal; group: string }) {
+export async function exportJson(db: Db, data: { principal: Principal; groupId: string }) {
   const g = await load(db, { ...data, activities: true })
   const body = {
     id: g.id,
@@ -103,7 +92,7 @@ export async function exportJson(db: Db, data: { principal: Principal; group: st
       id: e.id,
       createdAt: e.createdAt,
       // The current app exported expense dates as UTC midnight timestamps.
-      expenseDate: `${e.expenseDate}T00:00:00.000Z`,
+      expenseDate: legacyDateTime(e.expenseDate),
       title: e.title,
       vendor: e.vendor,
       category: e.category ? { grouping: e.category.grouping, name: e.category.name } : null,
@@ -113,7 +102,7 @@ export async function exportJson(db: Db, data: { principal: Principal; group: st
       originalCurrency: e.originalCurrency,
       conversionRate: e.conversionRate,
       // The payer of the whole amount; with several payers, the one who paid most.
-      paidById: e.payers.length ? preferredPayer(e.payers.map((p) => ({ participantId: p.participantId, amount: minorOf(p.amount, e.currency) }))) : null,
+      paidById: mainPayer(e),
       payers: e.payers.map((p) => ({ participantId: p.participantId, amount: p.amount })),
       paidFor: e.shares.map((s) => ({ participantId: s.participantId, shares: weightText(e, s.weight), amount: s.amount })),
       isReimbursement: e.kind === 'payment',
@@ -138,7 +127,7 @@ export async function exportJson(db: Db, data: { principal: Principal; group: st
       actorName: a.actorName,
     })),
   }
-  return { groupId: g.id, filename: exportFileName({ group: g.name, format: 'json', date: today() }), contentType: 'application/json', content: JSON.stringify(body) }
+  return { groupId: g.id, filename: exportFileName({ group: g.name, format: 'json', date: todayUtc() }), contentType: 'application/json', content: JSON.stringify(body) }
 }
 
 // ---------- CSV ----------
@@ -148,7 +137,7 @@ export const escapeFormula = (value: string) => (/^[=+\-@\t\r]/.test(value) ? `'
 /** json2csv's default: every value quoted, quotes doubled, empty for null. */
 const cell = (value: string | null) => (value === null ? '' : `"${value.replace(/"/g, '""')}"`)
 
-export async function exportCsv(db: Db, data: { principal: Principal; group: string }) {
+export async function exportCsv(db: Db, data: { principal: Principal; groupId: string }) {
   const g = await load(db, { ...data, activities: false })
   const header = [
     'Date',
@@ -186,7 +175,7 @@ export async function exportCsv(db: Db, data: { principal: Principal; group: str
   const csv = [header, ...rows].map((r) => r.map(cell).join(',')).join('\n')
   return {
     groupId: g.id,
-    filename: exportFileName({ group: g.name, format: 'csv', date: today() }),
+    filename: exportFileName({ group: g.name, format: 'csv', date: todayUtc() }),
     contentType: 'text/csv; charset=utf-8',
     // The byte order mark tells spreadsheets the file is UTF-8.
     content: `﻿${csv}`,
@@ -195,16 +184,9 @@ export async function exportCsv(db: Db, data: { principal: Principal; group: str
 
 /**
  * The file of the export.group RPC and the export_group MCP tool. Its name and
- * content type are not the ones of the download routes (exportResponse).
+ * content type are not the ones of the download routes (export-routes.ts).
  */
-export async function exportFile(db: Db, data: { principal: Principal; group: string; format: 'csv' | 'json' }) {
-  const file = await (data.format === 'json' ? exportJson : exportCsv)(db, { principal: data.principal, group: data.group })
+export async function exportFile(db: Db, data: { principal: Principal; groupId: string; format: 'csv' | 'json' }) {
+  const file = await (data.format === 'json' ? exportJson : exportCsv)(db, { principal: data.principal, groupId: data.groupId })
   return { filename: `agentsplit-${file.groupId}.${data.format}`, contentType: data.format === 'json' ? 'application/json' : 'text/csv', content: file.content }
-}
-
-/** The HTTP response of an export route. */
-export function exportResponse(file: { filename: string; contentType: string; content: string }) {
-  return new Response(file.content, {
-    headers: { 'Cache-Control': 'private, no-store', 'Content-Type': file.contentType, 'Content-Disposition': contentDisposition(file.filename) },
-  })
 }

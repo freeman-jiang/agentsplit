@@ -5,10 +5,10 @@ import type { Pool } from 'pg'
 import { groups, memberships, participants } from '../../db/schema/app'
 import { session, user } from '../../db/schema/auth'
 import { createApp } from '~/server/app'
-import { createAuth } from '~/server/auth'
+import { createAuth } from '~/server/auth/auth'
 import { makeDb, type Db } from '~/server/db'
 import { handleMcp } from '~/server/mcp/endpoint'
-import { handleAuthRoute } from '~/server/oauth-routes'
+import { handleAuthRoute } from '~/server/auth/oauth-routes'
 import { createUngroupedExpense } from '~/server/ungrouped'
 import { fakeBucket } from './fake-bucket'
 import { resetTestDatabase } from './setup'
@@ -17,6 +17,8 @@ export const BASE = 'http://localhost'
 export const SECRET = 'mcp-test-secret-0123456789-0123456789-0123456789'
 export const MCP_URL = `${BASE}/api/mcp`
 export const LEGACY = '2025-06-18'
+/** The sign-in settings of the in-process server. */
+export const AUTH = { baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret', bootstrapEmail: undefined, signUpDailyLimit: 200 }
 
 export type Harness = Awaited<ReturnType<typeof startHarness>>
 
@@ -33,10 +35,10 @@ export async function startHarness() {
   }
   /** The in-memory receipts bucket. */
   const r2 = fakeBucket()
-  const mcp = (request: Request) => withDb((db) => handleMcp(request, { db, baseUrl: BASE, bucket: r2.bucket }))
+  const mcp = (request: Request) => withDb((db) => handleMcp(request, { db, settings: { baseUrl: BASE, bucket: r2.bucket } }))
   /** The whole request handler of src/server/app.ts, for the plain HTTP routes (exports, receipts). */
   const app = createApp({
-    config: { baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret', bootstrapEmail: undefined, perfInstrumentation: false },
+    config: { ...AUTH, perfInstrumentation: false },
     connect: () => pool.connect(),
     pool: makeDb(pool),
     bucket: r2.bucket,
@@ -45,11 +47,11 @@ export async function startHarness() {
   /** Better Auth behind the server's OAuth route checks, as src/server/app.ts sends /api/auth/* requests. */
   const auth = (request: Request) =>
     withDb((db) => {
-      const instance = createAuth({ db, baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret' })
+      const instance = createAuth({ ...AUTH, db })
       return handleAuthRoute({ db, request, baseUrl: BASE, secret: SECRET, handle: (r) => instance.handler(r) })
     })
   const authApi = <A>(work: (api: ReturnType<typeof createAuth>['api']) => Promise<A>) =>
-    withDb((db) => work(createAuth({ db, baseUrl: BASE, secret: SECRET, googleClientId: 'test-google', googleClientSecret: 'test-google-secret' }).api))
+    withDb((db) => work(createAuth({ ...AUTH, db }).api))
 
   /** A verified (or unverified) account with a signed web session cookie. */
   async function account(id: string, data: { name?: string; verified?: boolean } = {}) {

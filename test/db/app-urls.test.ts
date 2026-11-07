@@ -23,7 +23,7 @@ beforeAll(async () => {
     { id: UNSLUGGED, kind: 'named', slug: null, name: 'Trip', defaultCurrency: 'USD' },
   ])
   app = createApp({
-    config: { baseUrl: BASE, secret: 'app-urls-test-secret-0123456789-0123456789', googleClientId: 'g', googleClientSecret: 'g', bootstrapEmail: undefined, perfInstrumentation: false },
+    config: { baseUrl: BASE, secret: 'app-urls-test-secret-0123456789-0123456789', googleClientId: 'g', googleClientSecret: 'g', bootstrapEmail: undefined, signUpDailyLimit: 200, perfInstrumentation: false },
     connect: () => pool.connect(),
     pool: makeDb(pool),
     bucket: fakeBucket().bucket,
@@ -99,3 +99,15 @@ describe('RPC request IDs', () => {
     }
   })
 })
+
+describe('origins', () => {
+  // The session cookie alone must never authorize a cross-site write.
+  it('refuses RPC calls and receipt uploads from another origin, and from a request without one', async () => {
+    for (const path of ['/api/rpc', '/api/receipts'])
+      for (const headers of [{ origin: 'https://evil.example' }, {}]) {
+        const response = await app.fetch(new Request(`${BASE}${path}`, { method: 'POST', headers, body: '[]' }))
+        expect({ path, headers, status: response.status, body: await response.json() }).toEqual({ path, headers, status: 403, body: { error: 'Origin not allowed' } })
+      }
+  })
+})
+

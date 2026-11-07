@@ -10,14 +10,13 @@ import { LIMITS } from '../shared/limits'
 import type { GroupKind, Role } from '../shared/vocabulary'
 import type { Bucket } from './bucket'
 import type { Db } from './db'
-import { contentDisposition } from './export'
 import { requireMember, type Principal } from './access'
+import { apiKeyCount } from './auth/api-key'
 import { removeDocuments } from './ledger'
 import { receiptUsage } from './receipt-quota'
 import { receiptDownloadPath, receiptKey } from './receipts'
 import { groupsCreated } from './groups'
 import { iso } from './sql'
-import { zipStream, type ZipEntry } from './zip'
 
 export const DELETE_DENIED = 'Only the person who uploaded a receipt, or an admin of its group, can delete it.'
 
@@ -33,7 +32,7 @@ export async function storageUsage(db: Db, data: { principal: Principal }) {
       (SELECT count(*)::int FROM mine) AS count,
       coalesce((SELECT sum(bytes) FROM mine WHERE NOT member), 0)::text AS elsewhere,
       ${groupsCreated(data.principal.userId)} AS groups,
-      (SELECT count(*)::int FROM apikey k WHERE k.reference_id = ${data.principal.userId}) AS keys
+      ${apiKeyCount(data.principal.userId)} AS keys
   `)
   const row = result.rows[0]
   return {
@@ -74,15 +73,15 @@ export async function listReceipts(
     order: ReceiptOrder
     cursor: number
     limit: number
-    group?: string | undefined
+    groupId?: string | undefined
     olderThan?: string | undefined
     minBytes?: number | undefined
     baseUrl?: string | undefined
   },
 ) {
   const where: SQL[] = [sql`r.created_by = ${data.principal.userId}`, sql`NOT EXISTS (SELECT 1 FROM deleted_receipts d WHERE d.receipt_id = r.id)`]
-  if (data.group !== undefined) {
-    const { groupId } = await requireMember(db, { principal: data.principal, group: data.group })
+  if (data.groupId !== undefined) {
+    const { groupId } = await requireMember(db, { principal: data.principal, groupId: data.groupId })
     where.push(sql`r.group_id = ${groupId}`)
   }
   if (data.olderThan !== undefined) where.push(sql`r.created_at < ${data.olderThan}::timestamptz`)
@@ -155,7 +154,7 @@ export async function deleteReceipts(tx: Db, data: { principal: Principal; recei
       WHERE e.deleted_at IS NULL AND (e.group_id, d.url) IN (VALUES ${pairs})
       GROUP BY d.expense_id, e.group_id ORDER BY d.expense_id
     `)
-    for (const row of shown.rows) await removeDocuments(tx, { principal: data.principal, group: row.group_id, expenseId: row.expense_id, urls: new Set(row.urls) })
+    for (const row of shown.rows) await removeDocuments(tx, { principal: data.principal, groupId: row.group_id, expenseId: row.expense_id, urls: new Set(row.urls) })
   }
   const freed = new Set(fresh.map((r) => r.id))
   const deleted = ids.map((id) => ({ receiptId: id, bytes: freed.has(id) ? (byId.get(id)?.bytes ?? 0) : 0 }))
@@ -220,7 +219,7 @@ const safeName = (text: string) =>
  * under "Deleted expenses/" for a deleted one, and under "Not attached/" for a
  * receipt that no expense shows now. Checks membership.
  */
-export async function receiptArchive(db: Db, data: { principal: Principal; group: string }) {
+export async function receiptArchive(db: Db, data: { principal: Principal; groupId: string }) {
   const { groupId } = await requireMember(db, data)
   const result = await db.execute<ArchiveRow>(sql`
     SELECT x.url, ${iso(sql`min(x.created_at)`)} AS created_at,
@@ -253,34 +252,4 @@ export async function receiptArchive(db: Db, data: { principal: Principal; group
   }
   const [group] = await db.select({ name: groups.name }).from(groups).where(eq(groups.id, groupId))
   return { groupName: group?.name ?? groupId, entries }
-}
-
-/**
- * The HTTP response of the receipt download: a ZIP file that streams from
- * storage after the database work is done. A receipt whose object is missing
- * is listed in MISSING.txt at the end of the file instead.
- */
-export function receiptArchiveResponse(data: { bucket: Bucket; archive: Awaited<ReturnType<typeof receiptArchive>>; date: string }) {
-  const { bucket, archive } = data
-  async function* files(): AsyncGenerator<ZipEntry | null> {
-    const missing: string[] = []
-    for (const entry of archive.entries) {
-      const object = await bucket.get(entry.key)
-      if (!object) {
-        missing.push(entry.name)
-        yield null
-        continue
-      }
-      yield { name: entry.name, time: entry.time, bytes: await object.bytes() }
-    }
-    if (missing.length)
-      yield { name: 'MISSING.txt', time: new Date(), bytes: new TextEncoder().encode(`These receipts were not found in storage:\n${missing.join('\n')}\n`) }
-  }
-  return new Response(zipStream(files()), {
-    headers: {
-      'Content-Type': 'application/zip',
-      'Content-Disposition': contentDisposition(`${archive.groupName} receipts ${data.date}.zip`),
-      'Cache-Control': 'private, no-store',
-    },
-  })
 }

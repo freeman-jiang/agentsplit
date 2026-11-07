@@ -38,17 +38,17 @@ Set these in the Coolify resource environment. Never commit, print or paste thei
 | `BASE_URL` | The public origin. OAuth issuers, cookies and upload targets use it. |
 | `DB2_PASSWORD` | The password of `db2`. The Compose file builds `DATABASE_URL` from it. |
 | `POSTGRES_PASSWORD` | The password of the old `db`. Keep it for a rollback. |
-| `BETTER_AUTH_SECRET` | Signs session cookies and decrypts the imported signing keys. It must stay the production value (AUTH.md). |
+| `BETTER_AUTH_SECRET` | Signs session cookies and decrypts the imported signing keys. It must stay the production value (AUTH.md). It must have at least 32 characters, or the server does not start. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | The Google sign-in client. |
 | `AUTH_BOOTSTRAP_EMAIL` | The owner email for the one-time bootstrap (AUTH.md). |
 | `GARAGE_RPC_SECRET` | Garage's RPC secret. |
 | `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET` | The Garage access key and secret. The same values as the old app. |
-| `AGENTSPLIT_MAINTENANCE` | The maintenance switch (below). Empty in normal operation. |
+| `AGENTSPLIT_MAINTENANCE` | The maintenance switch (below): `1`, `true`, `yes` or `on` turns it on. Empty in normal operation. |
 | `SIGN_UP_DAILY_LIMIT` | Optional. New accounts per 24 hours, a whole number; empty means 200. Existing accounts always sign in (AUTH.md). |
 
 v2 does not read `STORAGE_HOST`, `MCP_ACCESS_GRANTS`, `AUTH_BOOTSTRAP_LEGACY_USER_ID` or `BETTER_AUTH_TELEMETRY`. Keep them, because the old Compose file needs them for a rollback.
 
-The Compose file and the image set the other settings of `src/server/server.ts`: `DATABASE_URL`, `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_BUCKET`, `S3_UPLOAD_REGION`, `PORT`, `CLIENT_DIR` and `MIGRATIONS_DIR`. `DATABASE_POOL_SIZE` (default 10) and `HOST` (default `0.0.0.0`) are optional. A missing required setting stops the server at start with its name.
+The Compose file and the image set the other settings: `DATABASE_URL`, `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_BUCKET`, `S3_UPLOAD_REGION`, `PORT`, `CLIENT_DIR` and `MIGRATIONS_DIR`. `DATABASE_POOL_SIZE` (default 10) and `HOST` (default `0.0.0.0`) are optional. The server reads and checks every setting once at start (`src/server/config.ts`). A missing or malformed setting stops the start with its name.
 
 ## Deploy
 
@@ -75,7 +75,7 @@ Migration 0012 adds `receipts.bytes`. The receipts stored before it keep 0, so t
 
 ## Maintenance switch
 
-With `AGENTSPLIT_MAINTENANCE=1`, the server answers 503 with `Retry-After: 300` to every request except `/api/health`: a maintenance page for browsers, a JSON error for other clients. The hourly job pauses. The container still starts, migrates and passes its health check, so nothing writes to `db2`.
+With `AGENTSPLIT_MAINTENANCE=1`, the server answers 503 with `Retry-After: 300` to every request except the health checks (`/api/health`, `/api/health/readiness` and `/api/health/liveness`): a maintenance page for browsers, a JSON error for other clients. The hourly job pauses. The container still starts, migrates and passes its health check, so nothing writes to `db2`.
 
 1. Set `AGENTSPLIT_MAINTENANCE=1` on the application.
 2. Deploy.
