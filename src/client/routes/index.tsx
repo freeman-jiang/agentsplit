@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Search } from 'lucide-react'
 import { pickSearch } from '~/client/search'
 import { useEffect, useState } from 'react'
 import { LoginButton } from '~/client/components/login-button'
@@ -140,9 +140,10 @@ function Dashboard() {
         </div>
         <section aria-label="Filter expenses" className="space-y-3">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
-            <label className="col-span-2 text-sm sm:col-span-1">
+            <label className="relative col-span-2 text-sm sm:col-span-1">
               <span className="sr-only">Search</span>
-              <Input type="search" placeholder="Search descriptions or merchants" maxLength={200} {...select('q')} />
+              <Search aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input type="search" className="ps-9" placeholder="Search descriptions or merchants" maxLength={200} {...select('q')} />
             </label>
             <label className="text-sm">
               <span className="sr-only">Group</span>

@@ -1,6 +1,6 @@
 import { useSuspenseInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '~/client/cn'
 import { groupByDate, weekStartsOn } from '~/client/components/date-groups'
@@ -96,7 +96,7 @@ function ExpensesTab() {
         </p>
       )}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div role="radiogroup" aria-label="Sort expenses" className="inline-flex min-h-10 items-stretch rounded-full bg-muted p-1 text-sm max-sm:grid max-sm:w-full max-sm:grid-cols-2">
+        <div role="radiogroup" aria-label="Sort expenses" className="inline-flex min-h-10 items-stretch rounded-xl border border-input p-1 text-sm max-sm:grid max-sm:w-full max-sm:grid-cols-2">
           {SORTS.map(([value, label]) => (
             <button
               key={value}
@@ -104,13 +104,14 @@ function ExpensesTab() {
               role="radio"
               aria-checked={sort === value}
               onClick={() => navigate({ search: (s) => ({ ...s, sort: value }), replace: true })}
-              className={cn('rounded-full px-4 transition-colors', sort === value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+              className={cn('rounded-[0.5rem] px-3 transition-colors', sort === value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground')}
             >
               {label}
             </button>
           ))}
         </div>
         <div className="relative min-w-48 flex-1">
+          <Search aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
             placeholder="Search for an expense…"
@@ -118,7 +119,7 @@ function ExpensesTab() {
             maxLength={200}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            className="pe-9"
+            className="ps-9 pe-9"
           />
           {text && (
             <button type="button" aria-label="Clear search" onClick={() => setText('')} className="absolute inset-y-0 end-2 flex items-center text-muted-foreground">
