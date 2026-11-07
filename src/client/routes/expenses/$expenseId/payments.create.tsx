@@ -42,7 +42,7 @@ function Repayment({ data }: { data: typeof ExpenseContext.Type }) {
         // The form defaults to this currency when the link names none.
         defaultCurrency={data.expense.currency}
         participants={data.participants}
-        target={{ ...target, groupId: data.group.id }}
+        target={target}
       />
     </div>
   )

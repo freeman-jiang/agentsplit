@@ -28,7 +28,7 @@ export function toInput(data: { draft: ExpenseDraft; documents: readonly FormDoc
   }
 }
 
-export type ExpenseInput = ReturnType<typeof toInput>
+type ExpenseInput = ReturnType<typeof toInput>
 
 /** A new entry with the ID its form minted when it opened (P-EXP-38), or a saved one at the revision the form loaded. */
 export type Entry = { readonly mode: 'create'; readonly expenseId: string } | { readonly mode: 'edit'; readonly expenseId: string; readonly revision: number }
@@ -53,6 +53,9 @@ export type EntryTarget = {
   readonly leave: (data: { entry: Entry; alreadySaved: boolean }) => Promise<void>
 }
 
+/** A target in a group or private context that exists already: every target but a new ungrouped expense. */
+export type GroupEntryTarget = EntryTarget & { readonly groupId: string }
+
 /** A write whose answer was lost may have happened; the form keeps its key, so a retry cannot save twice. */
 const UNCONFIRMED = 'The server did not confirm the change. Try again: a retry cannot save it twice.'
 
@@ -75,7 +78,7 @@ const existsInGroup =
     )
 
 /** An entry on a group's pages: it returns to the expense or payment list. */
-export function useGroupTarget(data: { groupId: string; group: string; kind: ExpenseKind }): EntryTarget {
+export function useGroupTarget(data: { groupId: string; group: string; kind: ExpenseKind }): GroupEntryTarget {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const back = { to: data.kind === 'payment' ? '/$group/payments' : '/$group/expenses', params: { group: data.group } } as const
@@ -95,7 +98,7 @@ export function useGroupTarget(data: { groupId: string; group: string; kind: Exp
 }
 
 /** An entry on the /expenses pages: it returns to the original private expense, or the dashboard. */
-export function usePageTarget(data: { groupId: string; privateExpense: boolean; back: Extract<BackLink, { to: '/' | '/expenses/$expenseId' }> }): EntryTarget {
+export function usePageTarget(data: { groupId: string; privateExpense: boolean; back: Extract<BackLink, { to: '/' | '/expenses/$expenseId' }> }): GroupEntryTarget {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   return {

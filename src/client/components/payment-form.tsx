@@ -21,7 +21,7 @@ import { validateExpense, type ExpenseDraft } from '~/shared/expense-rules'
 import { DECIMAL } from '~/shared/minor'
 import { CATEGORY } from '~/shared/vocabulary'
 import { DeleteDialog } from './delete-dialog'
-import { toInput, useEntryWrite, type EntryTarget } from './entry-write'
+import { toInput, useEntryWrite, type GroupEntryTarget } from './entry-write'
 
 type DetailData = typeof ExpenseDetail.Type
 
@@ -38,7 +38,7 @@ const unsigned = (text: string) => DECIMAL.test(text) && !text.startsWith('-')
  * payment starts from the viewer, the prefill and the default currency.
  */
 export function PaymentForm(
-  props: { participants: ReadonlyArray<typeof Participant.Type>; target: EntryTarget & { readonly groupId: string } } & (
+  props: { participants: ReadonlyArray<typeof Participant.Type>; target: GroupEntryTarget } & (
     | { mode: 'create'; expenseId: string; prefill: PaymentPrefill; viewer: string | null; defaultCurrency: CurrencyCode }
     | { mode: 'edit'; detail: DetailData; onReload: () => void }
   ),
