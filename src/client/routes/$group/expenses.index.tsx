@@ -1,12 +1,12 @@
 import { useSuspenseInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Paperclip, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '~/client/cn'
-import { CategoryIcon } from '~/client/components/category-icon'
 import { groupByDate, weekStartsOn } from '~/client/components/date-groups'
 import { localDate } from '~/client/components/local-date'
 import { expenseRowFigures, type Figure } from '~/client/components/expense-row'
+import { expenseRowClass, RowCategory, RowDate, RowFigure, RowMetadata, RowNarrowLine, RowTitle, RowVendor } from '~/client/components/expense-row-parts'
 import { money } from '~/client/components/money'
 import { expensesQuery, groupQuery } from '~/client/queries'
 import { Button } from '~/client/ui/button'
@@ -165,55 +165,35 @@ const tones: Record<Figure['tone'], string> = { neutral: 'text-muted-foreground'
 function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewer: string | null; names: ReadonlyMap<string, string> }) {
   const { expense: e } = props
   const figures = expenseRowFigures({ expense: e, viewer: props.viewer, names: props.names })
-  const [year, month, day] = e.expenseDate.split('-')
-  const monthName = new Date(Date.UTC(Number(year), Number(month) - 1, 1)).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
   const author = e.editedBy ? `Last edited by ${e.editedBy}` : e.addedBy ? `Added by ${e.addedBy}` : 'Original author unavailable'
+  const paid = money(figures.paid.amount ?? '0', e.currency)
   const link =
     e.kind === 'payment'
       ? ({ to: '/$group/payments/$expenseId/edit', params: { group: props.group, expenseId: e.id } } as const)
       : ({ to: '/$group/expenses/$expenseId/edit', params: { group: props.group, expenseId: e.id } } as const)
   return (
     <li>
-      <Link {...link} className="flex items-start gap-3 px-3 py-3 hover:bg-accent/50 sm:px-4">
-        <div className="w-10 shrink-0 text-center leading-tight">
-          <div className="text-xs uppercase text-muted-foreground">{monthName}</div>
-          <div className="text-lg tabular-nums">{Number(day)}</div>
-          <span className="sr-only">{year}</span>
+      <Link {...link} className={expenseRowClass}>
+        <RowDate date={e.expenseDate} />
+        <RowCategory categoryId={e.categoryId} />
+        <div className="min-w-0">
+          <RowVendor vendor={e.vendor} />
+          <RowTitle title={e.title} payment={e.kind === 'payment'} documentCount={e.documentCount} />
+          <RowMetadata parts={[e.vendor && { key: 'vendor', node: e.vendor }, { key: 'author', node: author }]} />
         </div>
-        <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground sm:flex">
-          <CategoryIcon categoryId={e.categoryId} className="h-5 w-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          {e.vendor && <div className="truncate text-xs text-muted-foreground">{e.vendor}</div>}
-          <div className={cn('flex items-center gap-1.5', e.kind === 'payment' && 'italic')}>
-            <span className="truncate font-medium">{e.title}</span>
-            {e.documentCount > 0 && (
-              <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground" aria-label={`${e.documentCount} documents`}>
-                <Paperclip className="h-3 w-3" aria-hidden="true" />
-                {e.documentCount}
-              </span>
-            )}
-          </div>
-          {/* On narrow screens the paid figure sits under the title, so the right column holds only the viewer's figure. */}
-          <div className="truncate text-sm text-muted-foreground sm:hidden">
-            {figures.paid.label} <span className="tabular-nums">{money(figures.paid.amount ?? '0', e.currency)}</span>
-          </div>
-          <div className="truncate text-xs text-muted-foreground max-sm:hidden">{author}</div>
-        </div>
-        <div className="shrink-0 text-right text-sm">
-          <div className={cn('text-xs sm:hidden', tones[figures.personal.tone])}>{figures.personal.label}</div>
-          <div className={cn('text-base font-semibold tabular-nums sm:hidden', tones[figures.personal.tone])}>
-            {figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
-          </div>
-          <div className="hidden text-xs text-muted-foreground sm:block">{figures.paid.label}</div>
-          <div className="hidden tabular-nums sm:block">{money(figures.paid.amount ?? '0', e.currency)}</div>
-        </div>
-        <div className="hidden w-28 shrink-0 text-right text-sm sm:block">
-          <div className={cn('text-xs', tones[figures.personal.tone])}>{figures.personal.label}</div>
-          <div className={cn('text-base font-semibold tabular-nums', tones[figures.personal.tone])}>
-            {figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
-          </div>
-        </div>
+        <RowFigure className="max-sm:hidden" label={figures.paid.label} amount={paid} />
+        <RowFigure
+          label={figures.personal.label}
+          amount={figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
+          labelClass={tones[figures.personal.tone]}
+          amountClass={cn('font-semibold', tones[figures.personal.tone])}
+        />
+        {/* On narrow screens the paid figure sits under the title, so the right column holds only the viewer's figure. */}
+        <RowNarrowLine>
+          <span className="min-w-0 truncate">
+            {figures.paid.label} <span className="tabular-nums">{paid}</span>
+          </span>
+        </RowNarrowLine>
       </Link>
     </li>
   )
