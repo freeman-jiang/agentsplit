@@ -246,7 +246,7 @@ function Dashboard() {
             <p className="mt-2 text-sm text-muted-foreground">Add an expense or adjust your filters.</p>
           </div>
         ) : (
-          <div aria-label="Expense history">
+          <div aria-label="Expense history" className="divide-y border">
             {expenses.map((expense) => (
               <FeedCard key={expense.id} expense={expense} />
             ))}

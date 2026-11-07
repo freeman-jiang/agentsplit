@@ -56,6 +56,8 @@ function GroupLayout() {
   const { data: g } = useSuspenseQuery(groupQuery(group))
   // On a phone the expense and payment forms need the whole screen; the rail stays on the tabs.
   const onForm = useRouterState({ select: (s) => s.matches.some((m) => FORM_ROUTES.has(m.routeId)) })
+  // The Balances tab shows every balance itself, so the rail keeps only the viewer's summary there.
+  const onBalances = useRouterState({ select: (s) => s.matches.some((m) => m.routeId === '/$group/balances') })
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-8">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -92,7 +94,7 @@ function GroupLayout() {
         </nav>
       </div>
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_16rem]">
-        <BalanceRail group={group} hideOnMobile={onForm} />
+        <BalanceRail group={group} hideOnMobile={onForm} summaryOnly={onBalances} />
         <div className="min-w-0 md:col-start-1 md:row-start-1">
           <Outlet />
         </div>
@@ -125,7 +127,7 @@ function amountClass(amount: string) {
  * group-balance-summary.tsx. It reads its own balances query, so a failed load
  * stays in the rail. On narrow screens each currency is a closed <details>.
  */
-function BalanceRail({ group, hideOnMobile }: { group: string; hideOnMobile: boolean }) {
+function BalanceRail({ group, hideOnMobile, summaryOnly }: { group: string; hideOnMobile: boolean; summaryOnly: boolean }) {
   const { data: g } = useSuspenseQuery(groupQuery(group))
   // As in the current app: fresh balances on mount and on window focus (P-BAL-58).
   // The data is stale after one second, so the rail does not fetch again right
@@ -187,16 +189,18 @@ function BalanceRail({ group, hideOnMobile }: { group: string; hideOnMobile: boo
                 </details>
                 <div className="hidden space-y-4 md:block">
                   {summary}
-                  {details}
+                  {!summaryOnly && details}
                 </div>
               </section>
             )
           })}
         </div>
       )}
-      <Link to="/$group/balances" params={{ group }} className="mt-4 hidden text-xs underline underline-offset-4 md:inline-block">
-        Balance details
-      </Link>
+      {!summaryOnly && (
+        <Link to="/$group/balances" params={{ group }} className="mt-4 hidden text-xs underline underline-offset-4 md:inline-block">
+          Balance details
+        </Link>
+      )}
     </aside>
   )
 }
