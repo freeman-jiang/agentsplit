@@ -27,7 +27,7 @@ const _jsonIdentical: { [T in Tag]: JsonIdentical<T> } extends { [T in Tag]: tru
 void _jsonIdentical
 
 /** An error that a procedure of the contract declares, as JSON. */
-export type DeclaredError = Schema.Codec.Encoded<Rpc.ErrorSchema<Rpcs>>
+type DeclaredError = Schema.Codec.Encoded<Rpc.ErrorSchema<Rpcs>>
 
 const DECLARED: Readonly<Record<DeclaredError['_tag'], true>> = { Unauthorized: true, Forbidden: true, NotFound: true, Conflict: true, Invalid: true, Unavailable: true }
 
