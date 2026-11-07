@@ -12,7 +12,7 @@ import { balanceSums, settlementsOf, type BalanceSum } from './balances'
 import type { Db } from './core/db'
 import { expenseColumns, involves, toExpense, type ExpenseRow } from './expense-read'
 import { listedInvitation } from './invitations'
-import { contactsSql, participantName } from './people'
+import { contactsSql, participantName, participantsJson } from './people'
 import { escapeLike, iso } from './sql'
 
 export type FeedFilter = typeof FeedFilterSchema.Type
@@ -149,8 +149,7 @@ export async function expenseContext(db: Db, data: { principal: Principal; expen
   const result = await db.execute<ContextRow>(sql`
     SELECT ${expenseColumns({ attribution: true })},
       m.role, m.participant_id AS viewer_participant_id, g.name AS g_name, g.slug AS g_slug, g.kind AS g_kind,
-      coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', ${participantName}) ORDER BY p.name, p.id)
-        FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
+      ${participantsJson(sql`g.id`)} AS participants,
       pc.expense_id AS context_expense_id, ce.title AS context_expense_title,
       CASE WHEN pc.group_id IS NOT NULL THEN ${balanceSums({ group: sql`g.id` })} END AS sums,
       CASE WHEN pc.group_id IS NOT NULL AND m.role = 'admin' THEN coalesce((

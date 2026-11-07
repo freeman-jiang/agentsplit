@@ -23,6 +23,10 @@ export const displayNames = (groupId: SQL) => sql`
   SELECT p.id, ${participantName} AS name
   FROM participants p WHERE p.group_id = ${groupId}`
 
+/** The participants of group `groupId` with their display names, as a JSON array of `{id, name}` by name. Every current view lists people with it (P-GROUP-55). */
+export const participantsJson = (groupId: SQL) =>
+  sql`coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id) FROM (${displayNames(groupId)}) p), '[]')`
+
 /**
  * The caller and the verified accounts with a linked participant in any group
  * or context the caller can see. Nobody else is discoverable.

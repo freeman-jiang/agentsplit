@@ -3,7 +3,7 @@
 // `scheduled`) creates due occurrences; reads never write (DECISIONS.md,
 // P-BAL-30 and P-RECUR-08).
 import { and, eq, isNull, sql } from 'drizzle-orm'
-import { expenseDocuments, groups, participants, recurringLinks } from '../../db/schema/app'
+import { expenseDocuments, groups, recurringLinks } from '../../db/schema/app'
 import { todayUtc } from '../shared/dates'
 import { idOfBytes } from '../shared/ids'
 import type { Recurrence } from '../shared/vocabulary'
@@ -12,6 +12,7 @@ import { recordExpenseEvent } from './activity'
 import { serializable, type Db } from './core/db'
 import { documentRows, EXPENSE_FIELDS, fieldColumn, isActiveSeries, loadExpenses } from './expense-read'
 import { randomId } from './core/ids'
+import { displayNames } from './people'
 import { textList } from './sql'
 
 const daysIn = (year: number, month: number) => new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
@@ -136,7 +137,7 @@ async function materialize(tx: Db, data: { link: DueLink; principal: Principal |
   const [stored] = await loadExpenses(tx, { ids: [id], parts: { documents: true } })
   const [group] = await tx.select().from(groups).where(eq(groups.id, link.group_id))
   if (!stored || !group) throw new Error(`Recurring occurrence ${id} was not stored`)
-  const people = await tx.select({ id: participants.id, name: participants.name }).from(participants).where(eq(participants.groupId, link.group_id))
+  const people = await tx.execute<{ id: string; name: string }>(displayNames(sql`${link.group_id}`)).then((r) => r.rows)
   // Without a user it shows as the system actor (P-RECUR-17).
   await recordExpenseEvent(tx, {
     type: 'create_expense',

@@ -8,6 +8,7 @@ import { formatMinor, minor, minorOf, type Minor } from '../shared/minor'
 import * as stats from '../shared/stats'
 import { memberCte, requireActive, type Principal } from './core/access'
 import type { Db } from './core/db'
+import { participantsJson } from './people'
 import { expenseColumns, isActiveSeries, toExpense, type ExpenseRow } from './expense-read'
 
 type Head = {
@@ -23,7 +24,7 @@ async function load(db: Db, data: { principal: Principal; groupId: string }) {
   const result = await db.execute<Head>(sql`
     WITH ${memberCte(data)}
     SELECT g.active, g.participant_id, g.default_currency,
-      coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id) FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
+      ${participantsJson(sql`g.id`)} AS participants,
       coalesce((SELECT json_agg(x ORDER BY x.expense_date DESC, x.created_key DESC, x.id DESC) FROM (
           SELECT ${expenseColumns()}, e.created_at AS created_key FROM expenses e WHERE e.group_id = g.id AND e.deleted_at IS NULL) x), '[]') AS expenses
     FROM g
