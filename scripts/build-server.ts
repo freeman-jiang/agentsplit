@@ -1,7 +1,8 @@
 // The server half of `bun run build`, after `vite build` wrote dist/client:
 // bundles src/server/server.ts and its dependencies into dist/server, so the
-// image needs no node_modules, copies the SQL migrations to dist/migrations,
-// and writes .br and .gz copies of the client's text files for src/server/assets.ts.
+// image needs no node_modules, with the receipt size backfill beside it;
+// copies the SQL migrations to dist/migrations, and writes .br and .gz copies
+// of the client's text files for src/server/assets.ts.
 import { cpSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib'
@@ -18,6 +19,18 @@ const result = await Bun.build({
 })
 if (!result.success) {
   for (const log of result.logs) console.error(log)
+  process.exit(1)
+}
+// The one-time receipt size backfill (DEPLOYMENT.md), so it can run in the app container.
+const backfill = await Bun.build({
+  entrypoints: ['scripts/backfill-receipt-bytes.ts'],
+  outdir: 'dist/server',
+  target: 'bun',
+  minify: true,
+  external: ['pg-native'],
+})
+if (!backfill.success) {
+  for (const log of backfill.logs) console.error(log)
   process.exit(1)
 }
 
@@ -37,4 +50,4 @@ for (const file of files('dist/client')) {
   writeFileSync(`${file}.gz`, gzipSync(bytes, { level: 9 }))
   compressed++
 }
-console.log(`Server bundle in dist/server (${result.outputs.length} files); ${compressed} client files precompressed`)
+console.log(`Server bundle in dist/server (${result.outputs.length + backfill.outputs.length} files); ${compressed} client files precompressed`)
