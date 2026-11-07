@@ -8,6 +8,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as app from '../../db/schema/app'
 import { CURRENCIES } from '~/shared/currencies'
 import { LIMITS } from '~/shared/limits'
+import { DECIMAL } from '~/shared/minor'
+import { WEIGHT } from '~/shared/split'
 import { testDatabase, type TestDatabase } from '../kit/database'
 import { counter } from '../kit/ids'
 
@@ -59,18 +61,23 @@ type Group = Awaited<ReturnType<typeof newGroup>>
 
 /**
  * Inserts an expense of `amount` cents at revision 1 with its activity, paid by
- * Alice unless `payers` says otherwise, split by amount as `shares`.
+ * Alice unless `payers` says otherwise, split as `shares` (by amount unless
+ * `splitMode` says otherwise; a share's weight is its amount unless given).
  */
-async function insertExpense(c: PoolClient, g: Group, data: { expense: string; amount: number; shares: [string, number][]; payers?: [string, number, string?][] }) {
+async function insertExpense(
+  c: PoolClient,
+  g: Group,
+  data: { expense: string; amount: number; shares: [string, number, string?][]; payers?: [string, number, string?][]; splitMode?: string },
+) {
   await c.query(
-    `INSERT INTO expenses (id, group_id, revision, kind, title, expense_date, currency, amount, split_mode) VALUES ($1, $2, 1, 'expense', 'Dinner', '2026-11-05', 'USD', $3, 'amount')`,
-    [data.expense, g.group, data.amount],
+    `INSERT INTO expenses (id, group_id, revision, kind, title, expense_date, currency, amount, split_mode) VALUES ($1, $2, 1, 'expense', 'Dinner', '2026-11-05', 'USD', $3, $4)`,
+    [data.expense, g.group, data.amount, data.splitMode ?? 'amount'],
   )
   await c.query(`INSERT INTO activities (id, group_id, type, expense_id, expense_revision, snapshot) VALUES ($1, $2, 'create_expense', $3, 1, '{}'::jsonb)`, [id('act'), g.group, data.expense])
   for (const [participant, amount, weight = '1'] of data.payers ?? [[g.alice, data.amount]])
     await c.query(`INSERT INTO expense_payers (expense_id, group_id, participant_id, amount, weight) VALUES ($1, $2, $3, $4, $5)`, [data.expense, g.group, participant, amount, weight])
-  for (const [participant, amount] of data.shares)
-    await c.query(`INSERT INTO expense_shares (expense_id, group_id, participant_id, amount, weight) VALUES ($1, $2, $3, $4, $5)`, [data.expense, g.group, participant, amount, String(amount)])
+  for (const [participant, amount, weight = String(amount)] of data.shares)
+    await c.query(`INSERT INTO expense_shares (expense_id, group_id, participant_id, amount, weight) VALUES ($1, $2, $3, $4, $5)`, [data.expense, g.group, participant, amount, weight])
 }
 const newExpense = async (g: Group) => {
   const expense = id('e')
@@ -332,6 +339,17 @@ describe('0017: signed amount split weights', () => {
   })
 })
 
+describe('0019: a signed share weight only for a negative amount split by amount', () => {
+  it('refuses a signed share weight in any other expense, and a malformed signed weight', async () => {
+    const g = await newGroup()
+    const refund = { amount: -100, payers: [[g.alice, -100]] as [string, number][] }
+    await refusesAll('23514', (c) => insertExpense(c, g, { expense: id('e'), ...refund, splitMode: 'shares', shares: [[g.alice, -100, '-1']] }))
+    await refusesAll('23514', (c) => insertExpense(c, g, { expense: id('e'), amount: 100, shares: [[g.alice, 100, '-100']] }))
+    for (const weight of ['1.', '--1', '-', '-01'])
+      await refusesAll('23514', (c) => insertExpense(c, g, { expense: id('e'), ...refund, shares: [[g.alice, -100, weight]] }))
+  })
+})
+
 describe('the shared value lists and limits', () => {
   type Check = { table: string; name: string; columns: string[]; definition: string }
   const checks = async () =>
@@ -342,6 +360,13 @@ describe('the shared value lists and limits', () => {
         FROM pg_constraint c WHERE c.contype = 'c' AND c.connamespace = 'public'::regnamespace`)
     ).rows
   const listed = (definition: string) => [...new Set([...definition.matchAll(/'([^']*)'::text/g)].map((m) => m[1]))].sort()
+
+  it('checks payer and share weights with the regexes of src/shared', async () => {
+    const all = await checks()
+    const pattern = (name: string) => all.find((c) => c.name === name)?.definition.match(/~ '(.*)'::text/)?.[1]
+    expect(pattern('expense_payers_weight_decimal')).toBe(WEIGHT.source)
+    expect(pattern('expense_shares_weight_decimal')).toBe(DECIMAL.source)
+  })
 
   // The lists come from src/shared; an old migration that disagrees with them fails silently until a write is refused, or accepted.
   it('checks every Drizzle enum column with exactly the shared list', async () => {

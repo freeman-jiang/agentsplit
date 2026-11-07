@@ -88,7 +88,7 @@ The client reaches the server only through `rpc()` (`src/client/rpc.ts`), which 
 - Value lists (kinds, split modes, recurrences, roles, group kinds, activity types and sources, upload states, receipt types, and the current app's names for them) live only in `src/shared/vocabulary.ts`. Every limit (field lengths, people per group, page sizes, times, rates and the fair-use limits) lives only in `src/shared/limits.ts`. The contract, the Drizzle enums and CHECKs, the MCP schemas and descriptions, the rule messages and the client derive from these two modules; `test/db/database-rules.test.ts` compares the database's CHECKs with them. A new list or limit goes there, not into a schema.
 - Expense dates are `YYYY-MM-DD` strings. Times are `timestamptz` and ISO strings in the API.
 - The membership check happens on the server for every read and write, through `src/server/core/access.ts`: `requireMember`, or `memberCte` as the first CTE of the same statement, and `myMemberships` for a read across groups. Both resolve a group reference with `agentsplit_group_id` (an ID, a current slug in any case, or a retired slug), so never match `id` or `slug` by hand.
-- The database triggers are the last line of defense. Never disable them, and never write migrations that weaken them.
+- The database triggers and CHECKs are the last line of defense. Never disable them. A migration may replace a rule only with one that refuses at least as much, and may drop a rule only when what it protects is gone; DECISIONS.md section H records each such change.
 
 ### Speed
 

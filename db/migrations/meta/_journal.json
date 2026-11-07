@@ -127,6 +127,20 @@
       "when": 1794089245997,
       "tag": "0017_signed_amount_split_weights",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794093367088,
+      "tag": "0018_payer_weight_check_text",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794093367612,
+      "tag": "0019_share_weight_sign",
+      "breakpoints": true
     }
   ]
 }
