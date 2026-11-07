@@ -563,7 +563,9 @@ const formatZero = (currency: CurrencyCode) => (CURRENCIES[currency].decimals ? 
 /** The wide-screen summary (P-EXP-48). */
 function Summary(props: { state: FormState; names: ReadonlyMap<string, string>; hint: string }) {
   const { state } = props
-  const amount = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(state.amount.trim()) ? money(state.amount.trim(), state.currency) : '—'
+  const valid = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(state.amount.trim())
+  // Without a valid amount the total shows a muted zero, like the field's placeholder.
+  const amount = money(valid ? state.amount.trim() : formatZero(state.currency), state.currency)
   const payers =
     state.payerMode === 'one'
       ? props.names.get(state.payer)
@@ -574,7 +576,7 @@ function Summary(props: { state: FormState; names: ReadonlyMap<string, string>; 
   const people = Object.values(state.selected).filter(Boolean).length
   return (
     <aside className="hidden min-w-0 text-sm sm:block" aria-label="Expense total">
-      <p className={cn('text-xl font-semibold tabular-nums', amount === '—' && 'text-muted-foreground')}>{amount}</p>
+      <p className={cn('text-xl font-semibold tabular-nums', !valid && 'text-muted-foreground')}>{amount}</p>
       <p className="text-muted-foreground">
         {state.currency} · {payers || 'No payer yet'} · {people} {people === 1 ? 'person' : 'people'}
       </p>
