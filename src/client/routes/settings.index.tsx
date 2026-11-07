@@ -2,8 +2,10 @@ import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-q
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { CopyButton } from '~/client/components/copy-button'
+import { StorageLimits } from '~/client/components/storage-limits'
 import { authClient } from '~/client/auth-client'
 import { accountQuery, errorMessage, readTheme, saveTheme, type Theme } from '~/client/queries/account'
+import { storageUsageQuery } from '~/client/queries/storage'
 import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 import { Input } from '~/client/ui/input'
@@ -11,7 +13,7 @@ import { NativeSelect } from '~/client/ui/native-select'
 import { API_KEY_NAME_MAX, PROFILE_NAME_MAX } from '~/shared/account'
 
 export const Route = createFileRoute('/settings/')({
-  loader: ({ context }) => context.queryClient.ensureQueryData(accountQuery),
+  loader: ({ context }) => Promise.all([context.queryClient.ensureQueryData(accountQuery), context.queryClient.ensureQueryData(storageUsageQuery)]),
   component: Settings,
 })
 
@@ -26,6 +28,7 @@ function Settings() {
       <Profile name={account.profile.name} email={account.profile.email} />
       <Preferences />
       <ApiKeys keys={account.apiKeys} />
+      <StorageLimits />
     </main>
   )
 }
@@ -140,7 +143,7 @@ function ApiKeys(props: { keys: readonly Key[] }) {
   const [secret, setSecret] = useState('')
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
-  const reload = () => queryClient.invalidateQueries({ queryKey: accountQuery.queryKey })
+  const reload = () => Promise.all([queryClient.invalidateQueries({ queryKey: accountQuery.queryKey }), queryClient.invalidateQueries({ queryKey: storageUsageQuery.queryKey })])
   return (
     <section className="space-y-4">
       <h2 className="text-xl font-medium">Agent API keys</h2>

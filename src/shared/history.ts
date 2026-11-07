@@ -10,6 +10,9 @@ import { formatMinor, minor, parseMinor, sumMinor, type DecimalString, type Mino
 import { parseWeight, resolveShares, type SplitMode } from './split'
 
 export type Category = { readonly grouping: string; readonly name: string }
+
+/** A saved receipt pointer. `deleted` is set by the server when the receipt was deleted for good since. */
+export type SavedDocument = { readonly id: string; readonly url: string; readonly deleted?: { readonly by: string; readonly at: string } | null }
 export type Recurrence = 'none' | 'daily' | 'weekly' | 'monthly'
 
 /** One saved expense revision, whatever format stored it. Money is decimal text at the currency's precision. */
@@ -37,8 +40,8 @@ export type SavedExpense = {
   readonly originalAmount: string | null
   readonly originalCurrency: string | null
   readonly conversionRate: string | null
-  /** Saved document pointers. v2 snapshots store only the count. */
-  readonly documents: ReadonlyArray<{ readonly id: string; readonly url: string }>
+  /** Saved receipt pointers. Early v2 snapshots store only the count. */
+  readonly documents: ReadonlyArray<SavedDocument>
   readonly documentCount: number
   /**
    * The group as the revision saved it; `currency` is its code when one was
@@ -129,6 +132,7 @@ const V2Expense = Schema.Struct({
     recurrence: Schema.Literals(['none', 'daily', 'weekly', 'monthly']),
     createdAt: Schema.String,
     documentCount: Schema.Number,
+    documents: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.String, url: Schema.String }))),
     originalAmount: Schema.optional(Schema.NullOr(Schema.String)),
     originalCurrency: Schema.optional(Schema.NullOr(Schema.String)),
     conversionRate: Schema.optional(Schema.NullOr(Schema.String)),
@@ -302,7 +306,7 @@ function fromV2(raw: typeof V2Expense.Type, categories: ReadonlyMap<number, Cate
     originalAmount: e.originalAmount ?? null,
     originalCurrency: e.originalCurrency ?? null,
     conversionRate: e.conversionRate ?? null,
-    documents: [],
+    documents: (e.documents ?? []).map((d) => ({ id: d.id, url: d.url })),
     documentCount: e.documentCount,
     group: raw.group ?? null,
   }

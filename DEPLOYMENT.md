@@ -44,6 +44,7 @@ Set these in the Coolify resource environment. Never commit, print or paste thei
 | `GARAGE_RPC_SECRET` | Garage's RPC secret. |
 | `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET` | The Garage access key and secret. The same values as the old app. |
 | `AGENTSPLIT_MAINTENANCE` | The maintenance switch (below). Empty in normal operation. |
+| `SIGN_UP_DAILY_LIMIT` | Optional. New accounts per 24 hours, a whole number; empty means 200. Existing accounts always sign in (AUTH.md). |
 
 v2 does not read `STORAGE_HOST`, `MCP_ACCESS_GRANTS`, `AUTH_BOOTSTRAP_LEGACY_USER_ID` or `BETTER_AUTH_TELEMETRY`. Keep them, because the old Compose file needs them for a rollback.
 
@@ -62,7 +63,15 @@ A push to `main` does not deploy by itself.
 
 Coolify builds `Dockerfile`. At each start, the container applies the new SQL migrations from `MIGRATIONS_DIR` before it takes requests. A failed migration stops the start. Then the health check (`/api/health`, which runs `SELECT 1`) must pass. `/api/health/liveness` answers without the database.
 
-On SIGTERM, the server stops taking connections, lets running requests and the hourly job finish, and exits within 25 seconds. Compose gives it 30 seconds. The hourly job runs at minute 7 of each hour: it creates due recurring expenses, deletes stale receipt uploads, and deletes expired DPoP replay rows.
+On SIGTERM, the server stops taking connections, lets running requests and the hourly job finish, and exits within 25 seconds. Compose gives it 30 seconds. The hourly job runs at minute 7 of each hour: it creates due recurring expenses, deletes stale receipt uploads, removes from Garage the receipts that were deleted for good when that failed at once, and deletes expired DPoP replay rows.
+
+The fair-use limits are constants in `src/shared/limits.ts`. Only the daily sign-up cap has a setting.
+
+Better Auth limits sign-in and client registration per IP address from `X-Forwarded-For`. It uses the address only when the header holds exactly one, as Traefik sends it when it does not trust incoming forwarding headers. With more than one address, Better Auth counts all such requests together, so the limits still hold, for everyone at once.
+
+### Receipt sizes before migration 0012
+
+Migration 0012 adds `receipts.bytes`. The receipts stored before it keep 0, so they count against no quota. They were 13 objects, about 10 MB, in November 2026. The receipts trigger refuses every change to a receipt row, so their sizes are not filled in later.
 
 ## Maintenance switch
 

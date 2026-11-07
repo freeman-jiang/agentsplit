@@ -165,7 +165,8 @@ describe('tool advertisement', () => {
   it('advertises the current names, annotations, scopes and input fields', async () => {
     const r = await rpc(h, { method: 'tools/list', headers: alice })
     const tools = (r.body as { result: { tools: Advertised[] } }).result.tools
-    expect(tools.map((t) => t.name)).toEqual(current.tools.map((t) => t.name))
+    // v2 adds the storage tools at the end; every current tool keeps its place.
+    expect(tools.map((t) => t.name)).toEqual([...current.tools.map((t) => t.name), 'get_storage_usage', 'list_receipts', 'delete_receipts'])
     for (const before of current.tools as unknown as Advertised[]) {
       const now = tools.find((t) => t.name === before.name)
       if (!now) throw new Error(before.name)

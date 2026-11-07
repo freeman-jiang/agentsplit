@@ -17,6 +17,11 @@ export type ToolContext = {
   readonly bucket: Bucket
   /** ENABLE_EXPENSE_DOCUMENTS: whether agents may upload receipts. */
   readonly documentsEnabled: boolean
+  /**
+   * Runs `work` on the request's connection after a write tool's transaction
+   * commits, such as removing deleted receipts from storage. A failure is logged.
+   */
+  readonly afterCommit: (work: (db: Db) => Promise<unknown>) => void
 }
 
 export type JsonSchema = { readonly [key: string]: JsonValue }
@@ -45,7 +50,7 @@ export type McpTool = {
  */
 export class ToolError extends Error {
   constructor(
-    readonly code: 'BAD_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'CONFLICT' | 'PRECONDITION_FAILED',
+    readonly code: 'BAD_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'CONFLICT' | 'PRECONDITION_FAILED' | 'TOO_MANY_REQUESTS',
     message: string,
   ) {
     super(message)
@@ -60,6 +65,7 @@ const NOT_FOUND: Readonly<Record<string, string>> = {
   'history boundary in this group': 'History boundary not found in this group',
   'saved expense revision at this point': 'Expense revision not found at this point',
   'group at this time': 'The group did not exist at this time',
+  receipt: 'Receipt not found',
 }
 
 /**
@@ -87,7 +93,8 @@ export function errorBody(data: { error: unknown; kind: 'read' | 'write' }) {
       code,
       message,
       outcomeUnknown,
-      recovery: code === 'CONFLICT' ? 'read_current_revision' : outcomeUnknown ? 'read_before_retry' : 'correct_arguments',
+      recovery:
+        code === 'CONFLICT' ? 'read_current_revision' : code === 'TOO_MANY_REQUESTS' ? 'retry_later' : outcomeUnknown ? 'read_before_retry' : 'correct_arguments',
     },
   }
 }

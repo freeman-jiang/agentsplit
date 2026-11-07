@@ -9,8 +9,9 @@ import { feedTools } from './feed'
 import { groupTools } from './groups'
 import { historyTools } from './history'
 import { referenceTools } from './reference'
+import { storageTools } from './storage'
 
-const ALL = [...feedTools, ...accountTools, ...groupTools, ...expenseTools, ...balanceTools, ...historyTools, ...referenceTools]
+const ALL = [...feedTools, ...accountTools, ...groupTools, ...expenseTools, ...balanceTools, ...historyTools, ...referenceTools, ...storageTools]
 
 const ORDER = [
   'list_all_expenses',
@@ -33,6 +34,9 @@ const ORDER = [
   'process_recurring_expenses',
   'get_reference_data',
   'export_group',
+  'get_storage_usage',
+  'list_receipts',
+  'delete_receipts',
 ] as const
 
 export const MCP_TOOLS: readonly McpTool[] = ORDER.map((name) => {

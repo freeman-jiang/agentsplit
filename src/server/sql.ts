@@ -49,6 +49,35 @@ export const documentsJson = (expense: SQL) => sql`(SELECT json_agg(json_build_o
 /** A timestamp as ISO 8601 text in UTC, with milliseconds. */
 export const iso = (column: SQL) => sql`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
 
+/** The named groups that `userId` created, from their create_group activities (LIMITS.groupsCreated). Groups are never deleted. */
+export const groupsCreated = (userId: string) => sql`(SELECT count(*)::int FROM activities a JOIN groups g ON g.id = a.group_id AND g.kind = 'named'
+  WHERE a.type = 'create_group' AND a.actor_user_id = ${userId})`
+
+/** Who deleted a receipt and when, as readers show it in place of the image. */
+export type Tombstone = { by: string; at: string }
+
+/**
+ * The deleted receipts of group `group` as one JSON object, receipt URL →
+ * Tombstone, or NULL when none is deleted. History snapshots name receipts by
+ * URL, so readers look each one up here.
+ */
+export const tombstonesJson = (group: SQL) => sql`(SELECT json_object_agg(r.url, json_build_object('by', u.name, 'at', ${iso(sql`d.deleted_at`)}))
+  FROM deleted_receipts d JOIN receipts r ON r.id = d.receipt_id JOIN "user" u ON u.id = d.deleted_by
+  WHERE r.group_id = ${group})`
+
+/**
+ * The receipts of expense row `expense` as documentsJson gives them, each with
+ * its receipt ID (null for a legacy pointer without a receipt row) and its
+ * tombstone (null unless deleted), or NULL when it has none.
+ */
+export const documentStatesJson = (expense: SQL) => sql`(SELECT json_agg(json_build_object('id', d.id, 'url', d.url, 'width', d.width, 'height', d.height,
+    'receiptId', r.id, 'deleted', CASE WHEN dr.receipt_id IS NULL THEN NULL ELSE json_build_object('by', du.name, 'at', ${iso(sql`dr.deleted_at`)}) END) ORDER BY d.position)
+  FROM expense_documents d
+  LEFT JOIN receipts r ON r.group_id = ${expense}.group_id AND r.url = d.url
+  LEFT JOIN deleted_receipts dr ON dr.receipt_id = r.id
+  LEFT JOIN "user" du ON du.id = dr.deleted_by
+  WHERE d.expense_id = ${expense}.id)`
+
 /** A LIKE pattern that matches `text` anywhere, with its \, % and _ taken literally. */
 export const escapeLike = (text: string) => `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
 

@@ -5,14 +5,17 @@
 import { sql } from 'drizzle-orm'
 import { receipts } from '../../db/schema/app'
 import { Forbidden } from '../shared/api'
+import { LIMITS } from '../shared/limits'
 import type { Bucket } from './bucket'
 import type { Db } from './db'
 import { randomId } from './ids'
 import { requireMember, type Principal } from './ledger'
 import { httpReader } from './mcp/authenticate'
+import { spaceFor } from './receipt-quota'
 import { GROUP_DENIED, jsonError, sameOrigin } from './security'
+import type { Tombstone } from './sql'
 
-export const MAX_RECEIPT_BYTES = 5 * 1024 * 1024
+export const MAX_RECEIPT_BYTES = LIMITS.receiptBytes
 /** The multipart envelope may add this much to the image. */
 const ENVELOPE_BYTES = 64 * 1024
 const MAX_PIXELS = 40_000_000
@@ -90,13 +93,20 @@ async function memberOrNull(db: Db, data: { principal: Principal; group: string 
   }
 }
 
-/** Checks a member's access to a receipt: it must be registered to the group, or attached to one of its expenses. */
+/**
+ * Checks a member's access to a receipt: it must be registered to the group,
+ * or attached to one of its expenses. A receipt deleted for good has its tombstone.
+ */
 async function receiptInGroup(db: Db, data: { groupId: string; url: string }) {
-  const result = await db.execute<{ found: boolean }>(sql`
+  const result = await db.execute<{ found: boolean; deleted: Tombstone | null }>(sql`
     SELECT EXISTS (SELECT 1 FROM receipts WHERE group_id = ${data.groupId} AND url = ${data.url})
-      OR EXISTS (SELECT 1 FROM expense_documents d JOIN expenses e ON e.id = d.expense_id WHERE e.group_id = ${data.groupId} AND d.url = ${data.url}) AS found
+      OR EXISTS (SELECT 1 FROM expense_documents d JOIN expenses e ON e.id = d.expense_id WHERE e.group_id = ${data.groupId} AND d.url = ${data.url}) AS found,
+      (SELECT json_build_object('by', u.name, 'at', to_char(dr.deleted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD'))
+        FROM receipts r JOIN deleted_receipts dr ON dr.receipt_id = r.id JOIN "user" u ON u.id = dr.deleted_by
+        WHERE r.group_id = ${data.groupId} AND r.url = ${data.url}) AS deleted
   `)
-  return result.rows[0]?.found === true
+  const row = result.rows[0]
+  return { found: row?.found === true, deleted: row?.deleted ?? null }
 }
 
 /**
@@ -112,7 +122,8 @@ export async function receiptReader(db: Db, data: { request: Request; baseUrl: s
 /**
  * GET /api/receipts?groupId=&url=. Membership is checked before storage is
  * read, on every request; receipts that only old revisions or deleted expenses
- * refer to stay readable to members (P-RECEIPT-27).
+ * refer to stay readable to members (P-RECEIPT-27). A receipt deleted for good
+ * answers 410 Gone, with who deleted it and when.
  */
 export async function downloadReceipt(data: { db: Db; bucket: Bucket; principal: Principal | null; url: URL }): Promise<Response> {
   const groupId = data.url.searchParams.get('groupId')
@@ -122,7 +133,9 @@ export async function downloadReceipt(data: { db: Db; bucket: Bucket; principal:
   const member = await memberOrNull(data.db, { principal: data.principal, group: groupId })
   if (!member) return jsonError({ status: 403, message: GROUP_DENIED })
   const key = receiptKey(url)
-  if (!key || !(await receiptInGroup(data.db, { groupId: member.groupId, url }))) return jsonError({ status: 404, message: 'Receipt not found' })
+  const receipt = key ? await receiptInGroup(data.db, { groupId: member.groupId, url }) : null
+  if (!key || !receipt?.found) return jsonError({ status: 404, message: 'Receipt not found' })
+  if (receipt.deleted) return jsonError({ status: 410, message: `Receipt deleted by ${receipt.deleted.by} on ${receipt.deleted.at}` })
   const object = await data.bucket.get(key).catch(() => null)
   if (!object) return jsonError({ status: 404, message: 'Receipt not found' })
   return new Response(object.stream(), {
@@ -139,7 +152,9 @@ export async function downloadReceipt(data: { db: Db; bucket: Bucket; principal:
 /**
  * POST /api/receipts, multipart with `groupId` and `file`. Only a signed-in
  * browser on the app's own origin may upload. The object is stored first and
- * registered to the group after; if the registration fails, the object is removed.
+ * registered to the group after; if the registration fails, the object is
+ * removed. The uploader's storage quota is checked before the upload and again,
+ * under the uploader's quota lock, when the receipt is registered.
  */
 export async function uploadReceipt(data: {
   db: Db
@@ -170,16 +185,29 @@ export async function uploadReceipt(data: {
   const bytes = new Uint8Array(await file.arrayBuffer())
   const info = bytes.length && bytes.length <= MAX_RECEIPT_BYTES ? imageInfo(bytes) : null
   if (!info) return invalid()
+  const { userId } = data.principal
+  const full = (message: string) => jsonError({ status: 413, message })
+  const early = await spaceFor(data.db, { userId, bytes: bytes.length, lock: false, outstanding: false })
+  if (early) return full(early)
   const key = `receipts/${randomId()}.${info.format === 'jpeg' ? 'jpg' : 'png'}`
   const url = `${NEW_URL_PREFIX}${key}`
   const id = randomId()
+  let refused: string | null
   try {
     await data.bucket.put(key, bytes, { contentType: info.format === 'jpeg' ? 'image/jpeg' : 'image/png' })
-    await data.db.insert(receipts).values({ id, groupId: member.groupId, url, createdBy: data.principal.userId })
+    refused = await data.db.transaction(async (tx) => {
+      const message = await spaceFor(tx, { userId, bytes: bytes.length, lock: true, outstanding: false })
+      if (!message) await tx.insert(receipts).values({ id, groupId: member.groupId, url, createdBy: userId, bytes: bytes.length })
+      return message
+    })
   } catch (error) {
     await data.bucket.delete(key).catch(() => {})
     console.error('Receipt upload failed', error)
     return invalid()
+  }
+  if (refused) {
+    await data.bucket.delete(key).catch(() => {})
+    return full(refused)
   }
   return Response.json({ id, url, width: info.width, height: info.height }, { headers: { 'Cache-Control': 'no-store' } })
 }
