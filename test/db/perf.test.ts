@@ -2,9 +2,10 @@
 // (P-PWA-49). A missing header only shows up as an empty column in a report.
 import { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createApp, type Config } from '../../src/server/app'
+import { createApp } from '../../src/server/app'
+import type { AppSettings } from '../../src/server/config'
 import { makeDb } from '../../src/server/db'
-import { countQueries, withPerfCounters } from '../../src/server/perf'
+import { instrumentPool, withPerfCounters } from '../../src/server/perf'
 import { fakeBucket } from './fake-bucket'
 import { resetTestDatabase } from './setup'
 
@@ -14,18 +15,19 @@ beforeAll(async () => {
   const migrated = await resetTestDatabase()
   await migrated.end()
   pool = new Pool({ connectionString: migrated.options.connectionString, max: 2 })
-  pool.on('connect', countQueries)
+  instrumentPool(pool)
 })
 afterAll(async () => {
   await pool.end()
 })
 
-const config = (perfInstrumentation: boolean): Config => ({
+const config = (perfInstrumentation: boolean): AppSettings => ({
   baseUrl: 'https://app.example',
   secret: 'test-secret-0123456789abcdef0123456789abcdef',
   googleClientId: 'test',
   googleClientSecret: 'test',
   bootstrapEmail: undefined,
+  signUpDailyLimit: 200,
   perfInstrumentation,
 })
 

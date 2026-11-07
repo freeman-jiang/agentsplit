@@ -3,9 +3,9 @@
 // (access, scope, "involving me", the cursor) are in src/server/feed.ts; this
 // file only maps names.
 import { Schema } from 'effect'
+import { legacyDateTime } from '../../../shared/dates'
 import { LIMITS } from '../../../shared/limits'
-import { minorOf } from '../../../shared/minor'
-import { preferredPayer } from '../../../shared/split'
+import { mainPayer } from '../../../shared/split'
 import { RECURRENCE_NAMES, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
 import * as feed from '../../feed'
 import { defineTool } from '../registry'
@@ -115,7 +115,7 @@ export const listAllExpenses = defineTool({
       expenses: page.expenses.map((e) => {
         const names = new Map(e.people.map((p) => [p.id, p.name]))
         const person = (id: string) => ({ id, name: names.get(id) ?? '' })
-        const payerId = e.payers.length ? preferredPayer(e.payers.map((p) => ({ participantId: p.participantId, amount: minorOf(p.amount, e.currency) }))) : ''
+        const payerId = mainPayer(e) ?? ''
         return {
           id: e.id,
           groupId: e.groupId,
@@ -124,7 +124,7 @@ export const listAllExpenses = defineTool({
           amount: e.amount,
           currencyCode: e.currency,
           createdAt: e.createdAt,
-          expenseDate: `${e.expenseDate}T00:00:00.000Z`,
+          expenseDate: legacyDateTime(e.expenseDate),
           categoryId: e.categoryId,
           paidById: payerId,
           originalAmount: e.originalAmount,
@@ -150,7 +150,7 @@ export const listAllExpenses = defineTool({
           _count: { documents: e.documentCount },
         }
       }),
-      nextCursor: page.nextCursor ? { date: `${page.nextCursor.date}T00:00:00.000Z`, createdAt: page.nextCursor.createdAt, id: page.nextCursor.id } : null,
+      nextCursor: page.nextCursor ? { date: legacyDateTime(page.nextCursor.date), createdAt: page.nextCursor.createdAt, id: page.nextCursor.id } : null,
     }
   },
 })

@@ -6,6 +6,7 @@
 // registers the image to the group and attaches it, so a target alone saves nothing.
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { receipts, receiptUploads } from '../../db/schema/app'
+import { Forbidden, Invalid } from '../shared/api'
 import { LIMITS } from '../shared/limits'
 import type { ReceiptContentType } from '../shared/vocabulary'
 import type { Bucket } from './bucket'
@@ -15,7 +16,6 @@ import type { Principal } from './access'
 import type { StoredDocument } from './expense-read'
 import { spaceFor } from './receipt-quota'
 import { imageInfo, NEW_URL_PREFIX, type ImageInfo } from './receipts'
-import { jsonError } from './security'
 
 /** The first read for the image header. Phone JPEGs carry their frame header well inside it. */
 const HEADER_BYTES = 256 * 1024
@@ -28,16 +28,6 @@ export type UploadTarget = {
   url: string
   headers: { 'Content-Type': string; 'Content-Length': string }
   expiresAt: string
-}
-
-/** A finalization failure, with the current app's tRPC code and message. */
-export class UploadError extends Error {
-  constructor(
-    readonly code: 'BAD_REQUEST' | 'FORBIDDEN' | 'PRECONDITION_FAILED',
-    message: string,
-  ) {
-    super(message)
-  }
 }
 
 /**
@@ -90,42 +80,51 @@ export async function prepareUploads(
   }
 }
 
+/** The answer to a target that does not exist, was used, or has expired. */
+const NOT_VALID = 'This upload URL is not valid, was used, or has expired'
+
 /**
- * PUT /api/receipt-uploads/<token>. The secret in the URL is the only
- * credential, as with a presigned URL. The request claims the target first,
- * so a second PUT with the same URL fails. The body streams into the bucket,
- * and the stored size must be the declared size. If the write fails, the target is free again until it expires.
+ * Stores the body of an agent's PUT to its upload target. The secret in the
+ * URL is the only credential, as with a presigned URL. The request claims the
+ * target first, so a second PUT with the same URL fails. The body streams into
+ * the bucket, and the stored size must be the declared size. If the write
+ * fails, the target is free again until it expires. Returns the stored ETag.
  */
-export async function putUpload(data: { db: Db; bucket: Bucket; request: Request; token: string }): Promise<Response> {
-  if (!/^[A-Za-z0-9_-]{43}$/.test(data.token)) return jsonError({ status: 403, message: 'This upload URL is not valid, was used, or has expired' })
+export async function storeUpload(data: {
+  db: Db
+  bucket: Bucket
+  token: string
+  contentType: string | undefined
+  contentLength: string | null
+  body: ReadableStream<Uint8Array> | null
+}): Promise<{ etag: string }> {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(data.token)) throw new Forbidden({ message: NOT_VALID })
   const claimed = await data.db
     .update(receiptUploads)
     .set({ state: 'writing' })
     .where(and(eq(receiptUploads.tokenHash, sha256Hex(data.token)), eq(receiptUploads.state, 'pending'), sql`${receiptUploads.expiresAt} > now()`))
     .returning({ id: receiptUploads.id, key: receiptUploads.key, contentType: receiptUploads.contentType, bytes: receiptUploads.bytes })
   const target = claimed[0]
-  if (!target) return jsonError({ status: 403, message: 'This upload URL is not valid, was used, or has expired' })
+  if (!target) throw new Forbidden({ message: NOT_VALID })
   const release = () => data.db.update(receiptUploads).set({ state: 'pending' }).where(eq(receiptUploads.id, target.id))
   // The current app signed these two headers into the URL, so storage refused other values.
-  const type = data.request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase()
-  const length = data.request.headers.get('content-length')
-  if (type !== target.contentType || length !== String(target.bytes) || !data.request.body) {
+  if (data.contentType !== target.contentType || data.contentLength !== String(target.bytes) || !data.body) {
     await release()
-    return jsonError({ status: 400, message: `Send exactly the headers of the upload target: Content-Type ${target.contentType} and Content-Length ${target.bytes}` })
+    throw new Invalid({ message: `Send exactly the headers of the upload target: Content-Type ${target.contentType} and Content-Length ${target.bytes}` })
   }
   let stored: { size: number; etag: string } | null = null
   try {
-    stored = await data.bucket.put(target.key, data.request.body, { contentType: target.contentType })
+    stored = await data.bucket.put(target.key, data.body, { contentType: target.contentType })
   } catch (error) {
     console.error('Receipt upload to storage failed', error)
   }
   if (stored?.size !== target.bytes) {
     if (stored) await data.bucket.delete(target.key).catch(() => {})
     await release()
-    return jsonError({ status: 400, message: 'Upload is incomplete' })
+    throw new Invalid({ message: 'Upload is incomplete' })
   }
   await data.db.update(receiptUploads).set({ state: 'stored', uploadedAt: sql`now()` }).where(eq(receiptUploads.id, target.id))
-  return new Response(null, { status: 200, headers: { 'Cache-Control': 'no-store', ETag: stored.etag } })
+  return { etag: stored.etag }
 }
 
 /** The image header of a stored object: the first part, or all of it when the frame header comes later. */
@@ -169,28 +168,28 @@ export async function attachUploads(
     .where(inArray(receiptUploads.id, ids))
     .for('update')
   const byId = new Map(rows.map((r) => [r.id, r]))
-  const unfinished = new UploadError('BAD_REQUEST', 'Receipt upload could not be finalized. Upload the file first, then retry with its uploadId.')
+  const unfinished = new Invalid({ message: 'Receipt upload could not be finalized. Upload the file first, then retry with its uploadId.' })
   // Check every ID before any storage read: ownership first, as the current app did.
   for (const id of ids) {
     const row = byId.get(id)
     if (row && (row.userId !== data.principal.userId || row.groupId !== data.groupId || row.expenseId !== data.expenseId))
-      throw new UploadError('FORBIDDEN', 'This upload does not belong to this user and expense')
+      throw new Forbidden({ message: 'This upload does not belong to this user and expense' })
   }
   for (const id of ids) {
     const row = byId.get(id)
     if (!row || row.state !== 'stored') throw unfinished
-    if (!row.fresh) throw new UploadError('BAD_REQUEST', 'Upload is too large or expired')
+    if (!row.fresh) throw new Invalid({ message: 'Upload is too large or expired' })
   }
   const bytes = rows.reduce((sum, row) => sum + row.bytes, 0)
   const full = await spaceFor(tx, { userId: data.principal.userId, bytes, lock: true, outstanding: false })
-  if (full) throw new UploadError('PRECONDITION_FAILED', full)
+  if (full) throw new Invalid({ message: full, reason: 'precondition' })
   const documents: StoredDocument[] = []
   for (const id of ids) {
     const row = byId.get(id)
     if (!row) throw unfinished
     const info = await storedImage(data.bucket, row)
     // The key's extension and the stored Content-Type come from the declared type, so the content must match it.
-    if (!info || `image/${info.format}` !== row.contentType) throw new UploadError('BAD_REQUEST', 'Receipts must be valid JPEG or PNG images')
+    if (!info || `image/${info.format}` !== row.contentType) throw new Invalid({ message: 'Receipts must be valid JPEG or PNG images' })
     const url = `${NEW_URL_PREFIX}${row.key}`
     await tx.insert(receipts).values({ id: randomId(), groupId: data.groupId, url, createdBy: data.principal.userId, bytes: row.bytes })
     documents.push({ id: randomId(), url, width: info.width, height: info.height })

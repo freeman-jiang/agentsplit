@@ -2,9 +2,9 @@
 // names, for list_activity and the historical reads of get_expense. Both
 // stored formats arrive as one SavedExpense, so the output has one shape.
 import { Schema } from 'effect'
+import { legacyDateTime } from '../../../shared/dates'
 import type { SavedExpense, SavedState } from '../../../shared/history'
-import { minorOf } from '../../../shared/minor'
-import { preferredPayer } from '../../../shared/split'
+import { mainPayer } from '../../../shared/split'
 import { RECURRENCE_NAMES, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
 import {
   DateTime,
@@ -76,8 +76,8 @@ export const Snapshot = Schema.NullOr(Schema.Union([ExpenseSnapshot, GroupSnapsh
 
 /** The payer who paid the most, as list_expenses names `paidBy`. */
 export function savedPayer(e: SavedExpense): { id: string; name: string } {
-  if (e.payers.length === 0) return { id: '', name: '' }
-  const id = preferredPayer(e.payers.map((p) => ({ participantId: p.participantId, amount: minorOf(p.amount, e.currency) })))
+  const id = mainPayer(e) ?? ''
+  if (!id) return { id, name: '' }
   const payer = e.payers.find((p) => p.participantId === id)
   return { id, name: payer?.name ?? '' }
 }
@@ -107,7 +107,7 @@ export function expenseSnapshot(data: { expense: SavedExpense; groupId: string }
       vendor: e.vendor,
       amount: e.amount,
       currencyCode: e.currency,
-      expenseDate: `${e.expenseDate}T00:00:00.000Z`,
+      expenseDate: legacyDateTime(e.expenseDate),
       createdAt: e.createdAt,
       categoryId: e.categoryId,
       category: categoryOf(e),

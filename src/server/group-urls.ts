@@ -25,22 +25,21 @@ export function idPathOf(pathname: string): IdPath | null {
 }
 
 /**
- * The 307 redirect of a page path to its group's URL, or null if the path stays:
+ * Where a page path moves (app.ts answers 307), or null if the path stays:
  * - /groups/<id>/… of a group with a slug moves to /<slug>/…, as in the current app.
  * - /groups/<id> of a group without a slug moves to /groups/<id>/expenses, as the current app's group page does.
  * - /<id>/…, the URL of v2 before the current app's URLs came back, moves to the group's URL.
  * As in the current app, this checks no membership: the page does. Private
  * contexts are not named groups, so their pages are left to the client.
  */
-export async function groupRedirect(db: Db, data: { path: IdPath; search: string }): Promise<Response | null> {
+export async function groupRedirect(db: Db, data: { path: IdPath }): Promise<string | null> {
   const { id, rest, prefixed } = data.path
   const result = await db.execute<{ slug: string | null }>(sql`SELECT slug FROM groups WHERE id = ${id} AND kind = 'named'`)
   const group = result.rows[0]
   if (!group) return null
-  const moved = (target: string) => new Response(null, { status: 307, headers: { Location: `${target}${data.search}`, 'Cache-Control': 'private, no-store' } })
   const path = groupPath({ id, slug: group.slug })
-  if (prefixed && group.slug) return moved(`${path}${rest}`)
-  if (prefixed && rest === '') return moved(`${path}/expenses`)
-  if (!prefixed) return moved(`${path}${rest}`)
+  if (prefixed && group.slug) return `${path}${rest}`
+  if (prefixed && rest === '') return `${path}/expenses`
+  if (!prefixed) return `${path}${rest}`
   return null
 }

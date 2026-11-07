@@ -62,9 +62,9 @@ describe('hourly job', () => {
 
 describe('maintenance', () => {
   // The cutover relies on this: users and agents get 503, Coolify's health check passes.
-  it('answers 503 to pages, API calls and MCP, but lets the health check through', async () => {
+  it('answers 503 to pages, API calls and MCP, but lets the health checks through', async () => {
     const { maintenanceResponse } = await import('~/server/maintenance')
-    expect(maintenanceResponse(new Request('https://a.example/api/health'))).toBeNull()
+    for (const path of ['/api/health', '/api/health/readiness', '/api/health/liveness']) expect(maintenanceResponse(new Request(`https://a.example${path}`))).toBeNull()
     const page = maintenanceResponse(new Request('https://a.example/macademia', { headers: { accept: 'text/html,*/*' } }))
     expect(page?.status).toBe(503)
     expect(page?.headers.get('content-type')).toContain('text/html')
@@ -73,5 +73,26 @@ describe('maintenance', () => {
       expect(response?.status).toBe(503)
       expect(response?.headers.get('retry-after')).toBe('300')
     }
+  })
+})
+
+describe('settings', () => {
+  const env = {
+    BASE_URL: 'https://a.example',
+    BETTER_AUTH_SECRET: 'x'.repeat(32),
+    GOOGLE_CLIENT_ID: 'id',
+    GOOGLE_CLIENT_SECRET: 'secret',
+    DATABASE_URL: 'postgresql://localhost/db',
+    S3_UPLOAD_ENDPOINT: 'http://garage:3900',
+    S3_UPLOAD_KEY: 'key',
+    S3_UPLOAD_SECRET: 'secret',
+  }
+  // A bad setting must stop the start, not the first sign-in hours later.
+  it('refuses a short secret, a missing setting and a malformed number at start', async () => {
+    const { readSettings } = await import('~/server/config')
+    expect(readSettings(env).app).toMatchObject({ signUpDailyLimit: 200, perfInstrumentation: false })
+    expect(() => readSettings({ ...env, BETTER_AUTH_SECRET: 'short' })).toThrow('Set BETTER_AUTH_SECRET to at least 32 characters')
+    expect(() => readSettings({ ...env, GOOGLE_CLIENT_ID: ' ' })).toThrow('Set GOOGLE_CLIENT_ID')
+    expect(() => readSettings({ ...env, SIGN_UP_DAILY_LIMIT: '10k' })).toThrow('Set SIGN_UP_DAILY_LIMIT to a whole number of accounts per day')
   })
 })
