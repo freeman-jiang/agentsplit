@@ -14,6 +14,12 @@ export const RECURRING_PERIODS = ['daily', 'weekly', 'monthly'] as const
 export const RECURRENCES = ['none', ...RECURRING_PERIODS] as const
 export type Recurrence = (typeof RECURRENCES)[number]
 
+/**
+ * The fixed categories that code names, from db/migrations/0002_categories.sql.
+ * General is the default; payments store Payment on every path (DECISIONS.md, P-BAL-92).
+ */
+export const CATEGORY = { general: 0, payment: 1 } as const
+
 export const ROLES = ['admin', 'member'] as const
 export type Role = (typeof ROLES)[number]
 

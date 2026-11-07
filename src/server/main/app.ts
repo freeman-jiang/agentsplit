@@ -8,6 +8,7 @@ import { RpcSerialization, RpcServer } from 'effect/rpc'
 import type pg from 'pg'
 import { todayUtc } from '../../shared/dates'
 import { REQUEST_ID_RESPONSE_HEADER } from '../../shared/ids'
+import { MCP_PATH } from '../../shared/mcp'
 import { createAuth, type Auth } from '../auth/auth'
 import { httpReader } from '../auth/authenticate'
 import { METADATA_PATHS, protectedResourceMetadata } from '../auth/challenge'
@@ -138,7 +139,7 @@ export function createApp(platform: Platform) {
       response.headers.set(REQUEST_ID_RESPONSE_HEADER, requestId)
       return response
     }
-    if (url.pathname === '/api/mcp') return withConnection((db) => handleMcp(request, { db, settings: mcpSettings }))
+    if (url.pathname === MCP_PATH) return withConnection((db) => handleMcp(request, { db, settings: mcpSettings }))
     // The server serves the protected-resource metadata itself: Better Auth's MCP plugin drops
     // offline_access from it, which left Claude Code without refresh tokens (OAUTH-CLAUDE-CODE.md).
     if (METADATA_PATHS.has(url.pathname)) return protectedResourceMetadata(request, baseUrl)

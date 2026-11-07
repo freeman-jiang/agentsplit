@@ -4,6 +4,7 @@
 // access itself (the services do) and never reads arguments as identity.
 import { Result, Schema } from 'effect'
 import { ERROR_ANSWERS, errorKind, errorText, MCP_INTERNAL } from '../../../shared/errors'
+import type { McpToolName } from '../../../shared/mcp'
 import type { Bucket } from '../../bucket'
 import type { AfterCommit, CallError } from '../../calls'
 import type { Db } from '../../core/db'
@@ -24,7 +25,7 @@ type JsonValue = string | number | boolean | null | readonly JsonValue[] | { rea
 
 /** A tool as the server registers it. Generic types are erased by defineTool. */
 export type McpTool = {
-  readonly name: string
+  readonly name: McpToolName
   readonly description: string
   /** Reads need agentsplit:read; writes also need agentsplit:write and run in one transaction. */
   readonly kind: 'read' | 'write'
@@ -112,8 +113,8 @@ function excessKeys(schema: JsonValue | undefined, value: unknown, path: string,
   if (Array.isArray(value)) value.forEach((item, index) => excessKeys(schema['items'], item, `${path}[${index}]`, found))
 }
 
-type ToolSpec<I extends Schema.Top, O extends Schema.Top> = {
-  readonly name: string
+type ToolSpec<N extends McpToolName, I extends Schema.Top, O extends Schema.Top> = {
+  readonly name: N
   readonly description: string
   readonly kind: 'read' | 'write'
   /** Writes are destructive unless they say otherwise; reads never are. */
@@ -131,7 +132,7 @@ type ToolSpec<I extends Schema.Top, O extends Schema.Top> = {
  * The JSON Schemas are built on first use, not at definition, so a server
  * start builds none of them and a tool call builds only that tool's input schema.
  */
-export function defineTool<I extends Schema.Top & Schema.ConstraintDecoder<unknown>, O extends Schema.Top>(spec: ToolSpec<I, O>): McpTool {
+export function defineTool<N extends McpToolName, I extends Schema.Top & Schema.ConstraintDecoder<unknown>, O extends Schema.Top>(spec: ToolSpec<N, I, O>): McpTool & { readonly name: N } {
   let input: JsonSchema | undefined
   let output: JsonSchema | undefined
   const inputSchema = () => (input ??= jsonSchemaOf({ schema: spec.input, strict: spec.strict }))
