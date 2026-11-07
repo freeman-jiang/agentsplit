@@ -1,7 +1,7 @@
 // The one text for a failed call. Declared errors read as src/shared/errors.ts
 // words them for every transport; a revision conflict never looks like any
 // other failure (DECISIONS.md group C, P-EXP-52 and P-EXP-53).
-import { errorText } from '~/shared/errors'
+import { errorText, withoutField } from '~/shared/errors'
 import { RpcFailure, rpcError } from './rpc'
 
 export type Failure = {
@@ -29,7 +29,7 @@ export function describeError(cause: unknown, unanswered: string = NO_ANSWER): F
     case 'NotFound':
       return { kind: 'gone', message: errorText(error) }
     case 'Invalid':
-      return { kind: 'invalid', message: errorText(error).replace(/^[\w.]+: /, ''), ...(error.field ? { field: error.field } : {}) }
+      return { kind: 'invalid', message: withoutField({ message: errorText(error), field: error.field }), ...(error.field ? { field: error.field } : {}) }
     case 'Forbidden':
     case 'Unauthorized':
       return { kind: 'invalid', message: errorText(error) }

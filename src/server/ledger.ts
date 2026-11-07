@@ -5,6 +5,7 @@ import { expenseDocuments, expensePayers, expenses, expenseShares } from '../../
 import { Conflict, Invalid, NotFound } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../shared/expense-rules'
+import { fieldProblemsText } from '../shared/errors'
 import { compareIds } from '../shared/ids'
 import { weightText } from '../shared/split'
 import { formatMinor, type Minor } from '../shared/minor'
@@ -136,7 +137,7 @@ function resolve(draft: ExpenseDraft, people: readonly { id: string }[]): Resolv
   const result = validateExpense({ draft, participantIds: new Set(people.map((p) => p.id)) })
   if (!result.ok) {
     const [first] = result.issues
-    throw new Invalid({ message: result.issues.map((i) => `${i.field}: ${i.message}`).join('; '), ...(first ? { field: first.field } : {}) })
+    throw new Invalid({ message: fieldProblemsText(result.issues), ...(first ? { field: first.field } : {}) })
   }
   return result.value
 }

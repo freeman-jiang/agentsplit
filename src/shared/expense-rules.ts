@@ -30,7 +30,8 @@ export type ResolvedExpense = Omit<ExpenseDraft, 'amount' | 'payers' | 'shares' 
   readonly shares: ReadonlyArray<{ readonly participantId: string; readonly amount: Minor; readonly weight: string }>
 }
 
-export type ExpenseIssue = { readonly field: string; readonly message: string }
+/** One problem of a draft. `row` names the payer or share it is about; its field is then `payers.<index>` or `shares.<index>`. */
+export type ExpenseIssue = { readonly field: string; readonly message: string; readonly row?: { readonly list: 'payers' | 'shares'; readonly participantId: string } }
 
 // The current app's messages (messages/en-US.json SchemaErrors), in English only.
 const moneyMessage = (text: string, currency: CurrencyCode) =>
@@ -53,6 +54,11 @@ function percentMessage(total: { units: bigint; scale: number }) {
 /** The outcome of validateExpense. A plain union, so the form can use it without loading Effect. */
 export type ExpenseCheck = { readonly ok: true; readonly value: ResolvedExpense } | { readonly ok: false; readonly issues: ReadonlyArray<ExpenseIssue> }
 
+/** The money of a draft: what checkMoney checks and resolves. */
+export type MoneyDraft = Pick<ExpenseDraft, 'currency' | 'amount' | 'payers' | 'splitMode' | 'shares'>
+type ResolvedMoney = Pick<ResolvedExpense, 'amount' | 'payers' | 'shares'>
+type MoneyCheck = { readonly ok: true; readonly value: ResolvedMoney } | { readonly ok: false; readonly issues: ReadonlyArray<ExpenseIssue> }
+
 /**
  * Checks a draft against the rules and the group's participants, and resolves
  * every amount into minor units. Returns every issue it finds, not only the first.
@@ -61,11 +67,9 @@ export function validateExpense(data: {
   draft: ExpenseDraft
   participantIds: ReadonlySet<string>
 }): ExpenseCheck {
-  const { draft, participantIds } = data
+  const { draft } = data
   const issues: ExpenseIssue[] = []
   const issue = (field: string, message: string) => issues.push({ field, message })
-  const { currency } = draft
-  const decimals = CURRENCIES[currency].decimals
 
   // Not trimmed: the current app checks the title as typed (only vendor is trimmed).
   const title = draft.title
@@ -77,6 +81,20 @@ export function validateExpense(data: {
   if (!Number.isInteger(draft.categoryId) || draft.categoryId < 0) issue('categoryId', 'Unknown category')
   if (!isCalendarDate(draft.expenseDate)) issue('expenseDate', 'Use a real calendar date, YYYY-MM-DD')
 
+  const money = checkMoney({ money: draft, participantIds: data.participantIds })
+  if (!money.ok || issues.length) return { ok: false, issues: [...issues, ...(money.ok ? [] : money.issues)] }
+  return { ok: true, value: { ...draft, title, vendor, ...money.value } }
+}
+
+/** The money rules alone: the amount, the payers and the split, resolved into minor units. The form's share preview uses it before the other fields are filled. */
+export function checkMoney(data: { money: MoneyDraft; participantIds: ReadonlySet<string> }): MoneyCheck {
+  const { money: draft, participantIds } = data
+  const issues: ExpenseIssue[] = []
+  const issue = (field: string, message: string) => issues.push({ field, message })
+  const rowIssue = (row: NonNullable<ExpenseIssue['row']>, index: number, message: string) => issues.push({ field: `${row.list}.${index}`, message, row })
+  const { currency } = draft
+  const decimals = CURRENCIES[currency].decimals
+
   const amount = minorOrNull({ amount: draft.amount, currency }) ?? undefined
   if (amount === undefined) issue('amount', moneyMessage(draft.amount, currency))
   else if (amount === 0n) issue('amount', 'The amount must not be zero.')
@@ -87,14 +105,14 @@ export function validateExpense(data: {
   const payers: { participantId: string; amount: Minor }[] = []
   const payerIds = new Set<string>()
   draft.payers.forEach((payer, index) => {
-    const field = `payers.${index}`
-    if (!participantIds.has(payer.participantId)) issue(field, 'The payer is not in this group')
-    if (payerIds.has(payer.participantId)) issue(field, 'Each payer appears once')
+    const problem = (message: string) => rowIssue({ list: 'payers', participantId: payer.participantId }, index, message)
+    if (!participantIds.has(payer.participantId)) problem('The payer is not in this group')
+    if (payerIds.has(payer.participantId)) problem('Each payer appears once')
     payerIds.add(payer.participantId)
     const parsed = minorOrNull({ amount: payer.amount, currency })
-    if (parsed === null) return void issue(field, moneyMessage(payer.amount, currency))
+    if (parsed === null) return void problem(moneyMessage(payer.amount, currency))
     if (parsed === 0n || (amount !== undefined && parsed < 0n !== amount < 0n))
-      return void issue(field, 'Each payment must be nonzero, with the same sign as the amount')
+      return void problem('Each payment must be nonzero, with the same sign as the amount')
     payers.push({ participantId: payer.participantId, amount: parsed })
   })
   if (draft.payers.length === 0) issue('payers', 'You must select a participant.')
@@ -109,24 +127,24 @@ export function validateExpense(data: {
   let percentTotal = 0n
   let percentScale = 0
   draft.shares.forEach((share, index) => {
-    const field = `shares.${index}`
-    if (!participantIds.has(share.participantId)) issue(field, 'This person is not in this group')
-    if (shareIds.has(share.participantId)) issue(field, 'Duplicate beneficiary')
+    const problem = (message: string) => rowIssue({ list: 'shares', participantId: share.participantId }, index, message)
+    if (!participantIds.has(share.participantId)) problem('This person is not in this group')
+    if (shareIds.has(share.participantId)) problem('Duplicate beneficiary')
     shareIds.add(share.participantId)
     if (draft.splitMode === 'amount') {
       const parsed = minorOrNull({ amount: share.weight, currency })
-      if (parsed === null) return void issue(field, moneyMessage(share.weight, currency))
+      if (parsed === null) return void problem(moneyMessage(share.weight, currency))
       if (parsed === 0n || (amount !== undefined && parsed < 0n !== amount < 0n))
-        return void issue(field, 'Each amount must be nonzero, with the same sign as the total')
+        return void problem('Each amount must be nonzero, with the same sign as the total')
       return void weights.push({ participantId: share.participantId, weight: parsed.toString() })
     }
     let weight: ReturnType<typeof parseWeight>
     try {
       weight = parseWeight(share.weight)
     } catch {
-      return void issue(field, /^-/.test(share.weight) ? 'All shares must be higher than 0.' : 'Enter a decimal amount such as 12.34')
+      return void problem(/^-/.test(share.weight) ? 'All shares must be higher than 0.' : 'Enter a decimal amount such as 12.34')
     }
-    if (weight.units === 0n) return void issue(field, 'All shares must be higher than 0.')
+    if (weight.units === 0n) return void problem('All shares must be higher than 0.')
     // An even split ignores the weight, but the current app still requires it to be positive.
     if (draft.splitMode === 'evenly') return void weights.push({ participantId: share.participantId, weight: '1' })
     if (draft.splitMode === 'percentage') {
@@ -145,15 +163,5 @@ export function validateExpense(data: {
 
   if (issues.length || amount === undefined) return { ok: false, issues }
   const resolved = resolveShares({ amount, mode: draft.splitMode, preferredParticipantId: preferredPayer(payers), participants: weights })
-  return {
-    ok: true,
-    value: {
-      ...draft,
-      title,
-      vendor,
-      amount,
-      payers,
-      shares: weights.map((w) => ({ ...w, amount: resolved.get(w.participantId) ?? minor(0n) })),
-    },
-  }
+  return { ok: true, value: { amount, payers, shares: weights.map((w) => ({ ...w, amount: resolved.get(w.participantId) ?? minor(0n) })) } }
 }
