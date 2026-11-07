@@ -287,7 +287,7 @@ function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
               return (
                 <li key={currency} className="space-y-1">
                   <span className="block text-xs font-medium text-muted-foreground">{owed ? 'You are owed' : 'You owe'}</span>
-                  <span className={cn('block text-3xl font-semibold tabular-nums', owed ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400')}>
+                  <span className={cn('block text-3xl font-semibold tabular-nums', owed ? 'text-owed' : 'text-owe')}>
                     {money(owed ? net : net.slice(1), currency)}
                   </span>
                 </li>

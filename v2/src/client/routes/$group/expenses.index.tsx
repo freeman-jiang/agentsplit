@@ -160,7 +160,7 @@ function ExpensesTab() {
   )
 }
 
-const tones: Record<Figure['tone'], string> = { neutral: 'text-muted-foreground', positive: 'text-primary', negative: 'text-destructive' }
+const tones: Record<Figure['tone'], string> = { neutral: 'text-muted-foreground', positive: 'text-owed', negative: 'text-owe' }
 
 function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewer: string | null; names: ReadonlyMap<string, string> }) {
   const { expense: e } = props
