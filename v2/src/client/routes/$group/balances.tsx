@@ -24,9 +24,12 @@ function BalancesTab() {
   const { data } = useSuspenseQuery(balancesQuery(group))
   const names = new Map(g.participants.map((p) => [p.id, p.name]))
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <BalancesCard currencies={data.currencies} names={names} />
-      <SuggestedPayments currencies={data.currencies} names={names} group={group} />
+      {/* On narrow screens the payments to record come before the chart. */}
+      <div className="order-first md:order-none">
+        <SuggestedPayments currencies={data.currencies} names={names} group={group} />
+      </div>
     </div>
   )
 }

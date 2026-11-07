@@ -17,7 +17,7 @@ export function BalancesCard(props: { currencies: Currencies; names: Names }) {
       <h2 id="balances-title" className="font-medium">
         Balances
       </h2>
-      <p className="mb-3 text-sm text-muted-foreground">This is the amount that each participant paid or was paid for.</p>
+      <p className="mb-3 text-sm text-muted-foreground">Net balance per person, across all group expenses.</p>
       {props.currencies.length === 0 ? (
         <p className="text-sm text-muted-foreground">No expenses yet. Your balances will appear here.</p>
       ) : (
@@ -73,7 +73,7 @@ export function SuggestedPayments(props: { currencies: Currencies; names: Names;
       <h2 id="suggested-title" className="font-medium">
         Suggested payments
       </h2>
-      <p className="mb-3 text-sm text-muted-foreground">Suggested payments to settle group balances.</p>
+      <p className="mb-3 text-sm text-muted-foreground">Record these payments to settle the group.</p>
       {pending.length === 0 ? (
         <p className="text-sm text-muted-foreground">No payments needed.</p>
       ) : (
@@ -87,7 +87,7 @@ export function SuggestedPayments(props: { currencies: Currencies; names: Names;
                     <strong>{props.names.get(s.from) ?? 'Unknown'}</strong> owes <strong>{props.names.get(s.to) ?? 'Unknown'}</strong>
                   </span>
                   <span className="flex items-center gap-3">
-                    <span className="tabular-nums">{money(s.amount, c.currency)}</span>
+                    <span className="font-semibold tabular-nums">{money(s.amount, c.currency)}</span>
                     <Button variant="outline" size="sm" asChild>
                       <Link to="/$group/payments/create" params={{ group: props.group }} search={{ from: s.from, to: s.to, amount: s.amount, currencyCode: c.currency }}>
                         Record payment

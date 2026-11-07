@@ -196,17 +196,23 @@ function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewe
           </div>
           <div className="truncate text-xs text-muted-foreground">{author}</div>
         </div>
-        <div className="shrink-0 text-right text-sm">
-          <div className="text-xs text-muted-foreground">{figures.paid.label}</div>
-          <div className="tabular-nums">{money(figures.paid.amount ?? '0', e.currency)}</div>
-          {/* On narrow screens the viewer's figure sits under the paid figure. */}
-          <div className={cn('mt-1 text-xs sm:hidden', tones[figures.personal.tone])}>
-            {figures.personal.label} {figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
+        <div className="max-w-[7rem] shrink-0 text-right text-sm sm:max-w-none">
+          {/* On narrow screens the viewer's figure leads and the paid figure sits under it. */}
+          <div className={cn('text-xs sm:hidden', tones[figures.personal.tone])}>{figures.personal.label}</div>
+          <div className={cn('font-semibold tabular-nums sm:hidden', tones[figures.personal.tone])}>
+            {figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
           </div>
+          <div className="mt-0.5 text-xs leading-tight text-muted-foreground sm:hidden">
+            {figures.paid.label} <span className="tabular-nums">{money(figures.paid.amount ?? '0', e.currency)}</span>
+          </div>
+          <div className="hidden text-xs text-muted-foreground sm:block">{figures.paid.label}</div>
+          <div className="hidden tabular-nums sm:block">{money(figures.paid.amount ?? '0', e.currency)}</div>
         </div>
         <div className="hidden w-28 shrink-0 text-right text-sm sm:block">
           <div className={cn('text-xs', tones[figures.personal.tone])}>{figures.personal.label}</div>
-          <div className={cn('tabular-nums', tones[figures.personal.tone])}>{figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}</div>
+          <div className={cn('text-base font-semibold tabular-nums', tones[figures.personal.tone])}>
+            {figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
+          </div>
         </div>
       </Link>
     </li>

@@ -125,7 +125,8 @@ export function FeedCard({ expense }: { expense: Item }) {
             </div>
             <div
               className={cn(
-                'mt-0.5 text-sm font-semibold tabular-nums sm:text-base',
+                'mt-0.5 text-sm tabular-nums sm:text-base',
+                i === 1 && 'font-semibold',
                 figure.tone === 'positive' && 'text-owed',
                 figure.tone === 'negative' && 'text-owe',
               )}

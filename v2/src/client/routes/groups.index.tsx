@@ -109,12 +109,12 @@ function useGroupMarks() {
 function GroupsPage({ children }: { children: React.ReactNode }) {
   return (
     <main className="mx-auto w-full max-w-4xl space-y-4 px-3 py-6 sm:px-8">
-      <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="flex-1 font-display text-3xl font-normal tracking-tight">
           <Link to="/groups">My groups</Link>
         </h1>
         <Button asChild>
-          <Link to="/groups/create">Create</Link>
+          <Link to="/groups/create">Create group</Link>
         </Button>
       </div>
       {children}
@@ -183,19 +183,19 @@ function Groups() {
       )}
       {starred.length > 0 && (
         <section>
-          <h2 className="mb-2">Starred groups</h2>
+          <h2 className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Starred groups</h2>
           {list(starred)}
         </section>
       )}
       {recent.length > 0 && (
         <section>
-          <h2 className="mb-2 mt-6">Recent groups</h2>
+          <h2 className="mt-6 mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Recent groups</h2>
           {list(recent)}
         </section>
       )}
       {archived.length > 0 && (
         <section className="opacity-50">
-          <h2 className="mb-2 mt-6">Archived groups</h2>
+          <h2 className="mt-6 mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Archived groups</h2>
           {list(archived)}
         </section>
       )}
@@ -266,8 +266,8 @@ function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Your total balance</CardTitle>
-        <CardDescription>Your combined balance across all your groups.</CardDescription>
+        <CardTitle className="font-sans text-sm font-medium tracking-normal text-muted-foreground">Your total balance</CardTitle>
+        <CardDescription className="text-xs">Your combined balance across all your groups.</CardDescription>
       </CardHeader>
       <CardContent>
         {now.unboundGroupCount > 0 && (
@@ -287,7 +287,7 @@ function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
               return (
                 <li key={currency} className="space-y-1">
                   <span className="block text-xs font-medium text-muted-foreground">{owed ? 'You are owed' : 'You owe'}</span>
-                  <span className={cn('block text-3xl font-semibold tabular-nums', owed ? 'text-owed' : 'text-owe')}>
+                  <span className={cn('block text-3xl font-semibold tabular-nums sm:text-4xl', owed ? 'text-owed' : 'text-owe')}>
                     {money(owed ? net : net.slice(1), currency)}
                   </span>
                 </li>
