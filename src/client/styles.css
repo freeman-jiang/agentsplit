@@ -74,7 +74,7 @@
   @apply block font-semibold text-muted-foreground;
 }
 
-/* The display face is the system sans: headings carry weight and tight tracking instead of a serif. */
+/* Headings use the body face with more weight and tighter tracking. */
 .font-display {
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -86,9 +86,7 @@
 }
 
 @media (pointer: coarse) {
-  button,
-  [role='tab'],
-  [role='combobox'] {
+  button {
     min-height: 44px;
   }
 }
@@ -106,10 +104,3 @@
   -webkit-mask: url('/brand-mark.svg') center / contain no-repeat;
 }
 
-.payment-editor label {
-  @apply block text-sm font-medium text-muted-foreground;
-}
-.payment-editor input,
-.payment-editor select {
-  @apply h-11;
-}

@@ -55,40 +55,11 @@ module.exports = {
         md: 'var(--radius)',
         sm: 'var(--radius)',
       },
-      keyframes: {
-        'accordion-down': {
-          from: { height: 0 },
-          to: { height: 'var(--radix-accordion-content-height)' },
-        },
-        'accordion-up': {
-          from: { height: 'var(--radix-accordion-content-height)' },
-          to: { height: 0 },
-        },
-      },
-      animation: {
-        'accordion-down': 'accordion-down 0.2s ease-out',
-        'accordion-up': 'accordion-up 0.2s ease-out',
-      },
       fontFamily: {
         // Geist for all text, with the system UI face as the fallback while it loads.
         sans: ['Geist Variable', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
         display: ['Geist Variable', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
         mono: ['Geist Mono Variable', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
-        rounded: [
-          'ui-rounded',
-          'Hiragino Maru Gothic ProN',
-          'Quicksand',
-          'Comfortaa',
-          'Manjari',
-          'Arial Rounded MT',
-          'Arial Rounded MT Bold',
-          'Calibri',
-          'source-sans-pro',
-          'sans-serif',
-        ],
-      },
-      dropShadow: {
-        title: '.25vw .25vw 0 rgb(252 165 165 / var(--tw-text-opacity))',
       },
     },
   },
