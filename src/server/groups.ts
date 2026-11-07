@@ -245,7 +245,7 @@ async function claimSlug(tx: Db, data: { slug: string; groupId: string }) {
 }
 
 /** The group and its participants as they are now, for a history snapshot. */
-async function currentSnapshot(tx: Db, groupId: string) {
+export async function currentSnapshot(tx: Db, groupId: string) {
   const [group] = await tx.select().from(groups).where(eq(groups.id, groupId))
   if (!group) throw new NotFound({ entity: 'group', id: groupId })
   const people = await tx.execute<{ id: string; name: string }>(sql`${displayNames(sql`${groupId}`)} ORDER BY p.created_at, p.id`)

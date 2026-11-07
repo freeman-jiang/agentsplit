@@ -31,10 +31,11 @@ beforeAll(async () => {
 afterAll(() => h.close())
 
 /** A new group whose people are the new accounts `users`, the first of them its admin. Returns the group ID. */
-async function groupOf(...users: string[]): Promise<string> {
+async function groupOf(...users: [string, ...string[]]): Promise<string> {
   for (const id of users) if (!cookies.has(id)) cookies.set(id, (await h.account(id, { name: id.toUpperCase() })).cookie)
   const id = groupId()
-  await h.group({ id, people: users.map((u) => `p-${u}`), members: users.map((u, i) => [u, `p-${u}`, i === 0 ? 'admin' : 'member']) })
+  const [admin, ...others] = users
+  await h.group({ id, people: users.map((u) => `p-${u}`), members: [[admin, `p-${admin}`, 'admin'], ...others.map((u): [string, string, 'member'] => [u, `p-${u}`, 'member'])] })
   return id
 }
 

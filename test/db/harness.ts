@@ -2,7 +2,6 @@
 // whole request handler of src/server/main/app.ts on it (RPC, MCP, Better Auth,
 // the plain HTTP routes and the maintenance switch), the in-memory receipts
 // bucket, synthetic accounts and groups, and the MCP client.
-import { groups, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { createApp } from '~/server/main/app'
 import { createAuth } from '~/server/auth/auth'
@@ -12,10 +11,11 @@ import { BASE, SECRET, testSettings } from '../kit/config'
 import { testDatabase } from '../kit/database'
 import { mcpClient, type Call } from '../kit/mcp'
 import { principal } from '../kit/people'
-import { createPrivateContext } from '../kit/seed'
+import { createPrivateContext, seedGroup } from '../kit/seed'
 import { signIn } from '../kit/session'
 import { fakeBucket } from './fake-bucket'
 import type { CurrencyCode } from '~/shared/currencies'
+import type { Role } from '~/shared/vocabulary'
 
 export { BASE, SECRET }
 export const MCP_URL = `${BASE}/api/mcp`
@@ -60,13 +60,20 @@ export async function startHarness(options: { perf?: boolean; maintenance?: bool
   /** A raw API key from Better Auth's own createApiKey, as Settings creates it. */
   const apiKey = (userId: string) => authApi(async (api) => (await api.createApiKey({ body: { userId } })).key)
 
-  /** A named group with participants named `Name <id>`; members are [userId, participantId, role]. */
-  async function group(data: { id: string; name?: string; slug?: string; currency?: CurrencyCode; people: string[]; members: [string, string | null, 'admin' | 'member'][] }) {
-    await withDb(async (db) => {
-      await db.insert(groups).values({ id: data.id, kind: 'named', slug: data.slug ?? null, name: data.name ?? data.id, defaultCurrency: data.currency ?? 'USD' })
-      if (data.people.length) await db.insert(participants).values(data.people.map((p) => ({ id: p, groupId: data.id, name: `Name ${p}` })))
-      for (const [userId, participantId, role] of data.members) await db.insert(memberships).values({ userId, groupId: data.id, participantId, role })
-    })
+  /** A named group with participants named `Name <id>` (seedGroup); members are [userId, participantId, role], the first an admin who created it. */
+  const group = (data: { id: string; name?: string; slug?: string; currency?: CurrencyCode; people: string[]; members: readonly [[string, string, 'admin'], ...[string, string | null, Role][]] }) => {
+    const [[creator, participantId], ...rest] = data.members
+    return database.tx((db) =>
+      seedGroup(db, {
+        groupId: data.id,
+        slug: data.slug ?? null,
+        name: data.name ?? data.id,
+        ...(data.currency ? { currency: data.currency } : {}),
+        people: data.people.map((p) => ({ id: p, name: `Name ${p}` })),
+        creator: principal(creator),
+        members: [{ userId: creator, participantId, role: 'admin' }, ...rest.map(([userId, participant, role]) => ({ userId, participantId: participant, role }))],
+      }),
+    )
   }
 
   /** A real private context: one ungrouped expense between the owner and a friend. Returns its group ID. */

@@ -1,12 +1,50 @@
 // Synthetic groups and private contexts, written as the app writes them. The
 // database tests, the end-to-end fixtures and scripts/seed-synthetic.ts share them.
+import { sql } from 'drizzle-orm'
 import { groups, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
+import { recordGroupEvent } from '../../src/server/activity'
 import type { Principal } from '../../src/server/core/access'
 import type { Db } from '../../src/server/core/db'
+import { currentSnapshot } from '../../src/server/groups'
 import { createUngroupedExpense } from '../../src/server/ungrouped'
+import type { CurrencyCode } from '../../src/shared/currencies'
+import type { Role } from '../../src/shared/vocabulary'
 import { draft } from './drafts'
 import { principal } from './people'
+
+/** An account's membership: its participant (null while it is not bound) and its role. */
+export type Member = { readonly userId: string; readonly participantId: string | null; readonly role: Role }
+
+/**
+ * A named group at revision 1, written as createGroup writes it: the group,
+ * its participants in the given order, the memberships, and the create_group
+ * event of `creator`, its first member and an admin. The member accounts must
+ * exist. A second run changes nothing.
+ */
+export async function seedGroup(
+  db: Db,
+  data: {
+    groupId: string
+    slug: string | null
+    name: string
+    currency?: CurrencyCode
+    people: readonly { id: string; name: string }[]
+    creator: Principal
+    members: readonly [Member & { role: 'admin' }, ...Member[]]
+  },
+): Promise<void> {
+  const { groupId } = data
+  const created = await db
+    .insert(groups)
+    .values({ id: groupId, kind: 'named', slug: data.slug, name: data.name, defaultCurrency: data.currency ?? 'USD', revision: 1 })
+    .onConflictDoNothing()
+    .returning({ id: groups.id })
+  if (!created.length) return
+  for (const p of data.people) await db.insert(participants).values({ id: p.id, groupId, name: p.name, createdAt: sql`clock_timestamp()` })
+  await db.insert(memberships).values(data.members.map((m) => ({ ...m, groupId })))
+  await recordGroupEvent(db, { groupId, type: 'create_group', principal: data.creator, groupRevision: 1, data: data.name, snapshot: await currentSnapshot(db, groupId) })
+}
 
 /** A participant, and the verified account bound to it when `userId` is set. */
 export type Person = { readonly id: string; readonly name: string; readonly userId?: string }
@@ -14,26 +52,27 @@ export type Person = { readonly id: string; readonly name: string; readonly user
 export type Household = { readonly groupId: string; readonly slug: string; readonly owner: Principal; readonly people: readonly Person[] }
 
 /**
- * A named group with `people`. The first person is the owner: an admin with
- * an account. The others with a `userId` are members. A second run changes
- * nothing.
+ * A named group with `people` (seedGroup). The first person is the owner: an
+ * admin with an account. The others with a `userId` are members.
  */
 export async function seedHousehold(db: Db, data: { groupId: string; slug: string; name: string; people: readonly [Person & { userId: string }, ...Person[]] }): Promise<Household> {
-  const { groupId, people } = data
-  const accounts = people.flatMap((p) => (p.userId ? [{ ...p, userId: p.userId }] : []))
+  const [first, ...rest] = data.people
+  const owner = principal(first.userId, { name: first.name })
   const now = new Date()
-  await db
-    .insert(user)
-    .values(accounts.map((p) => ({ id: p.userId, name: p.name, email: `${p.userId}@example.com`, emailVerified: true, createdAt: now, updatedAt: now })))
-    .onConflictDoNothing()
-  await db.insert(groups).values({ id: groupId, kind: 'named', slug: data.slug, name: data.name, defaultCurrency: 'USD' }).onConflictDoNothing()
-  await db.insert(participants).values(people.map((p) => ({ id: p.id, groupId, name: p.name }))).onConflictDoNothing()
-  await db
-    .insert(memberships)
-    .values(accounts.map((p, i) => ({ userId: p.userId, groupId, role: i === 0 ? ('admin' as const) : ('member' as const), participantId: p.id })))
-    .onConflictDoNothing()
-  const [owner] = people
-  return { groupId, slug: data.slug, owner: principal(owner.userId, { name: owner.name }), people }
+  const accounts = data.people.flatMap((p) => (p.userId ? [{ id: p.userId, name: p.name, email: `${p.userId}@example.com`, emailVerified: true, createdAt: now, updatedAt: now }] : []))
+  await db.insert(user).values(accounts).onConflictDoNothing()
+  await seedGroup(db, {
+    groupId: data.groupId,
+    slug: data.slug,
+    name: data.name,
+    people: data.people,
+    creator: owner,
+    members: [
+      { userId: first.userId, participantId: first.id, role: 'admin' },
+      ...rest.flatMap((p) => (p.userId ? [{ userId: p.userId, participantId: p.id, role: 'member' as const }] : [])),
+    ],
+  })
+  return { groupId: data.groupId, slug: data.slug, owner, people: data.people }
 }
 
 /**
