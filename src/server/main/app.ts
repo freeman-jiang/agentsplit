@@ -199,24 +199,35 @@ export function createApp(platform: Platform) {
      * P-RECUR-08). A failed occurrence is logged and skipped, the other links
      * go on, and the next run tries it again.
      * It also removes stale upload targets, the objects of deleted receipts
-     * that are still in storage, and expired DPoP replay rows. It pauses in
-     * maintenance, so nothing writes then.
+     * that are still in storage, and expired DPoP replay rows. Each step runs
+     * on its own, so one that fails is logged and the others still run. It
+     * pauses in maintenance, so nothing writes then.
      */
     async scheduled(time: Date): Promise<void> {
       if (config.maintenance) return
-      await withDb(async (db) => {
-        const created = await materializeDue(db, {
-          today: todayUtc(time),
-          onError: (error, linkId) => console.error('Recurring expense failed; its link waits for the next run', { linkId }, error),
-        })
-        if (created.length) console.log(`Created ${created.length} recurring expenses`)
-        const removed = await removeStaleUploads({ db, bucket })
-        if (removed) console.log(`Removed ${removed} stale receipt upload targets`)
-        const purged = await purgeDeletedReceipts({ db, bucket })
-        if (purged) console.log(`Removed ${purged} deleted receipts from storage`)
-        const proofs = await removeExpiredDpopProofs(db)
-        if (proofs) console.log(`Removed ${proofs} expired DPoP replay rows`)
-      })
+      const steps: readonly [string, (db: Db) => Promise<number>][] = [
+        [
+          'recurring expenses created',
+          async (db) =>
+            (
+              await materializeDue(db, {
+                today: todayUtc(time),
+                onError: (error, linkId) => console.error('Recurring expense failed; its link waits for the next run', { linkId }, error),
+              })
+            ).length,
+        ],
+        ['stale receipt upload targets removed', (db) => removeStaleUploads({ db, bucket })],
+        ['deleted receipts removed from storage', (db) => purgeDeletedReceipts({ db, bucket })],
+        ['expired DPoP replay rows removed', removeExpiredDpopProofs],
+      ]
+      for (const [what, step] of steps) {
+        try {
+          const count = await withDb(step)
+          if (count) console.log(`Hourly job: ${count} ${what}`)
+        } catch (error) {
+          console.error(`Hourly job: the step "${what}" failed; the next run tries again`, error)
+        }
+      }
     },
   }
 }

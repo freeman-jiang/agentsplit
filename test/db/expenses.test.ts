@@ -388,6 +388,11 @@ describe('receipt endpoints', () => {
       expect((await upload({ groupId: home.groupId, file: png({ width: 8000, height: 6000 }) })).status).toBe(400)
       expect(objects.size).toBe(0)
 
+      // A storage outage is an outage, not a refused image.
+      const down = { ...bucket, put: () => Promise.reject(new Error('storage is down')) }
+      const outage = await uploadReceipt({ db, bucket: down, principal: alice, request: await receiptUpload({ baseUrl: BASE, type: 'image/png', groupId: home.groupId, file: png({ width: 2, height: 2 }) }) })
+      expect(outage.status).toBe(503)
+
       const ok = await upload({ groupId: home.slug, file: png({ width: 64, height: 48 }) })
       expect(ok.status).toBe(200)
       const stored = (await ok.json()) as { id: string; url: string; width: number; height: number }

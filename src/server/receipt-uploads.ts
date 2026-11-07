@@ -11,7 +11,7 @@ import { randomId, SECRET_TOKEN } from '../shared/ids'
 import { LIMITS } from '../shared/limits'
 import { absoluteUrl, receiptUploadPath } from '../shared/paths'
 import { RECEIPT_FORMATS, receiptTypeOf, type ReceiptContentType } from '../shared/vocabulary'
-import type { Bucket } from './bucket'
+import { removeOrphans, storageUnavailable, type Bucket } from './bucket'
 import type { Db } from './core/db'
 import { randomToken, sha256Hex } from './core/ids'
 import type { Principal } from './core/access'
@@ -115,14 +115,15 @@ export async function storeUpload(data: {
     await release()
     throw new Invalid({ message: `Send exactly the headers of the upload target: Content-Type ${target.contentType} and Content-Length ${target.bytes}` })
   }
-  let stored: { size: number; etag: string } | null = null
+  let stored: { size: number; etag: string }
   try {
     stored = await data.bucket.put(target.key, body, { contentType: target.contentType })
   } catch (error) {
-    console.error('Receipt upload to storage failed', error)
+    await release()
+    throw storageUnavailable({ what: 'Receipt upload to storage', error })
   }
-  if (stored?.size !== target.bytes) {
-    if (stored) await data.bucket.delete(target.key).catch(() => {})
+  if (stored.size !== target.bytes) {
+    await removeOrphans(data.bucket, [target.key])
     await release()
     throw new Invalid({ message: 'Upload is incomplete' })
   }
@@ -206,11 +207,15 @@ export async function attachUploads(
  * the hourly job. The current app left unattached pending-receipts objects in the bucket.
  */
 export async function removeStaleUploads(data: { db: Db; bucket: Bucket }) {
-  const removed = await data.db
-    .delete(receiptUploads)
+  // An hour past the attach window, so no attach can be running on them.
+  const stale = await data.db
+    .select({ id: receiptUploads.id, key: receiptUploads.key, state: receiptUploads.state })
+    .from(receiptUploads)
     .where(sql`${receiptUploads.createdAt} < now() - make_interval(hours => ${LIMITS.uploadAttachHours + 1})`)
-    .returning({ key: receiptUploads.key, state: receiptUploads.state })
-  await data.bucket.delete(removed.filter((r) => r.state !== 'pending').map((r) => r.key))
-  return removed.length
+  if (stale.length === 0) return 0
+  // The objects go first: if storage fails, the rows stay and the next run tries again.
+  await data.bucket.delete(stale.filter((r) => r.state !== 'pending').map((r) => r.key))
+  await data.db.delete(receiptUploads).where(inArray(receiptUploads.id, stale.map((r) => r.id)))
+  return stale.length
 }
 
