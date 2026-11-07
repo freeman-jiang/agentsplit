@@ -24,6 +24,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import { CURRENCIES } from '../../src/shared/currencies'
 import { LIMITS } from '../../src/shared/limits'
+import { DECIMAL } from '../../src/shared/minor'
 import { WEIGHT } from '../../src/shared/split'
 import {
   ACTIVITY_TYPES,
@@ -223,7 +224,8 @@ const allocation = (name: 'expense_payers' | 'expense_shares') =>
         'restrict',
       ),
       index().on(t.participantId),
-      check(`${name}_weight_decimal`, sql`${t.weight} ~ ${sql.raw(`'${WEIGHT.source}'`)}`),
+      // A share's weight takes the sign of a negative amount split by amount, such as a refund (DECISIONS.md, P-BAL-93, P-MONEY-52).
+      check(`${name}_weight_decimal`, sql`${t.weight} ~ ${sql.raw(`'${(name === 'expense_shares' ? DECIMAL : WEIGHT).source}'`)}`),
     ],
   )
 

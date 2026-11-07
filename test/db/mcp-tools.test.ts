@@ -483,16 +483,33 @@ describe('expense writes and reads', () => {
     }
   })
 
+  it('splits a negative amount by amount, as a refund that the group shares (P-BAL-93, P-MONEY-52)', async () => {
+    const refund = expense({ title: 'Refund', amount: '-30', splitMode: 'BY_AMOUNT', paidFor: [{ participant: 'pa', shares: '-10' }, { participant: 'pb', shares: '-20' }] })
+    const created = await checked('create_expense', { groupId: 'g1', expenseId: id21(8), expense: refund })
+    expect(created).toMatchObject({ revision: 1, amount: '-30.00' })
+    const shares = [
+      { expenseId: id21(8), participantId: 'pa', shares: '-10.00' },
+      { expenseId: id21(8), participantId: 'pb', shares: '-20.00' },
+    ]
+    expect(((await checked('get_expense', { groupId: 'g1', expenseId: id21(8) }))['expense'] as { paidFor: unknown }).paidFor).toEqual(shares)
+    // The saved revision reads back the same split.
+    expect(((await checked('get_expense', { groupId: 'g1', expenseId: id21(8), revision: 1 }))['expense'] as { paidFor: unknown }).paidFor).toEqual(shares)
+  })
+
   // A database rule answers the caller; as an outage, the agent would read the outcome as unknown and retry.
   it('answers a write that a database CHECK refuses as BAD_REQUEST, without database detail', async () => {
-    const refund = expense({ amount: '-30', splitMode: 'BY_AMOUNT', paidFor: [{ participant: 'pa', shares: '-10' }, { participant: 'pb', shares: '-20' }] })
-    const refused = await failure(h, { name: 'create_expense', args: { groupId: 'g1', expense: refund }, headers: alice })
-    expect(refused).toEqual({
-      code: 'BAD_REQUEST',
-      message: 'The change breaks a rule of the ledger. Check the amounts, the splits and the other fields.',
-      outcomeUnknown: false,
-      recovery: 'correct_arguments',
-    })
+    await h.withDb((db) => db.execute(sql`ALTER TABLE expenses ADD CONSTRAINT refused_for_test CHECK (title <> 'Refused by the database') NOT VALID`))
+    try {
+      const refused = await failure(h, { name: 'create_expense', args: { groupId: 'g1', expense: expense({ title: 'Refused by the database' }) }, headers: alice })
+      expect(refused).toEqual({
+        code: 'BAD_REQUEST',
+        message: 'The change breaks a rule of the ledger. Check the amounts, the splits and the other fields.',
+        outcomeUnknown: false,
+        recovery: 'correct_arguments',
+      })
+    } finally {
+      await h.withDb((db) => db.execute(sql`ALTER TABLE expenses DROP CONSTRAINT refused_for_test`))
+    }
   })
 })
 

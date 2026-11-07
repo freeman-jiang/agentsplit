@@ -120,6 +120,13 @@
       "when": 1794089207417,
       "tag": "0016_schema_declares_rate_limits_and_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794089245997,
+      "tag": "0017_signed_amount_split_weights",
+      "breakpoints": true
     }
   ]
 }
