@@ -9,12 +9,11 @@ import { assetHandler, loadAssets } from '../assets'
 import { readSettings } from '../core/config'
 import { makeDb } from '../core/db'
 import { startHourly } from '../hourly'
-import { maintenanceResponse } from '../maintenance'
 import { instrumentPool } from '../perf'
 import { s3Bucket } from '../s3'
 
 const settings = readSettings(process.env)
-const { app: config, maintenance } = settings
+const { app: config } = settings
 const publicOrigin = new URL(config.baseUrl).origin
 
 // One pool for the process. RPC, MCP, receipt and export requests each take
@@ -62,16 +61,16 @@ const server = Bun.serve({
   // The largest body is a receipt (LIMITS.receiptBytes) in its multipart envelope.
   maxRequestBodySize: 8 * 1024 * 1024,
   idleTimeout: 60,
-  fetch: (request) => (maintenance && maintenanceResponse(request)) || app.fetch(atPublicOrigin(request)),
+  fetch: (request) => app.fetch(atPublicOrigin(request)),
   error(error) {
     console.error('Request failed', error)
     return Response.json({ error: 'Internal server error' }, { status: 500, headers: { 'Cache-Control': 'no-store' } })
   },
 })
-console.log(`AgentSplit listening on ${server.url.href} for ${publicOrigin}${maintenance ? ' (maintenance: answering 503)' : ''}`)
+console.log(`AgentSplit listening on ${server.url.href} for ${publicOrigin}${config.maintenance ? ' (maintenance: answering 503)' : ''}`)
 
-// The hourly job, at minute 7 of each hour. It pauses in maintenance, so nothing writes then.
-const hourly = startHourly({ minute: 7, run: (time) => (maintenance ? Promise.resolve() : app.scheduled(time)) })
+// The hourly job, at minute 7 of each hour.
+const hourly = startHourly({ minute: 7, run: (time) => app.scheduled(time) })
 
 // Docker sends SIGTERM, then SIGKILL after the stop grace period
 // (compose.coolify.yaml gives 30 seconds). Stop taking requests, let the

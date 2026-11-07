@@ -20,6 +20,8 @@ export type AuthSettings = {
 export type AppSettings = AuthSettings & {
   /** Report each request's database work in its headers (perf.ts). */
   readonly perfInstrumentation: boolean
+  /** AGENTSPLIT_MAINTENANCE: answer 503 (maintenance.ts) and pause the hourly job. */
+  readonly maintenance: boolean
 }
 
 export type ServerSettings = {
@@ -32,8 +34,6 @@ export type ServerSettings = {
   readonly clientDir: string
   readonly host: string
   readonly port: number
-  /** AGENTSPLIT_MAINTENANCE: answer 503 (maintenance.ts) and pause the hourly job. */
-  readonly maintenance: boolean
 }
 
 type Env = Readonly<Record<string, string | undefined>>
@@ -69,6 +69,7 @@ export function readSettings(env: Env): ServerSettings {
       signUpDailyLimit: whole('SIGN_UP_DAILY_LIMIT', LIMITS.signUpsPerDay, 'accounts per day'),
       // Off in every deployment; only performance runs set it, as in the current app.
       perfInstrumentation: flag('PERF_INSTRUMENTATION'),
+      maintenance: flag('AGENTSPLIT_MAINTENANCE'),
     },
     databaseUrl: required('DATABASE_URL'),
     poolSize: whole('DATABASE_POOL_SIZE', 10, 'connections'),
@@ -83,6 +84,5 @@ export function readSettings(env: Env): ServerSettings {
     clientDir: optional('CLIENT_DIR') ?? 'dist/client',
     host: optional('HOST') ?? '0.0.0.0',
     port: whole('PORT', 3000, 'the port'),
-    maintenance: flag('AGENTSPLIT_MAINTENANCE'),
   }
 }
