@@ -4,6 +4,7 @@
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { LIMITS } from '../limits'
+import { Category } from './expenses'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
 import {
   CalendarDate,
@@ -21,6 +22,7 @@ import {
   Participant,
   ReadError,
   RoleSchema,
+  Transfer,
   SearchText,
   WriteError,
 } from './core'
@@ -110,12 +112,10 @@ export const FeedOptions = Schema.Struct({
   groups: Schema.Array(GroupRef),
   /** The caller and the verified accounts that share an active group with a linked participant, by name. */
   people: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, email: Schema.String })),
-  categories: Schema.Array(Schema.Struct({ id: Schema.Number, grouping: Schema.String, name: Schema.String })),
+  categories: Schema.Array(Category),
 })
 
 // ---------- expense page and private contexts ----------
-
-export const Transfer = Schema.Struct({ from: Schema.String, to: Schema.String, amount: DecimalOutput })
 
 export const PendingInvitation = Schema.Struct({
   id: Schema.String,
@@ -148,15 +148,16 @@ export const ExpenseContext = Schema.Struct({
 })
 
 /** A person of a new ungrouped expense, named by a local ID that the expense's payers and shares use. */
+const LocalId = Schema.String.check(Schema.isBetweenLength(1, LIMITS.localIdMax))
 export const PrivatePerson = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal('account'),
-    id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(42)),
-    userId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+    id: LocalId,
+    userId: Schema.String.check(Schema.isBetweenLength(1, LIMITS.userIdMax)),
   }),
   Schema.Struct({
     kind: Schema.Literal('email'),
-    id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(42)),
+    id: LocalId,
     name: NameInput,
     email: EmailInput.annotate({ format: 'email' }),
   }),

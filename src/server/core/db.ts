@@ -11,6 +11,9 @@ pg.types.setTypeParser(1082, (value: string) => value)
 
 export const makeDb = (client: pg.Client | pg.PoolClient | pg.Pool): Db => drizzle({ client, schema, casing: 'snake_case' })
 
+/** The app's advisory lock keys (the owner bootstrap takes one key, a quota decision two), one per kind of decision; no two may be equal. */
+export const ADVISORY_LOCKS = { ownerBootstrap: 170031011, receiptQuota: 170031012 } as const
+
 /** Writes that conflict with a concurrent write (serialization failure or deadlock) are retried. */
 const RETRYABLE = new Set(['40001', '40P01'])
 /** The SQLSTATE of a failed statement, or undefined for anything else. */

@@ -265,7 +265,10 @@ export type ReadExpense = ReturnType<typeof toExpense>
  * A live occurrence that still creates the next one: an expense (not a
  * payment) with a rule and an open link (P-RECUR-25).
  */
-export const isActiveSeries = (e: ReadExpense) => e.kind === 'expense' && e.recurrence !== 'none' && e.link !== null && e.link.nextExpenseCreatedAt === null
+export const isActiveSeries = (e: ReadExpense) => e.kind === 'expense' && e.recurrence !== 'none' && openLink(e) !== null
+
+/** The expense's link when it still creates the next occurrence, else null. */
+export const openLink = (e: ReadExpense) => (e.link?.nextExpenseCreatedAt === null ? e.link : null)
 
 /** The given expenses in the given order; missing IDs are left out. `groupId` keeps only that group's. */
 export async function loadExpenses(db: Db, data: { ids: readonly string[]; groupId?: string; parts?: ExpenseParts }) {

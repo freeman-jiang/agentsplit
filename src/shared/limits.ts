@@ -49,6 +49,16 @@ export const LIMITS = {
   documentsPerExpense: 100,
   /** The file name of a receipt upload. */
   receiptFilenameMax: 255,
+  /** The pixels of one receipt image (width × height). */
+  receiptPixelsMax: 40_000_000,
+  /** A receipt URL or an invitation link as a person pastes it. */
+  urlMax: 2000,
+  /** The local label of a person of a new ungrouped expense, such as "me". */
+  localIdMax: 42,
+  /** An account ID as a client sends it. */
+  userIdMax: 128,
+  /** An OAuth client ID. */
+  clientIdMax: 2048,
 
   // Names and group settings.
   /** Group, person and profile names. */

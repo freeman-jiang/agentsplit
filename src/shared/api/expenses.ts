@@ -4,9 +4,9 @@
 import { Record, Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { FAIR_USE_LIMITS } from '../limits'
-import { CurrencyCodeSchema, DecimalOutput } from '../money'
+import { CurrencyCodeSchema } from '../money'
 import { RECEIPT_CONTENT_TYPES } from '../vocabulary'
-import { CalendarDateOutput, Expense, ExpenseKindSchema, Id, NotFound, ReadError, RecurrenceSchema, SplitModeSchema, Unavailable, WriteError } from './core'
+import { Balance, CalendarDateOutput, Expense, ExpenseKindSchema, Id, NotFound, ReadError, RecurrenceSchema, SplitModeSchema, Transfer, Unavailable, WriteError } from './core'
 import { ReceiptTombstone } from './storage'
 
 export const Category = Schema.Struct({ id: Schema.Number, grouping: Schema.String, name: Schema.String })
@@ -35,12 +35,14 @@ export const ExpenseDetail = Schema.Struct({
   nextOccurrence: Schema.NullOr(CalendarDateOutput),
 })
 
+const { currency: _currency, ...participantBalance } = Balance.fields
+
 export const CurrencyBalances = Schema.Struct({
   currency: CurrencyCodeSchema,
   /** Every participant of the group; paid and owed are real spending, net = paid - owed. */
-  balances: Schema.Array(Schema.Struct({ participantId: Schema.String, paid: DecimalOutput, owed: DecimalOutput, net: DecimalOutput })),
-  /** Payments that settle this currency: `from` pays `to`. */
-  settlements: Schema.Array(Schema.Struct({ from: Schema.String, to: Schema.String, amount: DecimalOutput })),
+  balances: Schema.Array(Schema.Struct(participantBalance)),
+  /** Payments that settle this currency. */
+  settlements: Schema.Array(Transfer),
 })
 
 export const Reference = Schema.Struct({

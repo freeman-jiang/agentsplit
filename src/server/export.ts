@@ -8,7 +8,7 @@ import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
 import { legacyDateTime, todayUtc } from '../shared/dates'
 import { formatMinor, minor, minorOf } from '../shared/minor'
 import { mainPayer, weightText } from '../shared/split'
-import { RECURRENCE_NAMES, SPLIT_MODE_NAMES, type ActivityType, type SplitMode } from '../shared/vocabulary'
+import { RECURRENCE_NAMES, SPLIT_MODE_LABELS, SPLIT_MODE_NAMES, type ActivityType } from '../shared/vocabulary'
 import { memberCte, requireActive, type Principal } from './core/access'
 import { activitySource, activityText, savedTitle } from './activity'
 import type { Db } from './core/db'
@@ -65,12 +65,6 @@ async function load(db: Db, data: { principal: Principal; groupId: string; activ
 }
 
 
-const SPLIT_LABEL: Record<SplitMode, string> = {
-  evenly: 'Evenly',
-  shares: 'Unevenly – By shares',
-  percentage: 'Unevenly – By percentage',
-  amount: 'Unevenly – By amount',
-}
 
 // ---------- file names ----------
 
@@ -166,7 +160,7 @@ export async function exportCsv(db: Db, data: { principal: Principal; groupId: s
       e.originalCurrency,
       e.conversionRate,
       e.kind === 'payment' ? 'Yes' : 'No',
-      SPLIT_LABEL[e.splitMode],
+      SPLIT_MODE_LABELS[e.splitMode],
       // Each person's net change, as the balances tab counts it: paid minus share.
       ...g.participants.map((p) => formatMinor({ amount: minor((paid.get(p.id) ?? 0n) - (owed.get(p.id) ?? 0n)), currency: e.currency })),
     ]

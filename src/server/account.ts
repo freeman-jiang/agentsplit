@@ -4,6 +4,7 @@
 import { and, eq, sql } from 'drizzle-orm'
 import * as authSchema from '../../db/schema/auth'
 import { Forbidden, Invalid, NotFound } from '../shared/api'
+import { OAUTH_WRITE_SCOPE } from '../shared/account'
 import { trimmedName } from '../shared/groups'
 import { LIMITS } from '../shared/limits'
 import type { Db } from './core/db'
@@ -35,8 +36,8 @@ export async function getAccount(db: Db, data: { principal: Principal }): Promis
         SELECT json_agg(json_build_object(
             'clientId', g.client_id,
             'name', COALESCE(oc.name, 'Connected app'),
-            'canWrite', 'agentsplit:write' = ANY(g.scopes) AND EXISTS (
-              SELECT 1 FROM oauth_consent s WHERE s.user_id = u.id AND s.client_id = g.client_id AND 'agentsplit:write' = ANY(s.scopes))
+            'canWrite', ${OAUTH_WRITE_SCOPE}::text = ANY(g.scopes) AND EXISTS (
+              SELECT 1 FROM oauth_consent s WHERE s.user_id = u.id AND s.client_id = g.client_id AND ${OAUTH_WRITE_SCOPE}::text = ANY(s.scopes))
           ) ORDER BY g.latest DESC, g.client_id)
         FROM (
           SELECT c.client_id, max(c.created_at) AS latest, array_agg(DISTINCT scope) AS scopes

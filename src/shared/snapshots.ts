@@ -144,7 +144,6 @@ const toMinor = (amount: string, currency: CurrencyCode): Minor => {
   if (value === null) throw new UnreadableSnapshot(`Amount ${amount} does not fit ${currency}`)
   return value
 }
-const tryMinor = (amount: string, currency: CurrencyCode): Minor | undefined => minorOrNull({ amount, currency }) ?? undefined
 
 /** Canonical decimal text of a non-negative weight ("1.50" → "1.5"); a sign stays. */
 function canonicalWeight(text: string): string {
@@ -171,8 +170,8 @@ function v1Allocations(data: {
   paidFor: ReadonlyArray<{ readonly participantId: string; readonly shares: string }>
 }): ReadonlyMap<string, Minor> {
   if (data.splitMode === 'amount') {
-    const exact = data.paidFor.map((p) => tryMinor(p.shares, data.currency))
-    if (exact.every((v) => v !== undefined) && sumMinor(exact) === data.amount)
+    const exact = data.paidFor.map((p) => minorOrNull({ amount: p.shares, currency: data.currency }))
+    if (exact.every((v) => v !== null) && sumMinor(exact) === data.amount)
       return new Map(data.paidFor.map((p, i) => [p.participantId, exact[i] ?? minor(0n)]))
   }
   return resolveShares({
@@ -192,8 +191,8 @@ function fromV1(raw: typeof V1Expense.Type, categories: ReadonlyMap<number, Cate
   const parts = v1Allocations({ amount, currency, splitMode, payerId: e.paidBy.id, paidFor: e.paidFor })
   const money = (value: Minor) => formatMinor({ amount: value, currency })
   const weight = (shares: string) => {
-    const exact = splitMode === 'amount' ? tryMinor(shares, currency) : undefined
-    return exact === undefined ? canonicalWeight(shares) : money(exact)
+    const exact = splitMode === 'amount' ? minorOrNull({ amount: shares, currency }) : null
+    return exact === null ? canonicalWeight(shares) : money(exact)
   }
   return {
     schemaVersion: 1,

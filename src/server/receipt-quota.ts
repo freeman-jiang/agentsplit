@@ -3,7 +3,7 @@
 // without a known uploader (imported from before accounts) count against no one.
 import { sql } from 'drizzle-orm'
 import { LIMITS, storageFullMessage } from '../shared/limits'
-import type { Db } from './core/db'
+import { ADVISORY_LOCKS, type Db } from './core/db'
 
 /** The bytes that count against `userId`. */
 export async function receiptUsage(db: Db, userId: string): Promise<number> {
@@ -14,9 +14,6 @@ export async function receiptUsage(db: Db, userId: string): Promise<number> {
   return Number(result.rows[0]?.bytes ?? 0)
 }
 
-/** The first key of the advisory lock that orders one user's quota decisions. */
-const QUOTA_LOCK = 170031012
-
 /**
  * Null when `bytes` more fit the user's storage, else the message to show.
  * `lock` takes the user's quota lock until the transaction ends, so two
@@ -26,7 +23,7 @@ const QUOTA_LOCK = 170031012
  * check when upload targets are issued.
  */
 export async function spaceFor(tx: Db, data: { userId: string; bytes: number; lock: boolean; outstanding: boolean }): Promise<string | null> {
-  if (data.lock) await tx.execute(sql`SELECT pg_advisory_xact_lock(${QUOTA_LOCK}, hashtext(${data.userId}))`)
+  if (data.lock) await tx.execute(sql`SELECT pg_advisory_xact_lock(${ADVISORY_LOCKS.receiptQuota}, hashtext(${data.userId}))`)
   const used = await receiptUsage(tx, data.userId)
   let pending = 0
   if (data.outstanding) {

@@ -3,10 +3,9 @@
 import { eq, sql } from 'drizzle-orm'
 import { authBootstrap } from '../../../db/schema/app'
 import { normalizeEmail } from '../../shared/groups'
-import type { Db } from '../core/db'
+import { ADVISORY_LOCKS, type Db } from '../core/db'
 
 const BOOTSTRAP_ID = 'private-groups-v1'
-const BOOTSTRAP_LOCK = 170031011
 
 /**
  * The one-time cutover from the app before accounts: the configured owner,
@@ -26,7 +25,7 @@ export async function bootstrapOwner(
   const done = async (d: Db) => (await d.select({ id: authBootstrap.id }).from(authBootstrap).where(eq(authBootstrap.id, BOOTSTRAP_ID))).length > 0
   if (await done(db)) return false
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${BOOTSTRAP_LOCK})`)
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${ADVISORY_LOCKS.ownerBootstrap})`)
     if (await done(tx)) return false
     await tx.execute(sql`
       INSERT INTO memberships (user_id, group_id, role, active)

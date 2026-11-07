@@ -6,7 +6,7 @@
 import { Schema } from 'effect'
 import { Id as IdInput } from '../../../shared/api'
 import { LIMITS } from '../../../shared/limits'
-import { ACTIVITY_TYPE_BY_NAME, ACTIVITY_TYPE_NAMES, RECURRENCE_NAMES } from '../../../shared/vocabulary'
+import { ACTIVITY_TYPE_BY_NAME, ACTIVITY_TYPE_NAMES, RECURRENCE_NAMES, RECURRING_PERIODS } from '../../../shared/vocabulary'
 import { loadExpenses } from '../../expense-read'
 import * as exports from '../../export'
 import * as history from '../../history'
@@ -79,7 +79,7 @@ export const getSpendingStats = defineTool({
       count: NonNegativeInt,
       estimatedMonthly: Money,
       estimatedYearly: Money,
-      byPeriod: Schema.Array(Schema.Struct({ period: Schema.Literals(['DAILY', 'WEEKLY', 'MONTHLY']), count: Schema.Int, total: Money })),
+      byPeriod: Schema.Array(Schema.Struct({ period: Schema.Literals(RECURRING_PERIODS.map((p) => RECURRENCE_NAMES[p])), count: Schema.Int, total: Money })),
     }),
   }),
   run: async ({ db, principal }, input) => {

@@ -17,7 +17,7 @@ import { removeDocuments } from './ledger'
 import { receiptUsage } from './receipt-quota'
 import { receiptKey } from './receipts'
 import { groupsCreated } from './groups'
-import { iso } from './sql'
+import { iso, textList } from './sql'
 
 export const DELETE_DENIED = 'Only the person who uploaded a receipt, or an admin of its group, can delete it.'
 
@@ -132,7 +132,7 @@ export async function deleteReceipts(tx: Db, data: { principal: Principal; recei
     SELECT r.id, r.group_id, r.url, r.created_by, r.bytes, m.role, m.group_id IS NOT NULL AS active,
       EXISTS (SELECT 1 FROM deleted_receipts d WHERE d.receipt_id = r.id) AS deleted
     FROM receipts r LEFT JOIN ${myMemberships(userId)} m ON m.group_id = r.group_id
-    WHERE r.id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+    WHERE r.id IN (${textList(ids)})
   `)
   const byId = new Map(result.rows.map((r) => [r.id, r]))
   // Check every receipt before anything changes. A receipt in a group the caller cannot see looks missing.
@@ -175,7 +175,7 @@ export async function deleteOwnReceipts(tx: Db, data: { principal: Principal; re
  */
 export async function purgeDeletedReceipts(data: { db: Db; bucket: Bucket; receiptIds?: readonly string[] }): Promise<number> {
   if (data.receiptIds?.length === 0) return 0
-  const only = data.receiptIds ? sql`AND d.receipt_id IN (${sql.join(data.receiptIds.map((id) => sql`${id}`), sql`, `)})` : sql``
+  const only = data.receiptIds ? sql`AND d.receipt_id IN (${textList(data.receiptIds)})` : sql``
   const open = await data.db.execute<{ id: string; url: string; shared: boolean }>(sql`
     SELECT d.receipt_id AS id, r.url,
       EXISTS (SELECT 1 FROM receipts o WHERE o.url = r.url AND o.id <> r.id

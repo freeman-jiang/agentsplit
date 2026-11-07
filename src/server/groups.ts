@@ -19,7 +19,7 @@ import { accessText, groupSnapshot, invitationText, recordGroupEvent } from './a
 import { formatTotals, netsCte, totalsJson } from './balances'
 import { idempotent } from './idempotency'
 import { displayNames } from './people'
-import { iso } from './sql'
+import { iso, textList } from './sql'
 
 /** The named groups that `userId` created, from their create_group activities (LIMITS.groupsCreated). Groups are never deleted. */
 export const groupsCreated = (userId: string) => sql`(SELECT count(*)::int FROM activities a JOIN groups g ON g.id = a.group_id AND g.kind = 'named'
@@ -98,7 +98,7 @@ type PageRow = {
 export async function listGroupPage(db: Db, data: { principal: Principal; offset: number; limit: number; groupIds?: readonly string[] }) {
   const requested = data.groupIds ? [...new Set(data.groupIds)] : undefined
   if (requested?.length === 0) return { groups: [], hasMore: false }
-  const refs = requested && sql`unnest(ARRAY[${sql.join(requested.map((id) => sql`${id}`), sql`, `)}]::text[]) AS r(ref)`
+  const refs = requested && sql`unnest(ARRAY[${textList(requested)}]::text[]) AS r(ref)`
   if (refs) {
     const denied = await db.execute<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM ${refs}
