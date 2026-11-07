@@ -224,7 +224,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
         e.preventDefault()
         void submit()
       }}
-      className="space-y-4 sm:space-y-6"
+      className="space-y-4"
     >
       <h2 className="font-display text-xl">
         {headingVerb} {noun}
@@ -235,6 +235,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
         <Field id="title" label="Description" error={shown('title')}>
           <Input
             id="title"
+            className="h-11"
             placeholder="Monday evening restaurant"
             value={state.title}
             aria-invalid={!!shown('title')}
@@ -249,7 +250,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
                 id="amount"
                 inputMode="decimal"
                 placeholder="0.00"
-                className="h-12 min-w-0 flex-1 text-[2rem]! leading-none font-semibold tabular-nums placeholder:font-normal placeholder:text-muted-foreground/70"
+                className="h-11 min-w-0 flex-1 text-xl! font-semibold tabular-nums placeholder:font-normal placeholder:text-muted-foreground/70"
                 value={state.amount}
                 aria-invalid={!!shown('amount')}
                 onFocus={(e) => e.target.select()}
@@ -261,7 +262,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
                 label={income ? 'Currency of income' : 'Currency of expense'}
                 value={state.currency}
                 onChange={(currency) => set({ currency, edits: {} })}
-                selectClassName="h-12"
+                selectClassName="h-11"
               />
             </div>
           </Field>
@@ -269,7 +270,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
             <Input
               id="date"
               type="date"
-              className="block h-10 sm:h-12"
+              className="block h-11"
               value={state.expenseDate}
               aria-invalid={!!shown('expenseDate')}
               onChange={(e) => set({ expenseDate: e.target.value })}
@@ -278,13 +279,13 @@ export function ExpenseForm(props: ExpenseFormProps) {
           </Field>
         </div>
         <Field id="vendor" label="Vendor (optional)" error={shown('vendor')}>
-          <Input id="vendor" placeholder="e.g. Costco" maxLength={LIMITS.vendorMax} value={state.vendor} onChange={(e) => set({ vendor: e.target.value })} onBlur={() => touch('vendor')} />
+          <Input id="vendor" className="h-11" placeholder="e.g. Costco" maxLength={LIMITS.vendorMax} value={state.vendor} onChange={(e) => set({ vendor: e.target.value })} onBlur={() => touch('vendor')} />
         </Field>
 
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">{income ? 'Received by' : 'Paid by'}</legend>
           {state.payerMode === 'one' ? (
-            <NativeSelect id="payer" aria-label={income ? 'Received by' : 'Paid by'} value={state.payer} aria-invalid={!!payersError} onChange={(e) => set({ payer: e.target.value })}>
+            <NativeSelect id="payer" className="h-11" aria-label={income ? 'Received by' : 'Paid by'} value={state.payer} aria-invalid={!!payersError} onChange={(e) => set({ payer: e.target.value })}>
               <option value="">Select a participant</option>
               {group.participants.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -351,7 +352,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
           </Button>
         </div>
         <Field id="split-mode" label="Split mode">
-          <NativeSelect id="split-mode" value={state.splitMode} onChange={(e) => setMode(e.target.value as SplitMode)}>
+          <NativeSelect id="split-mode" className="h-11" value={state.splitMode} onChange={(e) => setMode(e.target.value as SplitMode)}>
             {SPLIT_MODES.map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
@@ -446,7 +447,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
           </DisclosureSummary>
           <div className="space-y-4 pt-2 pb-3">
             <Field id="category" label="Category">
-              <NativeSelect id="category" value={String(state.categoryId)} onChange={(e) => set({ categoryId: Number(e.target.value) })}>
+              <NativeSelect id="category" className="h-11" value={String(state.categoryId)} onChange={(e) => set({ categoryId: Number(e.target.value) })}>
                 {[...new Set(reference.categories.map((c) => c.grouping))].map((grouping) => (
                   <optgroup key={grouping} label={grouping}>
                     {reference.categories
@@ -469,7 +470,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
                   : 'Select how often the expense should repeat.'
               }
             >
-              <NativeSelect id="recurrence" disabled={isPrivate} value={state.recurrence} onChange={(e) => set({ recurrence: e.target.value as FormState['recurrence'] })}>
+              <NativeSelect id="recurrence" className="h-11" disabled={isPrivate} value={state.recurrence} onChange={(e) => set({ recurrence: e.target.value as FormState['recurrence'] })}>
                 {RECURRENCE.map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
@@ -498,8 +499,6 @@ export function ExpenseForm(props: ExpenseFormProps) {
         </details>
       </div>
 
-      <Summary state={state} names={names} hint={isPrivate ? PRIVATE_HINT : 'Edits stay in the group’s log.'} />
-
       {failure && (
         <div role="alert" className="space-y-2 border border-destructive/50 p-3 text-sm text-destructive">
           <p>{failure.message}</p>
@@ -516,34 +515,38 @@ export function ExpenseForm(props: ExpenseFormProps) {
         </p>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={busy}>
-          {props.mode === 'create' ? (busy ? 'Creating…' : 'Create') : busy ? 'Saving…' : 'Save changes'}
-        </Button>
-        {props.mode === 'edit' && (
-          <DeleteDialog
-            label="Delete"
-            title="Delete this expense?"
-            description={isPrivate ? 'It leaves the expense list and the balances. This expense’s private log keeps its history.' : "It leaves the expense list and the balances. The group's log keeps its history."}
-            onConfirm={async () => {
-              await rpc((api) =>
-                api('expenses.delete', { groupId: group.id, expenseId: props.detail.expense.id, expectedRevision: props.detail.expense.revision, idempotencyKey: crypto.randomUUID() }),
-              )
-              if (target.kind === 'page') return await leavePage({ queryClient, navigate, back: target.back })
-              await invalidateMoney({ queryClient, group: target.groupParam })
-              await navigate({ to: '/$group/expenses', params: { group: target.groupParam } })
-            }}
-          />
-        )}
-        <Button type="button" variant="ghost" asChild>
-          {target.kind === 'page' ? (
-            <Link {...target.back}>Cancel</Link>
-          ) : (
-            <Link to="/$group/expenses" params={{ group: target.groupParam }}>
-              Cancel
-            </Link>
+      {/* On wide screens the total and the actions share one bar at the end of the form. */}
+      <div className="flex flex-wrap items-center justify-between gap-4 sm:rounded-2xl sm:border sm:bg-card sm:py-4 sm:ps-6 sm:pe-4">
+        <Summary state={state} names={names} hint={isPrivate ? PRIVATE_HINT : 'Edits stay in the group’s log.'} />
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" disabled={busy}>
+            {props.mode === 'create' ? (busy ? 'Creating…' : 'Create') : busy ? 'Saving…' : 'Save changes'}
+          </Button>
+          {props.mode === 'edit' && (
+            <DeleteDialog
+              label="Delete"
+              title="Delete this expense?"
+              description={isPrivate ? 'It leaves the expense list and the balances. This expense’s private log keeps its history.' : "It leaves the expense list and the balances. The group's log keeps its history."}
+              onConfirm={async () => {
+                await rpc((api) =>
+                  api('expenses.delete', { groupId: group.id, expenseId: props.detail.expense.id, expectedRevision: props.detail.expense.revision, idempotencyKey: crypto.randomUUID() }),
+                )
+                if (target.kind === 'page') return await leavePage({ queryClient, navigate, back: target.back })
+                await invalidateMoney({ queryClient, group: target.groupParam })
+                await navigate({ to: '/$group/expenses', params: { group: target.groupParam } })
+              }}
+            />
           )}
-        </Button>
+          <Button type="button" variant="ghost" asChild>
+            {target.kind === 'page' ? (
+              <Link {...target.back}>Cancel</Link>
+            ) : (
+              <Link to="/$group/expenses" params={{ group: target.groupParam }}>
+                Cancel
+              </Link>
+            )}
+          </Button>
+        </div>
       </div>
     </form>
   )
@@ -570,8 +573,8 @@ function Summary(props: { state: FormState; names: ReadonlyMap<string, string>; 
           .join(', ')
   const people = Object.values(state.selected).filter(Boolean).length
   return (
-    <aside className="hidden rounded-2xl border bg-muted/40 p-4 text-sm sm:block" aria-label="Expense total">
-      <p className="text-2xl tabular-nums">{amount}</p>
+    <aside className="hidden min-w-0 text-sm sm:block" aria-label="Expense total">
+      <p className={cn('text-xl font-semibold tabular-nums', amount === '—' && 'text-muted-foreground')}>{amount}</p>
       <p className="text-muted-foreground">
         {state.currency} · {payers || 'No payer yet'} · {people} {people === 1 ? 'person' : 'people'}
       </p>
