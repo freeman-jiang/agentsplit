@@ -5,15 +5,19 @@ import { cn } from '~/client/cn'
 import { disclosure, DisclosureSummary } from '~/client/ui/disclosure'
 import type { Activity } from '~/shared/api'
 import { describeRevision, REVISION_FIELDS } from '~/shared/history'
+import { tombstoneText } from '../receipt-files'
 import { fieldChanged } from './revision-diff'
 
 type ActivityItem = typeof Activity.Type
 
-/** Only http and https pointers become links; a `javascript:` URL never does (P-HIST-76). */
+/**
+ * Only http and https pointers and v2's own r2: pointers become links; a
+ * `javascript:` URL never does (P-HIST-76). The link is always /api/receipts.
+ */
 function receiptLink(data: { groupId: string; url: string }) {
   try {
     const parsed = new URL(data.url)
-    if (!['http:', 'https:'].includes(parsed.protocol)) return undefined
+    if (!['http:', 'https:', 'r2:'].includes(parsed.protocol)) return undefined
   } catch {
     return undefined
   }
@@ -88,6 +92,12 @@ export function ActivityRevision({ activity, groupId }: { activity: ActivityItem
           })}
         </dl>
         {saved.documents.map((document, index) => {
+          if (document.deleted)
+            return (
+              <p key={document.id} className="text-muted-foreground">
+                {tombstoneText(document.deleted)}
+              </p>
+            )
           const href = receiptLink({ groupId, url: document.url })
           return href ? (
             <a key={document.id} href={href} target="_blank" rel="noopener noreferrer" className="block underline">

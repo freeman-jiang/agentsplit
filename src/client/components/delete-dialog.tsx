@@ -4,7 +4,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { describeWriteError } from './write-error'
 
 /** A confirmation that stays open and says why when the delete fails (P-EXP-52). */
-export function DeleteDialog(props: { label: string; title: string; description: string; onConfirm: () => Promise<void> }) {
+/** `quiet` gives the trigger an outline, for a list with one per row; the confirm button stays destructive. */
+export function DeleteDialog(props: { label: string; title: string; description: string; onConfirm: () => Promise<void>; quiet?: boolean }) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -17,7 +18,7 @@ export function DeleteDialog(props: { label: string; title: string; description:
       }}
     >
       <DialogTrigger asChild>
-        <Button type="button" variant="destructive">
+        <Button type="button" variant={props.quiet ? 'outline' : 'destructive'} size={props.quiet ? 'sm' : 'default'}>
           {props.label}
         </Button>
       </DialogTrigger>
