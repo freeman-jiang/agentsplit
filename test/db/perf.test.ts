@@ -2,9 +2,9 @@
 // (P-PWA-49). A missing header only shows up as an empty column in a report.
 import { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createApp } from '../../src/server/app'
-import type { AppSettings } from '../../src/server/config'
-import { makeDb } from '../../src/server/db'
+import { createApp } from '../../src/server/main/app'
+import type { AppSettings } from '../../src/server/core/config'
+import { makeDb } from '../../src/server/core/db'
 import { instrumentPool, withPerfCounters } from '../../src/server/perf'
 import { fakeBucket } from './fake-bucket'
 import { resetTestDatabase } from './setup'

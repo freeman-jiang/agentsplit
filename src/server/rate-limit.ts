@@ -4,7 +4,7 @@
 // budget and the write budget use the same code.
 import { sql } from 'drizzle-orm'
 import { LIMITS } from '../shared/limits'
-import type { Db } from './db'
+import type { Db } from './core/db'
 
 /** Takes one token from the user's bucket in `table`. Returns 0 when allowed, else the whole seconds to wait. */
 async function takeToken(

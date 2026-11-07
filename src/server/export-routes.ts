@@ -4,9 +4,9 @@
 // download them (P-EXPORT-05, P-TOOL-EXPORT-06). The files are built in export.ts.
 import { GROUP_DENIED } from '../shared/errors'
 import { httpReader } from './auth/authenticate'
-import type { Db } from './db'
+import type { Db } from './core/db'
 import { exportCsv, exportJson } from './export'
-import { domainErrorResponse, jsonError } from './http-errors'
+import { domainErrorResponse, jsonError } from './core/errors'
 
 /** RFC 6266 Content-Disposition, as the `content-disposition` package writes it. */
 export function contentDisposition(name: string): string {

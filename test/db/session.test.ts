@@ -4,7 +4,7 @@ import type { Pool } from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { session, user } from '../../db/schema/auth'
 import { createAuth } from '~/server/auth/auth'
-import { makeDb, type Db } from '~/server/db'
+import { makeDb, type Db } from '~/server/core/db'
 import { sessionPrincipal } from '~/server/auth/session'
 import { resetTestDatabase } from './setup'
 

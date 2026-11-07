@@ -8,7 +8,7 @@ import { FeedCursor } from '../../../shared/api/feed'
 import { legacyDateTime } from '../../../shared/dates'
 import { LIMITS } from '../../../shared/limits'
 import * as feed from '../../feed'
-import { defineTool } from '../registry'
+import { defineTool } from './registry'
 import { CalendarDate, CurrencyCodeInput, NoArguments, PageLimit } from './inputs'
 import { DateTime, FeedRow, feedRow, Id, NullableString, optional } from './wire'
 

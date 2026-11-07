@@ -4,8 +4,8 @@
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { groups } from '../../db/schema/app'
-import { createApp, type App } from '~/server/app'
-import { makeDb } from '~/server/db'
+import { createApp, type App } from '~/server/main/app'
+import { makeDb } from '~/server/core/db'
 import { fakeBucket } from './fake-bucket'
 import { resetTestDatabase } from './setup'
 

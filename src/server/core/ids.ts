@@ -2,7 +2,7 @@
 // instead: this module uses node:crypto.
 import { createHash, randomBytes } from 'node:crypto'
 
-export { randomId } from '../shared/ids'
+export { randomId } from '../../shared/ids'
 
 /** SHA-256 of the UTF-8 text, as lowercase hex. */
 export const sha256Hex = (text: string) => createHash('sha256').update(text).digest('hex')

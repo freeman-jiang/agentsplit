@@ -6,7 +6,7 @@ import { Id as IdInput } from '../../../shared/api'
 import { ReceiptOrder } from '../../../shared/api/storage'
 import { FAIR_USE, LIMITS } from '../../../shared/limits'
 import * as storage from '../../storage'
-import { defineTool } from '../registry'
+import { defineTool } from './registry'
 import { NoArguments, PageLimit } from './inputs'
 import { DateTime, Id, NonNegativeInt, NullableString, optional, RecordedTime } from './wire'
 

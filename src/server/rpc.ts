@@ -5,11 +5,11 @@ import { Cause, Context, Effect, Layer, Option } from 'effect'
 import { RpcMiddleware } from 'effect/rpc'
 import { AgentSplitApi, Unauthorized, Unavailable } from '../shared/api'
 import { ERROR_ANSWERS, errorKind, UNAVAILABLE, type DeclaredError } from '../shared/errors'
-import type { Principal } from './access'
+import type { Principal } from './core/access'
 import { sessionPrincipal } from './auth/session'
 import type { Bucket } from './bucket'
 import { answerOf, readAnswerOf, runRead, runWrite, type AfterCommit, type CallName } from './calls'
-import type { Db } from './db'
+import type { Db } from './core/db'
 
 /** The settings that the handlers and the session check use. */
 export class AppConfig extends Context.Service<AppConfig, { readonly baseUrl: string; readonly secret: string }>()('agentsplit/AppConfig') {}

@@ -10,8 +10,8 @@ import { session, user } from '../db/schema/auth'
 import type { ExpenseDraft } from '../src/shared/expense-rules'
 import { randomId } from '../src/shared/ids'
 import { createAuth } from '../src/server/auth/auth'
-import { makeDb, type Db } from '../src/server/db'
-import type { Principal } from '../src/server/access'
+import { makeDb, type Db } from '../src/server/core/db'
+import type { Principal } from '../src/server/core/access'
 import { createExpense, updateExpense } from '../src/server/ledger'
 
 const url = new URL(process.env['E2E_DATABASE_URL'] ?? '')

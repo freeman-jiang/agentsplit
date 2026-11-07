@@ -1,7 +1,7 @@
 // People: the names shown for participants, and the accounts a caller may add
 // to an ungrouped expense.
 import { sql, type SQL } from 'drizzle-orm'
-import type { Db } from './db'
+import type { Db } from './core/db'
 
 /**
  * The name to show for a participant: the bound, verified account's current

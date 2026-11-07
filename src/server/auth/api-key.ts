@@ -6,8 +6,8 @@
 // same rows and requires the same answers and the same row changes.
 import { and, eq, gt, isNull, lt, lte, sql } from 'drizzle-orm'
 import { apikey, user } from '../../../db/schema/auth'
-import type { Db } from '../db'
-import { sha256Base64url } from '../ids'
+import type { Db } from '../core/db'
+import { sha256Base64url } from '../core/ids'
 
 type KeyRow = typeof apikey.$inferSelect
 

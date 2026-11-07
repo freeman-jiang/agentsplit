@@ -10,9 +10,9 @@ import { activities, expensePayers, expenses, expenseShares } from '../../db/sch
 import { user } from '../../db/schema/auth'
 import { listActivities } from '~/server/history'
 import { getGroup } from '~/server/ledger'
-import { type Principal } from '~/server/access'
+import { type Principal } from '~/server/core/access'
 import { V2GroupSnapshot } from '~/shared/snapshots'
-import { randomId } from '~/server/ids'
+import { randomId } from '~/server/core/ids'
 import { minor } from '~/shared/minor'
 import { BASE, failure, ok, startHarness, type Harness } from './mcp-harness'
 

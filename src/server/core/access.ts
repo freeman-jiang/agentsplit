@@ -2,8 +2,8 @@
 // tool resolves a group reference here, so an ID, a current slug in any case
 // and a retired slug name the same group everywhere (agentsplit_group_id, 0004).
 import { sql, type SQL } from 'drizzle-orm'
-import { Forbidden, groupAccessDenied } from '../shared/api'
-import type { ActivitySource, Role } from '../shared/vocabulary'
+import { Forbidden, groupAccessDenied } from '../../shared/api'
+import type { ActivitySource, Role } from '../../shared/vocabulary'
 import type { Db } from './db'
 
 export type Principal = {

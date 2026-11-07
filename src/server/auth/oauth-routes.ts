@@ -7,7 +7,7 @@
 import { and, eq } from 'drizzle-orm'
 import { Result, Schema } from 'effect'
 import * as authSchema from '../../../db/schema/auth'
-import type { Db } from '../db'
+import type { Db } from '../core/db'
 import { oauthRefusal } from './authenticate'
 import { verifyOAuthRequest } from './oauth'
 import { refreshTokenOf, revokeOAuthConnection, tombstoneRevokedRefresh } from './oauth-connections'

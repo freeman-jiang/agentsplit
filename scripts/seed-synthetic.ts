@@ -7,8 +7,8 @@ import { and, eq } from 'drizzle-orm'
 import pg from 'pg'
 import { groups, memberships, participants } from '../db/schema/app'
 import { session, user } from '../db/schema/auth'
-import { makeDb } from '../src/server/db'
-import type { Principal } from '../src/server/access'
+import { makeDb } from '../src/server/core/db'
+import type { Principal } from '../src/server/core/access'
 import { createExpense } from '../src/server/ledger'
 
 const url = process.env['DATABASE_URL']

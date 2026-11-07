@@ -8,7 +8,7 @@ import type { CurrencyCode } from '../shared/currencies'
 import { formatMinor, minor } from '../shared/minor'
 import type { ExpenseKind, Recurrence, SplitMode } from '../shared/vocabulary'
 import { actorName, attributionEvents, type AttributionEvent } from './activity'
-import type { Db } from './db'
+import type { Db } from './core/db'
 import { displayName } from './people'
 import { iso, textList } from './sql'
 

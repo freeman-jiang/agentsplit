@@ -1,6 +1,6 @@
 // OAuth discovery and challenges for the MCP resource: the protected-resource
 // metadata and the 401 and 403 WWW-Authenticate challenges.
-import { jsonError } from '../http-errors'
+import { jsonError } from '../core/errors'
 import { mcpResource, oauthIssuer, OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
 
 /**
