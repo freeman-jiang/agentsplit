@@ -9,12 +9,11 @@ import { Button } from '~/client/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '~/client/ui/dialog'
 import type { Reference } from '~/shared/api'
 import { mebibytes } from '~/shared/limits'
+import { RECEIPTS_PATH, receiptDownloadPath } from '~/shared/paths'
 import { prepareReceipt, tombstoneText, type Tombstone } from './receipt-files'
 
 /** `deleted` is set for a receipt that was deleted for good: it shows a tombstone, and saving needs it removed. */
 export type FormDocument = { id: string; url: string; width: number; height: number; deleted?: Tombstone | null }
-
-const receiptSrc = (data: { groupId: string; url: string }) => `/api/receipts?${new URLSearchParams({ groupId: data.groupId, url: data.url })}`
 
 type Uploaded = { id: string; url: string; width: number; height: number }
 
@@ -22,7 +21,7 @@ async function upload(data: { groupId: string; file: File }): Promise<Uploaded> 
   const body = new FormData()
   body.set('groupId', data.groupId)
   body.set('file', data.file)
-  const response = await fetch('/api/receipts', { method: 'POST', body, credentials: 'same-origin' })
+  const response = await fetch(RECEIPTS_PATH, { method: 'POST', body, credentials: 'same-origin' })
   if (!response.ok) throw new Error(((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? `Upload failed (${response.status})`)
   return (await response.json()) as Uploaded
 }
@@ -78,7 +77,7 @@ export function ExpenseDocuments(props: { groupId: string; attachments: (typeof 
             className="h-20 w-20 overflow-hidden border bg-muted"
             aria-label={`Open document ${index + 1}`}
           >
-            <img src={receiptSrc({ groupId: props.groupId, url: doc.url })} alt="" width={doc.width} height={doc.height} className="h-full w-full object-cover" loading="lazy" />
+            <img src={receiptDownloadPath({ groupId: props.groupId, url: doc.url })} alt="" width={doc.width} height={doc.height} className="h-full w-full object-cover" loading="lazy" />
           </button>
         ),
       )}
@@ -102,7 +101,7 @@ export function ExpenseDocuments(props: { groupId: string; attachments: (typeof 
           <DialogTitle className="sr-only">Document</DialogTitle>
           {shown && (
             <>
-              <img src={receiptSrc({ groupId: props.groupId, url: shown.url })} alt="Receipt" className="max-h-[75dvh] w-full object-contain" />
+              <img src={receiptDownloadPath({ groupId: props.groupId, url: shown.url })} alt="Receipt" className="max-h-[75dvh] w-full object-contain" />
               <div className="flex justify-end gap-2">
                 <Button
                   type="button"

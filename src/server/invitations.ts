@@ -3,7 +3,9 @@
 // when an invitation is pending, open or usable.
 import { and, eq, isNull, sql, type SQL } from 'drizzle-orm'
 import { invitations } from '../../db/schema/app'
-import { INVITATION_TOKEN, invitationTokenOfPath, normalizeEmail } from '../shared/groups'
+import { normalizeEmail } from '../shared/groups'
+import { SECRET_TOKEN } from '../shared/ids'
+import { absoluteUrl, invitationPath, invitationTokenOfPath } from '../shared/paths'
 import { LIMITS } from '../shared/limits'
 import type { Db } from './core/db'
 import { randomId, randomToken, sha256Hex } from './core/ids'
@@ -40,7 +42,7 @@ export function invitationProblem(data: { invitation: Invitation; email: string 
 
 /** The invitation of a token, or null for a malformed or unknown one. */
 export async function findInvitation(db: Db, token: string): Promise<Invitation | null> {
-  if (!INVITATION_TOKEN.test(token)) return null
+  if (!SECRET_TOKEN.test(token)) return null
   const [row] = await db.select().from(invitations).where(eq(invitations.tokenHash, tokenHash(token)))
   return row ?? null
 }
@@ -83,7 +85,7 @@ export async function createInvitation(
     participantId: invitation.participantId,
     participantName: invitation.participantName,
     expiresAt: invitation.expiresAt.toISOString(),
-    url: new URL(`/invite/${token}`, data.baseUrl).href,
+    url: absoluteUrl({ baseUrl: data.baseUrl, path: invitationPath(token) }),
   }
 }
 

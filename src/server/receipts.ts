@@ -70,9 +70,6 @@ export function receiptKey(url: string): string | null {
   return key
 }
 
-/** The download address the UI and the API give for a receipt (P-RECEIPT-07). */
-export const receiptDownloadPath = (data: { groupId: string; url: string }) => `/api/receipts?${new URLSearchParams({ groupId: data.groupId, url: data.url })}`
-
 /** The caller's membership of the group. A NUL byte cannot name a group, and PostgreSQL text cannot hold it, so it is denied before the query. */
 function member(db: Db, data: { principal: Principal; groupId: string }) {
   if (data.groupId.includes('\0')) throw groupAccessDenied()

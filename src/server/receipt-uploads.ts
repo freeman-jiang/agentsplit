@@ -7,7 +7,9 @@
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { receipts, receiptUploads } from '../../db/schema/app'
 import { Forbidden, Invalid } from '../shared/api'
+import { SECRET_TOKEN } from '../shared/ids'
 import { LIMITS } from '../shared/limits'
+import { absoluteUrl, receiptUploadPath } from '../shared/paths'
 import type { ReceiptContentType } from '../shared/vocabulary'
 import type { Bucket } from './bucket'
 import type { Db } from './core/db'
@@ -46,7 +48,6 @@ export async function prepareUploads(
   const full = await spaceFor(tx, { userId: data.principal.userId, bytes, lock: false, outstanding: true })
   if (full) return { uploads: [], uploadError: full }
   const expiresAt = new Date(Date.now() + LIMITS.uploadTargetSeconds * 1000)
-  const origin = new URL(data.baseUrl).origin
   const rows = data.requests.map((file) => {
     const token = randomToken()
     const id = randomId()
@@ -72,7 +73,7 @@ export async function prepareUploads(
       uploadId: row.id,
       filename: file.filename,
       method: 'PUT' as const,
-      url: `${origin}/api/receipt-uploads/${token}`,
+      url: absoluteUrl({ baseUrl: data.baseUrl, path: receiptUploadPath(token) }),
       headers: { 'Content-Type': file.contentType, 'Content-Length': String(file.bytes) },
       expiresAt: expiresAt.toISOString(),
     })),
@@ -99,7 +100,7 @@ export async function storeUpload(data: {
   /** The request body, read only after the target is claimed. */
   body: () => ReadableStream<Uint8Array> | null
 }): Promise<{ etag: string }> {
-  if (!/^[A-Za-z0-9_-]{43}$/.test(data.token)) throw new Forbidden({ message: NOT_VALID })
+  if (!SECRET_TOKEN.test(data.token)) throw new Forbidden({ message: NOT_VALID })
   const claimed = await data.db
     .update(receiptUploads)
     .set({ state: 'writing' })

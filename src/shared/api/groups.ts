@@ -3,7 +3,8 @@
 // (createGroup, updateGroup) and src/lib/group-access.ts.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
-import { EMAIL, INVITATION_TOKEN } from '../groups'
+import { EMAIL } from '../groups'
+import { SECRET_TOKEN } from '../ids'
 import { LIMITS } from '../limits'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
 import { EmailInput, GroupKindSchema, Id, IdempotencyKey, NewId, ReadError, RoleSchema as Role, WriteError } from './core'
@@ -156,7 +157,7 @@ export class GroupsApi extends RpcGroup.make(
   }),
   Rpc.make('groups.access', { payload: { idempotencyKey: IdempotencyKey, request: AccessRequest }, success: AccessResult, error: WriteError }),
   Rpc.make('invitations.preview', {
-    payload: { token: Schema.String.check(Schema.isPattern(INVITATION_TOKEN)) },
+    payload: { token: Schema.String.check(Schema.isPattern(SECRET_TOKEN)) },
     success: InvitationPreview,
     error: ReadError,
   }),

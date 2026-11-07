@@ -4,6 +4,7 @@
 import { DisclosureSummary } from '~/client/ui/disclosure'
 import type { Activity } from '~/shared/api'
 import { describeRevision, REVISION_FIELDS } from '~/shared/history'
+import { receiptDownloadPath } from '~/shared/paths'
 import { tombstoneText } from '../receipt-files'
 import { fieldChanged } from './revision-diff'
 
@@ -21,7 +22,7 @@ function receiptLink(data: { groupId: string; url: string }) {
   } catch {
     return undefined
   }
-  return `/api/receipts?${new URLSearchParams({ groupId: data.groupId, url: data.url })}`
+  return receiptDownloadPath(data)
 }
 
 /** Who recorded the change, without user IDs (DECISIONS.md, P-HIST-75). */
