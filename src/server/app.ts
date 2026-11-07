@@ -32,6 +32,8 @@ export type Config = AppConfig['Service'] & {
   readonly bootstrapEmail: string | undefined
   /** Report each request's database work in its headers. The platform must count the statements (src/server/perf.ts). */
   readonly perfInstrumentation: boolean
+  /** New accounts per 24 hours (SIGN_UP_DAILY_LIMIT); LIMITS.signUpsPerDay when not set. */
+  readonly signUpDailyLimit?: number | undefined
 }
 
 export type Platform = {

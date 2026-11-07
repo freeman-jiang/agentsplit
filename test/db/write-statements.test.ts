@@ -13,7 +13,8 @@ import { Api, AppConfig, AuthMiddlewareLive, ReceiptBucket } from '~/server/rpc'
 import { fakeBucket } from './fake-bucket'
 import { BASE, ok, SECRET, startHarness, type Harness } from './mcp-harness'
 
-const CEILING = { mcpCreate: 9, mcpUpdateNotes: 9, webUpdate: 8 }
+// Each write takes one token from the fair-use write budget (src/server/rate-limit.ts): one statement more than before.
+const CEILING = { mcpCreate: 10, mcpUpdateNotes: 10, webUpdate: 9 }
 
 let h: Harness
 let alice: Record<string, string>

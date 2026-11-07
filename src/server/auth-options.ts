@@ -7,6 +7,7 @@ import { mcp } from '@better-auth/mcp'
 import type { OAuthProviderExtension } from '@better-auth/oauth-provider'
 import { jwt } from 'better-auth/plugins/jwt'
 import { OAUTH_SCOPES } from '../shared/api/account'
+import { LIMITS } from '../shared/limits'
 import { sha256Base64url } from './ids'
 
 // The consent page needs the scopes too, so they live in the shared contract.
@@ -47,6 +48,8 @@ export function authPlugins(config: {
       // Registration does not grant account access or bypass consent or PKCE.
       allowDynamicClientRegistration: true,
       allowUnauthenticatedClientRegistration: true,
+      // Fair use: registrations per IP address, in Better Auth's rate-limit table.
+      rateLimit: { register: { window: 3600, max: LIMITS.clientRegistrationsPerHour } },
       extensions: config.extensions,
     }),
     cimd({ fetchClientMetadataResource: config.fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),

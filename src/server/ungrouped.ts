@@ -9,6 +9,7 @@ import { activities, expenses, groups, invitations, memberships, participants, p
 import { Conflict, Forbidden, Invalid, Unauthorized } from '../shared/api'
 import type { ExpenseDraft } from '../shared/expense-rules'
 import type { V2GroupSnapshot } from '../shared/history'
+import { LIMITS, participantLimitMessage } from '../shared/limits'
 import type { Db } from './db'
 import { contacts } from './feed'
 import { groupSnapshotOf, invitationTokenHash, newInvitationToken } from './groups'
@@ -52,6 +53,7 @@ export async function createUngroupedExpense(
 ) {
   const known = await contacts(tx, { userId: data.principal.userId })
   if (!known.some((c) => c.id === data.principal.userId)) throw new Unauthorized()
+  if (data.people.length > LIMITS.participantsPerGroup) throw new Invalid({ message: participantLimitMessage, field: 'people' })
   const people = data.people.map((person) => {
     if (person.kind === 'account') {
       const account = known.find((c) => c.id === person.userId)
