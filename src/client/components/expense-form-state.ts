@@ -2,7 +2,7 @@
 // that validateExpense checks, the live share preview, and the auto-filled
 // amounts of an amount split. Ported from the current app's expense-form.tsx.
 import type { CurrencyCode } from '~/shared/currencies'
-import { checkMoney, validateExpense, type ExpenseDraft, type ExpenseIssue } from '~/shared/expense-rules'
+import { checkMoney, validateExpense, type ExpenseDraft, type ExpenseIssue, type ResolvedExpense } from '~/shared/expense-rules'
 import { formatMinor, minor, minorOrNull, sumMinor, type Minor } from '~/shared/minor'
 import { compareIds } from '~/shared/ids'
 import { apportion, parseWeight, preferredPayer, weightText } from '~/shared/split'
@@ -120,7 +120,7 @@ export function involvesEveryone(state: FormState, order: readonly string[]) {
   return order.every((id) => state.selected[id] || payers.has(id))
 }
 
-export type Check = { readonly issues: readonly ExpenseIssue[]; readonly preview: ReadonlyMap<string, string> | null }
+export type Check = { readonly draft: ExpenseDraft; readonly resolved: ResolvedExpense | null; readonly issues: readonly ExpenseIssue[]; readonly preview: ReadonlyMap<string, string> | null }
 
 /** Validates the draft, and resolves the split for the preview, which shows before the title is typed. */
 export function check(state: FormState, order: readonly string[]): Check {
@@ -128,6 +128,7 @@ export function check(state: FormState, order: readonly string[]): Check {
   const participantIds = new Set(order)
   const result = validateExpense({ draft, participantIds })
   const issues = result.ok ? [] : result.issues
+  const resolved = result.ok ? result.value : null
   // While several payers do not add up yet, preview with the payer who would get the leftover unit.
   const preferred = preferredOf(state, order)
   const payers = payerRemainder(state, order) === 0n || !preferred ? draft.payers : [{ participantId: preferred, amount: draft.amount }]
@@ -135,7 +136,7 @@ export function check(state: FormState, order: readonly string[]): Check {
   const preview = money.ok
     ? new Map(money.value.shares.map((s) => [s.participantId, formatMinor({ amount: s.amount, currency: state.currency })]))
     : null
-  return { issues, preview }
+  return { draft, resolved, issues, preview }
 }
 
 /** What is left to assign among several payers, when every amount parses. */
@@ -174,6 +175,7 @@ export function loadSplitDefaults(data: { groupId: string; participants: readonl
   const mode = SPLIT_MODES.find((m) => SPLIT_MODE_NAMES[m] === stored.splitMode)
   if (!mode) return evenly
   if (stored.paidFor === null) return { ...evenly, splitMode: mode }
+  if (!Array.isArray(stored.paidFor)) return evenly
   if (stored.paidFor.some((p) => !data.participants.includes(p.participant))) {
     localStorage.removeItem(storageKey(data.groupId))
     return evenly

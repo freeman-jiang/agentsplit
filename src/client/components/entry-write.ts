@@ -9,21 +9,19 @@ import { editorLink } from '~/client/editor-link'
 import { describeError, type Failure } from '~/client/errors'
 import { afterWrite } from '~/client/queries/keys'
 import { newIdempotencyKey, rpc } from '~/client/rpc'
-import type { ExpenseDraft } from '~/shared/expense-rules'
-import type { DecimalString } from '~/shared/minor'
+import type { ExpenseDraft, ResolvedExpense } from '~/shared/expense-rules'
+import { formatMinor, type Minor } from '~/shared/minor'
 import type { ExpenseKind } from '~/shared/vocabulary'
 import type { FormDocument } from './expense-documents'
 
-/**
- * The RPC payload for a draft that validateExpense accepted. Its amounts passed
- * the decimal check there, so they carry the DecimalString brand.
- */
-export function toInput(data: { draft: ExpenseDraft; documents: readonly FormDocument[] }) {
-  const { draft } = data
+/** The RPC payload of a draft and what validateExpense resolved from it: the amounts as exact decimals. */
+export function toInput(data: { draft: ExpenseDraft; resolved: ResolvedExpense; documents: readonly FormDocument[] }) {
+  const { draft, resolved } = data
+  const text = (amount: Minor) => formatMinor({ amount, currency: draft.currency })
   return {
     ...draft,
-    amount: draft.amount as DecimalString,
-    payers: draft.payers.map((p) => ({ participantId: p.participantId, amount: p.amount as DecimalString })),
+    amount: text(resolved.amount),
+    payers: resolved.payers.map((p) => ({ participantId: p.participantId, amount: text(p.amount) })),
     documents: data.documents.map((d) => ({ id: d.id, url: d.url, width: d.width, height: d.height })),
   }
 }

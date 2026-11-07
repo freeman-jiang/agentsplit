@@ -22,7 +22,8 @@ export function LoginButton(props: { label: string; selectAccount: boolean; call
         setError(describeError(result.error, 'Unable to log in. Please try again.').message)
         setPending(false)
       }
-    } catch {
+    } catch (cause) {
+      console.error('Google sign-in did not start', cause)
       setError('Unable to log in. Please try again.')
       setPending(false)
     }

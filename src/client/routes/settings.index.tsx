@@ -12,11 +12,11 @@ import { accountQuery } from '~/client/queries/account'
 import { afterWrite } from '~/client/queries/keys'
 import { storageUsageQuery } from '~/client/queries/storage'
 import { rpc } from '~/client/rpc'
-import { readTheme, saveTheme, themeOf, type Theme } from '~/client/theme'
+import { readTheme, saveTheme, type Theme } from '~/client/theme'
 import { Button } from '~/client/ui/button'
 import { CopyButton } from '~/client/ui/copy-button'
 import { Input } from '~/client/ui/input'
-import { NativeSelect } from '~/client/ui/native-select'
+import { ChoiceSelect } from '~/client/ui/choice-select'
 import { LIMITS } from '~/shared/limits'
 import type { ApiKeySummary } from '~/shared/api'
 import { API_KEY_HEADER } from '~/shared/mcp'
@@ -103,6 +103,12 @@ function Profile(props: { name: string; email: string }) {
   )
 }
 
+const THEMES = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+] as const satisfies ReadonlyArray<{ value: Theme; label: string }>
+
 function Preferences() {
   const [theme, setTheme] = useState<Theme>(readTheme)
   return (
@@ -112,20 +118,16 @@ function Preferences() {
         <label htmlFor="appearance-theme" className="text-sm font-medium">
           Theme
         </label>
-        <NativeSelect
+        <ChoiceSelect
           id="appearance-theme"
           wrapperClassName="w-40"
           value={theme}
-          onChange={(event) => {
-            const next = themeOf(event.target.value)
+          options={THEMES}
+          onChange={(next) => {
             setTheme(next)
             saveTheme(next)
           }}
-        >
-          <option value="system">System</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </NativeSelect>
+        />
       </div>
     </section>
   )
@@ -160,7 +162,8 @@ function ApiKeys(props: { keys: ReadonlyArray<typeof ApiKeySummary.Type> }) {
               setLabel('')
               await reload()
             }
-          } catch {
+          } catch (cause) {
+            console.error('API key creation failed', cause)
             setError('Could not create key. Check your connection.')
           } finally {
             setPending(false)

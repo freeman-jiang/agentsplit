@@ -13,9 +13,9 @@ import { formatDay, formatMonth, localDate } from '~/client/dates'
 import { statsQuery, type StatsScope } from '~/client/queries/history'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/client/ui/card'
 import { Checkbox } from '~/client/ui/checkbox'
+import { ChoiceSelect } from '~/client/ui/choice-select'
 import { Input } from '~/client/ui/input'
 import { Label } from '~/client/ui/label'
-import { NativeSelect } from '~/client/ui/native-select'
 import { Segmented } from '~/client/ui/segmented'
 import { Skeleton } from '~/client/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/client/ui/table'
@@ -28,13 +28,13 @@ type Overview = typeof StatsOverview.Type
 // ---------- periods (P-STATS-05 to P-STATS-10) ----------
 
 const PERIODS = [
-  ['all', 'All time'],
-  ['thisMonth', 'This month'],
-  ['last30', 'Last 30 days'],
-  ['thisYear', 'This year'],
-  ['custom', 'Custom range'],
+  { value: 'all', label: 'All time' },
+  { value: 'thisMonth', label: 'This month' },
+  { value: 'last30', label: 'Last 30 days' },
+  { value: 'thisYear', label: 'This year' },
+  { value: 'custom', label: 'Custom range' },
 ] as const
-type Period = (typeof PERIODS)[number][0]
+type Period = (typeof PERIODS)[number]['value']
 type Range = { from?: string; to?: string }
 
 /** A named period as an inclusive range of local calendar dates; a custom range with reversed bounds is swapped. */
@@ -105,25 +105,13 @@ function StatsTab() {
         {data && data.currencies.length > 0 && (
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             Currency
-            <NativeSelect aria-label="Statistics currency" value={data.currency} onChange={(e) => setCurrency(e.target.value as CurrencyCode)} wrapperClassName="w-28">
-              {data.currencies.map((code) => (
-                <option key={code} value={code}>
-                  {code}
-                </option>
-              ))}
-            </NativeSelect>
+            <ChoiceSelect aria-label="Statistics currency" value={data.currency} options={data.currencies.map((code) => ({ value: code, label: code }))} onChange={setCurrency} wrapperClassName="w-28" />
           </label>
         )}
         <div className="flex max-w-full flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             Period
-            <NativeSelect aria-label="Period" data-testid="stats-period" value={period} onChange={(e) => setPeriod(e.target.value as Period)} wrapperClassName="w-44">
-              {PERIODS.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </NativeSelect>
+            <ChoiceSelect aria-label="Period" data-testid="stats-period" value={period} options={PERIODS} onChange={setPeriod} wrapperClassName="w-44" />
           </label>
           {period === 'custom' && (
             <div className="flex max-w-full flex-wrap items-center gap-3">
@@ -386,6 +374,11 @@ function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Dr
 
 // ---------- monthly spending (P-STATS-34 to P-STATS-40) ----------
 
+const GROUPINGS = [
+  { value: 'categoryGroup', label: 'Categories' },
+  { value: 'category', label: 'Detailed' },
+] as const satisfies ReadonlyArray<{ value: MonthlyGrouping; label: string }>
+
 const CHART_TYPES = [
   { value: 'bars', label: 'Stacked bars', icon: ChartBarStacked },
   { value: 'columns', label: 'Stacked columns', icon: ChartColumnStacked },
@@ -410,10 +403,7 @@ function MonthlyCard({ data }: { data: Overview | undefined }) {
           Round amounts
         </Label>
       </div>
-      <NativeSelect aria-label="Category grouping" value={grouping} onChange={(e) => setGrouping(e.target.value as MonthlyGrouping)} wrapperClassName="w-36 sm:w-32" className="h-9 sm:text-sm">
-        <option value="categoryGroup">Categories</option>
-        <option value="category">Detailed</option>
-      </NativeSelect>
+      <ChoiceSelect aria-label="Category grouping" value={grouping} options={GROUPINGS} onChange={setGrouping} wrapperClassName="w-36 sm:w-32" className="h-9 sm:text-sm" />
       <Segmented label="Chart type" value={chart} options={CHART_TYPES} onChange={setChart} className="h-9 shrink-0" />
     </div>
   )
