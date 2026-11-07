@@ -75,21 +75,21 @@ function expenseTitle(activity: ActivityItem) {
 function Summary({ activity }: { activity: ActivityItem }) {
   const name = activity.actorName ?? 'Someone'
   // One weight for the people and expenses in a line, instead of bold and italic.
-  const who = <span className="font-medium">{name}</span>
-  const title = <span className="font-medium">“{expenseTitle(activity)}”</span>
+  const who = <span className="font-medium text-foreground">{name}</span>
+  const title = <span className="font-medium text-foreground">“{expenseTitle(activity)}”</span>
   if (activity.expenseRevision === 0 || activity.source === 'baseline')
     return (
       <>
-        History begins here for an existing expense: <span className="font-medium">{expenseTitle(activity)}</span>
+        History begins here for an existing expense: <span className="font-medium text-foreground">{expenseTitle(activity)}</span>
       </>
     )
   switch (activity.type) {
     case 'create_group':
-      return <>{name} created the group</>
+      return <>{who} created the group</>
     case 'join_group':
-      return <>{name} joined the group</>
+      return <>{who} joined the group</>
     case 'leave_group':
-      return <>{name} left the group</>
+      return <>{who} left the group</>
     case 'update_group':
       // Access changes say what changed, never whom (P-ACCESS-30).
       return activity.data ? (
@@ -230,7 +230,8 @@ function LogItem({ group, groupId, activity, showDate }: { group: string; groupI
         </time>
       </div>
       <div className="min-w-0 flex-1">
-        <div className="leading-5">
+        {/* The connecting words are muted; names and titles stay in ink. */}
+        <div className="leading-5 text-muted-foreground">
           <Summary activity={activity} />
         </div>
         <ActivityRevision activity={activity} groupId={groupId} />
