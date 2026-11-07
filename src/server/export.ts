@@ -7,12 +7,12 @@ import { sql } from 'drizzle-orm'
 import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
 import { legacyDateTime, todayUtc } from '../shared/dates'
 import { formatMinor, minor, minorOf } from '../shared/minor'
-import { mainPayer } from '../shared/split'
+import { mainPayer, weightText } from '../shared/split'
 import { RECURRENCE_NAMES, SPLIT_MODE_NAMES, type ActivityType, type SplitMode } from '../shared/vocabulary'
 import { memberCte, requireActive, type Principal } from './core/access'
 import { activitySource, activityText, savedTitle } from './activity'
 import type { Db } from './core/db'
-import { expenseColumns, toExpense, type ExpenseRow, type ReadExpense } from './expense-read'
+import { expenseColumns, toExpense, type ExpenseRow } from './expense-read'
 import { iso } from './sql'
 
 type ActivityRow = {
@@ -63,8 +63,6 @@ async function load(db: Db, data: { principal: Principal; groupId: string; activ
   return { ...head, expenses: head.expenses.map(toExpense) }
 }
 
-/** The split input in the current app's units: amount-split weights are major units there, minor units here. */
-const weightText = (e: ReadExpense, weight: string) => (e.splitMode === 'amount' ? formatMinor({ amount: minor(BigInt(weight)), currency: e.currency }) : weight)
 
 const SPLIT_LABEL: Record<SplitMode, string> = {
   evenly: 'Evenly',
@@ -104,7 +102,7 @@ export async function exportJson(db: Db, data: { principal: Principal; groupId: 
       // The payer of the whole amount; with several payers, the one who paid most.
       paidById: mainPayer(e),
       payers: e.payers.map((p) => ({ participantId: p.participantId, amount: p.amount })),
-      paidFor: e.shares.map((s) => ({ participantId: s.participantId, shares: weightText(e, s.weight), amount: s.amount })),
+      paidFor: e.shares.map((s) => ({ participantId: s.participantId, shares: weightText({ splitMode: e.splitMode, currency: e.currency, weight: s.weight }), amount: s.amount })),
       isReimbursement: e.kind === 'payment',
       splitMode: SPLIT_MODE_NAMES[e.splitMode],
       recurrenceRule: RECURRENCE_NAMES[e.recurrence],

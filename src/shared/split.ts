@@ -1,7 +1,7 @@
 // Splitting without Effect, for the client and the server alike.
 import { compareIds } from './ids'
 import type { CurrencyCode } from './currencies'
-import { minor, minorOf, sumMinor, type Minor } from './minor'
+import { formatMinor, minor, minorOf, sumMinor, type Minor } from './minor'
 import type { SplitMode } from './vocabulary'
 
 /** A weight is an exact non-negative decimal: a share count, a percentage, or an amount. */
@@ -92,6 +92,10 @@ export function resolveShares(input: ShareInput): ReadonlyMap<string, Minor> {
   })
   return new Map(people.map((p, i) => [p.participantId, parts[i] ?? minor(0n)]))
 }
+
+/** A share's weight as people read it: an amount split stores minor units, shown as an amount; any other weight as stored. */
+export const weightText = (data: { splitMode: SplitMode; currency: CurrencyCode; weight: string }) =>
+  data.splitMode === 'amount' ? formatMinor({ amount: minor(BigInt(data.weight)), currency: data.currency }) : data.weight
 
 /** The payer who receives the first leftover unit: the largest payment, then the smallest ID. */
 export function preferredPayer(payers: ReadonlyArray<{ readonly participantId: string; readonly amount: Minor }>): string {
