@@ -63,7 +63,7 @@ The platform around them:
 - `calls.ts`: the one call runner of RPC (`rpc.ts`) and MCP (`mcp/server.ts`). `runRead` reads on the request's connection. `runWrite` takes the fair-use write budget, then runs one SERIALIZABLE transaction with retries and an after-commit list. Both turn every failure into a declared error: a database rule (23514, 23503, 23505) becomes `Invalid`, anything else is logged and becomes `Unavailable`, whose text never names the cause.
 - `auth/`: sessions, Better Auth, API keys, OAuth tokens and agent connections (`oauth-connections.ts`), the owner's first sign-in (`owner-bootstrap.ts`), the MCP challenges, the reader of plain HTTP downloads (`httpReader`) and the one origin rule (`origin.ts`). It depends only on `core/`.
 - `mcp/`: the MCP endpoint (`endpoint.ts`, `server.ts`) and the tools in `mcp/tools/`: `defineTool` and the error body (`registry.ts`), the server instructions (`instructions.ts`), and the tools, listed once in `index.ts`. A tool is a thin adapter: it decodes the current app's argument names with schemas from the contract and the limits (`tools/inputs.ts`), calls the same service as the RPC handler, and maps the result with `tools/wire.ts`, the one module of output schemas and wire mappers. When an agent needs a filter or a field, add it to the service; a tool has no SQL of its own, and a tool file imports no other tool file.
-- The plain HTTP routes that `main/app.ts` serves: `receipt-routes.ts` and `export-routes.ts`. Their paths, and every link to them, come from `src/shared/paths.ts`, which builds and matches each path outside the SPA's routes (receipts, upload targets, group downloads, invitation links). `headers.ts`, `public-pages.ts`, `perf.ts` and `maintenance.ts` hold the response headers, robots.txt, the sitemap and health checks, the performance headers and the maintenance answer.
+- The plain HTTP routes that `main/app.ts` serves: `receipt-routes.ts` and `export-routes.ts`. Their paths, and every link to them, come from `src/shared/paths.ts`, which builds and matches each path outside the SPA's routes (the RPC and auth endpoints, receipts, upload targets, group downloads, invitation links, robots.txt and the sitemap). Its `SERVER_PATHS` is the list that Vite's dev proxy sends to the server, so a new server path outside `/api/` goes there too. `headers.ts`, `public-pages.ts`, `perf.ts` and `maintenance.ts` hold the response headers, robots.txt, the sitemap and health checks, the performance headers and the maintenance answer.
 
 ## Client modules
 
@@ -74,8 +74,8 @@ The client reaches the server only through `rpc()` (`src/client/rpc.ts`), which 
 - `errors.ts`: `describeError`, the one text for a failed call, from the error table in `src/shared/errors.ts`.
 - `components/entry-write.ts`: saving and deleting an expense or a payment. A target (`useGroupTarget`, `usePageTarget`, or one with its own `save`) says where the entry lives and where the form goes afterwards; the hook keeps one idempotency key per draft and treats a failed create whose entry exists as already saved.
 - `components/expense-row/` (the one expense row, its figures and attribution line), `components/balance/` (net labels and tones, the totals, the balance chart and the settlement lists), `components/log/` (the revision panel and the expense log), and `editor-link.ts` (the typed link to an entry's editor).
-- `dates.ts` (the two "today" rules, the formatters, the first day of the week), `search.ts` (search-param parsers for `validateSearch`), `queries/session.ts` (`meQuery`, `requireSignedIn`, `signOut`), `theme.ts` and `hooks.ts` (`useDebounced`, `useInfiniteScroll`).
-- `ui/`: the UI kit, including `CurrencySelect`, `Segmented`, `CopyButton` and `DisclosureSummary`. Confirm a destructive action with `components/delete-dialog.tsx`, never `window.confirm`.
+- `dates.ts` (the viewer's calendar day, the formatters, the first day of the week; the UTC day is `todayUtc` in `src/shared/dates.ts`), `search.ts` (search-param parsers for `validateSearch`), `queries/session.ts` (`meQuery`, `requireSignedIn`, `signOut`), `theme.ts` and `hooks.ts` (`useDebounced`, `useInfiniteScroll`).
+- `ui/`: the UI kit, including `CurrencySelect`, `ChoiceSelect` (a select of fixed choices that returns its typed value), `Segmented`, `CopyButton` and `DisclosureSummary`. Confirm a destructive action with `components/delete-dialog.tsx`, never `window.confirm`.
 - A route's own parts sit beside it in files that start with `-`, such as `routes/$group/-stats-dialog.tsx`; the router ignores them.
 
 ## Rules
@@ -104,7 +104,7 @@ The Workers Free CPU limit no longer applies (DECISIONS.md, "Hosting changes to 
 
 - Parity with the current app or better, as PARITY.md lists, with the changes in DECISIONS.md. Port screens from the current app's code in `../src/app` and `../src/components`: the same fields, labels, order, empty states and access rules.
 - English only. Use the English text from `../messages/en-US.json` for screens that the current app translates.
-- Use the UI kit in `src/client/ui/`, `cn` from `src/client/cn.ts`, and `money()` from `src/client/components/money.ts`.
+- Use the UI kit in `src/client/ui/`, `cn` from `src/client/cn.ts`, and `money()` from `src/client/components/money.ts`. The color, radius and font tokens and the Tailwind theme that reads them live together in `src/client/styles.css`; there is no Tailwind config file.
 - Group pages render inside the shared layout in `src/client/routes/$group.tsx`. Never recreate the balance rail in a tab.
 
 ### Code
