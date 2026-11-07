@@ -12,6 +12,9 @@ type Names = ReadonlyMap<string, string>
 /** Minor-unit magnitude of a decimal string, for bar widths only. */
 const size = (amount: string) => Math.abs(Number(amount.replace('.', '')))
 
+/** The name column and the chart column of the balance chart; the header, the zero line and the rows share it. */
+const columns = 'grid grid-cols-[minmax(0,6rem)_minmax(0,1fr)] gap-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-4'
+
 export function BalancesCard(props: { currencies: Currencies; names: Names }) {
   return (
     <section className="rounded-2xl border bg-card p-6" aria-labelledby="balances-title">
@@ -27,40 +30,43 @@ export function BalancesCard(props: { currencies: Currencies; names: Names }) {
           return (
             <div key={c.currency} className="mb-4 last:mb-0">
               <h3 className={cn('eyebrow', props.currencies.length === 1 && 'sr-only')}>{c.currency}</h3>
-              <div aria-hidden="true" className="grid grid-cols-2 text-xs text-muted-foreground">
-                <span className="px-2 text-right">Owes</span>
-                <span className="px-2">Gets back</span>
+              {/* Names sit in one fixed column; the chart beside it keeps debts left of zero and credits right of it. */}
+              <div aria-hidden="true" className={cn(columns, 'text-xs text-muted-foreground')}>
+                <span />
+                <span className="grid grid-cols-2">
+                  <span className="px-2 text-right">Owes</span>
+                  <span className="px-2">Gets back</span>
+                </span>
               </div>
-              {/* The center line marks zero: debts grow to the left, credits to the right. */}
               <div className="relative">
-                <span aria-hidden="true" className="absolute inset-y-0 left-1/2 w-px bg-border" />
+                {/* The center line of the chart column marks zero. */}
+                <div aria-hidden="true" className={cn(columns, 'pointer-events-none absolute inset-0')}>
+                  <span />
+                  <span className="relative">
+                    <span className="absolute inset-y-0 left-1/2 w-px bg-border" />
+                  </span>
+                </div>
                 <ul className="space-y-1.5">
                   {c.balances.map((b) => {
                     const positive = !b.net.startsWith('-') && size(b.net) > 0
                     const width = `${(size(b.net) / largest) * 100}%`
                     return (
-                      <li key={b.participantId} className="grid grid-cols-2 items-center text-sm" data-testid="balance-row">
-                        {/* The name sits on the empty half; the bar grows from the middle (P-BAL-45). */}
-                        <div className={'relative flex h-8 items-center justify-end px-2'}>
-                          {positive ? (
-                            <span className="truncate">{props.names.get(b.participantId) ?? 'Unknown'}</span>
-                          ) : (
-                            <>
-                              {size(b.net) > 0 && <span aria-hidden="true" className="absolute inset-y-1 right-0 rounded-s-md bg-owe/15 dark:bg-owe/20" style={{ width }} />}
-                              <span className="relative text-owe tabular-nums">{money(b.net, c.currency)}</span>
-                            </>
-                          )}
-                        </div>
-                        <div className="relative flex h-8 items-center px-2">
-                          {positive ? (
-                            <>
-                              <span aria-hidden="true" className="absolute inset-y-1 left-0 rounded-e-md bg-owed/15 dark:bg-owed/20" style={{ width }} />
-                              <span className="relative text-owed tabular-nums">{money(b.net, c.currency)}</span>
-                            </>
-                          ) : (
-                            <span className="truncate">{props.names.get(b.participantId) ?? 'Unknown'}</span>
-                          )}
-                        </div>
+                      <li key={b.participantId} className={cn(columns, 'items-center text-sm')} data-testid="balance-row">
+                        <span className="truncate">{props.names.get(b.participantId) ?? 'Unknown'}</span>
+                        <span className="grid grid-cols-2">
+                          <span className="relative flex h-8 items-center justify-end px-2">
+                            {!positive && size(b.net) > 0 && <span aria-hidden="true" className="absolute inset-y-1 right-0 rounded-s-md bg-owe/15 dark:bg-owe/20" style={{ width }} />}
+                            {!positive && <span className="relative text-owe tabular-nums">{money(b.net, c.currency)}</span>}
+                          </span>
+                          <span className="relative flex h-8 items-center px-2">
+                            {positive && (
+                              <>
+                                <span aria-hidden="true" className="absolute inset-y-1 left-0 rounded-e-md bg-owed/15 dark:bg-owed/20" style={{ width }} />
+                                <span className="relative text-owed tabular-nums">{money(b.net, c.currency)}</span>
+                              </>
+                            )}
+                          </span>
+                        </span>
                       </li>
                     )
                   })}
