@@ -54,7 +54,6 @@ function Home() {
 
 function Landing() {
   return (
-    // The hero centers in the space between the header and the footer.
     <main className="flex flex-1 items-center">
       <section className="w-full py-16">
         <div className="mx-auto flex w-full max-w-screen-md flex-col items-center gap-6 px-4 text-center">

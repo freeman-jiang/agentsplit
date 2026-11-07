@@ -123,7 +123,6 @@ export function ExpenseForm(props: ExpenseFormProps) {
       </h2>
       {props.mode === 'edit' && <Attribution detail={props.detail} />}
 
-      {/* One 24 px gap between the form's blocks, as between page blocks elsewhere. */}
       <div className="space-y-6">
 
         <section className="space-y-2 rounded-2xl border bg-card p-4 sm:space-y-3 sm:px-6 sm:py-5" aria-label={income ? 'Income details' : 'Expense details'}>
@@ -403,7 +402,6 @@ export function ExpenseForm(props: ExpenseFormProps) {
           </p>
         )}
 
-        {/* On wide screens the total and the actions share one bar at the end of the form. */}
         <div className="flex flex-wrap items-center justify-between gap-4 sm:rounded-2xl sm:border sm:bg-card sm:py-4 sm:ps-6 sm:pe-4">
           <Summary state={state} names={names} hint={isPrivate ? PRIVATE_HINT : 'Edits stay in the group’s log.'} />
           <div className="flex flex-wrap gap-2">

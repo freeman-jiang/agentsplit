@@ -47,10 +47,8 @@ Start with ${tool('list_groups')}. A group URL alone does not grant access. If I
 
 Use exact decimal strings for money and keep currencies separate. Read the current revision before editing or deleting. Record payments with ${tool('create_expense')} and isReimbursement=true. For private receipt downloadUrl values, use the same connection credentials: OAuth Authorization header or ${API_KEY_HEADER}. Only make changes I request, and confirm the committed result.`
   return (
-    // The shared page frame, with a narrower reading column on its left edge.
     <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
       <div className="max-w-3xl space-y-10 lg:space-y-8">
-        {/* The Dashboard's header rhythm: title, one muted line, then the content at one gap. */}
         <header className="space-y-6">
           <div>
             <h1 className="font-display text-3xl">Set up your agent</h1>
@@ -89,7 +87,6 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
             </h2>
             <p className="text-sm text-muted-foreground">No API key needed. Your first Google sign-in creates your account automatically.</p>
           </div>
-          {/* One divided list: the section's gaps stay outside the rows. */}
           <div className="divide-y border-y">
             <details className="py-1">
               <DisclosureSummary>ChatGPT</DisclosureSummary>

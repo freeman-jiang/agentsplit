@@ -46,7 +46,7 @@ const TITLES: Record<Exclude<keyof FileRoutesById, '__root__'>, string | null> =
 const hasName = (value: unknown): value is { name: string } =>
   typeof value === 'object' && value !== null && 'name' in value && typeof value.name === 'string'
 
-/** Sets the document title from the deepest matched route. Used once, in the root layout. */
+/** Sets the document title from the deepest matched route. */
 export function useDocumentTitle() {
   const title = useMatches({
     select: (matches) => {

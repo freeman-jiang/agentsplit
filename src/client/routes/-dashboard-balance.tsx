@@ -7,7 +7,6 @@ import { Skeleton } from '~/client/ui/skeleton'
 /** The caller's own balance across every group and ungrouped expense. The feed filters never change it. */
 export function DashboardBalance() {
   const summary = useQuery(accountBalancesQuery)
-  // One left-aligned stack: the title row with its note, then each amount under its label.
   return (
     <section aria-labelledby="dashboard-balance-title" className="rounded-2xl border bg-card p-4 sm:px-6 sm:py-5" data-testid="dashboard-balance">
       <div className="flex items-baseline justify-between gap-4">

@@ -129,7 +129,6 @@ function StatsTab() {
         {/* The date range describes the selection, so it sits with the filters, not in a card. */}
         {data && data.summary.count > 0 && <span className="self-center text-sm tabular-nums text-muted-foreground sm:ml-auto">Active period · {activeSpan(data.summary)}</span>}
       </div>
-      {/* On wide screens Summary and Totals share a row; the wide cards span both columns. */}
       <div className="grid gap-6 xl:grid-cols-2">
         <SummaryCard data={data} />
         <StatsCard title="Totals" description="Spending summary of the entire group.">
@@ -149,7 +148,6 @@ function StatsCard({ title, description, children, actions, wide }: { title: str
   return (
     <Card className={cn('min-w-0', wide && 'xl:col-span-2')}>
       <CardHeader>
-        {/* A card's controls sit in their own row under the description. */}
         <div className="flex flex-col gap-4">
           <div>
             <CardTitle>{title}</CardTitle>
@@ -193,7 +191,6 @@ function SummaryCard({ data }: { data: Overview | undefined }) {
         <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 xl:grid-cols-2">
           <Metric label="Expenses">{s.count}</Metric>
           <Metric label="Average expense">{money(s.average, c)}</Metric>
-          {/* The largest expense's title wraps instead of being cut off. */}
           <div className="col-span-2 sm:col-span-1 xl:col-span-2">
             <Metric label="Largest expense">
               {s.largest ? money(s.largest.amount, c) : '—'}

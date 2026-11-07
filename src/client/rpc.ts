@@ -105,7 +105,6 @@ async function flush() {
   }
 }
 
-/** Calls one procedure; rejects with an RpcError. */
 function call<T extends Tag>(tag: T, payload: PayloadOf<T>): Promise<SuccessOf<T>> {
   return new Promise((resolve, reject: (error: RpcError) => void) => {
     queue.push({ id: String(++nextId), tag, payload: payload ?? null, resolve: resolve as (value: unknown) => void, reject })
