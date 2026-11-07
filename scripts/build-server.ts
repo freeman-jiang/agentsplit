@@ -1,7 +1,7 @@
 // The server half of `bun run build`, after `vite build` wrote dist/client:
 // bundles src/server/server.ts and its dependencies into dist/server, so the
-// image needs no node_modules, copies the SQL migrations to dist/migrations,
-// and writes .br and .gz copies of the client's text files for src/server/assets.ts.
+// image needs no node_modules, copies the SQL migrations and their journal to
+// dist/migrations, and writes .br and .gz copies of the client's text files for src/server/assets.ts.
 import { cpSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib'
@@ -22,7 +22,8 @@ if (!result.success) {
 }
 
 rmSync('dist/migrations', { recursive: true, force: true })
-cpSync('db/migrations', 'dist/migrations', { recursive: true })
+// The migrator reads only the SQL files and meta/_journal.json; drizzle-kit's schema snapshots stay out of the image.
+cpSync('db/migrations', 'dist/migrations', { recursive: true, filter: (source) => !source.endsWith('_snapshot.json') })
 
 const COMPRESSIBLE = /\.(html|js|css|json|webmanifest|svg|txt|ico)$/
 const files = (dir: string): string[] =>
