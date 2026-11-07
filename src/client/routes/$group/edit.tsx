@@ -179,11 +179,11 @@ function People({ details }: { details: Details }) {
             <li key={person.id} className="space-y-3 py-3" aria-label={person.name}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0 space-y-0.5">
-                  <p className="font-medium break-words">
+                  <p className="text-sm font-medium break-words">
                     {person.name}
                     {details.participantId === person.id ? ' (you)' : ''}
                   </p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {member ? `Joined · ${member.role === 'admin' ? 'Admin' : 'Member'}` : person.status === 'invited' ? 'Invited' : 'Not joined'}
                   </p>
                   {person.email && <p className="text-xs break-all text-muted-foreground">{person.email}</p>}
@@ -318,8 +318,8 @@ function People({ details }: { details: Details }) {
         })}
         {details.unboundMembers.map((member) => (
           <li key={member.userId} className="space-y-3 py-3">
-            <p className="font-medium">{member.name}</p>
-            <p className="text-sm text-muted-foreground">Joined · Identity needs setup</p>
+            <p className="text-sm font-medium">{member.name}</p>
+            <p className="text-xs text-muted-foreground">Joined · Identity needs setup</p>
             <p className="text-xs break-all">{member.email}</p>
             {admin && (
               <div className="flex flex-wrap gap-2">
