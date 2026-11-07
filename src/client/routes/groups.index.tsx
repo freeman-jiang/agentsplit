@@ -105,7 +105,7 @@ function GroupsPage({ children }: { children: React.ReactNode }) {
   return (
     <main className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 sm:space-y-6 sm:px-8 sm:py-8">
       <div className="flex items-start justify-between gap-2">
-        <h1 className="flex-1 font-display text-3xl tracking-tight">
+        <h1 className="flex-1 font-display text-3xl">
           <Link to="/groups">My groups</Link>
         </h1>
         <Button asChild>

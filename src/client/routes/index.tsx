@@ -57,9 +57,9 @@ function Landing() {
     // The hero centers in the space between the header and the footer.
     <main className="flex flex-1 items-center">
       <section className="w-full py-16">
-        <div className="container mx-auto flex max-w-screen-md flex-col items-center gap-6 px-4 text-center">
-          <h1 className="landing-header py-2 font-display text-4xl leading-none! font-normal sm:text-5xl md:text-6xl">
-            Shared expenses. <strong>Simply settled.</strong>
+        <div className="mx-auto flex w-full max-w-screen-md flex-col items-center gap-6 px-4 text-center">
+          <h1 className="py-2 font-display text-4xl leading-none! sm:text-5xl md:text-6xl">
+            Shared expenses. <strong className="block font-semibold text-muted-foreground">Simply settled.</strong>
           </h1>
           <p className="max-w-lg leading-normal text-pretty text-muted-foreground sm:text-xl sm:leading-8">
             Keep track of everyday expenses with the people you share them with. In your browser, or with your agent.
@@ -128,7 +128,7 @@ function Dashboard() {
       <div className="space-y-4 sm:space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="font-display text-3xl tracking-tight">Dashboard</h1>
+            <h1 className="font-display text-3xl">Dashboard</h1>
             <p className="mt-2 hidden text-sm text-muted-foreground sm:block">Your balances and shared expenses, in one place.</p>
           </div>
           <Button asChild>

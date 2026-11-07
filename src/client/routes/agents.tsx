@@ -53,7 +53,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
         {/* The Dashboard's header rhythm: title, one muted line, then the content at one gap. */}
         <header className="space-y-6">
           <div>
-            <h1 className="font-display text-3xl tracking-tight">Set up your agent</h1>
+            <h1 className="font-display text-3xl">Set up your agent</h1>
             <p className="mt-2 text-sm text-muted-foreground">Choose one way to connect. Both use your AgentSplit account and current group permissions.</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
