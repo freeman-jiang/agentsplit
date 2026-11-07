@@ -21,7 +21,8 @@ function Root() {
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
       <header className="sticky top-0 z-50 border-b bg-background/95 px-4 py-3 backdrop-blur-sm sm:px-8">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+        {/* min-h-10 matches the avatar, so the header keeps its height after sign-in. */}
+        <div className="grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
           <Link className="flex items-center gap-2" to="/">
             <Brand />
           </Link>
