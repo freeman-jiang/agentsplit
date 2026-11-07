@@ -2,8 +2,8 @@
 // that validateExpense checks, the live share preview, and the auto-filled
 // amounts of an amount split. Ported from the current app's expense-form.tsx.
 import type { CurrencyCode } from '~/shared/currencies'
-import { validateExpense, type ExpenseDraft, type ExpenseIssue } from '~/shared/expense-rules'
-import { formatMinor, minor, minorOrNull, sumMinor } from '~/shared/minor'
+import { checkMoney, validateExpense, type ExpenseDraft, type ExpenseIssue } from '~/shared/expense-rules'
+import { formatMinor, minor, minorOrNull, sumMinor, type Minor } from '~/shared/minor'
 import { compareIds } from '~/shared/ids'
 import { apportion, parseWeight, preferredPayer, weightText } from '~/shared/split'
 import { CATEGORY, SPLIT_MODE_NAMES, SPLIT_MODES, type ExpenseKind, type Recurrence, type SplitMode } from '~/shared/vocabulary'
@@ -120,27 +120,18 @@ export function involvesEveryone(state: FormState, order: readonly string[]) {
   return order.every((id) => state.selected[id] || payers.has(id))
 }
 
-export type Check = { readonly issues: ReadonlyArray<ExpenseIssue & { participantId?: string }>; readonly preview: ReadonlyMap<string, string> | null }
+export type Check = { readonly issues: readonly ExpenseIssue[]; readonly preview: ReadonlyMap<string, string> | null }
 
-/**
- * Validates the draft, and resolves the split for the preview. The preview
- * needs only the money fields, so it shows before the title is typed.
- */
+/** Validates the draft, and resolves the split for the preview, which shows before the title is typed. */
 export function check(state: FormState, order: readonly string[]): Check {
   const draft = toDraft(state, order)
   const participantIds = new Set(order)
   const result = validateExpense({ draft, participantIds })
-  const issues = !result.ok
-    ? result.issues.map((issue) => {
-        const [list, index] = issue.field.split('.')
-        const row = index === undefined ? undefined : list === 'shares' ? draft.shares[Number(index)] : list === 'payers' ? draft.payers[Number(index)] : undefined
-        return row ? { ...issue, participantId: row.participantId } : issue
-      })
-    : []
+  const issues = result.ok ? [] : result.issues
   // While several payers do not add up yet, preview with the payer who would get the leftover unit.
   const preferred = preferredOf(state, order)
-  const payers = payerRemainder(state, order) === formatMinor({ amount: minor(0n), currency: state.currency }) || !preferred ? draft.payers : [{ participantId: preferred, amount: draft.amount }]
-  const money = validateExpense({ draft: { ...draft, payers, title: 'Preview', vendor: null, notes: '', expenseDate: '2000-01-01', categoryId: 0 }, participantIds })
+  const payers = payerRemainder(state, order) === 0n || !preferred ? draft.payers : [{ participantId: preferred, amount: draft.amount }]
+  const money = checkMoney({ money: { ...draft, payers }, participantIds })
   const preview = money.ok
     ? new Map(money.value.shares.map((s) => [s.participantId, formatMinor({ amount: s.amount, currency: state.currency })]))
     : null
@@ -148,13 +139,12 @@ export function check(state: FormState, order: readonly string[]): Check {
 }
 
 /** What is left to assign among several payers, when every amount parses. */
-export function payerRemainder(state: FormState, order: readonly string[]): string | null {
+export function payerRemainder(state: FormState, order: readonly string[]): Minor | null {
   const total = minorOrNull({ amount: state.amount.trim(), currency: state.currency })
   if (total === null) return null
   const amounts = payersOf(state, order).map((p) => minorOrNull({ amount: p.amount, currency: state.currency }))
   if (amounts.some((a) => a === null)) return null
-  const paid = sumMinor(amounts.flatMap((a) => (a === null ? [] : [a])))
-  return formatMinor({ amount: minor(total - paid), currency: state.currency })
+  return minor(total - sumMinor(amounts.flatMap((a) => (a === null ? [] : [a]))))
 }
 
 // ---------- saved splitting defaults ----------

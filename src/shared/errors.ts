@@ -91,6 +91,14 @@ export type DeclaredError =
 export const errorKind = (error: DeclaredError): ErrorKind =>
   error._tag === 'Invalid' && error.reason !== undefined ? `Invalid.${error.reason}` : error._tag
 
+/** The Invalid text of several field problems, each as "<field>: <message>"; MCP agents read the field names. */
+export const fieldProblemsText = (problems: ReadonlyArray<{ readonly field: string; readonly message: string }>) =>
+  problems.map((p) => `${p.field}: ${p.message}`).join('; ')
+
+/** An Invalid text without the "<field>: " that fieldProblemsText puts before its first problem, for a form that marks the field itself. */
+export const withoutField = (data: { message: string; field: string | undefined }) =>
+  data.field !== undefined && data.message.startsWith(`${data.field}: `) ? data.message.slice(data.field.length + 2) : data.message
+
 /** The text a caller sees for a declared error. */
 export function errorText(error: DeclaredError): string {
   switch (error._tag) {

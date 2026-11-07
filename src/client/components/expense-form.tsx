@@ -79,7 +79,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
   // A private expense keeps its people: each one pays or shares (P-UNGROUP-48).
   const issues = isPrivate && !involvesEveryone(state, order) ? [...checked.issues, { field: 'shares', message: PRIVATE_INVOLVED }] : checked.issues
   const shown = (field: string) => (submitted || touched.has(field) ? issues.find((i) => i.field === field)?.message : undefined)
-  const rowError = (list: 'shares' | 'payers', id: string) => (submitted || touched.has(list) ? issues.find((i) => i.participantId === id && i.field.startsWith(`${list}.`))?.message : undefined)
+  const rowError = (list: 'shares' | 'payers', id: string) => (submitted || touched.has(list) ? issues.find((i) => i.row?.list === list && i.row.participantId === id)?.message : undefined)
   const auto = state.splitMode === 'amount' ? autoAmounts(state, order) : new Map<string, string>()
   const allSelected = order.every((id) => state.selected[id])
   const category = reference.categories.find((c) => c.id === state.categoryId)
@@ -212,9 +212,11 @@ export function ExpenseForm(props: ExpenseFormProps) {
                 ))}
               </ul>
             )}
-            {remainder !== null && remainder !== formatMinor({ amount: minor(0n), currency: state.currency }) && (
+            {remainder !== null && remainder !== 0n && (
               <p className="text-xs text-muted-foreground" data-testid="payer-remainder">
-                {remainder.startsWith('-') ? `Assigned ${money(remainder.slice(1), state.currency)} more than the amount` : `Left to assign: ${money(remainder, state.currency)}`}
+                {remainder < 0n
+                  ? `Assigned ${money(formatMinor({ amount: minor(-remainder), currency: state.currency }), state.currency)} more than the amount`
+                  : `Left to assign: ${money(formatMinor({ amount: remainder, currency: state.currency }), state.currency)}`}
               </p>
             )}
             {payersError && <p className="text-sm text-destructive">{payersError}</p>}
