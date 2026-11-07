@@ -14,7 +14,7 @@ import { recordExpenseEvent, type SnapshotGroup } from './activity'
 import type { Db } from './core/db'
 import { documentRows, EXPENSE_FIELDS, expenseColumns, involves, loadExpenses, toExpense, type ExpenseField, type ExpenseFilter, type ExpenseParts, type ExpenseRow, type ReadExpense, type StoredDocument } from './expense-read'
 import { idempotent, storedRequestJson, type StoredRequest } from './idempotency'
-import { displayNames } from './people'
+import { participantsJson } from './people'
 import { assertPrivateWrite, privateContextOf, type PrivateContext } from './private-context'
 import { stopRecurrence, syncRecurrence, type LinkState } from './recurring'
 import { escapeLike, textList } from './sql'
@@ -53,8 +53,7 @@ export async function getGroup(db: Db, data: { principal: Principal; groupId: st
     WITH ${memberCte(data)}
     SELECT g.id, g.slug, g.name, g.default_currency, g.information, g.revision, g.role, g.participant_id, g.active,
       (SELECT pc.expense_id FROM private_contexts pc WHERE pc.group_id = g.id) AS context_expense_id,
-      coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id)
-        FROM (${displayNames(sql`g.id`)}) p), '[]') AS participants
+      ${participantsJson(sql`g.id`)} AS participants
     FROM g
   `)
   const g = requireActive(result.rows[0])
@@ -222,7 +221,7 @@ async function loadWriteContext(
   const result = await tx.execute<ContextRow>(sql`
     WITH ${memberCte(data)}${change ? sql`, locked AS (SELECT e.id FROM expenses e WHERE e.id = ${data.expenseId} AND e.group_id = (SELECT id FROM g) FOR UPDATE)` : sql``}
     SELECT g.id AS group_id, g.slug, g.name, g.default_currency, g.role, g.participant_id, g.active,
-      coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name)) FROM participants p WHERE p.group_id = g.id), '[]') AS people,
+      ${participantsJson(sql`g.id`)} AS people,
       coalesce((SELECT json_agg(c.id) FROM categories c), '[]') AS categories,
       ${privateContextOf(sql`g.id`)} AS private_context,
       ${data.idempotencyKey === null ? none : storedRequestJson({ principal: data.principal, key: data.idempotencyKey })} AS previous,

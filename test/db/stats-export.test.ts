@@ -148,6 +148,30 @@ describe('stats overview', () => {
   })
 })
 
+describe('participant names', () => {
+  it('shows a bound, verified account name in stats, exports and revisions instead of the placeholder (P-GROUP-55)', async () => {
+    const dana = principal('u-dana', { name: 'Dana' })
+    await tx(async (db) => {
+      await db.insert(user).values(userRows([dana], { verified: true }))
+      await db.insert(groups).values({ id: 'g-names', kind: 'named', slug: null, name: 'Names', defaultCurrency: 'USD' })
+      await db.insert(participants).values([{ id: 'n-dana', groupId: 'g-names', name: 'Placeholder' }])
+      await db.insert(memberships).values({ userId: dana.userId, groupId: 'g-names', role: 'admin', participantId: 'n-dana' })
+    })
+    const expense = draft({ payer: 'n-dana', people: ['n-dana'], title: 'Lunch', amount: '10.00' })
+    await tx((db) => createExpense(db, { principal: dana, groupId: 'g-names', expenseId: 'n-lunch', idempotencyKey: key(), expense }))
+    const stats = await tx((db) => statsOverview(db, { principal: dana, groupId: 'g-names', today: '2026-05-20' }))
+    expect(stats.participants.map((p) => p.name)).toEqual(['Dana'])
+    const csv = await tx((db) => exportCsv(db, { principal: dana, groupId: 'g-names' }))
+    expect(csv.content.split('\n')[0]).toContain('"Dana"')
+    const json = JSON.parse((await tx((db) => exportJson(db, { principal: dana, groupId: 'g-names' }))).content) as {
+      participants: { name: string }[]
+      activities: { snapshot: { expense?: { payers: { name: string }[] } } | null }[]
+    }
+    expect(json.participants.map((p) => p.name)).toEqual(['Dana'])
+    expect(json.activities.flatMap((a) => a.snapshot?.expense?.payers.map((p) => p.name) ?? [])).toEqual(['Dana'])
+  })
+})
+
 describe('exports', () => {
   // A copy of the group, so the rows that only the exports read leave the stats alone.
   const x = (id: string) => `x-${id}`

@@ -13,6 +13,7 @@ import { memberCte, requireActive, type Principal } from './core/access'
 import { activitySource, activityText, savedTitle } from './activity'
 import type { Db } from './core/db'
 import { expenseColumns, toExpense, type ExpenseRow } from './expense-read'
+import { participantsJson } from './people'
 import { iso } from './sql'
 
 type ActivityRow = {
@@ -45,7 +46,7 @@ async function load(db: Db, data: { principal: Principal; groupId: string; activ
   const result = await db.execute<Head>(sql`
     WITH ${memberCte(data)}
     SELECT g.active, g.id, g.name, g.slug, g.information, g.default_currency,
-      coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id) FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
+      ${participantsJson(sql`g.id`)} AS participants,
       coalesce((SELECT json_agg(x ORDER BY x.expense_date, x.created_key, x.id) FROM (
           SELECT ${expenseColumns({ documents: true })}, e.created_at AS created_key FROM expenses e WHERE e.group_id = g.id AND e.deleted_at IS NULL) x), '[]') AS expenses,
       ${
