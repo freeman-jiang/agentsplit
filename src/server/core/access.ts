@@ -32,6 +32,14 @@ export const memberCte = (data: { principal: Principal; groupId: string }) => sq
   FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
   WHERE g.id = ${groupIdOf(sql`${data.groupId}`)})`
 
+/**
+ * The caller's active memberships, as the subquery `(group_id, participant_id,
+ * role)`, for reads across groups: join it or filter by it. The one-group
+ * check is memberCte.
+ */
+export const myMemberships = (userId: string) =>
+  sql`(SELECT m.group_id, m.participant_id, m.role FROM memberships m WHERE m.user_id = ${userId} AND m.active)`
+
 /** The row of a statement built on memberCte, or the denial. A group that does not exist and one the caller cannot see look the same. */
 export function requireActive<T extends { active: boolean | null }>(row: T | undefined): T {
   if (!row?.active) throw groupAccessDenied()

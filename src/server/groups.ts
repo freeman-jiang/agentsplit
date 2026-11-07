@@ -15,7 +15,7 @@ import type { GroupKind, Role } from '../shared/vocabulary'
 import type { Db } from './core/db'
 import { randomId } from './core/ids'
 import { createInvitation, findInvitation, invitationProblem, listedInvitation, openInvitation, revokeInvitations, tokenOfLink } from './invitations'
-import { groupIdOf, memberCte, requireActive, requireMember, type Principal } from './core/access'
+import { groupIdOf, memberCte, myMemberships, requireActive, requireMember, type Principal } from './core/access'
 import { accessText, groupSnapshot, recordGroupEvent } from './activity'
 import { netsCte } from './balances'
 import { idempotent } from './idempotency'
@@ -40,8 +40,8 @@ type ChangesInput = typeof GroupChanges.Type
 const groupPage = (data: { principal: Principal; offset: number; limit: number; refs?: SQL }) => sql`page AS (
   SELECT g.id, g.slug, g.name, g.information, g.revision, g.default_currency, g.created_at,
     (SELECT count(*)::int FROM participants p WHERE p.group_id = g.id) AS participant_count
-  FROM memberships m JOIN groups g ON g.id = m.group_id
-  WHERE m.user_id = ${data.principal.userId} AND m.active AND g.kind = 'named'
+  FROM ${myMemberships(data.principal.userId)} m JOIN groups g ON g.id = m.group_id
+  WHERE g.kind = 'named'
     ${data.refs ? sql`AND g.id IN (SELECT ${groupIdOf(sql`r.ref`)} FROM ${data.refs})` : sql``}
   ORDER BY g.created_at DESC, g.id DESC
   OFFSET ${data.offset} LIMIT ${data.limit + 1}
@@ -61,9 +61,7 @@ type DirectoryRow = {
 export async function listDirectory(db: Db, data: { principal: Principal; offset: number }) {
   const offset = Math.max(Math.trunc(data.offset) || 0, 0)
   const result = await db.execute<DirectoryRow>(sql`
-    WITH mine AS (
-      SELECT m.group_id, m.participant_id FROM memberships m WHERE m.user_id = ${data.principal.userId} AND m.active
-    ),
+    WITH mine AS ${myMemberships(data.principal.userId)},
     ${groupPage({ principal: data.principal, offset, limit: LIMITS.directoryPage })},
     ${netsCte},
     totals AS (SELECT currency, sum(net) AS net FROM nets GROUP BY currency)
@@ -109,7 +107,7 @@ export async function listGroupPage(db: Db, data: { principal: Principal; offset
   if (refs) {
     const denied = await db.execute<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM ${refs}
-      WHERE NOT EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = ${data.principal.userId} AND m.group_id = ${groupIdOf(sql`r.ref`)} AND m.active)`)
+      WHERE NOT EXISTS (SELECT 1 FROM ${myMemberships(data.principal.userId)} m WHERE m.group_id = ${groupIdOf(sql`r.ref`)})`)
     if (denied.rows[0]?.n !== 0) throw groupAccessDenied()
   }
   const result = await db.execute<PageRow>(sql`

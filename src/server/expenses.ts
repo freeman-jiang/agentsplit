@@ -7,7 +7,7 @@ import { NotFound } from '../shared/api'
 import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
 import { FAIR_USE, FAIR_USE_LIMITS, LIMITS } from '../shared/limits'
 import { RECEIPT_CONTENT_TYPES, RECURRENCES, SPLIT_MODES, type ExpenseKind } from '../shared/vocabulary'
-import { requireMember, type Principal } from './core/access'
+import { myMemberships, requireMember, type Principal } from './core/access'
 import type { Db } from './core/db'
 import { expenseColumns, toExpense, type ExpenseRow } from './expense-read'
 import { receiptDownloadPath } from './receipts'
@@ -55,7 +55,7 @@ export async function getExpenseContext(db: Db, data: { principal: Principal; ex
   const result = await db.execute<{ group_id: string; slug: string | null; kind: ExpenseKind; title: string }>(sql`
     SELECT e.group_id, g.slug, e.kind, e.title FROM expenses e
     JOIN groups g ON g.id = e.group_id
-    JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId} AND m.active
+    JOIN ${myMemberships(data.principal.userId)} m ON m.group_id = g.id
     WHERE e.id = ${data.expenseId} AND e.deleted_at IS NULL
   `)
   const [row] = result.rows
