@@ -9,7 +9,7 @@ import { afterWrite } from '~/client/queries/keys'
 import { ownReceiptsQuery, storageUsageQuery } from '~/client/queries/storage'
 import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
-import { NativeSelect } from '~/client/ui/native-select'
+import { ChoiceSelect } from '~/client/ui/choice-select'
 import type { ReceiptOrder } from '~/shared/api'
 import { FAIR_USE, LIMITS, megabytes } from '~/shared/limits'
 import { DeleteDialog } from './delete-dialog'
@@ -78,6 +78,11 @@ function Limit(props: { label: string; value: string }) {
   )
 }
 
+const ORDERS = [
+  { value: 'largest', label: 'Largest first' },
+  { value: 'oldest', label: 'Oldest first' },
+] as const satisfies ReadonlyArray<{ value: typeof ReceiptOrder.Type; label: string }>
+
 function Receipts() {
   const queryClient = useQueryClient()
   const [order, setOrder] = useState<typeof ReceiptOrder.Type>('largest')
@@ -89,15 +94,7 @@ function Receipts() {
         <h3 className="font-medium">Your receipts</h3>
         <label className="flex items-center gap-2 text-sm">
           <span className="text-muted-foreground">Sort</span>
-          <NativeSelect
-            aria-label="Sort receipts"
-            wrapperClassName="w-40"
-            value={order}
-            onChange={(event) => setOrder(event.target.value === 'oldest' ? 'oldest' : 'largest')}
-          >
-            <option value="largest">Largest first</option>
-            <option value="oldest">Oldest first</option>
-          </NativeSelect>
+          <ChoiceSelect aria-label="Sort receipts" wrapperClassName="w-40" value={order} options={ORDERS} onChange={setOrder} />
         </label>
       </div>
       {pages.isPending ? (

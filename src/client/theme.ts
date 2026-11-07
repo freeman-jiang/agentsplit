@@ -3,7 +3,7 @@ export type Theme = 'system' | 'light' | 'dark'
 const THEME_KEY = 'theme'
 
 /** A stored or chosen value as a theme; anything else is the default, 'system'. */
-export const themeOf = (value: string | null): Theme => (value === 'light' || value === 'dark' ? value : 'system')
+const themeOf = (value: string | null): Theme => (value === 'light' || value === 'dark' ? value : 'system')
 
 export const readTheme = () => themeOf(localStorage.getItem(THEME_KEY))
 

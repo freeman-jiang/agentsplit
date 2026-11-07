@@ -9,6 +9,7 @@ import { money } from '~/client/components/money'
 import { formatMoment } from '~/client/dates'
 import { Button } from '~/client/ui/button'
 import { Checkbox } from '~/client/ui/checkbox'
+import { ChoiceSelect } from '~/client/ui/choice-select'
 import { CurrencySelect } from '~/client/ui/currency-select'
 import { DisclosureSummary } from '~/client/ui/disclosure'
 import { Input } from '~/client/ui/input'
@@ -22,14 +23,14 @@ import { DECIMAL, formatMinor, minor } from '~/shared/minor'
 import { RECURRENCE_LABELS, RECURRENCES, SPLIT_MODE_LABELS, SPLIT_MODES, type SplitMode } from '~/shared/vocabulary'
 import { DeleteDialog } from './delete-dialog'
 import { ExpenseDocuments } from './expense-documents'
-import { amountInput, autoAmounts, check, involvesEveryone, isIncome, payerRemainder, saveSplitDefaults, toDraft, type FormState } from './expense-form-state'
+import { amountInput, autoAmounts, check, involvesEveryone, isIncome, payerRemainder, saveSplitDefaults, type FormState } from './expense-form-state'
 import { toInput, useEntryWrite, type EntryTarget } from './entry-write'
 
 type DetailData = typeof ExpenseDetail.Type
 type ReferenceData = typeof Reference.Type
 
-const SPLIT_OPTIONS = SPLIT_MODES.map((mode) => [mode, SPLIT_MODE_LABELS[mode]] as const)
-const RECURRENCE = RECURRENCES.map((rule) => [rule, RECURRENCE_LABELS[rule]] as const)
+const SPLIT_OPTIONS = SPLIT_MODES.map((mode) => ({ value: mode, label: SPLIT_MODE_LABELS[mode] }))
+const RECURRENCE_OPTIONS = RECURRENCES.map((rule) => ({ value: rule, label: RECURRENCE_LABELS[rule] }))
 
 function Field(props: { id: string; label: ReactNode; error?: string | undefined; children: ReactNode; hint?: ReactNode }) {
   return (
@@ -92,12 +93,13 @@ export function ExpenseForm(props: ExpenseFormProps) {
   const submit = async () => {
     setSubmitted(true)
     write.clearFailure()
-    if (issues.length) {
+    const { draft, resolved } = checked
+    if (issues.length || !resolved) {
       document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
       return
     }
     const { groupId } = target
-    await write.submit(toInput({ draft: toDraft(state, order), documents: state.documents }), () => {
+    await write.submit(toInput({ draft, resolved, documents: state.documents }), () => {
       if (state.saveDefault && groupId !== null) saveSplitDefaults({ groupId, state, participants: order })
     })
   }
@@ -250,13 +252,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
             </Button>
           </div>
           <Field id="split-mode" label="Split mode">
-            <NativeSelect id="split-mode" className="h-11" value={state.splitMode} onChange={(e) => setMode(e.target.value as SplitMode)}>
-              {SPLIT_OPTIONS.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </NativeSelect>
+            <ChoiceSelect id="split-mode" className="h-11" value={state.splitMode} options={SPLIT_OPTIONS} onChange={setMode} />
           </Field>
           <ul className="divide-y">
             {participants.map((p) => {
@@ -340,7 +336,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
             <DisclosureSummary>
               More options
               <span className="ml-2 font-normal text-muted-foreground">
-                {category?.name ?? 'General'} · {RECURRENCE.find(([v]) => v === state.recurrence)?.[1]}
+                {category?.name ?? 'General'} · {RECURRENCE_LABELS[state.recurrence]}
               </span>
             </DisclosureSummary>
             <div className="space-y-4 pt-2 pb-3">
@@ -368,13 +364,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
                     : 'Select how often the expense should repeat.'
                 }
               >
-                <NativeSelect id="recurrence" className="h-11" disabled={isPrivate} value={state.recurrence} onChange={(e) => set({ recurrence: e.target.value as FormState['recurrence'] })}>
-                  {RECURRENCE.map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </NativeSelect>
+                <ChoiceSelect id="recurrence" className="h-11" disabled={isPrivate} value={state.recurrence} options={RECURRENCE_OPTIONS} onChange={(recurrence) => set({ recurrence })} />
               </Field>
               {!income && !isPrivate && (
                 <div className="flex items-center gap-2">

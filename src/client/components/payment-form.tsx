@@ -85,7 +85,7 @@ export function PaymentForm(
     const checked = validateExpense({ draft, participantIds: new Set(participants.map((p) => p.id)) })
     if (!checked.ok) return setError(checked.issues.map((i) => i.message).join(' '))
     setError(null)
-    await write.submit(toInput({ draft, documents: props.mode === 'edit' ? props.detail.documents : [] }))
+    await write.submit(toInput({ draft, resolved: checked.value, documents: props.mode === 'edit' ? props.detail.documents : [] }))
   }
 
   const select = (id: string, label: string, value: string, onChange: (value: string) => void) => (
