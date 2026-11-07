@@ -1,8 +1,10 @@
 // AgentSplit ledger tables. Money columns are integer minor units (bigint).
 // Invariants that span rows (sums, append-only history) live in SQL triggers:
-// see db/migrations/*_invariants.sql.
-import { sql } from 'drizzle-orm'
+// see db/migrations/*_invariants.sql. The value lists and limits come from
+// src/shared, and test/db/database-rules.test.ts compares the CHECKs with them.
+import { sql, type SQL } from 'drizzle-orm'
 import {
+  type AnyPgColumn,
   bigint,
   bigserial,
   boolean,
@@ -19,7 +21,22 @@ import {
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core'
+import { LIMITS } from '../../src/shared/limits'
+import {
+  ACTIVITY_TYPES,
+  EXPENSE_KINDS,
+  GROUP_KINDS,
+  RECEIPT_CONTENT_TYPES,
+  RECURRENCES,
+  ROLES,
+  SPLIT_MODES,
+  STORED_ACTIVITY_SOURCES,
+  UPLOAD_STATES,
+} from '../../src/shared/vocabulary'
 import { oauthClient, user } from './auth'
+
+/** `column IN ('a', 'b')`, written as drizzle-kit keeps it in the migration snapshots. */
+const oneOf = (column: AnyPgColumn, values: readonly string[]): SQL => sql`${column} IN (${sql.raw(values.map((v) => `'${v}'`).join(', '))})`
 
 const now = () => timestamp({ withTimezone: true, mode: 'date' }).notNull().defaultNow()
 const money = () => bigint({ mode: 'bigint' }).notNull()
@@ -28,8 +45,7 @@ export const groups = pgTable(
   'groups',
   {
     id: text().primaryKey(),
-    /** 'named' groups appear in the directory; 'private' contexts hold one ungrouped expense. */
-    kind: text({ enum: ['named', 'private'] }).notNull(),
+    kind: text({ enum: GROUP_KINDS }).notNull(),
     // Nullable: a slug is an optional URL alias.
     slug: text().unique(),
     name: text().notNull(),
@@ -38,7 +54,7 @@ export const groups = pgTable(
     revision: integer().notNull().default(0),
     createdAt: now(),
   },
-  (t) => [check('groups_revision_nonnegative', sql`${t.revision} >= 0`)],
+  (t) => [check('groups_revision_nonnegative', sql`${t.revision} >= 0`), check('groups_kind', oneOf(t.kind, GROUP_KINDS))],
 )
 
 /** Slugs a group used before: an old link redirects to the group's current URL. */
@@ -76,7 +92,7 @@ export const memberships = pgTable(
     groupId: text()
       .notNull()
       .references(() => groups.id, { onDelete: 'restrict' }),
-    role: text({ enum: ['admin', 'member'] }).notNull().default('member'),
+    role: text({ enum: ROLES }).notNull().default('member'),
     active: boolean().notNull().default(true),
     // Nullable: a member may not be bound to a participant yet.
     participantId: text(),
@@ -85,7 +101,7 @@ export const memberships = pgTable(
   (t) => [
     primaryKey({ columns: [t.userId, t.groupId] }),
     unique('memberships_group_participant').on(t.groupId, t.participantId),
-    check('memberships_role', sql`${t.role} IN ('admin', 'member')`),
+    check('memberships_role', oneOf(t.role, ROLES)),
     foreignKey({ columns: [t.participantId, t.groupId], foreignColumns: [participants.id, participants.groupId] }).onDelete(
       'restrict',
     ),
@@ -134,7 +150,7 @@ export const expenses = pgTable(
       .references(() => groups.id, { onDelete: 'restrict' }),
     revision: integer().notNull().default(0),
     /** 'payment' records a repayment between people (the old isReimbursement). */
-    kind: text({ enum: ['expense', 'payment'] }).notNull(),
+    kind: text({ enum: EXPENSE_KINDS }).notNull(),
     title: text().notNull(),
     // Nullable: vendor is optional.
     vendor: text(),
@@ -146,12 +162,12 @@ export const expenses = pgTable(
     expenseDate: date({ mode: 'string' }).notNull(),
     currency: text().notNull(),
     amount: money(),
-    splitMode: text({ enum: ['evenly', 'shares', 'percentage', 'amount'] }).notNull(),
+    splitMode: text({ enum: SPLIT_MODES }).notNull(),
     // Nullable as a set: present only for an amount converted from another currency.
     originalAmount: bigint({ mode: 'bigint' }),
     originalCurrency: text(),
     conversionRate: text(),
-    recurrence: text({ enum: ['none', 'daily', 'weekly', 'monthly'] }).notNull().default('none'),
+    recurrence: text({ enum: RECURRENCES }).notNull().default('none'),
     createdAt: now(),
     /** The time of the latest revision: drives "recently edited or added" ordering. */
     updatedAt: now(),
@@ -164,8 +180,9 @@ export const expenses = pgTable(
       'expenses_conversion_complete',
       sql`(${t.originalAmount} IS NULL) = (${t.originalCurrency} IS NULL) AND (${t.originalCurrency} IS NULL) = (${t.conversionRate} IS NULL)`,
     ),
-    check('expenses_split_mode', sql`${t.splitMode} IN ('evenly', 'shares', 'percentage', 'amount')`),
-    check('expenses_recurrence', sql`${t.recurrence} IN ('none', 'daily', 'weekly', 'monthly')`),
+    check('expenses_split_mode', oneOf(t.splitMode, SPLIT_MODES)),
+    check('expenses_recurrence', oneOf(t.recurrence, RECURRENCES)),
+    check('expenses_kind', oneOf(t.kind, EXPENSE_KINDS)),
     unique('expenses_id_group').on(t.id, t.groupId),
     index('expenses_group_date').on(t.groupId, t.deletedAt, t.expenseDate.desc(), t.createdAt.desc(), t.id.desc()),
     index('expenses_group_updated').on(t.groupId, t.deletedAt, t.updatedAt.desc(), t.id.desc()),
@@ -210,9 +227,7 @@ export const activities = pgTable(
       .notNull()
       .references(() => groups.id, { onDelete: 'restrict' }),
     time: timestamp({ withTimezone: true, mode: 'date' }).notNull().default(sql`clock_timestamp()`),
-    type: text({
-      enum: ['create_group', 'join_group', 'leave_group', 'update_group', 'create_expense', 'update_expense', 'delete_expense'],
-    }).notNull(),
+    type: text({ enum: ACTIVITY_TYPES }).notNull(),
     // Nullable: only some activity types refer to a participant or an expense.
     participantId: text(),
     expenseId: text(),
@@ -221,7 +236,7 @@ export const activities = pgTable(
     groupRevision: integer(),
     data: text(),
     snapshot: jsonb(),
-    source: text().notNull().default('web'),
+    source: text({ enum: STORED_ACTIVITY_SOURCES }).notNull().default('web'),
     actorName: text(),
     actorUserId: text(),
     agentKeyId: text(),
@@ -230,10 +245,8 @@ export const activities = pgTable(
     unique('activities_expense_revision').on(t.expenseId, t.expenseRevision),
     unique('activities_group_revision').on(t.groupId, t.groupRevision),
     check('activities_snapshot_revision', sql`${t.expenseRevision} IS NULL OR (${t.expenseId} IS NOT NULL AND ${t.expenseRevision} >= 0)`),
-    check(
-      'activities_type',
-      sql`${t.type} IN ('create_group', 'join_group', 'leave_group', 'update_group', 'create_expense', 'update_expense', 'delete_expense')`,
-    ),
+    check('activities_type', oneOf(t.type, ACTIVITY_TYPES)),
+    check('activities_source', oneOf(t.source, STORED_ACTIVITY_SOURCES)),
     // An activity refers only to an expense and a participant of its own group.
     foreignKey({ name: 'activities_expense_fk', columns: [t.expenseId, t.groupId], foreignColumns: [expenses.id, expenses.groupId] }).onDelete(
       'restrict',
@@ -259,7 +272,7 @@ export const receipts = pgTable(
     groupId: text()
       .notNull()
       .references(() => groups.id, { onDelete: 'restrict' }),
-    /** The public receipt URL; its object key in R2 is derived from it. */
+    /** The public receipt URL; its object key in the bucket is derived from it. */
     url: text().notNull(),
     // Nullable: receipts imported from before accounts have no known uploader, and count against no one.
     createdBy: text(),
@@ -431,22 +444,21 @@ export const receiptUploads = pgTable(
     expenseId: text()
       .notNull()
       .references(() => expenses.id, { onDelete: 'restrict' }),
-    /** The final R2 key, receipts/<id>.jpg|png. Only the one PUT writes it. */
+    /** The final object key, receipts/<id>.jpg|png. Only the one PUT writes it. */
     key: text().notNull().unique(),
-    contentType: text().notNull(),
+    contentType: text({ enum: RECEIPT_CONTENT_TYPES }).notNull(),
     bytes: integer().notNull(),
     /** The PUT must start before this time. */
     expiresAt: timestamp({ withTimezone: true, mode: 'date' }).notNull(),
-    /** pending: no PUT yet; writing: a PUT is running; stored: the bytes are in R2. */
-    state: text().notNull().default('pending'),
+    state: text({ enum: UPLOAD_STATES }).notNull().default('pending'),
     // Nullable: set when the PUT is complete.
     uploadedAt: timestamp({ withTimezone: true, mode: 'date' }),
     createdAt: now(),
   },
   (t) => [
     index().on(t.createdAt),
-    check('receipt_uploads_content_type', sql`${t.contentType} IN ('image/jpeg', 'image/png')`),
-    check('receipt_uploads_bytes', sql`${t.bytes} BETWEEN 1 AND 5242880`),
-    check('receipt_uploads_state', sql`${t.state} IN ('pending', 'writing', 'stored') AND (${t.state} = 'stored') = (${t.uploadedAt} IS NOT NULL)`),
+    check('receipt_uploads_content_type', oneOf(t.contentType, RECEIPT_CONTENT_TYPES)),
+    check('receipt_uploads_bytes', sql`${t.bytes} BETWEEN 1 AND ${sql.raw(String(LIMITS.receiptBytes))}`),
+    check('receipt_uploads_state', sql`${oneOf(t.state, UPLOAD_STATES)} AND (${t.state} = 'stored') = (${t.uploadedAt} IS NOT NULL)`),
   ],
 )
