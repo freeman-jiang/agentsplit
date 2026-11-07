@@ -180,7 +180,7 @@ A target or an upload alone saves nothing. The hourly job deletes unattached upl
 
 The storage quota is checked twice. When the files would not fit, counting the uploads that the caller can still attach, the write keeps its result and `uploadError` says: "You're out of receipt space (X of 500 MB). Download or delete old receipts…". If the space runs out between the target and the attach, `update_expense` fails with `PRECONDITION_FAILED` and the same message, and changes nothing.
 
-To download a receipt, GET its `documents[].downloadUrl` (`/api/receipts?groupId=…&url=…`) with the same credential: `X-API-Key`, or the OAuth `Authorization` header. The `url` field is a private storage pointer, not a download link. To download every receipt of a group as one ZIP file, GET `/<groupId>/expenses/export/receipts` with the same credential. To remove a receipt from an expense, send `changes.documents` with the references to keep; old revisions keep their receipts, and it still counts against its uploader.
+To download a receipt, GET its `documents[].downloadUrl` (`/api/receipts?groupId=…&url=…`) with the same credential: `X-API-Key`, or the OAuth `Authorization` header. The `url` field is a private storage pointer, not a download link. To download every receipt of a group as one ZIP file, GET `/<groupId>/expenses/export/receipts` with the same credential. These downloads answer like the MCP endpoint: HTTP 401 for a missing or refused credential, 429 with `Retry-After` for a key over its rate limit, and 503 when authentication is unavailable. To remove a receipt from an expense, send `changes.documents` with the references to keep; old revisions keep their receipts, and it still counts against its uploader.
 
 ## Deleting receipts
 
@@ -202,12 +202,14 @@ A successful result has `structuredContent` and the same JSON as text. A failed 
 
 | `code` | Meaning |
 | --- | --- |
-| `BAD_REQUEST` | The arguments are invalid. `recovery` is `correct_arguments`. |
+| `BAD_REQUEST` | The arguments are invalid, or the change breaks a rule of the ledger that the database enforces. `recovery` is `correct_arguments`. |
 | `FORBIDDEN` | The account or connection has no access. The outcome is certain. |
-| `NOT_FOUND` | The group, expense or history point does not exist. |
-| `CONFLICT` | The record changed, or the ID exists. `recovery` is `read_current_revision`. |
-| `PRECONDITION_FAILED` | A historical read has incomplete history, receipts are disabled, or an attach does not fit the caller's receipt storage. |
+| `NOT_FOUND` | The group, expense, receipt, invitation, member or history point does not exist. |
+| `CONFLICT` | The record changed, the ID exists, or the request conflicts with the current state (the last admin, a used invitation). `recovery` is `read_current_revision`. |
+| `PRECONDITION_FAILED` | A historical read has incomplete history, or an attach does not fit the caller's receipt storage. |
 | `TOO_MANY_REQUESTS` | The account made more than about 60 changes in a minute. Nothing changed. `recovery` is `retry_later`; wait the seconds that the message gives. |
-| `INTERNAL_SERVER_ERROR` | An unexpected failure. For a write, `outcomeUnknown` is true and `recovery` is `read_before_retry`. |
+| `INTERNAL_SERVER_ERROR` | An unexpected failure, also on a read. For a write, `outcomeUnknown` is true and `recovery` is `read_before_retry`. |
+
+The web app and the agent tools share one error table (`src/shared/errors.ts`), so a refusal has the same meaning and text on both.
 
 Schema failures may come back from the MCP SDK as validation errors. Responses never contain database, storage or credential details. Claim that a write succeeded only after a committed result.

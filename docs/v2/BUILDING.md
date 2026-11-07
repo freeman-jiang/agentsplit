@@ -34,10 +34,10 @@ Run every command inside the dev shell, from the repository root: `direnv exec .
 
 Each area owns its own files, so areas can be built in parallel:
 
-1. **Contract:** `src/shared/api/<area>.ts` defines an `RpcGroup` of the area's procedures with Effect Schema payloads, outputs and errors. Reuse `Id`, `IdempotencyKey`, `CalendarDate`, the vocabulary schemas (`ExpenseKindSchema`, `RecurrenceSchema` and others), `ReadError`, `WriteError` and the error classes from `src/shared/api/core.ts`. Outputs use `DecimalOutput` and plain strings; inputs use the checked `DecimalString` and `CalendarDate`.
+1. **Contract:** `src/shared/api/<area>.ts` defines an `RpcGroup` of the area's procedures with Effect Schema payloads, outputs and errors. Reuse `Id`, `IdempotencyKey`, `CalendarDate`, the vocabulary schemas (`ExpenseKindSchema`, `RecurrenceSchema` and others), `ReadError`, `WriteError` and the error classes from `src/shared/api/core.ts`. What each error means to a caller (its RPC log level, MCP code, recovery, HTTP status and text) is one table in `src/shared/errors.ts`; a new `NotFound` entity or `Invalid` reason goes there. Outputs use `DecimalOutput` and plain strings; inputs use the checked `DecimalString` and `CalendarDate`.
 2. **Register the contract:** add the group to the `CoreApi.merge(...)` call in `src/shared/api.ts` and re-export it. This is a one-line edit.
-3. **Domain service:** `src/server/<area>.ts` holds the functions. Each takes `(db, { principal, ... })`, checks access itself, and throws the shared domain errors (`Forbidden`, `NotFound`, `Conflict`, `Invalid`).
-4. **Handlers:** `src/server/handlers/<area>.ts` exports a layer of `Api.toLayerHandler(tag, ...)` calls built with `read` and `write` from `src/server/rpc.ts`. Add it to `Layer.mergeAll` in `src/server/handlers.ts` (a one-line edit).
+3. **Domain service:** `src/server/<area>.ts` holds the functions. Each takes `(db, { principal, groupId, ... })`, where `groupId` is the caller's group reference (an ID or a slug), checks access itself, and returns values or throws the shared domain errors (`Forbidden`, `NotFound`, `Conflict`, `Invalid`). It never builds an HTTP response.
+4. **Handlers:** `src/server/handlers/<area>.ts` exports a layer of `Api.toLayerHandler(tag, ...)` calls built with `read`, `write` and `publicRead` from `src/server/rpc.ts`. Add it to `Layer.mergeAll` in `src/server/app.ts` (a one-line edit).
 5. **Client:** queries in `src/client/queries/<area>.ts` (`queryOptions` and `infiniteQueryOptions`), screens as TanStack Router file routes under `src/client/routes/`. Replace the placeholder route of your screen.
 6. **Tests:** `test/db/<area>.test.ts` for services against a real database, and the parity record below.
 7. **Parity record:** `docs/v2/parity/<area>.md` lists every PARITY.md item you covered, with the test that proves it, and every item you could not cover, with the reason.
@@ -54,11 +54,18 @@ The area services build on these modules in `src/server/`. Use them instead of w
 - `people.ts`: display names and the contacts a caller may add to an ungrouped expense.
 - `idempotency.ts`, `private-context.ts` and `sql.ts`: idempotency keys, the private write rules, and small SQL helpers.
 
+The platform around them:
+
+- `calls.ts`: the one call runner of RPC (`rpc.ts`) and MCP (`mcp/server.ts`). `runRead` reads on the request's connection. `runWrite` takes the fair-use write budget, then runs one SERIALIZABLE transaction with retries and an after-commit list. Both turn every failure into a declared error: a database rule (23514, 23503, 23505) becomes `Invalid`, anything else is logged and becomes `Unavailable`, whose text never names the cause.
+- `config.ts`: every setting, read and checked once at start by `server.ts`.
+- `auth/`: sessions, Better Auth, API keys, OAuth tokens and agent connections (`oauth-connections.ts`), the MCP challenges, the reader of plain HTTP downloads (`httpReader`) and the one origin rule (`origin.ts`). `mcp/` depends on it, never the reverse.
+- `app.ts` routes every request. The plain HTTP routes live beside it: `receipt-routes.ts` and `export-routes.ts`. `headers.ts`, `http-errors.ts`, `public-pages.ts`, `perf.ts` and `maintenance.ts` hold the response headers, the JSON errors, robots.txt, the sitemap and health checks, the performance headers and the maintenance answer.
+
 ## Rules
 
 ### Correctness
 
-- Every write runs through `write` (one SERIALIZABLE transaction) and takes an `idempotencyKey`. Every edit or delete takes `expectedRevision` and throws `Conflict` on a mismatch.
+- Every write runs through `runWrite` in `src/server/calls.ts` (`write` on RPC, a `write` tool on MCP) and takes an `idempotencyKey`. Every edit or delete takes `expectedRevision` and throws `Conflict` on a mismatch.
 - Every change to a group or an expense writes its activity row in the same transaction, through `recordExpenseEvent` or `recordGroupEvent` in `src/server/activity.ts`. That module also owns the snapshots (`schemaVersion: 2`, checked with `satisfies` against the readers in `src/shared/snapshots.ts`), the access-change text and the system actor.
 - Money is minor units (`bigint`) inside, exact decimal strings outside. Use `minorOrNull`, `formatMinor`, `resolveShares` and `validateExpense`. Never use floats for money.
 - Value lists (kinds, split modes, recurrences, roles, group kinds, activity types and sources, upload states, receipt types, and the current app's names for them) live only in `src/shared/vocabulary.ts`. Every limit (field lengths, people per group, page sizes, times, rates and the fair-use limits) lives only in `src/shared/limits.ts`. The contract, the Drizzle enums and CHECKs, the MCP schemas and descriptions, the rule messages and the client derive from these two modules; `test/db/database-rules.test.ts` compares the database's CHECKs with them. A new list or limit goes there, not into a schema.
@@ -74,7 +81,7 @@ The Workers Free CPU limit no longer applies (DECISIONS.md, "Hosting changes to 
 - Do not call Better Auth on the RPC path. The session is already resolved by the middleware.
 - Load large libraries only where they are needed, with a dynamic `import()`.
 - Keep the client fast: route-level code splitting (automatic), data preloaded on hover (`defaultPreload: 'intent'`), and no full page loads inside the app.
-- Never import `effect` at runtime in `src/client/`, directly or through `src/shared`: the modules the client imports (`vocabulary`, `limits`, `minor`, `split`, `expense-rules`, `history`, `stats`, `groups`, `account`, `ids`, `currencies`) stay Effect-free, and the Schema parts live beside them (`money.ts`, `snapshots.ts`, `api/`). Use `import type` from the contract, and call the server through `rpc()` from `src/client/rpc.ts`. Route options (`validateSearch`, `beforeLoad`) stay in the main chunk, so keep them free of large libraries. Contract outputs must be JSON-identical (no `Date` or `bigint` transforms); `src/client/rpc.ts` checks this at compile time. CI fails when the up-front JavaScript exceeds 150 KB gzip (`scripts/check-bundle.ts`).
+- Never import `effect` at runtime in `src/client/`, directly or through `src/shared`: the modules the client imports (`vocabulary`, `limits`, `errors`, `dates`, `minor`, `split`, `expense-rules`, `history`, `stats`, `groups`, `account`, `ids`, `currencies`) stay Effect-free, and the Schema parts live beside them (`money.ts`, `snapshots.ts`, `api/`). Use `import type` from the contract, and call the server through `rpc()` from `src/client/rpc.ts`. Route options (`validateSearch`, `beforeLoad`) stay in the main chunk, so keep them free of large libraries. Contract outputs must be JSON-identical (no `Date` or `bigint` transforms); `src/client/rpc.ts` checks this at compile time. CI fails when the up-front JavaScript exceeds 150 KB gzip (`scripts/check-bundle.ts`).
 
 ### Behavior
 
