@@ -42,7 +42,7 @@ function SignIn() {
           </li>
         </ol>
       )}
-      <LoginButton label={invitation ? 'Continue with Google' : 'Log In'} selectAccount={invitation} callbackURL={destination ?? '/'} />
+      <LoginButton label={invitation ? 'Continue with Google' : 'Sign in with Google'} selectAccount={invitation} callbackURL={destination ?? '/'} />
     </main>
   )
 }

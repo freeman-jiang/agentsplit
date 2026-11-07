@@ -30,7 +30,7 @@ const TITLES: Record<Exclude<keyof FileRoutesById, '__root__'>, string | null> =
   '/$group/': null,
   '/$group/expenses': 'Expenses',
   '/$group/expenses/': null,
-  '/$group/expenses/create': 'Create expense',
+  '/$group/expenses/create': 'Add expense',
   '/$group/expenses/$expenseId/edit': 'Edit expense',
   '/$group/payments': 'Payments',
   '/$group/payments/': null,

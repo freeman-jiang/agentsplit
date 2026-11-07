@@ -83,7 +83,7 @@ function ExpensesTab() {
         <h2 className="font-display text-xl">Expenses</h2>
         <Button asChild>
           <Link to="/$group/expenses/create" params={{ group }}>
-            Create expense
+            Add expense
           </Link>
         </Button>
       </div>
@@ -96,7 +96,7 @@ function ExpensesTab() {
         </p>
       )}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div role="radiogroup" aria-label="Sort expenses" className="inline-flex border p-0.5 text-sm">
+        <div role="radiogroup" aria-label="Sort expenses" className="inline-flex min-h-10 items-stretch border text-sm max-sm:grid max-sm:w-full max-sm:grid-cols-2">
           {SORTS.map(([value, label]) => (
             <button
               key={value}
@@ -104,7 +104,7 @@ function ExpensesTab() {
               role="radio"
               aria-checked={sort === value}
               onClick={() => navigate({ search: (s) => ({ ...s, sort: value }), replace: true })}
-              className={cn('px-3 py-1', sort === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
+              className={cn('px-3', sort === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
             >
               {label}
             </button>
@@ -160,7 +160,7 @@ function ExpensesTab() {
   )
 }
 
-const tones: Record<Figure['tone'], string> = { neutral: 'text-muted-foreground', positive: 'text-primary', negative: 'text-destructive' }
+const tones: Record<Figure['tone'], string> = { neutral: 'text-muted-foreground', positive: 'text-owed', negative: 'text-owe' }
 
 function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewer: string | null; names: ReadonlyMap<string, string> }) {
   const { expense: e } = props
@@ -186,7 +186,7 @@ function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewe
         <div className="min-w-0 flex-1">
           {e.vendor && <div className="truncate text-xs text-muted-foreground">{e.vendor}</div>}
           <div className={cn('flex items-center gap-1.5', e.kind === 'payment' && 'italic')}>
-            <span className="truncate">{e.title}</span>
+            <span className="truncate font-medium">{e.title}</span>
             {e.documentCount > 0 && (
               <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground" aria-label={`${e.documentCount} documents`}>
                 <Paperclip className="h-3 w-3" aria-hidden="true" />
@@ -194,19 +194,25 @@ function ExpenseCard(props: { expense: typeof Expense.Type; group: string; viewe
               </span>
             )}
           </div>
-          <div className="truncate text-xs text-muted-foreground">{author}</div>
+          {/* On narrow screens the paid figure sits under the title, so the right column holds only the viewer's figure. */}
+          <div className="truncate text-sm text-muted-foreground sm:hidden">
+            {figures.paid.label} <span className="tabular-nums">{money(figures.paid.amount ?? '0', e.currency)}</span>
+          </div>
+          <div className="truncate text-xs text-muted-foreground max-sm:hidden">{author}</div>
         </div>
         <div className="shrink-0 text-right text-sm">
-          <div className="text-xs text-muted-foreground">{figures.paid.label}</div>
-          <div className="tabular-nums">{money(figures.paid.amount ?? '0', e.currency)}</div>
-          {/* On narrow screens the viewer's figure sits under the paid figure. */}
-          <div className={cn('mt-1 text-xs sm:hidden', tones[figures.personal.tone])}>
-            {figures.personal.label} {figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
+          <div className={cn('text-xs sm:hidden', tones[figures.personal.tone])}>{figures.personal.label}</div>
+          <div className={cn('text-base font-semibold tabular-nums sm:hidden', tones[figures.personal.tone])}>
+            {figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
           </div>
+          <div className="hidden text-xs text-muted-foreground sm:block">{figures.paid.label}</div>
+          <div className="hidden tabular-nums sm:block">{money(figures.paid.amount ?? '0', e.currency)}</div>
         </div>
         <div className="hidden w-28 shrink-0 text-right text-sm sm:block">
           <div className={cn('text-xs', tones[figures.personal.tone])}>{figures.personal.label}</div>
-          <div className={cn('tabular-nums', tones[figures.personal.tone])}>{figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}</div>
+          <div className={cn('text-base font-semibold tabular-nums', tones[figures.personal.tone])}>
+            {figures.personal.amount === null ? '—' : money(figures.personal.amount, e.currency)}
+          </div>
         </div>
       </Link>
     </li>

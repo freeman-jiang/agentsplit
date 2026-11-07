@@ -47,7 +47,14 @@ const RECURRENCE = [
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { dateStyle: 'medium' })
 
-export function CurrencySelect(props: { id: string; label: string; value: CurrencyCode; onChange: (currency: CurrencyCode) => void; className?: string }) {
+export function CurrencySelect(props: {
+  id: string
+  label: string
+  value: CurrencyCode
+  onChange: (currency: CurrencyCode) => void
+  className?: string
+  selectClassName?: string
+}) {
   const others = (Object.keys(CURRENCIES) as CurrencyCode[]).filter((c) => !(COMMON_CURRENCIES as readonly string[]).includes(c))
   return (
     <NativeSelect
@@ -56,7 +63,8 @@ export function CurrencySelect(props: { id: string; label: string; value: Curren
       value={props.value}
       displayValue={props.value}
       onChange={(e) => props.onChange(e.target.value as CurrencyCode)}
-      wrapperClassName={cn('w-28 shrink-0', props.className)}
+      wrapperClassName={cn('w-24 shrink-0', props.className)}
+      className={props.selectClassName}
     >
       {[
         ['Common', COMMON_CURRENCIES],
@@ -154,7 +162,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
   const auto = state.splitMode === 'amount' ? autoAmounts(state, order) : new Map<string, string>()
   const allSelected = order.every((id) => state.selected[id])
   const category = reference.categories.find((c) => c.id === state.categoryId)
-  const headingVerb = props.mode === 'create' ? 'Create' : 'Edit'
+  const headingVerb = props.mode === 'create' ? 'Add' : 'Edit'
 
   // Changing the mode or the amount forgets which amounts were typed (P-MONEY-85).
   const setAmount = (amount: string) => set({ amount, edits: {}, ...(isIncome(amount) ? { kind: 'expense' as const } : {}) })
@@ -215,17 +223,14 @@ export function ExpenseForm(props: ExpenseFormProps) {
         e.preventDefault()
         void submit()
       }}
-      className="space-y-6"
+      className="space-y-4 sm:space-y-6"
     >
       <h2 className="font-display text-xl">
         {headingVerb} {noun}
       </h2>
       {props.mode === 'edit' && <Attribution detail={props.detail} />}
 
-      <section className="space-y-4 border bg-card p-4" aria-label={income ? 'Income details' : 'Expense details'}>
-        <Field id="vendor" label="Vendor (optional)" error={shown('vendor')}>
-          <Input id="vendor" placeholder="eg. Costco" maxLength={LIMITS.vendorMax} value={state.vendor} onChange={(e) => set({ vendor: e.target.value })} onBlur={() => touch('vendor')} />
-        </Field>
+      <section className="space-y-2 border bg-card p-4 sm:space-y-4" aria-label={income ? 'Income details' : 'Expense details'}>
         <Field id="title" label="Description" error={shown('title')}>
           <Input
             id="title"
@@ -236,27 +241,44 @@ export function ExpenseForm(props: ExpenseFormProps) {
             onBlur={() => touch('title')}
           />
         </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
           <Field id="amount" label="Amount" error={shown('amount')}>
             <div className="flex gap-2">
               <Input
                 id="amount"
                 inputMode="decimal"
                 placeholder="0.00"
-                className="min-w-0 flex-1"
+                className="h-12 min-w-0 flex-1 text-[2rem]! leading-none font-semibold tabular-nums placeholder:font-normal placeholder:text-muted-foreground/70"
                 value={state.amount}
                 aria-invalid={!!shown('amount')}
                 onFocus={(e) => e.target.select()}
                 onChange={(e) => setAmount(e.target.value)}
                 onBlur={() => touch('amount')}
               />
-              <CurrencySelect id="currency" label={income ? 'Currency of income' : 'Currency of expense'} value={state.currency} onChange={(currency) => set({ currency, edits: {} })} />
+              <CurrencySelect
+                id="currency"
+                label={income ? 'Currency of income' : 'Currency of expense'}
+                value={state.currency}
+                onChange={(currency) => set({ currency, edits: {} })}
+                selectClassName="h-12"
+              />
             </div>
           </Field>
           <Field id="date" label={income ? 'Income date' : 'Expense date'} error={shown('expenseDate')}>
-            <Input id="date" type="date" value={state.expenseDate} aria-invalid={!!shown('expenseDate')} onChange={(e) => set({ expenseDate: e.target.value })} onBlur={() => touch('expenseDate')} />
+            <Input
+              id="date"
+              type="date"
+              className="block h-10 sm:h-12"
+              value={state.expenseDate}
+              aria-invalid={!!shown('expenseDate')}
+              onChange={(e) => set({ expenseDate: e.target.value })}
+              onBlur={() => touch('expenseDate')}
+            />
           </Field>
         </div>
+        <Field id="vendor" label="Vendor (optional)" error={shown('vendor')}>
+          <Input id="vendor" placeholder="e.g. Costco" maxLength={LIMITS.vendorMax} value={state.vendor} onChange={(e) => set({ vendor: e.target.value })} onBlur={() => touch('vendor')} />
+        </Field>
 
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">{income ? 'Received by' : 'Paid by'}</legend>
@@ -301,7 +323,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
           <Button
             type="button"
             variant="link"
-            className="h-auto p-0"
+            className="h-auto p-0 underline underline-offset-4"
             onClick={() =>
               state.payerMode === 'one'
                 ? set({ payerMode: 'several', payerAmounts: state.payer ? { [state.payer]: state.amount } : {} })
@@ -314,14 +336,14 @@ export function ExpenseForm(props: ExpenseFormProps) {
       </section>
 
       <section className="space-y-3 border bg-card p-4" aria-labelledby="paid-for">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <h3 id="paid-for" className="font-medium">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 id="paid-for" className="text-sm font-semibold">
             {income ? 'Received for' : 'Paid for'}
           </h3>
           <Button
             type="button"
             variant="link"
-            className="h-auto p-0"
+            className="h-auto p-0 underline underline-offset-4"
             onClick={() => set({ selected: Object.fromEntries(order.map((id) => [id, !allSelected])), edits: {} })}
           >
             {allSelected ? 'Select none' : 'Select all'}

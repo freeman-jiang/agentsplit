@@ -1,6 +1,6 @@
 import { requireSignedIn } from '~/client/queries/account'
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
-import { createFileRoute, Link, Outlet, redirect } from '@tanstack/react-router'
+import { createFileRoute, Link, Outlet, redirect, useRouterState } from '@tanstack/react-router'
 import { ArrowLeftRight, BarChart3, ChevronDown, Info, Receipt, RefreshCw, Scale, ScrollText, Settings, Users } from 'lucide-react'
 import { cn } from '~/client/cn'
 import { money } from '~/client/components/money'
@@ -54,10 +54,14 @@ const TABS = [
 function GroupLayout() {
   const { group } = Route.useParams()
   const { data: g } = useSuspenseQuery(groupQuery(group))
+  // On a phone the expense and payment forms need the whole screen; the rail stays on the tabs.
+  const onForm = useRouterState({ select: (s) => s.matches.some((m) => FORM_ROUTES.has(m.routeId)) })
+  // The Balances tab shows every balance itself, so the rail keeps only the viewer's summary there.
+  const onBalances = useRouterState({ select: (s) => s.matches.some((m) => m.routeId === '/$group/balances') })
   return (
-    <div className="mx-auto w-full max-w-6xl px-3 py-6 sm:px-8">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h1 className="min-w-0 truncate font-display text-2xl">
+    <div className="mx-auto w-full max-w-6xl px-4 py-3 sm:px-8 md:py-6">
+      <div className="mb-2 flex items-center justify-between gap-3 md:mb-3">
+        <h1 className="min-w-0 truncate font-display text-2xl sm:text-3xl">
           <Link to="/$group" params={{ group }}>
             {g.name}
           </Link>
@@ -69,22 +73,28 @@ function GroupLayout() {
           </Link>
         </Button>
       </div>
-      <nav aria-label="Group" className="mb-4 flex flex-wrap gap-x-2 gap-y-1 border-b sm:gap-x-4">
-        {TABS.map(({ to, label, Icon }) => (
-          <Link
-            key={to}
-            to={to}
-            params={{ group }}
-            className="inline-flex min-h-11 items-center gap-2 border-b-2 border-transparent px-2 py-3 text-xs text-muted-foreground sm:text-sm"
-            activeProps={{ className: 'border-primary! text-primary!' }}
-          >
-            <Icon className="hidden h-4 w-4 lg:block" aria-hidden="true" />
-            {label}
-          </Link>
-        ))}
-      </nav>
+      <div className="-mx-4 mb-4 border-b sm:mx-0">
+        {/* On narrow screens the row scrolls; the fade at the right edge shows that more tabs follow. */}
+        <nav
+          aria-label="Group"
+          className="flex gap-x-1 overflow-x-auto px-4 [mask-image:linear-gradient(to_right,#000_calc(100%-2.5rem),transparent)] [scrollbar-width:none] sm:gap-x-4 sm:px-0 sm:[mask-image:none]"
+        >
+          {TABS.map(({ to, label, Icon }) => (
+            <Link
+              key={to}
+              to={to}
+              params={{ group }}
+              className="inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 border-transparent px-2 py-3 text-sm whitespace-nowrap text-muted-foreground"
+              activeProps={{ className: 'border-primary! text-foreground! font-medium' }}
+            >
+              <Icon className="hidden h-4 w-4 lg:block" aria-hidden="true" />
+              {label}
+            </Link>
+          ))}
+        </nav>
+      </div>
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_16rem]">
-        <BalanceRail group={group} />
+        <BalanceRail group={group} hideOnMobile={onForm} summaryOnly={onBalances} />
         <div className="min-w-0 md:col-start-1 md:row-start-1">
           <Outlet />
         </div>
@@ -92,6 +102,8 @@ function GroupLayout() {
     </div>
   )
 }
+
+const FORM_ROUTES = new Set(['/$group/expenses/create', '/$group/expenses/$expenseId/edit', '/$group/payments/create', '/$group/payments/$expenseId/edit'])
 
 type Entry = typeof CurrencyBalances.Type
 type Person = { readonly id: string; readonly name: string }
@@ -107,7 +119,7 @@ function netLabel(amount: string, personal = false) {
 
 function amountClass(amount: string) {
   if (isZero(amount)) return 'text-muted-foreground'
-  return amount.startsWith('-') ? 'text-red-700 dark:text-red-400' : 'text-green-700 dark:text-green-400'
+  return amount.startsWith('-') ? 'text-owe' : 'text-owed'
 }
 
 /**
@@ -115,7 +127,7 @@ function amountClass(amount: string) {
  * group-balance-summary.tsx. It reads its own balances query, so a failed load
  * stays in the rail. On narrow screens each currency is a closed <details>.
  */
-function BalanceRail({ group }: { group: string }) {
+function BalanceRail({ group, hideOnMobile, summaryOnly }: { group: string; hideOnMobile: boolean; summaryOnly: boolean }) {
   const { data: g } = useSuspenseQuery(groupQuery(group))
   // As in the current app: fresh balances on mount and on window focus (P-BAL-58).
   // The data is stale after one second, so the rail does not fetch again right
@@ -126,15 +138,19 @@ function BalanceRail({ group }: { group: string }) {
     <aside
       aria-label="Group balances"
       data-testid="group-balance-summary"
-      className="z-20 h-fit self-start border bg-card p-4 md:sticky md:top-24 md:col-start-2 md:row-start-1 md:max-h-[calc(100dvh-7rem)] md:overflow-y-auto"
+      className={cn(
+        'relative z-20 h-fit self-start border bg-card p-3 md:sticky md:p-4 md:top-24 md:col-start-2 md:row-start-1 md:max-h-[calc(100dvh-7rem)] md:overflow-y-auto',
+        hideOnMobile && 'max-md:hidden',
+      )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">Group balances</h2>
+      {/* On narrow screens the heading is for screen readers and the refresh button sits in the summary row. */}
+      <div className="flex items-center justify-between gap-2 max-md:absolute max-md:end-2 max-md:top-2.5">
+        <h2 className="text-sm font-semibold max-md:sr-only">Group balances</h2>
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => void refetch()} disabled={isFetching} aria-label="Refresh balances">
           <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} aria-hidden="true" />
         </Button>
       </div>
-      <p className="mb-4 text-xs text-muted-foreground">Net across all group expenses</p>
+      <p className="mb-4 hidden text-xs text-muted-foreground md:block">Net across all group expenses</p>
       {isError ? (
         <p role="alert" className="text-sm">
           Could not load balances. Try refreshing.
@@ -148,12 +164,12 @@ function BalanceRail({ group }: { group: string }) {
           {data.currencies.map((entry) => {
             const ownTotal = participantId === null ? null : (entry.balances.find((b) => b.participantId === participantId)?.net ?? '0')
             const summary = (
-              <div className="min-w-0">
+              <div className="min-w-0 max-md:flex max-md:items-baseline max-md:gap-2">
                 <div className="text-xs text-muted-foreground">
                   {ownTotal === null ? 'Group net balances' : netLabel(ownTotal, true)} · {entry.currency}
                 </div>
                 {ownTotal !== null && (
-                  <div className={cn('mt-1 text-xl font-semibold tabular-nums', amountClass(ownTotal))} data-testid="summary-personal-net">
+                  <div className={cn('mt-1 text-lg font-semibold tabular-nums max-md:mt-0 md:text-xl', amountClass(ownTotal))} data-testid="summary-personal-net">
                     {money(abs(ownTotal), entry.currency)}
                   </div>
                 )}
@@ -162,8 +178,8 @@ function BalanceRail({ group }: { group: string }) {
             const details = <BalanceDetails entry={entry} participants={g.participants} participantId={participantId} />
             return (
               <section key={entry.currency} aria-label={`${entry.currency} balances`}>
-                <details className="group md:hidden">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                <details className="group pe-9 md:hidden">
+                  <summary className="flex min-h-7 cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
                     {summary}
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       Details
@@ -174,16 +190,18 @@ function BalanceRail({ group }: { group: string }) {
                 </details>
                 <div className="hidden space-y-4 md:block">
                   {summary}
-                  {details}
+                  {!summaryOnly && details}
                 </div>
               </section>
             )
           })}
         </div>
       )}
-      <Link to="/$group/balances" params={{ group }} className="mt-4 inline-block text-xs underline underline-offset-4">
-        Balance details
-      </Link>
+      {!summaryOnly && (
+        <Link to="/$group/balances" params={{ group }} className="mt-4 hidden text-xs underline underline-offset-4 md:inline-block">
+          Balance details
+        </Link>
+      )}
     </aside>
   )
 }
