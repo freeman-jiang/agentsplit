@@ -3,7 +3,7 @@
 // and links to saved attachments.
 import { DisclosureSummary } from '~/client/ui/disclosure'
 import type { Activity } from '~/shared/api'
-import { describeRevision, REVISION_FIELDS } from '~/shared/history'
+import { describeRevision, isBaseline, REVISION_FIELDS } from '~/shared/history'
 import { receiptDownloadPath } from '~/shared/paths'
 import { tombstoneText } from '../receipt-files'
 import { fieldChanged } from './revision-diff'
@@ -27,7 +27,7 @@ function receiptLink(data: { groupId: string; url: string }) {
 
 /** Who recorded the change, without user IDs (DECISIONS.md, P-HIST-75). */
 function author(activity: ActivityItem) {
-  if (activity.expenseRevision === 0 || activity.source === 'baseline') return 'History begins here for an existing expense'
+  if (isBaseline(activity)) return 'History begins here for an existing expense'
   if (activity.source === 'system') return 'Created by the recurring schedule'
   if (activity.verified) return `Recorded by ${activity.actorName ?? 'an account'}${activity.agent ? ' through an agent connection' : ''}`
   return 'The participant name is an unverified label.'

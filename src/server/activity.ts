@@ -37,8 +37,8 @@ export const actorName = sql`CASE WHEN a.source = 'system' AND a.actor_name IS N
 export const activitySource = (alias: SQL) => sql`CASE WHEN ${alias}.source = 'mcp' THEN 'agent' ELSE ${alias}.source END`
 
 /**
- * Is activity row `alias` a real create or edit? A baseline is not: the
- * current app stores it with source `baseline`, v2 with revision 0 (P-HIST-09).
+ * Is activity row `alias` a real create or edit? A baseline is not
+ * (isBaseline in src/shared/history.ts, P-HIST-09).
  */
 export const notBaseline = (alias: SQL) => sql`${alias}.source <> 'baseline' AND (${alias}.expense_revision IS NULL OR ${alias}.expense_revision > 0)`
 

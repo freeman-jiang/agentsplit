@@ -8,6 +8,7 @@ import { activitiesQuery } from '~/client/queries/history'
 import { Button } from '~/client/ui/button'
 import { DisclosureSummary } from '~/client/ui/disclosure'
 import type { Activity } from '~/shared/api'
+import { isBaseline } from '~/shared/history'
 import { ActivityRevision } from './revision'
 
 type Props = { groupId: string; expenseId: string }
@@ -26,7 +27,7 @@ export function ExpenseLog(props: Props) {
 }
 
 function what(entry: typeof Activity.Type) {
-  const action = entry.expenseRevision === 0 || entry.source === 'baseline' ? 'History started' : entry.type === 'create_expense' ? 'Added' : entry.type === 'delete_expense' ? 'Deleted' : 'Edited'
+  const action = isBaseline(entry) ? 'History started' : entry.type === 'create_expense' ? 'Added' : entry.type === 'delete_expense' ? 'Deleted' : 'Edited'
   return `${action} by ${entry.actorName ?? (entry.source === 'system' ? 'automatic schedule' : 'unknown author')}`
 }
 

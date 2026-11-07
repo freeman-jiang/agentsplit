@@ -93,7 +93,7 @@ function ExpenseSetup({ options }: { options: Options }) {
     if (!name.trim() || name.trim().length > LIMITS.nameMax || !EMAIL.test(normalized)) return setError('Enter a name and a valid email address.')
     if (people.some((p) => normalizeEmail(p.email) === normalized)) return setError('That person is already included.')
     // A known contact's email links that account, so no invitation is needed.
-    const existing = options.people.find((p) => p.email.toLowerCase() === normalized)
+    const existing = options.people.find((p) => normalizeEmail(p.email) === normalized)
     setPeople((current) => [...current, { id: randomId(), name: existing?.name ?? name.trim(), email: normalized, ...(existing ? { userId: existing.id } : {}) }])
     setName('')
     setEmail('')
@@ -154,7 +154,7 @@ function ExpenseSetup({ options }: { options: Options }) {
             >
               <option value="">Choose a person</option>
               {options.people
-                .filter((p) => !people.some((chosen) => chosen.email.toLowerCase() === p.email.toLowerCase()))
+                .filter((p) => !people.some((chosen) => normalizeEmail(chosen.email) === normalizeEmail(p.email)))
                 .map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.email})
@@ -208,7 +208,8 @@ function PrivateExpense(props: { id: string; people: readonly Person[]; selfId: 
   const me = people.find((p) => p.userId === props.selfId)
   const [initial] = useState(() => newExpenseState({ groupId: null, participants: people.map((p) => p.id), viewer: me?.id ?? null, defaultCurrency: 'USD', prefill: {} }))
   const invitations = useRef<Invitations>([])
-  // The private context is created with the expense, under the expense's ID; until then there is no group for receipts.
+  const contextId = useRef<string | null>(null)
+  // The private context is created with the expense; until then there is no group for receipts.
   const target: EntryTarget = {
     groupId: null,
     privateExpense: true,
@@ -223,11 +224,14 @@ function PrivateExpense(props: { id: string; people: readonly Person[]; selfId: 
         }),
       )
       invitations.current = result.invitations
+      contextId.current = result.groupId
     },
     exists: (expenseId) => queryClient.fetchQuery(expenseContextQuery(expenseId)).then(() => true, () => false),
     // The saved expense opens, or its invitations show first (P-UNGROUP-19).
     leave: async ({ alreadySaved }) => {
-      await afterWrite({ queryClient, scope: 'group', groupId: id })
+      // An earlier attempt that saved the expense left no answer here; its context comes from the expense.
+      const groupId = contextId.current ?? (await queryClient.fetchQuery(expenseContextQuery(id))).group.id
+      await afterWrite({ queryClient, scope: 'group', groupId })
       if (!alreadySaved && invitations.current.length) props.onInvitations(invitations.current)
       else await navigate({ to: '/expenses/$expenseId', params: { expenseId: id } })
     },
