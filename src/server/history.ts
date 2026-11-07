@@ -306,8 +306,11 @@ export async function historicalLedger(db: Db, data: { principal: Principal; gro
   }
 }
 
-/** Filters saved values (never live ones), then sorts by saved expense date, creation time and ID, newest first. */
-/** The same filter as the live list (ledger.ts listExpenses); its sort does not apply. */
+/**
+ * Filters saved values (never live ones) with the same filter as the live list
+ * (ledger.ts listExpenses), then sorts by saved expense date, creation time and
+ * ID, newest first. The filter's sort does not apply.
+ */
 export function filterSaved(expenses: readonly SavedExpense[], f: ExpenseFilter): SavedExpense[] {
   const text = f.search?.trim().toLocaleLowerCase()
   const vendor = f.vendor?.trim().toLocaleLowerCase()

@@ -1,5 +1,6 @@
-// The typed contract between the SPA and the server. MCP tools call the same
-// domain services, so these schemas also describe agent writes.
+// The core area of the contract (api.ts merges every area): the declared
+// errors, the shapes that the other areas share, and the session, group and
+// expense procedures.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { GROUP_DENIED, INVALID_REASONS, NOT_FOUND_ENTITIES } from '../errors'

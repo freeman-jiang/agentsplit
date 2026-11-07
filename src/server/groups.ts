@@ -294,7 +294,6 @@ export async function createGroup(
   })
 }
 
-/** Locks the group row for this transaction and returns it. */
 async function lockGroup(tx: Db, groupId: string) {
   const [row] = await tx.select().from(groups).where(eq(groups.id, groupId)).for('update')
   if (!row) throw new NotFound({ entity: 'group', id: groupId })

@@ -1,5 +1,4 @@
-// Runs a job once an hour at a fixed minute (UTC), one run at a time. It
-// replaces the Worker's cron trigger, "7 * * * *".
+// Runs a job once an hour at a fixed minute (UTC), one run at a time.
 
 /** The first time after `after` whose minute is `minute`, at second 0. */
 export function nextRun(after: Date, minute: number): Date {

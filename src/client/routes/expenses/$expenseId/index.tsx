@@ -95,7 +95,7 @@ function Workspace({ data }: { data: Context }) {
           <PaymentForm key={detail.data.expense.revision} mode="edit" detail={detail.data} participants={data.participants} target={{ ...target, groupId: group.id }} onReload={onReload} />
         </>
       ) : (
-        // Any other payment shape keeps every detail in the expense editor (P-BAL-89).
+        // An expense, or a payment of any other shape, uses the expense editor, which keeps every detail (P-BAL-89).
         <ExpenseForm
           // A new revision starts a fresh form, so a reload after a conflict shows the saved values.
           key={detail.data.expense.revision}

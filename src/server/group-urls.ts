@@ -1,6 +1,6 @@
 // The current app's group URL redirects (src/proxy.ts at bb26b78), answered
 // before the SPA page. The client's router keeps the URLs as typed
-// (src/client/group-urls.ts).
+// (src/client/main/group-urls.ts).
 import { sql } from 'drizzle-orm'
 import { groupPath, isIdSegment } from '../shared/groups'
 import { GROUP_ID } from '../shared/ids'

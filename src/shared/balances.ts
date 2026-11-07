@@ -52,7 +52,7 @@ export type Settlement = { readonly from: string; readonly to: string; readonly 
 
 /**
  * Suggested repayments for one currency, stable across settlements: creditors
- * first, then by participant ID; the largest debtor at the end pays the first
+ * first, then by participant ID. The last debtor in that order pays the first
  * creditor. This is the current app's rule (src/lib/balances.ts).
  */
 export function suggestSettlements(balances: ReadonlyMap<string, Balance>): Settlement[] {
