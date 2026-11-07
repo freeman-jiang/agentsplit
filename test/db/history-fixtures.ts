@@ -1,5 +1,5 @@
 // Synthetic history rows in the current app's format (schemaVersion 1), as the
-// importer copies them. The shape follows src/lib/expense-history.ts
+// one-time importer wrote them; production keeps those rows. The shape follows src/lib/expense-history.ts
 // makeExpenseSnapshot: Prisma's expense with decimal strings, stripped to the
 // snapshot schema's keys.
 import { activities, expensePayers, expenses, expenseShares } from '../../db/schema/app'
@@ -69,7 +69,7 @@ export const v1GroupSnapshot = (g: { id: string; name: string; slug: string | nu
 
 /**
  * An imported expense: the current row, then its v1 history rows, as the
- * importer writes them. `current` holds the live parts in minor units.
+ * importer wrote them. `current` holds the live parts in minor units.
  */
 export async function insertImportedExpense(
   tx: Db,

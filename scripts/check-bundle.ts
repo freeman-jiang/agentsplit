@@ -1,6 +1,6 @@
 // Fails when the JavaScript that every page loads up front (the entry script and
 // the chunks index.html preloads) exceeds the budget in docs/v2/BASELINE.md.
-//   bun scripts/check-bundle.ts   (after bunx vite build)
+//   bun scripts/check-bundle.ts   (after bun run build)
 import { readFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
 
