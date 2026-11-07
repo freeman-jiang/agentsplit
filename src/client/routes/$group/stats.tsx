@@ -152,7 +152,7 @@ function StatsTab() {
           )}
         </div>
         {/* The date range describes the selection, so it sits with the filters, not in a card. */}
-        {data && data.summary.count > 0 && <span className="ml-auto self-center text-sm tabular-nums text-muted-foreground">Active period · {activeSpan(data.summary)}</span>}
+        {data && data.summary.count > 0 && <span className="self-center text-sm tabular-nums text-muted-foreground sm:ml-auto">Active period · {activeSpan(data.summary)}</span>}
       </div>
       {/* On wide screens Summary and Totals share a row; the wide cards span both columns. */}
       <div className="grid gap-6 xl:grid-cols-2">
