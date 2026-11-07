@@ -12,7 +12,7 @@ test('a group opens on its expenses, sorts by date or by last change, and keeps 
   await page.goto(`/${h.slug}`)
   await expect(page.getByTestId('expense-list')).toBeVisible()
   await expect(page).toHaveURL(new RegExp(`/${h.slug}$`))
-  await expect(page.getByRole('link', { name: 'Expenses', exact: true })).toHaveClass(/border-primary!/)
+  await expect(page.getByRole('link', { name: 'Expenses', exact: true })).toHaveAttribute('aria-current', 'page')
   // Titles name the page and the group, as in the current app (P-GROUP-48).
   await expect(page).toHaveTitle(/^Expenses · .+ · AgentSplit$/)
   const rows = page.getByTestId('expense-list').getByRole('listitem')
@@ -30,7 +30,7 @@ test('a group opens on its expenses, sorts by date or by last change, and keeps 
   await expect(rail).toContainText('Alice Example')
   const people = rail.getByTestId('summary-participant').filter({ visible: true })
   await expect(people).toHaveCount(3)
-  const nets = await people.locator('.tabular-nums').allInnerTexts()
+  const nets = await people.getByTestId('summary-net').allInnerTexts()
   const cents = nets.map((n) => (n.startsWith('owes') ? -1 : 1) * Math.round(Number(n.replace(/[^\d.]/g, '') || '0') * 100))
   expect(cents.reduce((a, b) => a + b, 0)).toBe(0)
 
@@ -122,7 +122,7 @@ test('group URLs are the current app’s: /groups/<id>/… without a slug, /<slu
   await expect(page.locator(`a[href="/${h.slug}"]`).first()).toBeVisible()
   await page.locator(`a[href="/${h.slug}"]`).first().click()
   await expect(page).toHaveURL(new RegExp(`/${h.slug}$`))
-  await expect(page.getByRole('link', { name: 'Expenses', exact: true })).toHaveClass(/border-primary!/)
+  await expect(page.getByRole('link', { name: 'Expenses', exact: true })).toHaveAttribute('aria-current', 'page')
   // v2's first URL for a group without a slug moves to the current app's URL with a 307.
   const moved = await request.get(`/${tripId}/stats?x=1`, { maxRedirects: 0 })
   expect(moved.status()).toBe(307)

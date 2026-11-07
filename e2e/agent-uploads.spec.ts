@@ -3,6 +3,7 @@
 // from it; a member's browser upload is stored and served back. The database
 // tests cover the refusals.
 import { expect, test } from '@playwright/test'
+import { randomId } from '../src/shared/ids'
 import { png } from '../test/kit/images'
 import { mcpClient } from '../test/kit/mcp'
 import { addExpense, agentKey, draft, seedHousehold } from './fixtures'
@@ -17,7 +18,7 @@ test('an agent uploads a receipt to its target, attaches it, and downloads it wi
   // The agent's own HTTP client, over the network to the built server.
   const mcp = mcpClient({ baseUrl: baseURL ?? '', send: (r) => fetch(r) })
   const call = (data: { name: string; args: object }) => mcp.ok({ ...data, headers: { 'x-api-key': key } })
-  const expenseId = `agent-receipt-${Date.now()}`.padEnd(21, 'x').slice(0, 21)
+  const expenseId = randomId()
   await addExpense(household, expenseId, draft(household, { title: 'Hardware store', amount: '42.00', date: '2026-11-01' }))
 
   const requested = await call({
