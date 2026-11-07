@@ -4,7 +4,7 @@ import { errorMessage } from '~/client/queries/account'
 import { Button } from '~/client/ui/button'
 
 /** Starts Google sign-in at once, as the current app's login button does (P-AUTH-59, P-AUTH-60). */
-export function LoginButton(props: { label: string; selectAccount: boolean; callbackURL: string }) {
+export function LoginButton(props: { label: string; selectAccount: boolean; callbackURL: string; errorCallbackURL: string }) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   async function start() {
@@ -15,6 +15,7 @@ export function LoginButton(props: { label: string; selectAccount: boolean; call
       const result = await authClient.signIn.social({
         provider: 'google',
         callbackURL: props.callbackURL,
+        errorCallbackURL: props.errorCallbackURL,
         ...(props.selectAccount ? { additionalParams: { prompt: 'select_account' } } : {}),
       })
       if (result.error) {

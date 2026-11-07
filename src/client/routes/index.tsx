@@ -48,7 +48,7 @@ function Landing() {
           <p className="max-w-lg leading-normal text-pretty text-muted-foreground sm:text-xl sm:leading-8">
             Keep track of everyday expenses with the people you share them with. In your browser, or with your agent.
           </p>
-          <LoginButton label="Sign in with Google" selectAccount={false} callbackURL="/" />
+          <LoginButton label="Sign in with Google" selectAccount={false} callbackURL="/" errorCallbackURL="/sign-in" />
         </div>
       </section>
     </main>
