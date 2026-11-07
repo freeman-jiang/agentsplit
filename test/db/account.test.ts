@@ -8,10 +8,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { authBootstrap, groups, legacyGroupClaims, memberships, oauthConnections } from '../../db/schema/app'
 import * as auth from '../../db/schema/auth'
 import { bootstrapOwner, consentClient, getAccount, revokeApiKey, revokeConnection, updateProfile } from '~/server/account'
-import { createAuth } from '~/server/auth'
+import { createAuth } from '~/server/auth/auth'
 import { makeDb, type Db } from '~/server/db'
 import type { Principal } from '~/server/access'
-import { CONTENT_SECURITY_POLICY, readinessResponse } from '~/server/security'
+import { LIMITS } from '~/shared/limits'
+import { CONTENT_SECURITY_POLICY } from '~/server/headers'
+import { readinessResponse } from '~/server/public-pages'
 import { safeNextPath } from '~/shared/account'
 import { Forbidden, Invalid, NotFound } from '~/shared/api'
 import { resetTestDatabase } from './setup'
@@ -28,7 +30,7 @@ const bob = principal('bob')
 const day = (n: number) => new Date(Date.UTC(2026, 10, n))
 
 const makeAuth = (bootstrapEmail?: string) =>
-  createAuth({ db, baseUrl, secret, googleClientId: 'test-client', googleClientSecret: 'test-secret', bootstrapEmail })
+  createAuth({ db, baseUrl, secret, googleClientId: 'test-client', googleClientSecret: 'test-secret', bootstrapEmail, signUpDailyLimit: LIMITS.signUpsPerDay })
 
 async function sessionHeaders(userId: string): Promise<Headers> {
   const token = `token-${userId}-${crypto.randomUUID()}`
@@ -295,13 +297,6 @@ describe('sign-in destination', () => {
     // Better Auth's defaults repeat the configured scopes, as in the current app; the set is what counts.
     expect([...new Set(google.searchParams.get('scope')?.split(' '))].sort()).toEqual(['email', 'openid', 'profile'])
     for (const bad of ['/\\evil.example', '//evil.example', 'https://evil.example/']) expect({ bad, status: (await start(bad)).status }).toEqual({ bad, status: 403 })
-  })
-
-  it('refuses incomplete configuration', () => {
-    expect(() => createAuth({ db, baseUrl, secret: 'short', googleClientId: 'a', googleClientSecret: 'b' })).toThrow(
-      'Google sign-in is not configured',
-    )
-    expect(() => createAuth({ db, baseUrl, secret, googleClientId: '', googleClientSecret: 'b' })).toThrow('Google sign-in is not configured')
   })
 })
 

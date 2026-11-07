@@ -1,19 +1,16 @@
 // The current app's wrapper around three OAuth routes of Better Auth
-// (src/app/api/auth/[...all]/route.ts). Better Auth's access tokens are JWTs
-// that stay valid until they expire (300 seconds), so the wrapper ties a
-// revocation to the agent connection, which every MCP request checks:
+// (src/app/api/auth/[...all]/route.ts). It ties each revocation to the agent
+// connection (oauth-connections.ts), which every MCP request checks:
 // - RFC 7009 revoke of a refresh token tombstones its connection (P-MCP-137).
 // - Deleting a consent revokes the user's connections for that client (P-MCP-138).
 // - UserInfo applies the MCP endpoint's connection, consent and verified-user checks (P-MCP-139).
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { Result, Schema } from 'effect'
-import { oauthConnections } from '../../db/schema/app'
-import * as authSchema from '../../db/schema/auth'
-import { revokeOAuthConnection } from './account'
-import { hashOAuthToken } from './auth-options'
-import type { Db } from './db'
-import { oauthRefusal } from './mcp/authenticate'
-import { verifyOAuthRequest } from './mcp/oauth'
+import * as authSchema from '../../../db/schema/auth'
+import type { Db } from '../db'
+import { oauthRefusal } from './authenticate'
+import { verifyOAuthRequest } from './oauth'
+import { refreshTokenOf, revokeOAuthConnection, tombstoneRevokedRefresh } from './oauth-connections'
 import { requestSession } from './session'
 
 const ConsentId = Schema.Struct({ id: Schema.String })
@@ -33,14 +30,6 @@ async function consentOwner(db: Db, data: { request: Request; secret: string; ba
     .from(authSchema.oauthConsent)
     .where(and(eq(authSchema.oauthConsent.id, input.success.id), eq(authSchema.oauthConsent.userId, principal.userId)))
   return consent ? { userId: principal.userId, clientId: consent.clientId } : null
-}
-
-/** The stored refresh token that an RFC 7009 revoke request names, before Better Auth revokes it. */
-async function refreshTokenOf(db: Db, request: Request) {
-  const token = new URLSearchParams(await request.clone().text()).get('token')
-  if (!token) return null
-  const [refresh] = await db.select().from(authSchema.oauthRefreshToken).where(eq(authSchema.oauthRefreshToken.token, hashOAuthToken(token)))
-  return refresh ?? null
 }
 
 /**
@@ -68,23 +57,6 @@ export async function handleAuthRoute(data: {
   const response = await data.handle(request)
   if (!response.ok) return response
   if (owner) await revokeOAuthConnection(db, owner)
-  if (refresh && !refresh.revoked && refresh.authorizationCodeId) {
-    const [after] = await db
-      .select({ revoked: authSchema.oauthRefreshToken.revoked })
-      .from(authSchema.oauthRefreshToken)
-      .where(eq(authSchema.oauthRefreshToken.id, refresh.id))
-    if (after?.revoked)
-      await db
-        .update(oauthConnections)
-        .set({ revokedAt: new Date() })
-        .where(
-          and(
-            eq(oauthConnections.authorizationCodeId, refresh.authorizationCodeId),
-            eq(oauthConnections.userId, refresh.userId),
-            eq(oauthConnections.clientId, refresh.clientId),
-            isNull(oauthConnections.revokedAt),
-          ),
-        )
-  }
+  if (refresh) await tombstoneRevokedRefresh(db, refresh)
   return response
 }

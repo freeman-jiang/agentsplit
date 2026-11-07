@@ -3,9 +3,9 @@ import { serializeSignedCookie } from 'better-call'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { session, user } from '../../db/schema/auth'
-import { createAuth } from '~/server/auth'
+import { createAuth } from '~/server/auth/auth'
 import { makeDb, type Db } from '~/server/db'
-import { sessionPrincipal } from '~/server/session'
+import { sessionPrincipal } from '~/server/auth/session'
 import { resetTestDatabase } from './setup'
 
 const secret = 'test-secret-0123456789-0123456789-0123456789'
@@ -39,7 +39,7 @@ const signed = async (token: string, key = secret, name = 'better-auth.session_t
   (await serializeSignedCookie(name, token, key)).split(';')[0] ?? ''
 
 it.each(['http://localhost', 'https://agentsplit.example'])('accepts and rejects the same cookies as Better Auth on %s', async (baseUrl) => {
-  const auth = createAuth({ db, baseUrl, secret, googleClientId: 'a', googleClientSecret: 'b' })
+  const auth = createAuth({ db, baseUrl, secret, googleClientId: 'a', googleClientSecret: 'b', bootstrapEmail: undefined, signUpDailyLimit: 200 })
   const cases: Record<string, string | null> = {
     valid: await signed('token-valid'),
     secureName: await signed('token-valid', secret, '__Secure-better-auth.session_token'),

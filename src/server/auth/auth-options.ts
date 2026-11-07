@@ -1,4 +1,4 @@
-// The Better Auth plugin set, shared by the runtime (src/server/auth.ts) and the
+// The Better Auth plugin set, shared by the runtime (auth.ts) and the
 // schema generator (scripts/gen-auth-schema.ts). It matches the current app's
 // src/lib/auth.ts, so imported rows keep working.
 import { apiKey } from '@better-auth/api-key'
@@ -6,19 +6,9 @@ import { cimd } from '@better-auth/cimd'
 import { mcp } from '@better-auth/mcp'
 import type { OAuthProviderExtension } from '@better-auth/oauth-provider'
 import { jwt } from 'better-auth/plugins/jwt'
-import { OAUTH_SCOPES } from '../shared/account'
-import { LIMITS } from '../shared/limits'
-import { sha256Base64url } from './ids'
-
-// The consent page needs the scopes too, so they live in the shared contract.
-export { OAUTH_READ_SCOPE, OAUTH_SCOPES, OAUTH_WRITE_SCOPE } from '../shared/account'
-export const OAUTH_CONNECTION_CLAIM = 'https://agentsplit.app/connection'
-
-export const mcpResource = (baseUrl: string) => new URL('/api/mcp', baseUrl).href
-export const oauthIssuer = (baseUrl: string) => new URL('/api/auth', baseUrl).href
-
-/** The stored form of every OAuth token: base64url(sha256(token)), as in the current app. */
-export const hashOAuthToken = (token: string) => sha256Base64url(token)
+import { LIMITS } from '../../shared/limits'
+import { sha256Base64url } from '../ids'
+import { mcpResource, OAUTH_SCOPES, oauthIssuer } from './constants'
 
 export type ClientMetadataResourceFetch = Parameters<typeof cimd>[0]['fetchClientMetadataResource']
 
@@ -43,7 +33,8 @@ export function authPlugins(config: {
       grantTypes: ['authorization_code', 'refresh_token'],
       accessTokenExpiresIn: 300,
       refreshTokenExpiresIn: 60 * 60 * 24 * 30,
-      storeTokens: { hash: hashOAuthToken },
+      // The stored form of every OAuth token, as in the current app.
+      storeTokens: { hash: sha256Base64url },
       // CIMD stays preferred; older MCP clients can register before sign-in.
       // Registration does not grant account access or bypass consent or PKCE.
       allowDynamicClientRegistration: true,

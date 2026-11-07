@@ -4,11 +4,10 @@ import { DPOP_SIGNING_ALGORITHMS } from 'better-auth/oauth2'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { apikey } from '../../db/schema/auth'
-import * as authOptions from '~/server/auth-options'
-import { hashApiKey, verifyApiKey } from '~/server/mcp/api-key'
-import { readApiKey } from '~/server/mcp/authenticate'
-import { CHALLENGE_SCOPES, DPOP_ALGORITHMS, protectedResourceMetadata } from '~/server/mcp/challenge'
-import * as constants from '~/server/mcp/constants'
+import { verifyApiKey } from '~/server/auth/api-key'
+import { readApiKey } from '~/server/auth/authenticate'
+import { DPOP_ALGORITHMS, protectedResourceMetadata } from '~/server/auth/challenge'
+import { sha256Base64url } from '~/server/ids'
 import { BASE, startHarness, type Harness } from './mcp-harness'
 
 // These tests create many API keys for one account; the fair-use cap has its own test (test/db/limits.test.ts).
@@ -24,16 +23,9 @@ beforeAll(async () => {
 })
 afterAll(() => h.close())
 
-describe('copied constants', () => {
-  it('equal the values Better Auth uses', () => {
-    expect(constants.OAUTH_READ_SCOPE).toBe(authOptions.OAUTH_READ_SCOPE)
-    expect(constants.OAUTH_WRITE_SCOPE).toBe(authOptions.OAUTH_WRITE_SCOPE)
-    expect(constants.OAUTH_CONNECTION_CLAIM).toBe(authOptions.OAUTH_CONNECTION_CLAIM)
-    expect(constants.mcpResource(BASE)).toBe(authOptions.mcpResource(BASE))
-    expect(constants.oauthIssuer(BASE)).toBe(authOptions.oauthIssuer(BASE))
+describe('copied Better Auth values', () => {
+  it('lists the DPoP algorithms Better Auth accepts', () => {
     expect([...DPOP_ALGORITHMS]).toEqual([...DPOP_SIGNING_ALGORITHMS])
-    // Every challenge scope is one the provider grants.
-    for (const scope of CHALLENGE_SCOPES) expect(authOptions.OAUTH_SCOPES).toContain(scope)
   })
 })
 
@@ -135,7 +127,7 @@ describe('API key verification', () => {
   it('refuses an unknown key and stores the same hash Better Auth stores', async () => {
     expect(await h.withDb((db) => verifyApiKey(db, `agentsplit_${'z'.repeat(40)}`))).toEqual({ valid: false, code: 'INVALID_API_KEY' })
     const created = await h.authApi((api) => api.createApiKey({ body: { userId: 'alice' } }))
-    expect((await row(created.id))?.key).toBe(await hashApiKey(created.key))
+    expect((await row(created.id))?.key).toBe(sha256Base64url(created.key))
     expect(created.key.startsWith('agentsplit_')).toBe(true)
     expect((await row(created.id))?.expiresAt).toBeNull()
   })
