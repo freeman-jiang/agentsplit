@@ -17,7 +17,7 @@ import { NativeSelect } from '~/client/ui/native-select'
 import type { FeedFilter, FeedItem } from '~/shared/api'
 import { isCalendarDate } from '~/shared/dates'
 import { LIMITS } from '~/shared/limits'
-import { DashboardBalance } from './expenses/-dashboard-balance'
+import { DashboardBalance } from './-dashboard-balance'
 
 // Every filter stays as the URL has it, so a value the feed cannot use shows a message (toFilter).
 const parseSearch = searchParams({

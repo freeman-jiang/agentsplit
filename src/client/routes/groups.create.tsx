@@ -40,7 +40,7 @@ function CreateGroup() {
         }
         onSubmit={async (values) => {
           const participants = people.map((p) => p.name.trim()).filter(Boolean)
-          const group = await rpc((api) => api('groups.create', { groupId: null, idempotencyKey, group: { ...values, slug: values.slug.trim() || null, participants } }))
+          const group = await rpc((api) => api('groups.create', { idempotencyKey, group: { ...values, slug: values.slug.trim() || null, participants } }))
           await afterWrite({ queryClient, scope: 'group', groupId: group.id })
           await navigate({ to: '/$group/expenses', params: { group: groupRef(group) } })
         }}
