@@ -1,6 +1,6 @@
 // Groups and access against a real database: settings, people, slugs,
 // invitations and membership changes. Item IDs refer to docs/v2/PARITY.md.
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { activities, groups, invitations, memberships } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { eq, sql } from 'drizzle-orm'
@@ -21,23 +21,20 @@ import { listActivities } from '~/server/history'
 import { createExpense, getGroup } from '~/server/ledger'
 import { requireMember, type Principal } from '~/server/core/access'
 import { statsOverview } from '~/server/stats'
+import { LIMITS } from '~/shared/limits'
 import { testDatabase, type TestDatabase } from '../kit/database'
 import { draft } from '../kit/drafts'
 import { counter, id21 } from '../kit/ids'
 import { principal, userRows } from '../kit/people'
 import { createPrivateContext } from '../kit/seed'
 
-// These tests create many groups as one account; the fair-use cap has its own test (test/db/limits.test.ts).
-vi.mock('~/shared/limits', async (original) => {
-  const limits = await original<typeof import('~/shared/limits')>()
-  return { ...limits, LIMITS: { ...limits.LIMITS, groupsCreated: 1000 } }
-})
-
 let database: TestDatabase
 // Invitation links name this origin; the join checks refuse links of any other.
 const BASE = 'https://agentsplit.test'
 
-const alice = principal('alice', { name: 'Alice Admin' })
+// Each test has its own Alice, so the groups it creates stay under the fair-use cap (test/db/limits.test.ts tests the cap).
+const nextAlice = counter('alice')
+let alice: Principal
 const bob = principal('bob', { name: 'Bob' })
 const cara = principal('cara', { name: 'Cara' })
 const mallory = principal('mallory', { name: 'Mallory' })
@@ -72,7 +69,11 @@ async function groupWithBob(slug: string | null = null) {
 
 beforeAll(async () => {
   database = await testDatabase()
-  await database.tx((db) => db.insert(user).values(userRows([alice, bob, cara, mallory], { verified: true })))
+  await database.tx((db) => db.insert(user).values(userRows([bob, cara, mallory], { verified: true })))
+})
+beforeEach(async () => {
+  alice = principal(nextAlice(), { name: 'Alice Admin' })
+  await database.tx((db) => db.insert(user).values(userRows([alice], { verified: true })))
 })
 afterAll(async () => {
   await database.close()
@@ -85,10 +86,10 @@ describe('creating groups', () => {
     const d = await details(alice, g.id)
     expect(d.role).toBe('admin')
     expect(d.people).toHaveLength(1)
-    expect(d.people[0]).toMatchObject({ name: 'Alice Admin', status: 'joined', role: 'admin', email: 'alice@example.com', reserved: true })
+    expect(d.people[0]).toMatchObject({ name: 'Alice Admin', status: 'joined', role: 'admin', email: alice.email, reserved: true })
     expect(d.participantId).toBe(d.people[0]!.id)
-    const log = await database.tx((db) => db.select().from(activities).where(eq(activities.groupId, g.id)))
-    expect(log).toEqual([expect.objectContaining({ type: 'create_group', data: 'Flat', groupRevision: 1, actorUserId: 'alice' })])
+    const log = await database.tx((db) => db.select().from(activities).where(eq(activities.groupId, g.id)).orderBy(activities.sequence))
+    expect(log).toEqual([expect.objectContaining({ type: 'create_group', data: 'Flat', groupRevision: 1, actorUserId: alice.userId })])
     expect(log[0]!.snapshot).toMatchObject({ schemaVersion: 2, kind: 'group', group: { name: 'Flat', revision: 1 } })
   })
 
@@ -199,7 +200,7 @@ describe('settings', () => {
     expect(result.revision).toBe(2)
     const d = await details(alice, g.id)
     expect(d).toMatchObject({ name: 'After', information: 'Keep me', defaultCurrency: 'JPY', revision: 2 })
-    const log = await database.tx((db) => db.select().from(activities).where(eq(activities.groupId, g.id)))
+    const log = await database.tx((db) => db.select().from(activities).where(eq(activities.groupId, g.id)).orderBy(activities.sequence))
     expect(log.map((a) => [a.type, a.groupRevision])).toEqual([
       ['create_group', 1],
       ['update_group', 2],
@@ -293,9 +294,8 @@ describe('group history', () => {
     const group = await create(alice, { name: 'Logged' })
     await update(alice, group.id, 1, { name: 'Logged renamed' })
     const page = await database.tx((db) => listActivities(db, { principal: alice, groupId: group.id, limit: 10 }))
-    const json = JSON.stringify(page)
-    expect(json).toContain('Logged renamed')
-    expect(json).toContain('"currency":"USD"')
+    const edit = page.activities.find((a) => a.type === 'update_group')
+    expect(edit?.snapshot).toMatchObject({ _tag: 'group', group: { schemaVersion: 2, name: 'Logged renamed', currency: 'USD' } })
   })
 })
 
@@ -335,18 +335,18 @@ describe('invitations', () => {
     expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
     expect(inv.url).toBe(`${BASE}/invite/${token}`)
     const [row] = await database.tx((db) => db.select().from(invitations).where(eq(invitations.id, inv.id)))
-    // Hex SHA-256, as the current app stored it, so imported invitations keep working.
+    // Hex SHA-256, as v1 stored it, so imported invitations keep working.
     expect(row?.tokenHash).toBe(sha256Hex(token))
     expect(JSON.stringify(row)).not.toContain(token)
     const days = (row!.expiresAt.getTime() - row!.createdAt.getTime()) / 86_400_000
-    expect(days).toBeCloseTo(7, 2)
+    expect(days).toBeCloseTo(LIMITS.invitationDays, 2)
     // The invite's idempotency record keeps the invitation, but not the secret.
     const stored = await database.tx((db) => db.execute<{ r: string }>(sql`SELECT response::text AS r FROM idempotency_keys`).then((r) => r.rows.map((x) => x.r)))
     const record = stored.filter((r) => r.includes(inv.id))
     expect(record).toHaveLength(1)
     expect(record[0]).not.toContain(token)
     // The log says an invitation was created, without the email (P-ACCESS-30).
-    const log = await database.tx((db) => db.select().from(activities).where(eq(activities.groupId, group.id)))
+    const log = await database.tx((db) => db.select().from(activities).where(eq(activities.groupId, group.id)).orderBy(activities.sequence))
     expect(log.map((a) => a.data ?? '').join('\n')).not.toContain('bob@example.com')
     expect(log.map((a) => a.type)).toEqual(['create_group', 'update_group', 'join_group'])
   })
@@ -472,8 +472,8 @@ describe('roles, removal and leaving', () => {
     await access(alice, { action: 'set_role', groupId: group.id, userId: bob.userId, role: 'admin' })
     expect((await details(bob, group.id)).role).toBe('admin')
     expect(await access(alice, { action: 'leave', groupId: group.id })).toMatchObject({ joined: false })
-    const log = await database.tx((db) => db.select().from(activities).where(eq(activities.groupId, group.id)))
-    expect(log.at(-1)).toMatchObject({ type: 'leave_group', actorUserId: 'alice' })
+    const log = await database.tx((db) => db.select().from(activities).where(eq(activities.groupId, group.id)).orderBy(activities.sequence))
+    expect(log.at(-1)).toMatchObject({ type: 'leave_group', actorUserId: alice.userId })
   })
 
   it('lets any member leave and rejoin as the same participant (P-ACCESS-19, -50, -57)', async () => {
