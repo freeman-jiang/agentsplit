@@ -8,7 +8,7 @@ import { GroupForm } from '~/client/components/group-form'
 import { formatMoment } from '~/client/dates'
 import { describeError } from '~/client/errors'
 import { groupDetailsQuery } from '~/client/queries/groups'
-import { afterWrite, keys } from '~/client/queries/keys'
+import { afterWrite, type WriteScope } from '~/client/queries/keys'
 import { newIdempotencyKey, rpc } from '~/client/rpc'
 import { Alert, AlertDescription } from '~/client/ui/alert'
 import { Button } from '~/client/ui/button'
@@ -75,37 +75,40 @@ function useActions(details: Details) {
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const run = async <A,>(data: { work: () => Promise<A>; rethrow: boolean }): Promise<A | null> => {
+  const group: WriteScope = { scope: 'group', groupId: details.id }
+  /** `scope`: what the write made stale, from its answer; a failed write refreshes the group. */
+  const run = async <A,>(data: { work: () => Promise<A>; rethrow: boolean; scope?: (result: A) => WriteScope }): Promise<A | null> => {
     setBusy(true)
     setError(null)
+    let stale: WriteScope = group
     try {
-      return await data.work()
+      const result = await data.work()
+      stale = data.scope?.(result) ?? group
+      return result
     } catch (e) {
       if (data.rethrow) throw e
       setError(describeError(e).message)
       return null
     } finally {
-      await afterWrite({ queryClient, scope: 'group', groupId: details.id })
+      await afterWrite({ queryClient, ...stale })
       setBusy(false)
     }
   }
   const access = (request: typeof AccessRequest.Type) => async () => {
     const result = await rpc((api) => api('groups.access', { idempotencyKey: newIdempotencyKey(), request }))
-    if (!result.joined) {
-      queryClient.removeQueries({ queryKey: keys.group(details.id) })
-      await navigate({ to: '/groups' })
-    }
+    if (!result.joined) await navigate({ to: '/groups' })
     return result
   }
+  const accessScope = (result: { joined: boolean }): WriteScope => (result.joined ? group : { scope: 'left', groupId: details.id })
   const savePeople = (participants: NonNullable<(typeof GroupChanges.Type)['participants']>) => () =>
     rpc((api) => api('groups.update', { groupId: details.id, expectedRevision: details.revision, idempotencyKey: newIdempotencyKey(), changes: { participants } }))
   return {
     busy,
     error,
-    access: (request: typeof AccessRequest.Type) => run({ work: access(request), rethrow: false }),
+    access: (request: typeof AccessRequest.Type) => run({ work: access(request), rethrow: false, scope: accessScope }),
     savePeople: (participants: Parameters<typeof savePeople>[0]) => run({ work: savePeople(participants), rethrow: false }),
     confirmed: {
-      access: (request: typeof AccessRequest.Type) => run({ work: access(request), rethrow: true }),
+      access: (request: typeof AccessRequest.Type) => run({ work: access(request), rethrow: true, scope: accessScope }),
       savePeople: (participants: Parameters<typeof savePeople>[0]) => run({ work: savePeople(participants), rethrow: true }),
     },
   }
