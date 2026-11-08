@@ -24,7 +24,7 @@ export function Segmented<V extends string>(props: {
           {...(Icon ? { title: label, 'aria-label': label } : {})}
           onClick={() => props.onChange(value)}
           className={cn(
-            'hit-area relative rounded-[0.5rem] transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+            'press hit-area relative rounded-[0.5rem] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
             // On touch an icon option is 44 px wide, so the hit areas of two options do not overlap.
             Icon ? 'flex items-center px-2.5 pointer-coarse:px-3.5' : 'px-3',
             props.value === value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',

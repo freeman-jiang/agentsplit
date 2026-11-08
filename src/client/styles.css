@@ -175,6 +175,21 @@
   }
 }
 
+/* Press feedback for a control: it shrinks a little while pressed, and a long
+   press does not select its label or open a callout. Not for text fields. */
+@utility press {
+  transition-property: color, background-color, border-color, scale;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-out-strong);
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  &:active {
+    scale: 0.97;
+  }
+}
+
 @media (pointer: coarse) {
   button:not(.hit-area) {
     min-height: 44px;
