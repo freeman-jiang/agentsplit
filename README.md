@@ -21,7 +21,7 @@ The app is a rewrite (v2) of the Next.js and Prisma app it replaced in productio
 
 ## Stack
 
-- Bun runs the server (`Bun.serve`) and the tests. Bun's S3 client reads and writes receipts.
+- Bun runs the server (`Bun.serve`), the build and the scripts. Bun's S3 client reads and writes receipts. Vitest and Playwright run on Node, so the unit and database tests run the server code on Node; the end-to-end tests run the built server on Bun.
 - Effect RPC (`/api/rpc`) connects the client to the server, with Effect Schema as the shared contract.
 - TanStack Router and TanStack Query run the client, built with Vite and React.
 - Drizzle and PostgreSQL 18 store the ledger. Money is integer minor units. Database triggers check that shares and payers add up to the amount and that history stays append-only.
