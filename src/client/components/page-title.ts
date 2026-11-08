@@ -2,7 +2,8 @@ import { useMatches } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import type { FileRoutesById } from '~/client/routeTree.gen'
 
-const DEFAULT_TITLE = 'AgentSplit · Shared expenses, simply settled'
+/** index.html's title, read before any route sets its own. */
+const DEFAULT_TITLE = document.title
 
 /**
  * The title of every route, as in the current app (P-GROUP-48). `null` keeps
