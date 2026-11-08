@@ -275,7 +275,7 @@ function BarRow(props: { label: ReactNode; value: number; max: number; color: st
       onClick={props.onClick}
       aria-label={props.aria}
       className={cn(
-        'group -mx-2 grid w-[calc(100%+1rem)] cursor-pointer grid-cols-[minmax(0,1fr)_auto_1rem] items-center gap-x-3 gap-y-1.5 rounded-md px-2 py-1.5 text-left text-sm press hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'group -mx-2 grid w-[calc(100%+1rem)] cursor-pointer grid-cols-[minmax(0,1fr)_auto_1rem] items-center gap-x-3 gap-y-1.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         props.columns,
       )}
     >

@@ -28,9 +28,8 @@ export default function ExpensesDialog(props: Props) {
   return (
     <Dialog open={props.open} onOpenChange={(open) => !open && props.onClose()}>
       {/* The top edge stays at 10% of the screen, so the header does not move when the rows arrive.
-          The list's row is bounded by the dialog's height, so the list scrolls. As a bottom sheet
-          it pads only for the home indicator. */}
-      <DialogContent className="top-[10dvh] max-h-[80dvh] translate-y-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 max-sm:pb-[env(safe-area-inset-bottom,0px)]">
+          The list's row is bounded by the dialog's height, so the list scrolls. */}
+      <DialogContent className="top-[10dvh] max-h-[80dvh] translate-y-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
         <DialogHeader className="space-y-1.5 border-b p-6">
           <DialogTitle className="flex items-center gap-2">{props.title}</DialogTitle>
           <DialogDescription>{props.description}</DialogDescription>
@@ -57,10 +56,10 @@ export default function ExpensesDialog(props: Props) {
           ) : data.length === 0 ? (
             <p className="p-6 text-sm text-muted-foreground">{props.empty}</p>
           ) : (
-            <ul className="animate-fade-in divide-y">
+            <ul className="divide-y">
               {data.map((e) => (
                 <li key={e.id}>
-                  <Link {...editorLink({ group: drill.group, expenseId: e.id, kind: e.kind })} className="press flex items-center justify-between gap-2 px-6 py-3 text-sm hover:bg-accent">
+                  <Link {...editorLink({ group: drill.group, expenseId: e.id, kind: e.kind })} className="flex items-center justify-between gap-2 px-6 py-3 text-sm hover:bg-accent">
                     <div className="min-w-0">
                       {e.vendor && <div className="mb-1 truncate text-xs text-muted-foreground">{e.vendor}</div>}
                       <div className="truncate">{e.title}</div>

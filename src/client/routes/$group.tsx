@@ -98,7 +98,7 @@ function GroupLayout() {
               key={to}
               to={to}
               params={{ group }}
-              className="press inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 border-transparent px-2 py-3 text-sm whitespace-nowrap text-muted-foreground sm:px-0"
+              className="inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 border-transparent px-2 py-3 text-sm whitespace-nowrap text-muted-foreground sm:px-0"
               activeProps={{ className: 'border-primary! text-foreground! font-medium' }}
             >
               {label}
