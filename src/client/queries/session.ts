@@ -25,6 +25,6 @@ export async function requireSignedIn(data: { queryClient: QueryClient; location
 /** Ends the session, then loads /sign-in in full, which drops every cached query of the account. */
 export async function signOut(data: { next?: string } = {}) {
   const response = await fetch(`${AUTH_PATH}/sign-out`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', credentials: 'same-origin' })
-  if (!response.ok) throw new Error('Unable to sign out. Please try again.')
+  if (!response.ok) throw new Error('Could not sign out. Try again.')
   window.location.assign(signInHref(data.next))
 }
