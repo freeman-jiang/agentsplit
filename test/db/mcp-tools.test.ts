@@ -158,7 +158,51 @@ describe('protocol', () => {
 
 describe('tool advertisement', () => {
   type Advertised = { name: string; annotations: unknown; securitySchemes: unknown; _meta: unknown; inputSchema: JsonNode; outputSchema: JsonNode }
-  type JsonNode = { type?: string; properties?: Record<string, JsonNode>; required?: string[]; additionalProperties?: boolean; items?: JsonNode; enum?: string[] }
+  type JsonNode = {
+    type?: string | string[]
+    properties?: Record<string, JsonNode>
+    required?: string[]
+    additionalProperties?: boolean
+    items?: JsonNode
+    enum?: (string | number)[]
+    const?: string | number
+    anyOf?: JsonNode[]
+    oneOf?: JsonNode[]
+  }
+  /** The alternatives of a node: the branches of its anyOf or oneOf, flattened, or the node itself. */
+  const alternatives = (node: JsonNode): JsonNode[] => {
+    const union = node.anyOf ?? node.oneOf
+    return union ? union.flatMap(alternatives) : [node]
+  }
+  /** The constant fields of an alternative, such as `kind`, which tell the alternatives of a union apart. */
+  const constants = (node: JsonNode) => Object.entries(node.properties ?? {}).flatMap(([key, field]) => (field.const === undefined ? [] : [{ key, value: field.const }]))
+  /** Whether `now` is the alternative `old` became: the same type, and each constant field of `old` still takes its value. */
+  const sameVariant = (now: JsonNode, old: JsonNode) =>
+    JSON.stringify(now.type) === JSON.stringify(old.type) &&
+    constants(old).every(({ key, value }) => {
+      const field = now.properties?.[key]
+      return field?.const === value || field?.enum?.includes(value) === true
+    })
+  const variant = (node: JsonNode) => JSON.stringify([node.type ?? null, constants(node)])
+  /**
+   * Runs `check` on each alternative of `before` that has fields, items or an
+   * enum, with the alternative of `now` of the same variant; fails when `now` has none.
+   */
+  const eachVariant = (now: JsonNode | undefined, before: JsonNode, path: string, check: (now: JsonNode, before: JsonNode) => void) => {
+    expect({ path, present: now !== undefined }).toEqual({ path, present: true })
+    for (const old of alternatives(before)) {
+      if (!old.properties && !old.items && !old.enum && old.type !== 'object') continue
+      const match = alternatives(now ?? {}).find((node) => sameVariant(node, old))
+      expect({ path, variant: match ? variant(old) : null }).toEqual({ path, variant: variant(old) })
+      if (match) check(match, old)
+    }
+  }
+
+  /**
+   * The output fields of v1's schema that v2 leaves out on purpose: a saved
+   * revision keeps no receipt size and no group revision (docs/v2/parity/mcp.md, list_activity 06).
+   */
+  const leftOut = (path: string) => (/napshot\.expense\.documents\[\]$/.test(path) ? ['width', 'height'] : /napshot\.group$/.test(path) ? ['revision'] : [])
 
   it('advertises the current names, annotations, scopes and input fields', async () => {
     const r = await h.mcp.rpc({ method: 'tools/list', headers: alice })
@@ -175,33 +219,33 @@ describe('tool advertisement', () => {
         _meta: before._meta,
       })
       expect(now.inputSchema['$schema' as keyof JsonNode]).toBe('https://json-schema.org/draft/2020-12/schema')
-      // The same strict objects, fields, required fields and enums, recursively.
-      const compare = (a: JsonNode | undefined, b: JsonNode | undefined, path: string) => {
-        if (!a || !b) return
-        expect({ path, closed: a.additionalProperties === false }).toEqual({ path, closed: b.additionalProperties === false })
-        if (b.enum) expect({ path, enum: [...(a.enum ?? [])].sort() }).toEqual({ path, enum: [...b.enum].sort() })
-        if (b.properties) {
-          // v2 adds `payers` beside paidBy; every current field stays.
-          const added = Object.keys(a.properties ?? {}).filter((k) => !(k in (b.properties ?? {})))
-          expect({ path, missing: Object.keys(b.properties).filter((k) => !(k in (a.properties ?? {}))) }).toEqual({ path, missing: [] })
-          expect({ path, added }).toEqual({ path, added: path === 'create_expense.expense' || path === 'update_expense.changes' ? ['payers'] : [] })
-          // paidBy became optional because payers can replace it; nothing else changed.
-          const required = (b.required ?? []).filter((k) => k !== 'paidBy')
-          expect({ path, required: [...(a.required ?? [])].sort() }).toEqual({ path, required: required.sort() })
-          for (const key of Object.keys(b.properties)) compare(a.properties?.[key], b.properties[key], `${path}.${key}`)
-        }
-        compare(a.items, b.items, `${path}[]`)
-      }
+      // The same strict objects, fields, required fields and enums, recursively, in every alternative of a union.
+      const compare = (now: JsonNode | undefined, before: JsonNode, path: string) =>
+        eachVariant(now, before, path, (a, b) => {
+          expect({ path, closed: a.additionalProperties === false }).toEqual({ path, closed: b.additionalProperties === false })
+          if (b.enum) expect({ path, enum: [...(a.enum ?? [])].sort() }).toEqual({ path, enum: [...b.enum].sort() })
+          if (b.properties) {
+            // v2 adds `payers` beside paidBy; every current field stays.
+            const added = Object.keys(a.properties ?? {}).filter((k) => !(k in (b.properties ?? {})))
+            expect({ path, missing: Object.keys(b.properties).filter((k) => !(k in (a.properties ?? {}))) }).toEqual({ path, missing: [] })
+            expect({ path, added }).toEqual({ path, added: path === 'create_expense.expense' || path === 'update_expense.changes' ? ['payers'] : [] })
+            // paidBy became optional because payers can replace it; nothing else changed.
+            const required = (b.required ?? []).filter((k) => k !== 'paidBy')
+            expect({ path, required: [...(a.required ?? [])].sort() }).toEqual({ path, required: required.sort() })
+            for (const [key, field] of Object.entries(b.properties)) compare(a.properties?.[key], field, `${path}.${key}`)
+          }
+          if (b.items) compare(a.items, b.items, `${path}[]`)
+        })
       compare(now.inputSchema, before.inputSchema, now.name)
       expect(now.outputSchema.type).toBe('object')
-      // Every current output field is still there.
-      const outputs = (a: JsonNode | undefined, b: JsonNode | undefined, path: string) => {
-        if (!a || !b?.properties) return
-        const missing = Object.keys(b.properties).filter((k) => !(k in (a.properties ?? {})))
-        expect({ path, missing }).toEqual({ path, missing: [] })
-        for (const key of Object.keys(b.properties)) outputs(a.properties?.[key], b.properties[key], `${path}.${key}`)
-        outputs(a.items, b.items, `${path}[]`)
-      }
+      // Every current output field is still there, in every alternative of a union.
+      const outputs = (now: JsonNode | undefined, before: JsonNode, path: string) =>
+        eachVariant(now, before, path, (a, b) => {
+          const kept = Object.entries(b.properties ?? {}).filter(([key]) => !leftOut(path).includes(key))
+          expect({ path, missing: kept.map(([key]) => key).filter((key) => !(key in (a.properties ?? {}))) }).toEqual({ path, missing: [] })
+          for (const [key, field] of kept) outputs(a.properties?.[key], field, `${path}.${key}`)
+          if (b.items) outputs(a.items, b.items, `${path}[]`)
+        })
       outputs(now.outputSchema, before.outputSchema, now.name)
     }
   })

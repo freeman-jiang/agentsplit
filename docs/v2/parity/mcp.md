@@ -52,7 +52,7 @@ Status words:
 | — | changed | The create and update field descriptions carry the recording rules (`RECORDING_RULES` in src/server/mcp/tools/expenses.ts). No test copies the text. |
 | — | changed | `list_all_expenses.involvingMe` defaults to true, and its description says so (DECISIONS.md, P-FEED-19). The test does not compare defaults. |
 | — | changed | Tool descriptions: create_expense and get_balances state the payment rules; create_group and update_group say that currencyCode must be a supported code; manage_group_access says that `joined` is true only after a join; list_activity says that agentKeyId is shown only for your own changes; list_all_expenses states the involvingMe default. |
-| — | changed | Outputs: `payers` beside `paidBy` in list_all_expenses rows and in saved snapshots. In historical get_expense, `documents[].width` and `height` are optional, because a saved revision keeps only the receipt pointer. Snapshot unions are not compared by the test (it follows `properties` and `items` only). |
+| — | changed | Outputs: `payers` beside `paidBy` in list_all_expenses rows and in saved snapshots. In historical get_expense, `documents[].width` and `height` are optional, because a saved revision keeps only the receipt pointer. The test follows every alternative of a union (`anyOf`, `oneOf`), snapshots included; saved snapshots leave out the receipt sizes and the group revision (list_activity 06). |
 | — | changed | `get_balances.currencies[].balances` advertises its value schema (`additionalProperties`); `registry.ts` dropped it before. |
 
 ## Tool call results and errors
