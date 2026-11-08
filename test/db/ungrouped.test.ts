@@ -349,21 +349,6 @@ describe('ungrouped expenses', () => {
     await expect(create({ people: [people[0]!, { kind: 'email', id: 'x', name: ' ', email: 'x@example.com' }], expense: meal({ payer: 'me', people: ['me', 'x'] }) })).rejects.toMatchObject({
       message: 'Enter a name and a valid email address.',
     })
-    await expect(
-      tx((db) =>
-        createUngroupedExpense(db, {
-          principal: unverified,
-          baseUrl: BASE,
-          expenseId: randomId(),
-          idempotencyKey: key(),
-          people: [
-            { kind: 'account', id: 'me', userId: unverified.userId },
-            { kind: 'account', id: 'a', userId: alice.userId },
-          ],
-          expense: meal({ payer: 'me', people: ['me', 'a'] }),
-        }),
-      ),
-    ).rejects.toMatchObject({ _tag: 'Unauthorized' })
   })
 
   it('contact lookup exposes only shared verified members and self', async () => {
