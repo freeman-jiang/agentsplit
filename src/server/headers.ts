@@ -29,10 +29,14 @@ const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
 }
 
-/** A copy of `response` with the security headers; responses from fetch can have immutable headers. */
+/**
+ * A copy of `response` with the security headers; responses from fetch can
+ * have immutable headers. A header the route set itself stays, such as the
+ * sandbox policy of a receipt image.
+ */
 export function secured(response: Response): Response {
   const copy = new Response(response.body, response)
-  for (const [name, value] of Object.entries(SECURITY_HEADERS)) copy.headers.set(name, value)
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) if (!copy.headers.has(name)) copy.headers.set(name, value)
   return copy
 }
 
