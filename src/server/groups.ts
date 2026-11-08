@@ -8,7 +8,7 @@ import { user } from '../../db/schema/auth'
 import { Conflict, Forbidden, groupAccessDenied, Invalid, NotFound } from '../shared/api'
 import type { AccessRequest, GroupChanges, GroupCreateInput } from '../shared/api/groups'
 import type { CurrencyCode } from '../shared/currencies'
-import { normalizeEmail, normalizeSlug, slugProblem } from '../shared/groups'
+import { normalizeEmail, normalizeSlug, participantNameOf, slugProblem } from '../shared/groups'
 import { groupLimitMessage, LIMITS, participantLimitMessage } from '../shared/limits'
 import type { GroupKind, Role } from '../shared/vocabulary'
 import { randomId } from '../shared/ids'
@@ -263,7 +263,7 @@ export async function createGroup(
     // Fair use. Under SERIALIZABLE, two creates that both read the count cannot both commit past it.
     const created = await tx.execute<{ count: number }>(sql`SELECT ${groupsCreated(data.principal.userId)} AS count`)
     if ((created.rows[0]?.count ?? 0) >= LIMITS.groupsCreated) throw new Invalid({ message: groupLimitMessage })
-    const creator = { id: randomId(), name: data.principal.name.trim().slice(0, LIMITS.nameMax) || 'Member' }
+    const creator = { id: randomId(), name: participantNameOf(data.principal.name) }
     const people = [creator, ...data.group.participants.map((name) => ({ id: randomId(), name }))]
     if (people.length > LIMITS.participantsPerGroup) throw new Invalid({ message: participantLimitMessage, field: 'participants' })
     if (new Set(people.map((p) => p.name)).size !== people.length)
