@@ -19,10 +19,13 @@ export function accepts(header: string, encoding: 'br' | 'gzip') {
   })
 }
 
-/** Text formats. Images other than SVG, archives and fonts are compressed already. */
+/**
+ * Text formats. Images other than SVG, archives and fonts are compressed
+ * already. text/event-stream is included: the MCP handler answers each call as
+ * one buffered event-stream message, and every body here is complete.
+ */
 function compressible(contentType: string | null) {
   const type = contentType?.split(';')[0]?.trim().toLowerCase() ?? ''
-  if (type === 'text/event-stream') return false
   return (
     type.startsWith('text/') ||
     type === 'application/json' ||
