@@ -39,7 +39,7 @@ export type DocumentState = StoredDocument & { receiptId: string | null; deleted
  * The receipts of expense row `expense` as a JSON array of DocumentState, in
  * their saved order, or NULL when it has none.
  */
-export const documentStatesJson = (expense: SQL) => sql`(SELECT json_agg(json_build_object('id', d.id, 'url', d.url, 'width', d.width, 'height', d.height,
+const documentStatesJson = (expense: SQL) => sql`(SELECT json_agg(json_build_object('id', d.id, 'url', d.url, 'width', d.width, 'height', d.height,
     'receiptId', r.id, 'deleted', CASE WHEN dr.receipt_id IS NULL THEN NULL ELSE json_build_object('by', du.name, 'at', ${iso(sql`dr.deleted_at`)}) END) ORDER BY d.position)
   FROM expense_documents d
   LEFT JOIN receipts r ON r.group_id = ${expense}.group_id AND r.url = d.url
