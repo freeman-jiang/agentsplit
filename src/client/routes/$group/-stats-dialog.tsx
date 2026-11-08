@@ -5,6 +5,7 @@ import { ChevronRight } from 'lucide-react'
 import { money } from '~/client/components/money'
 import { formatDay } from '~/client/dates'
 import { editorLink } from '~/client/editor-link'
+import { describeError } from '~/client/errors'
 import { statsExpensesQuery } from '~/client/queries/history'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/client/ui/dialog'
 import { Skeleton } from '~/client/ui/skeleton'
@@ -22,7 +23,7 @@ type Props = {
 /** The drill-down list: loads when opened, newest first, each row opening its expense (P-STATS-27, P-STATS-31 to P-STATS-33). */
 export default function ExpensesDialog(props: Props) {
   const { drill, scope } = props
-  const { data, isLoading } = useQuery(statsExpensesQuery(drill.groupId, { ...scope, ...(drill.range.from ? { from: drill.range.from } : {}), ...(drill.range.to ? { to: drill.range.to } : {}) }))
+  const { data, error } = useQuery(statsExpensesQuery(drill.groupId, { ...scope, ...(drill.range.from ? { from: drill.range.from } : {}), ...(drill.range.to ? { to: drill.range.to } : {}) }))
   return (
     <Dialog open onOpenChange={(open) => !open && props.onClose()}>
       <DialogContent className="max-h-[80vh] gap-0 overflow-hidden p-0">
@@ -31,7 +32,11 @@ export default function ExpensesDialog(props: Props) {
           <DialogDescription>{props.description}</DialogDescription>
         </DialogHeader>
         <div className="overflow-y-auto">
-          {isLoading || !data ? (
+          {error ? (
+            <p role="alert" className="p-6 text-sm">
+              {describeError(error).message}
+            </p>
+          ) : !data ? (
             <div className="flex flex-col gap-3 p-6">
               {[0, 1, 2].map((i) => (
                 <Skeleton key={i} className="h-5 w-full" />
