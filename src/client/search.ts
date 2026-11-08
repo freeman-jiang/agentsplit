@@ -6,16 +6,15 @@ import { isCurrencyCode, type CurrencyCode } from '~/shared/currencies'
 type Param<T> = (value: unknown) => T | undefined
 
 /**
- * A route's `validateSearch`: each key read by its parser, and keys without a
- * value left out, so exact optional types hold.
+ * A route's `validateSearch`: each key read by its parser. A rejected key is set
+ * to undefined, not left out: the router spreads this result over the raw
+ * search, so a key left out keeps its raw value (`?q=166` reached the server as
+ * the number 166). The router drops undefined keys from the URL.
  */
 export function searchParams<const S extends Record<string, Param<unknown>>>(spec: S) {
   return (raw: Record<string, unknown>): { [K in keyof S]?: NonNullable<ReturnType<S[K]>> } => {
     const out: Record<string, unknown> = {}
-    for (const [key, parse] of Object.entries(spec)) {
-      const value = parse(raw[key])
-      if (value !== undefined) out[key] = value
-    }
+    for (const [key, parse] of Object.entries(spec)) out[key] = parse(raw[key])
     return out as { [K in keyof S]?: NonNullable<ReturnType<S[K]>> }
   }
 }
@@ -32,7 +31,11 @@ export const text = (value: string | number | undefined) => (value === undefined
 /** A param that only a string fills, such as a path. */
 export const stringParam: Param<string> = (value) => (typeof value === 'string' ? value : undefined)
 
-export const nonEmptyParam: Param<string> = (value) => (typeof value === 'string' && value ? value : undefined)
+/** Free text. The router parses `?q=166` as a number, so a number is read back as text. */
+export const nonEmptyParam: Param<string> = (value) => {
+  const s = typeof value === 'number' ? String(value) : value
+  return typeof s === 'string' && s ? s : undefined
+}
 
 export const numberParam: Param<number> = (value) => {
   const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN
