@@ -96,13 +96,16 @@ export function ExpenseRow(props: {
           ]}
         />
       </div>
-      <RowFigure className="max-sm:hidden" testId="expense-paid" label={figures.paid.label} amount={paid} amountClass={cn('text-sm text-foreground/80', TONES[figures.paid.tone])} />
+      {/* At most 11rem, so a long list of payers truncates and the title keeps its room. */}
+      <RowFigure className="max-sm:hidden sm:max-w-44" testId="expense-paid" label={figures.paid.label} amount={paid} amountClass={cn('text-sm text-foreground/80', TONES[figures.paid.tone])} />
       <RowFigure testId="expense-personal" label={figures.personal.label} amount={amount(figures.personal.amount)} amountClass={cn('font-semibold', TONES[figures.personal.tone])} />
       {/* On narrow screens the paid figure, and the group, sit under the title and use the width under the viewer's figure too. */}
       <p className="col-span-2 col-start-2 flex min-w-0 gap-1 text-sm text-muted-foreground sm:hidden">
-        <span className={shown ? 'shrink-0' : 'min-w-0 truncate'}>
-          {figures.paid.label} <span className="tabular-nums">{paid}</span>
-        </span>
+        {/* A long list of payers truncates; the amount always shows. */}
+        <span className="min-w-0 truncate" title={figures.paid.label}>
+          {figures.paid.label}
+        </span>{' '}
+        <span className="shrink-0 tabular-nums">{paid}</span>
         {shown && <span className="min-w-0 truncate">· {placeName}</span>}
       </p>
     </Link>
