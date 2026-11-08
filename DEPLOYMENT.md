@@ -209,7 +209,7 @@ The bucket needs no public access and no CORS rule: the app streams every receip
 
 On GCE, the VM boots the host directly from an image of this flake, so nothing installs on the 1 GB machine. The image mounts the file systems by the labels `nixos` and `ESP`, as `nix/host/default.nix` does, and grows the root to the size of the boot disk at its first boot.
 
-1. On the dev box, in a clean checkout of a pushed commit, build the image. The dev box needs x86_64 emulation (dots).
+1. On the dev box, in a clean checkout of a pushed commit, build the image. The dev box needs x86_64 emulation (dots). The build VM runs the dev box's own QEMU (`agentsplit.imageBuildPackages` in `flake.nix`), so the image builds only on aarch64-linux, in about 3 minutes.
 
    ```sh
    direnv exec . nix build .#packages.x86_64-linux.agentsplit-gce-image
