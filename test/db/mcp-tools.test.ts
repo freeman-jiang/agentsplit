@@ -582,12 +582,10 @@ describe('rate limit', () => {
     await h.account('dave')
     const daveKey = { 'x-api-key': await h.apiKey('dave') }
     const otherKey = { 'x-api-key': await h.apiKey('dave') }
-    // The two keys take turns, so neither reaches its own limit of 120 a minute. The bucket refills
-    // two requests a second while this runs, so allow a few more than its size.
-    let allowed = 0
-    while (allowed < LIMITS.mcpRequestsPerMinute + 10 && (await rpc(h, { method: 'tools/list', headers: allowed % 2 ? otherKey : daveKey })).status === 200) allowed++
-    expect(allowed).toBeGreaterThanOrEqual(LIMITS.mcpRequestsPerMinute)
-    expect(allowed).toBeLessThan(LIMITS.mcpRequestsPerMinute + 10)
+    for (const headers of [daveKey, otherKey]) expect((await rpc(h, { method: 'tools/list', headers })).status).toBe(200)
+    // The user's whole budget, spent a minute ahead of the database clock, so the requests below see no refill.
+    const ahead = new Date(Date.now() + 60_000)
+    for (let i = 0; i < LIMITS.mcpRequestsPerMinute; i++) await h.withDb((db) => takeMcpRequest(db, { userId: 'dave', at: ahead }))
     for (const headers of [daveKey, otherKey]) {
       const limited = await rpc(h, { method: 'tools/call', params: { name: 'list_groups', arguments: {} }, headers })
       expect(limited.status).toBe(429)

@@ -289,8 +289,8 @@ describe('the Log (P-HIST-28 to P-HIST-39)', () => {
   })
 
   it('filters by UTC recording day and type', async () => {
-    const today = new Date().toISOString().slice(0, 10)
-    const r = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', from: today, to: today, type: 'update_expense', limit: 100 }))
+    const day = edited.time.slice(0, 10)
+    const r = await tx((db) => listActivities(db, { principal: alice, groupId: 'g1', from: day, to: day, type: 'update_expense', limit: 100 }))
     expect(r.activities.map((a) => a.expenseRevision)).toEqual([2])
     const old = await tx((db) => listActivities(db, { limit: 5, principal: alice, groupId: 'g1', from: '2019-06-01', to: '2019-06-01' }))
     expect(old.activities.map((a) => a.type)).toEqual(['create_group'])
