@@ -41,7 +41,7 @@ Proofs:
 | 07 | Done, 30 per page | The list uses the shared `expensesQuery` (30 per page, as before this area). The next page loads when the end of the list scrolls into view. |
 | 09 | Done | 300 ms debounce before the search reaches the URL and the query. |
 | 11 | Changed (lead's core) | The v2 search also matches notes (`ledger.ts listExpenses`). |
-| 12–17 | Done | `list` "date headings" (3,000 random dates and week starts). |
+| 12–17 | Done | `src/client/routes/$group/-date-groups.ts`. The week starts on Sunday, the current app's en-US week (`WEEK_STARTS_ON` in `src/client/dates.ts`, which the Log uses too). |
 | 18, 19 | Done | `ledger` |
 | 20 | Done | Every visit reads again, as in the current app (`staleTime: 0` in `src/client/main/main.tsx`), and a write refreshes every view it changes (`afterWrite` in `src/client/queries/keys.ts`). |
 | 21, 23–25, 34, 35 | Done | `browser` |
