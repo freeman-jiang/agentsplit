@@ -30,5 +30,10 @@ export function s3Bucket(config: { endpoint: string; region: string; bucket: str
     async delete(keys) {
       for (const key of typeof keys === 'string' ? [keys] : keys) await client.delete(key)
     },
+    // Signed locally, with no request. The overrides become the signed query
+    // parameters response-content-type and response-content-disposition.
+    presignGet(key, options) {
+      return client.presign(key, { method: 'GET', expiresIn: options.expiresIn, type: options.contentType, contentDisposition: options.contentDisposition })
+    },
   }
 }
