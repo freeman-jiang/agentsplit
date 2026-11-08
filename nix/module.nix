@@ -239,9 +239,11 @@ in
             # Bun caches large transpiled files under the home folder; the bundle needs no cache.
             BUN_RUNTIME_TRANSPILER_CACHE_PATH = "0";
           };
-          # Five failed starts in 10 minutes (a failed migration) stop the restarts.
+          # Ten starts in 10 minutes (a failed migration, a crash loop) stop the
+          # restarts. Five was too few: a single crash after a few deliberate
+          # restarts hit the limit and kept the site down.
           startLimitIntervalSec = 600;
-          startLimitBurst = 5;
+          startLimitBurst = 10;
           serviceConfig = hardening // {
             Type = "exec";
             User = cfg.database;

@@ -224,7 +224,7 @@ On GCE, the VM boots the host directly from an image of this flake, so nothing i
 5. Under Tailnet Lock, sign the new node key on the dev box: `sudo tailscale lock sign nodekey:<key>`.
 6. The dots side removes the `tailscale-auth-key` attribute. If the key expired before the join, set a new one; the unit still polls.
 7. Check the access and record the host key once: `ssh -o StrictHostKeyChecking=accept-new root@agentsplit true`. Tailscale has already authenticated the machine, so the first key is safe to accept.
-8. Copy `agentsplit.env`, `cloudflared.env` and `root-password-hash` (above). Set `AGENTSPLIT_MAINTENANCE=1` until the cutover. Then run `ssh root@agentsplit systemctl reset-failed agentsplit` and `ssh root@agentsplit systemctl restart agentsplit agentsplit-tunnel`. Without the files, the server failed five times at boot and hit its start limit (five starts in ten minutes). The limit stays on purpose: it stops a crash loop on a quarter of a core and leaves a failed unit for the backup's check to report.
+8. Copy `agentsplit.env`, `cloudflared.env` and `root-password-hash` (above). Set `AGENTSPLIT_MAINTENANCE=1` until the cutover. Then run `ssh root@agentsplit systemctl reset-failed agentsplit` and `ssh root@agentsplit systemctl restart agentsplit agentsplit-tunnel`. Without the files, the server failed five times at boot and hit its start limit (ten starts in ten minutes). The limit stays on purpose: it stops a crash loop on a quarter of a core and leaves a failed unit for the backup's check to report.
 9. Run `direnv exec . deploy-host` (below). It moves the host to the newest `nixos-26.05` and makes the commit the boot default.
 10. Check that no unit failed: `ssh root@agentsplit systemctl --failed`.
 
