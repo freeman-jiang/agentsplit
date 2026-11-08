@@ -152,6 +152,15 @@ type DetailsRow = {
   created: string
 }
 
+/** Whether participant `person` pays or shares in any expense; such a person cannot be removed. */
+const inExpenses = (person: SQL) =>
+  sql`(EXISTS (SELECT 1 FROM expense_payers x WHERE x.participant_id = ${person}) OR EXISTS (SELECT 1 FROM expense_shares x WHERE x.participant_id = ${person}))`
+
+/** Whether participant `person` of group `group` is bound to an account or invited; such a person cannot be renamed or removed. */
+const reserved = (data: { group: SQL; person: SQL }) =>
+  sql`(EXISTS (SELECT 1 FROM memberships r WHERE r.group_id = ${data.group} AND r.participant_id = ${data.person})
+    OR EXISTS (SELECT 1 FROM invitations r WHERE r.group_id = ${data.group} AND r.participant_id = ${data.person}))`
+
 /**
  * The Settings tab and MCP's get_group in one statement that also checks the
  * caller's membership. Only admins see invitations.
@@ -169,10 +178,8 @@ export async function getGroupDetails(db: Db, data: { principal: Principal; grou
           'id', p.id, 'name', d.name,
           'memberEmail', u.email, 'memberRole', m.role, 'userId', m.user_id,
           'invitedEmail', (SELECT pi.email FROM pending pi WHERE pi.participant_id = p.id LIMIT 1),
-          'inExpenses', EXISTS (SELECT 1 FROM expense_payers x WHERE x.participant_id = p.id)
-            OR EXISTS (SELECT 1 FROM expense_shares x WHERE x.participant_id = p.id),
-          'reserved', EXISTS (SELECT 1 FROM memberships r WHERE r.group_id = g.id AND r.participant_id = p.id)
-            OR EXISTS (SELECT 1 FROM invitations r WHERE r.group_id = g.id AND r.participant_id = p.id)
+          'inExpenses', ${inExpenses(sql`p.id`)},
+          'reserved', ${reserved({ group: sql`g.id`, person: sql`p.id` })}
         ) ORDER BY p.created_at, p.id)
         FROM participants p
         JOIN (${displayNames(sql`g.id`)}) d ON d.id = p.id
@@ -341,10 +348,8 @@ export async function updateGroup(
 async function replacePeople(tx: Db, data: { groupId: string; people: NonNullable<ChangesInput['participants']> }) {
   const current = await tx.execute<{ id: string; name: string; reserved: boolean; in_expenses: boolean }>(sql`
     SELECT d.id, d.name,
-      EXISTS (SELECT 1 FROM memberships r WHERE r.group_id = ${data.groupId} AND r.participant_id = d.id)
-        OR EXISTS (SELECT 1 FROM invitations r WHERE r.group_id = ${data.groupId} AND r.participant_id = d.id) AS reserved,
-      EXISTS (SELECT 1 FROM expense_payers x WHERE x.participant_id = d.id)
-        OR EXISTS (SELECT 1 FROM expense_shares x WHERE x.participant_id = d.id) AS in_expenses
+      ${reserved({ group: sql`${data.groupId}`, person: sql`d.id` })} AS reserved,
+      ${inExpenses(sql`d.id`)} AS in_expenses
     FROM (${displayNames(sql`${data.groupId}`)}) d
   `)
   // Fair use. A group that is over the limit already can still rename or remove people.
