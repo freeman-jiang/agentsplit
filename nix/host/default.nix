@@ -51,28 +51,39 @@
   services.agentsplit = {
     enable = true;
     tunnel.enable = true;
+    # The server measured 94 MB idle and 134 MB at its peak in the VM test.
+    memoryHigh = "256M";
+    memoryMax = "320M";
+    databasePoolSize = 5;
   };
 
-  # PostgreSQL for a 2 GB host that shares its memory with the server. The
-  # ledger is a few MB, so a small cache holds all of it.
+  # PostgreSQL for a 1 GB host that shares its memory with the server. The
+  # ledger is a few MB, so a small cache holds all of it. A quarter of a CPU
+  # gains nothing from parallel queries.
   services.postgresql.settings = {
-    max_connections = 30;
-    shared_buffers = "128MB";
-    effective_cache_size = "512MB";
-    work_mem = "4MB";
-    maintenance_work_mem = "64MB";
-    wal_buffers = "4MB";
-    max_wal_size = "512MB";
-    min_wal_size = "64MB";
+    # The server's pool (databasePoolSize), the dump, an admin psql and the
+    # 3 superuser slots, with room to spare. module.nix checks the pool fits.
+    max_connections = 16;
+    shared_buffers = "64MB";
+    effective_cache_size = "256MB";
+    work_mem = "2MB";
+    maintenance_work_mem = "32MB";
+    autovacuum_max_workers = 1;
+    max_wal_size = "256MB";
+    min_wal_size = "32MB";
     random_page_cost = 1.1;
-    max_worker_processes = 4;
-    max_parallel_workers = 2;
-    max_parallel_workers_per_gather = 1;
+    max_worker_processes = 2;
+    max_parallel_workers = 0;
+    max_parallel_workers_per_gather = 0;
+    max_parallel_maintenance_workers = 0;
     huge_pages = "off";
   };
   systemd.services.postgresql.serviceConfig = {
-    MemoryHigh = "448M";
-    MemoryMax = "512M";
+    MemoryHigh = "192M";
+    MemoryMax = "256M";
+    # The server goes first when memory runs out (OOMScoreAdjust in
+    # module.nix). A killed backend restarts every connection.
+    OOMScoreAdjust = -500;
   };
 
   # Admin access is Tailscale SSH, which the tailnet policy controls. The
@@ -144,28 +155,42 @@
       ];
       auto-optimise-store = true;
     };
+    # A deploy's copy does not take the CPU or the disk from the server.
+    daemonCPUSchedPolicy = "idle";
+    daemonIOSchedClass = "idle";
     gc = {
       automatic = true;
       dates = "weekly";
       options = "--delete-older-than 14d";
     };
   };
+  # When memory runs out, a deploy stops before the server does; deploy-host
+  # can run again.
+  systemd.services.nix-daemon.serviceConfig.OOMScoreAdjust = 800;
 
   services.journald.extraConfig = ''
     SystemMaxUse=256M
     SystemKeepFree=1G
-    RuntimeMaxUse=32M
+    RuntimeMaxUse=16M
     MaxRetentionSec=30day
   '';
 
-  # Compressed swap in RAM for idle pages. Each service's MemorySwapMax keeps it from growing past its limits.
+  # Compressed swap in RAM for idle pages, at about a third of their size.
+  # Each service's MemorySwapMax keeps it from growing past its limits.
   zramSwap = {
     enable = true;
-    memoryPercent = 25;
+    memoryPercent = 50;
   };
-  # Keep the admin path alive when memory runs short.
-  systemd.services.tailscaled.serviceConfig.MemoryMin = "64M";
-  systemd.services.systemd-journald.serviceConfig.MemoryMin = "32M";
+  # Keep the admin path and the logs alive when memory runs short: the kernel
+  # does not reclaim below MemoryMin, and the OOM killer takes them last.
+  systemd.services.tailscaled.serviceConfig = {
+    MemoryMin = "48M";
+    OOMScoreAdjust = -900;
+  };
+  systemd.services.systemd-journald.serviceConfig = {
+    MemoryMin = "16M";
+    OOMScoreAdjust = -900;
+  };
 
   users.mutableUsers = false;
   # Tailscale SSH needs no password or key. This optional root-only file holds
