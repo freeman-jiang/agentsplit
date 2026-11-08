@@ -231,7 +231,9 @@
     min-height: 44px;
   }
 }
-@media (max-width: 640px) {
+/* iOS zooms into a field under 16 px and does not zoom back. A landscape phone
+   is wider than any breakpoint, so this keys to touch, not to width. */
+@media (pointer: coarse) {
   input,
   textarea,
   select {
