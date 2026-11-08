@@ -9,7 +9,7 @@ import { trimmedName } from '../shared/groups'
 import { LIMITS } from '../shared/limits'
 import type { Db } from './core/db'
 import type { Principal } from './core/access'
-import { revokeOAuthConnection } from './auth/oauth-connections'
+import { clientStillGranted, revokeOAuthConnection } from './auth/oauth-connections'
 import { iso } from './sql'
 
 type AccountRow = {
@@ -46,7 +46,7 @@ export async function getAccount(db: Db, data: { principal: Principal }): Promis
           GROUP BY c.client_id
         ) g
         JOIN oauth_client oc ON oc.client_id = g.client_id
-        WHERE EXISTS (SELECT 1 FROM oauth_consent s WHERE s.user_id = u.id AND s.client_id = g.client_id)
+        WHERE ${clientStillGranted({ userId: sql`u.id`, clientId: sql`g.client_id` })}
       ), '[]'::json)
     ) AS account
     FROM "user" u WHERE u.id = ${data.principal.userId}
