@@ -88,7 +88,10 @@ export const publicRead = <A>(work: (db: Db) => Promise<A>) =>
       try: () => runRead({ db, call, work }),
       catch: (error) => {
         const answer = readAnswerOf(error, call)
-        return answer instanceof Unavailable ? answer : new Unavailable({ message: UNAVAILABLE })
+        if (answer instanceof Unavailable) return answer
+        // The contract declares only Unavailable here, so a domain error is a bug: log it before it becomes Unavailable.
+        console.error(`${call.name}: a public read failed with ${answer._tag}`, { requestId: call.requestId }, error)
+        return new Unavailable({ message: UNAVAILABLE })
       },
     }),
   )
