@@ -8,7 +8,6 @@ import { stateFromExpense } from '~/client/components/expense-form-state'
 import { ExpenseLog } from '~/client/components/log/expense-log'
 import { money } from '~/client/components/money'
 import { isSimplePayment, PaymentForm } from '~/client/components/payment-form'
-import { formatMoment } from '~/client/dates'
 import { describeError } from '~/client/errors'
 import { expenseDetailQuery, paymentsQuery, referenceQuery } from '~/client/queries/expenses'
 import { expenseContextQuery } from '~/client/queries/feed'
@@ -40,31 +39,6 @@ function ExpensePage() {
   return <Workspace key={`${expenseId}-${context.data.expense.revision}`} data={context.data} />
 }
 
-const stamp = (value: string) => (
-  <time dateTime={value} title={formatMoment.full(value)}>
-    {formatMoment.dateTime(value)}
-  </time>
-)
-
-function Metadata({ data }: { data: Context }) {
-  const a = data.attribution
-  return (
-    <div className="space-y-0.5 text-[11px] leading-relaxed text-muted-foreground" data-testid="expense-metadata">
-      <p>
-        Added {stamp(a.createdAt ?? data.expense.createdAt)}
-        {a.createdBy ? ` by ${a.createdBy.name}` : ' · original author unavailable'}
-      </p>
-      {a.updatedAt && (
-        <p>
-          Last edited {stamp(a.updatedAt)}
-          {a.updatedBy ? ` by ${a.updatedBy.name}` : ''}
-        </p>
-      )}
-      {a.lastEditedByYouAt && <p>Your last edit {stamp(a.lastEditedByYouAt)}</p>}
-    </div>
-  )
-}
-
 /** Where a saved or cancelled form returns: the original private expense, or the dashboard. */
 const backTo = (data: Context) =>
   data.context && data.context.expenseId !== data.expense.id ? ({ to: '/expenses/$expenseId', params: { expenseId: data.context.expenseId } } as const) : ({ to: '/' } as const)
@@ -86,10 +60,7 @@ function Workspace({ data }: { data: Context }) {
       ) : !detail.data || !reference.data ? (
         <p role="status">Loading expense…</p>
       ) : isSimplePayment(detail.data) ? (
-        <>
-          <Metadata data={data} />
-          <PaymentForm key={detail.data.expense.revision} mode="edit" detail={detail.data} participants={data.participants} target={target} onReload={onReload} />
-        </>
+        <PaymentForm key={detail.data.expense.revision} mode="edit" detail={detail.data} participants={data.participants} target={target} onReload={onReload} />
       ) : (
         // An expense, or a payment of any other shape, uses the expense editor, which keeps every detail (P-BAL-89).
         <ExpenseForm

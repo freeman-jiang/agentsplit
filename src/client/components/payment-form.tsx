@@ -20,6 +20,7 @@ import type { CurrencyCode } from '~/shared/currencies'
 import { validateExpense, type ExpenseDraft } from '~/shared/expense-rules'
 import { DECIMAL } from '~/shared/minor'
 import { CATEGORY } from '~/shared/vocabulary'
+import { EntryAttribution } from './attribution'
 import { DeleteDialog } from './delete-dialog'
 import { toInput, useEntryWrite, type GroupEntryTarget } from './entry-write'
 
@@ -114,6 +115,7 @@ export function PaymentForm(
       }}
     >
       <h2 className="font-display text-xl">{props.mode === 'create' ? 'Record payment' : 'Edit payment'}</h2>
+      {props.mode === 'edit' && <EntryAttribution attribution={props.detail.attribution} createdAt={props.detail.expense.createdAt} />}
       <div className="grid gap-4 sm:grid-cols-2">
         {select('from', 'From', from, setFrom)}
         {select('to', 'To', to, setTo)}

@@ -255,10 +255,8 @@ export function toExpense(e: ExpenseRow) {
     deleted: e.deleted,
     documentCount: e.document_count,
     /** Revision 1's author as recorded, or the system. */
-    addedAt: e.added?.at ?? null,
     addedBy: e.added?.by ?? null,
     /** The current revision's author as recorded, when it is an edit. */
-    editedAt: e.edited?.at ?? null,
     editedBy: e.edited?.by ?? null,
     /** The recurring link this expense is the current occurrence of. */
     link: e.link,

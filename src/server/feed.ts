@@ -143,7 +143,7 @@ type ContextRow = ExpenseRow & {
  */
 export async function expenseContext(db: Db, data: { principal: Principal; expenseId: string }) {
   const result = await db.execute<ContextRow>(sql`
-    SELECT ${expenseColumns({ attribution: true })},
+    SELECT ${expenseColumns()},
       m.role, m.participant_id AS viewer_participant_id, g.name AS g_name, g.slug AS g_slug, g.kind AS g_kind,
       ${participantsJson(sql`g.id`)} AS participants,
       pc.expense_id AS context_expense_id, ce.title AS context_expense_title,
@@ -164,7 +164,6 @@ export async function expenseContext(db: Db, data: { principal: Principal; expen
   if (!r) throw new NotFound({ entity: 'expense', id: data.expenseId })
   return {
     expense: toExpense(r),
-    attribution: attributionOf({ events: r.events ?? [], viewer: data.principal.userId }),
     group: { id: r.group_id, name: r.g_name, slug: r.g_slug, kind: r.g_kind },
     role: r.role,
     participantId: r.viewer_participant_id,

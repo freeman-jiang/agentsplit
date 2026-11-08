@@ -6,7 +6,7 @@ import { Rpc, RpcGroup } from 'effect/rpc'
 import { FAIR_USE_LIMITS } from '../limits'
 import { CurrencyCodeSchema } from '../money'
 import { RECEIPT_CONTENT_TYPES } from '../vocabulary'
-import { Balance, CalendarDateOutput, Expense, ExpenseKindSchema, Id, ReadError, RecurrenceSchema, SplitModeSchema, Transfer, Unavailable, WriteError } from './core'
+import { Attribution, Balance, CalendarDateOutput, Expense, ExpenseKindSchema, Id, ReadError, RecurrenceSchema, SplitModeSchema, Transfer, Unavailable, WriteError } from './core'
 import { ReceiptTombstone } from './storage'
 
 export const Category = Schema.Struct({ id: Schema.Number, grouping: Schema.String, name: Schema.String })
@@ -22,15 +22,10 @@ export const ExpenseDocument = Schema.Struct({
   deleted: Schema.NullOr(ReceiptTombstone),
 })
 
-const Attribution = Schema.Struct({ at: Schema.String, by: Schema.NullOr(Schema.String) })
-
 export const ExpenseDetail = Schema.Struct({
   expense: Expense,
   documents: Schema.Array(ExpenseDocument),
-  added: Schema.NullOr(Attribution),
-  edited: Schema.NullOr(Attribution),
-  /** When the caller last changed this expense. */
-  myLastEdit: Schema.NullOr(Schema.String),
+  attribution: Attribution,
   /** The date of the next occurrence, when this is the newest expense of a recurring series. */
   nextOccurrence: Schema.NullOr(CalendarDateOutput),
 })
