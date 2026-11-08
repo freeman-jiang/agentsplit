@@ -1,4 +1,4 @@
-// The core area of the contract (api.ts merges every area): the declared
+// The core area of the contract (index.ts merges every area): the declared
 // errors, the shapes that the other areas share, and the session, group and
 // expense procedures.
 import { Schema } from 'effect'

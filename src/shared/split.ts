@@ -4,10 +4,10 @@ import type { CurrencyCode } from './currencies'
 import { formatMinor, minor, minorOf, sumMinor, type Minor } from './minor'
 import type { SplitMode } from './vocabulary'
 
-/** A weight is an exact non-negative decimal: a share count, a percentage, or an amount. */
+/** A weight is an exact non-negative decimal: a share count, a percentage, or an amount. The stored share weights of a negative amount split by amount carry its sign, which resolveShares drops. */
 export type Weight = { readonly units: bigint; readonly scale: number }
 
-/** The text of a weight. The database CHECKs it too (db/schema/app.ts). */
+/** The text of a weight. The database CHECKs payer weights with it (db/schema/app.ts); share weights may carry a sign. */
 export const WEIGHT = /^(0|[1-9][0-9]*)(?:\.([0-9]+))?$/
 
 export function parseWeight(text: string): Weight {
@@ -24,13 +24,6 @@ export function formatWeight(weight: Weight): string {
 }
 
 const atScale = (weight: Weight, scale: number) => weight.units * 10n ** BigInt(scale - weight.scale)
-
-class SplitError extends Error {
-  readonly _tag = 'SplitError'
-  constructor(readonly reason: 'no-participants' | 'zero-weights' | 'amount-mismatch') {
-    super(`Split failed: ${reason}`)
-  }
-}
 
 /**
  * Divides `amount` in proportion to `weights`, in whole minor units.
@@ -102,7 +95,7 @@ export function preferredPayer(payers: ReadonlyArray<{ readonly participantId: s
   const [first] = [...payers].sort(
     (a, b) => (b.amount > a.amount ? 1 : b.amount < a.amount ? -1 : 0) || compareIds(a.participantId, b.participantId),
   )
-  if (!first) throw new SplitError('no-participants')
+  if (!first) throw new Error('Split failed: no-participants')
   return first.participantId
 }
 
