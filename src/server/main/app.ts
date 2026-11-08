@@ -125,6 +125,9 @@ export function createApp(platform: Platform) {
     }
   }
 
+  /** The caller of a plain HTTP download on `db` (httpReader). `signIn` is the route's own 401 text, as in the current app. */
+  const readerOf = (data: { request: Request; signIn: string }) => (db: Db) => httpReader(db, { ...data, baseUrl, secret })
+
   /** SELECT 1 on a pooled connection, so a failed connect is reported as unhealthy too. */
   const checkDatabase = () => withClient(async (client) => void (await client.query('SELECT 1')))
 
@@ -155,7 +158,7 @@ export function createApp(platform: Platform) {
       // Not withConnection: the image streams from the bucket after the database work is done, with its own headers.
       if (request.method === 'GET')
         return withDb(async (db) =>
-          downloadReceipt({ db, bucket, url, reader: await httpReader(db, { request, baseUrl, secret, signIn: 'Authentication required' }) }),
+          downloadReceipt({ db, bucket, url, reader: await readerOf({ request, signIn: 'Authentication required' })(db) }),
         )
       if (request.method === 'POST') {
         // An upload is a cookie-authorized write: other origins are refused before any database work, as for RPC.
@@ -173,8 +176,9 @@ export function createApp(platform: Platform) {
     const download = request.method === 'GET' ? exportRouteOf(url.pathname) : null
     if (download) {
       const { group, format } = download
-      if (format === 'receipts') return downloadReceiptArchive({ withDb, bucket, request, group, baseUrl, secret })
-      return withConnection((db) => downloadExport({ db, request, group, format, baseUrl, secret }), 'private, no-store')
+      const reader = readerOf({ request, signIn: 'Sign in required' })
+      if (format === 'receipts') return downloadReceiptArchive({ withDb, bucket, group, readerOf: reader })
+      return withConnection(async (db) => downloadExport({ db, reader: await reader(db), group, format }), 'private, no-store')
     }
     // The current app's presigned upload route is gone for good (P-RECEIPT-28).
     if (url.pathname === '/api/s3-upload') return jsonError({ status: 410, message: 'Use the authenticated receipt upload flow' })

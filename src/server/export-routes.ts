@@ -2,15 +2,15 @@
 // /groups/<id>/expenses/export/<format> and /<slug>/expenses/export/<format>.
 // The web session, an API key or an OAuth access token with read scope may
 // download them (P-EXPORT-05, P-TOOL-EXPORT-06). The files are built in export.ts.
-import { httpReader } from './auth/authenticate'
+import type { Reader } from './auth/authenticate'
 import type { Db } from './core/db'
 import type { FileExportFormat } from '../shared/paths'
 import { EXPORTS } from './export'
 import { domainErrorResponse } from './core/errors'
 import { contentDisposition } from './headers'
 
-export async function downloadExport(data: { db: Db; request: Request; group: string; format: FileExportFormat; baseUrl: string; secret: string }): Promise<Response> {
-  const reader = await httpReader(data.db, { request: data.request, baseUrl: data.baseUrl, secret: data.secret, signIn: 'Sign in required' })
+export async function downloadExport(data: { db: Db; reader: Reader; group: string; format: FileExportFormat }): Promise<Response> {
+  const { reader } = data
   if ('response' in reader) return reader.response
   try {
     const file = await EXPORTS[data.format](data.db, { principal: reader.principal, groupId: data.group })
