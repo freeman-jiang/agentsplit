@@ -29,6 +29,7 @@ import { FeedHandlers } from '../handlers/feed'
 import { GroupsHandlers } from '../handlers/groups'
 import { HistoryHandlers } from '../handlers/history'
 import { StorageHandlers } from '../handlers/storage'
+import { compressed } from '../compression'
 import { secured, securityHeaders } from '../headers'
 import { jsonError } from '../core/errors'
 import { maintenanceResponse } from '../maintenance'
@@ -91,21 +92,25 @@ export function createApp(platform: Platform) {
   }
   const withDb = <A>(work: (db: Db) => Promise<A>) => withClient((client) => work(makeDb(client)))
 
-  /** The response with its whole body read, and the given Cache-Control. */
-  async function complete(data: { response: Response; cacheControl: string }): Promise<Response> {
-    const { response } = data
+  /**
+   * The response with its whole body read, and the given Cache-Control. Each
+   * buffered dynamic response passes here, so here it is gzipped for clients
+   * that accept it (compression.ts).
+   */
+  async function complete(data: { request: Request; response: Response; cacheControl: string }): Promise<Response> {
+    const { request, response } = data
     const body = await response.arrayBuffer()
     const headers = new Headers(response.headers)
     headers.set('Cache-Control', data.cacheControl)
-    return new Response(body, { status: response.status, statusText: response.statusText, headers })
+    return compressed({ request, body, init: { status: response.status, statusText: response.statusText, headers } })
   }
 
   /**
    * Runs `work` with one database connection for this request, and releases
    * it after the response body is complete.
    */
-  function withConnection(work: (db: Db) => Promise<Response>, cacheControl = 'no-store'): Promise<Response> {
-    return withDb(async (db) => complete({ response: await work(db), cacheControl }))
+  function withConnection(request: Request, work: (db: Db) => Promise<Response>, cacheControl = 'no-store'): Promise<Response> {
+    return withDb(async (db) => complete({ request, response: await work(db), cacheControl }))
   }
 
   /**
@@ -119,7 +124,7 @@ export function createApp(platform: Platform) {
     try {
       const ready = (auth ??= createAuth({ ...config, db: platform.pool }))
       const response = await handleAuthRoute({ db: platform.pool, request, baseUrl, secret, handle: (r) => ready.handler(r) })
-      return await complete({ response, cacheControl: 'no-store' })
+      return await complete({ request, response, cacheControl: 'no-store' })
     } catch (error) {
       // Better Auth answers client errors itself (4xx). Only a real failure gets here.
       console.error('Auth handler failed', error)
@@ -142,12 +147,12 @@ export function createApp(platform: Platform) {
       url.pathname = RPC_PATH
       const requestId = crypto.randomUUID()
       const rpcRequest = request.url === url.href ? request : new Request(url, { method: request.method, headers: request.headers, body: request.body })
-      const response = await withConnection((db) => rpcHandler(rpcRequest, Context.make(RpcRequest, { db, requestId })), 'private, no-store')
+      const response = await withConnection(request, (db) => rpcHandler(rpcRequest, Context.make(RpcRequest, { db, requestId })), 'private, no-store')
       // The error page shows this ID, and the server logs each failed call with it (AuthMiddlewareLive).
       response.headers.set(REQUEST_ID_RESPONSE_HEADER, requestId)
       return response
     }
-    if (url.pathname === MCP_PATH) return withConnection((db) => handleMcp(request, { db, settings: mcpSettings }))
+    if (url.pathname === MCP_PATH) return withConnection(request, (db) => handleMcp(request, { db, settings: mcpSettings }))
     // The server serves the protected-resource metadata itself: Better Auth's MCP plugin drops
     // offline_access from it, which left Claude Code without refresh tokens (OAUTH-CLAUDE-CODE.md).
     if (METADATA_PATHS.has(url.pathname)) return protectedResourceMetadata(request, baseUrl)
@@ -180,7 +185,7 @@ export function createApp(platform: Platform) {
       const { group, format } = download
       const reader = readerOf({ request, signIn: 'Sign in required' })
       if (format === 'receipts') return downloadReceiptArchive({ withDb, bucket, group, readerOf: reader })
-      return withConnection(async (db) => downloadExport({ db, reader: await reader(db), group, format }), 'private, no-store')
+      return withConnection(request, async (db) => downloadExport({ db, reader: await reader(db), group, format }), 'private, no-store')
     }
     // The current app's presigned upload route is gone for good (P-RECEIPT-28).
     if (url.pathname === '/api/s3-upload') return jsonError({ status: 410, message: 'Use the authenticated receipt upload flow' })
