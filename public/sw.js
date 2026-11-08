@@ -2,7 +2,7 @@
 // Only Vite's content-hashed bundles under /assets/ and the offline page with
 // its files are cached. Pages, /api/ responses and receipts always go to the network.
 // A change to an OFFLINE file needs a new CACHE name, or browsers keep the old copy.
-const CACHE='agentsplit-static-v6'
+const CACHE='agentsplit-static-v7'
 const OFFLINE=['/offline.html','/offline.js','/brand-mark.svg']
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(OFFLINE)).then(()=>self.skipWaiting()))})
 self.addEventListener('activate',event=>{event.waitUntil((async()=>{for(const key of await caches.keys())if(key!==CACHE)await caches.delete(key);await self.clients.claim()})())})
