@@ -30,7 +30,7 @@ test('an ungrouped expense uses the full expense form with the private options, 
   // Every person stays involved: Dana neither pays nor shares, so the form refuses the save.
   await page.getByLabel('Dana Guest').uncheck()
   await page.getByRole('button', { name: 'Create' }).click()
-  await expect(page.getByText(/cannot be changed\. Each person must pay or share/)).toBeVisible()
+  await expect(page.getByText(/Include yourself and exactly the people paying for or sharing this expense/)).toBeVisible()
   await page.getByLabel('Dana Guest').check()
 
   await page.getByRole('button', { name: 'Create' }).click()

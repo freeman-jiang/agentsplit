@@ -114,12 +114,6 @@ export function toDraft(state: FormState, order: readonly string[]): ExpenseDraf
   }
 }
 
-/** Whether each person pays or shares: a private expense keeps all its people (P-UNGROUP-48). */
-export function involvesEveryone(state: FormState, order: readonly string[]) {
-  const payers = new Set(payersOf(state, order).map((p) => p.participantId))
-  return order.every((id) => state.selected[id] || payers.has(id))
-}
-
 export type Check = { readonly draft: ExpenseDraft; readonly resolved: ResolvedExpense | null; readonly issues: readonly ExpenseIssue[]; readonly preview: ReadonlyMap<string, string> | null }
 
 /** Validates the draft, and resolves the split for the preview, which shows before the title is typed. */

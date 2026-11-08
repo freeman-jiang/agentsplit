@@ -6,7 +6,7 @@
 import { and, eq } from 'drizzle-orm'
 import { expenses, groups, memberships, participants, privateContexts, privatePeople } from '../../db/schema/app'
 import { Conflict, Forbidden, Invalid, Unauthorized, type PrivatePerson as PrivatePersonSchema } from '../shared/api'
-import type { ExpenseDraft } from '../shared/expense-rules'
+import { PEOPLE_RULE, type ExpenseDraft } from '../shared/expense-rules'
 import { EMAIL, normalizeEmail, participantNameOf, trimmedName } from '../shared/groups'
 import { LIMITS, participantLimitMessage } from '../shared/limits'
 import { requireMember, type Principal } from './core/access'
@@ -15,7 +15,6 @@ import type { Db } from './core/db'
 import { createInvitation, revokeInvitations } from './invitations'
 import { createExpense } from './ledger'
 import { contacts } from './people'
-import { PEOPLE_RULE } from './private-context'
 
 export type PrivatePerson = typeof PrivatePersonSchema.Type
 

@@ -165,3 +165,20 @@ export function checkMoney(data: { money: MoneyDraft; participantIds: ReadonlySe
   const resolved = resolveShares({ amount, mode: draft.splitMode, preferredParticipantId: preferredPayer(payers), participants: weights })
   return { ok: true, value: { amount, payers, shares: weights.map((w) => ({ ...w, amount: resolved.get(w.participantId) ?? minor(0n) })) } }
 }
+
+// ---------- private expenses ----------
+
+/** The rule for the people of a new ungrouped expense. */
+export const PEOPLE_RULE = 'Include yourself and exactly the people paying for or sharing this expense. Each person must be unique.'
+
+/**
+ * The problem of a private expense whose payers and sharers are not exactly
+ * its `people`, or null: on create the people rule, on an edit the current
+ * app's answer that its people are fixed (P-UNGROUP-48). The form shows it,
+ * and every write of the expense refuses it (src/server/private-context.ts).
+ */
+export function privatePeopleIssue(data: { op: 'create' | 'update'; draft: Pick<ExpenseDraft, 'payers' | 'shares'>; people: readonly string[] }): string | null {
+  const involved = new Set([...data.draft.payers.map((p) => p.participantId), ...data.draft.shares.map((s) => s.participantId)])
+  if (involved.size === data.people.length && data.people.every((id) => involved.has(id))) return null
+  return data.op === 'create' ? PEOPLE_RULE : 'The people with access to this private expense cannot be changed. Create a new expense for a different set of people.'
+}

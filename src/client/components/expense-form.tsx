@@ -18,12 +18,13 @@ import { NativeSelect } from '~/client/ui/native-select'
 import { Textarea } from '~/client/ui/textarea'
 import type { ExpenseDetail, Participant, Reference } from '~/shared/api'
 import { CURRENCIES } from '~/shared/currencies'
+import { privatePeopleIssue } from '~/shared/expense-rules'
 import { LIMITS } from '~/shared/limits'
 import { DECIMAL, formatMinor, minor } from '~/shared/minor'
 import { RECURRENCE_LABELS, RECURRENCES, SPLIT_MODE_LABELS, SPLIT_MODES, type SplitMode } from '~/shared/vocabulary'
 import { DeleteDialog } from './delete-dialog'
 import { ExpenseDocuments } from './expense-documents'
-import { amountInput, autoAmounts, check, involvesEveryone, isIncome, payerRemainder, saveSplitDefaults, type FormState } from './expense-form-state'
+import { amountInput, autoAmounts, check, isIncome, payerRemainder, saveSplitDefaults, type FormState } from './expense-form-state'
 import { toInput, useEntryWrite, type EntryTarget } from './entry-write'
 
 type DetailData = typeof ExpenseDetail.Type
@@ -48,7 +49,6 @@ function Field(props: { id: string; label: ReactNode; error?: string | undefined
 }
 
 const PRIVATE_HINT = 'Edits stay in this expense’s private log.'
-const PRIVATE_INVOLVED = 'The people with access to this private expense cannot be changed. Each person must pay or share.'
 
 type ExpenseFormProps = {
   participants: ReadonlyArray<typeof Participant.Type>
@@ -78,7 +78,8 @@ export function ExpenseForm(props: ExpenseFormProps) {
   const checked = check(state, order)
   const { preview } = checked
   // A private expense keeps its people: each one pays or shares (P-UNGROUP-48).
-  const issues = isPrivate && !involvesEveryone(state, order) ? [...checked.issues, { field: 'shares', message: PRIVATE_INVOLVED }] : checked.issues
+  const peopleIssue = isPrivate ? privatePeopleIssue({ op: props.mode === 'create' ? 'create' : 'update', draft: checked.draft, people: order }) : null
+  const issues = peopleIssue ? [...checked.issues, { field: 'shares', message: peopleIssue }] : checked.issues
   const shown = (field: string) => (submitted || touched.has(field) ? issues.find((i) => i.field === field)?.message : undefined)
   const rowError = (list: 'shares' | 'payers', id: string) => (submitted || touched.has(list) ? issues.find((i) => i.row?.list === list && i.row.participantId === id)?.message : undefined)
   const auto = state.splitMode === 'amount' ? autoAmounts(state, order) : new Map<string, string>()

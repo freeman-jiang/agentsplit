@@ -4,10 +4,7 @@
 // db/migrations/0005_private_contexts.sql enforce the same rules.
 import { sql, type SQL } from 'drizzle-orm'
 import { Invalid } from '../shared/api'
-import type { ExpenseDraft } from '../shared/expense-rules'
-
-/** The rule for the people of a new ungrouped expense. */
-export const PEOPLE_RULE = 'Include yourself and exactly the people paying for or sharing this expense. Each person must be unique.'
+import { privatePeopleIssue, type ExpenseDraft } from '../shared/expense-rules'
 
 type PrivateWrite = { readonly op: 'create' | 'update'; readonly draft: ExpenseDraft } | { readonly op: 'delete' }
 
@@ -43,14 +40,8 @@ export function assertPrivateWrite(context: PrivateContext | null, data: { expen
   if (original && draft.kind === 'payment') throw new Invalid({ message: 'Record repayments separately from the original expense.', field: 'kind' })
   if (!original && draft.kind !== 'payment') throw new Invalid({ message: 'Create a separate ungrouped expense for a new purchase.', field: 'kind' })
   if (draft.kind === 'expense') {
-    const involved = new Set([...draft.payers.map((p) => p.participantId), ...draft.shares.map((s) => s.participantId)])
-    if (involved.size !== context.people.length || context.people.some((id) => !involved.has(id)))
-      throw data.op === 'create'
-        ? new Invalid({ message: PEOPLE_RULE, field: 'people' })
-        : new Invalid({
-            message: 'The people with access to this private expense cannot be changed. Create a new expense for a different set of people.',
-            field: 'shares',
-          })
+    const message = privatePeopleIssue({ op: data.op, draft, people: context.people })
+    if (message) throw new Invalid({ message, field: data.op === 'create' ? 'people' : 'shares' })
   } else if (data.op === 'create' && !context.original_live) {
     throw new Invalid({ message: 'Cannot record a repayment for a deleted expense.' })
   }
