@@ -23,7 +23,7 @@ The services of `compose.coolify.yaml`:
 - `app`: the server, built from `Dockerfile` at the repository root. Bun's distroless image runs the server bundle as user 65532 on port 3000. Coolify's Traefik ends TLS and routes the domain to it.
 - `db2`: PostgreSQL 18 with the volume `postgres18-data`. v2 stores everything here. Its network alias is `agentsplit-db2`.
 - `garage`: Garage v2.4.1 with the volumes `garage-meta` and `garage-data`, bucket `agentsplit-receipts`. It is unchanged from the old app, so v2 reads the old receipts in place. Its network alias is `agentsplit-garage`. Its Traefik labels still route the authenticated S3 API at `agentsplit-receipts.freemanjiang.com`; v2 does not use that route, because the app reaches Garage on the internal network.
-- `db`: the old app's PostgreSQL 17 with the volume `postgres-data`. v2 does not use it. Freeman approved removing the service on 2026-11-13; the volume `postgres-data` stays for a rollback.
+- `db`: the old app's PostgreSQL 17 with the volume `postgres-data`. v2 does not use it. Freeman approved the removal of the service for 2026-11-13, and the service stays until then. The volume `postgres-data` stays for a rollback.
 
 The app sits on the stack's internal `backend` network and on Coolify's shared `coolify` network. On the shared network a plain service name can resolve to another stack, so the app reaches `db2` and Garage only by the unique aliases. Coolify keeps `/etc/garage.toml` as a file storage of this resource; a new resource would get a directory there, and Garage would not start.
 
