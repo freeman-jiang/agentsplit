@@ -17,6 +17,7 @@ Run every command inside the dev shell, from the repository root: `direnv exec .
 | End-to-end tests, the image and the Coolify stack | `./scripts/e2e.sh --compose` |
 | Image | `docker build -t agentsplit .` |
 | Apply migrations locally | `DATABASE_URL=postgresql://postgres@127.0.0.1:5437/<db> bun db/migrate.ts` |
+| Check the running balances against a recount of the payers and shares (read-only) | `DATABASE_URL=<url> bun scripts/check-balances.ts [<group-id>]` |
 | New SQL migration | `bunx drizzle-kit generate --name <name>`, or `--custom` for triggers. Declare every table and CHECK in `db/schema/`, so `drizzle-kit generate` reports no changes afterwards (CI checks it). |
 
 - The test database name must contain `test` and have at most 53 characters. Without `TEST_DATABASE_URL`, the tests use `agentsplit_test` on the dev shell's PostgreSQL. The tests migrate that database once and give each test file its own copy (`<name>__<8 hex digits>`), so the files run in parallel; the run drops the copies at the end.
@@ -71,7 +72,7 @@ The area services build on these modules in `src/server/`. Use them instead of w
 
 - `expense-read.ts`: the expense read model (`expenseColumns`, `toExpense`, `loadExpenses`), what a read adds to it (`ExpenseParts`: names, receipts, attribution events), the list filter (`ExpenseFilter`) with each filter's rule for the live list (SQL) and the historical one (saved revisions), the expense row's fields (`EXPENSE_FIELDS`), the newest-first orders of expense lists with their page keys (`EXPENSE_ORDERS`), and the receipt rows and states.
 - `activity.ts`: the activity writer, the snapshots, the access-change text, attribution and the system actor.
-- `balances.ts`: what a balance counts (`ledgerParts`), group balances, the caller's nets and totals across groups, and balances at a recorded change.
+- `balances.ts`: what a balance counts (the running sums of `balance_totals`, which triggers keep with every payer and share row, and `balanceDrift`, their check against a recount), group balances, the caller's nets and totals across groups, and balances at a recorded change.
 - `invitations.ts`: invitation tokens, expiry, creation, revocation, and when an invitation is open or usable.
 - `people.ts`: display names (`participantsJson` lists a group's people in every current view) and the contacts a caller may add to an ungrouped expense.
 - `idempotency.ts`, `private-context.ts` and `sql.ts`: idempotency keys, the private write rules, and small SQL helpers.
@@ -102,6 +103,7 @@ The client reaches the server only through `rpc()` (`src/client/rpc.ts`), which 
 
 - Every write runs through `runWrite` in `src/server/calls.ts` (`write` on RPC, a `write` tool on MCP) and takes an `idempotencyKey`. Every edit or delete takes `expectedRevision` and throws `Conflict` on a mismatch.
 - Every change to a group or an expense writes its activity row in the same transaction, through `recordExpenseEvent` or `recordGroupEvent` in `src/server/activity.ts`. That module also owns the snapshots (`schemaVersion: 2`, checked with `satisfies` against the readers in `src/shared/snapshots.ts`), the access-change text and the system actor.
+- Balances read `balance_totals`, which row triggers on `expense_payers` and `expense_shares` keep in the same transaction as each write. Never write that table. A payer or share row carries its expense's `currency` and `live`: write the expense's currency and `live: true`, and `expense_state_fk` refuses any other value and copies later changes of the expense. `test/db/balance-totals.test.ts` checks random writes against a recount.
 - Money is minor units (`bigint`) inside, exact decimal strings outside. Use `minorOrNull`, `formatMinor`, `resolveShares` and `validateExpense`. Never use floats for money.
 - Value lists (kinds, split modes, recurrences, roles, group kinds, activity types and sources, upload states, receipt types, and v1's names for them) live only in `src/shared/vocabulary.ts`. Every limit (field lengths, people per group, page sizes, times, rates and the fair-use limits) lives only in `src/shared/limits.ts`. The contract, the Drizzle enums and CHECKs, the MCP schemas and descriptions, the rule messages and the client derive from these two modules; `test/db/database-rules.test.ts` compares the database's CHECKs with them. A new list or limit goes there, not into a schema.
 - Expense dates are `YYYY-MM-DD` strings. Times are `timestamptz` and ISO strings in the API.

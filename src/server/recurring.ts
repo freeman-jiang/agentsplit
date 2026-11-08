@@ -118,10 +118,11 @@ async function materialize(tx: Db, data: { link: DueLink; principal: Principal |
     INSERT INTO expenses (id, group_id, revision, expense_date, ${copied})
     SELECT ${id}, group_id, 1, ${date}::date, ${copied} FROM expenses WHERE id = ${frame.id}
   `)
-  await tx.execute(sql`INSERT INTO expense_payers (expense_id, group_id, participant_id, amount, weight)
-    SELECT ${id}, group_id, participant_id, amount, weight FROM expense_payers WHERE expense_id = ${frame.id}`)
-  await tx.execute(sql`INSERT INTO expense_shares (expense_id, group_id, participant_id, amount, weight)
-    SELECT ${id}, group_id, participant_id, amount, weight FROM expense_shares WHERE expense_id = ${frame.id}`)
+  // The frame is live, so its rows' currency and liveness are the copy's too (expense_state_fk).
+  await tx.execute(sql`INSERT INTO expense_payers (expense_id, group_id, participant_id, amount, weight, currency, live)
+    SELECT ${id}, group_id, participant_id, amount, weight, currency, live FROM expense_payers WHERE expense_id = ${frame.id}`)
+  await tx.execute(sql`INSERT INTO expense_shares (expense_id, group_id, participant_id, amount, weight, currency, live)
+    SELECT ${id}, group_id, participant_id, amount, weight, currency, live FROM expense_shares WHERE expense_id = ${frame.id}`)
   // Receipt pointers are copied as new rows; the frame keeps its own (P-RECUR-16).
   const documents = frame.documents ?? []
   if (documents.length) await tx.insert(expenseDocuments).values(documentRows({ expenseId: id, documents, keep: new Set() }))
