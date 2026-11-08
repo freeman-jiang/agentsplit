@@ -95,7 +95,7 @@ export function PaymentForm(
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
       <NativeSelect id={id} value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">Select a participant</option>
+        <option value="">Choose a person</option>
         {participants.map((p) => (
           <option key={p.id} value={p.id}>
             {p.name}
@@ -156,7 +156,7 @@ export function PaymentForm(
           {busy ? 'Saving…' : props.mode === 'create' ? 'Record payment' : 'Save changes'}
         </Button>
         {props.mode === 'edit' && (
-          <DeleteDialog trigger={<Button variant="destructive">Delete payment</Button>} title="Delete this payment?" description="Balances will be recalculated." onConfirm={write.remove} />
+          <DeleteDialog trigger={<Button variant="destructive">Delete payment</Button>} title="Delete this payment?" description="The balances update without it." onConfirm={write.remove} />
         )}
         <Button type="button" variant="ghost" asChild>
           <Link {...target.back}>Cancel</Link>

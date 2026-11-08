@@ -150,7 +150,7 @@ function PrivateRepayments({ data }: { data: Context }) {
                 }
               }}
             >
-              Generate a new invitation link
+              Create a new invitation link
             </Button>
           )}
         </div>
