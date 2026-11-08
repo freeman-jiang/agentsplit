@@ -32,12 +32,16 @@ export const NOT_FOUND_ENTITIES = Object.keys(NOT_FOUND_MESSAGES) as [NotFoundEn
  * - `state`: it conflicts with the current state (the last admin, a used invitation, a taken ID); read again.
  * - `rate`: the caller's fair-use write budget is spent; nothing changed, wait.
  * - `precondition`: the request is well formed but the data does not allow it (incomplete history, a full receipt quota).
+ * - `busy`: concurrent writes conflicted with it on every attempt; nothing changed, retry.
  */
-export const INVALID_REASONS = ['state', 'rate', 'precondition'] as const
+export const INVALID_REASONS = ['state', 'rate', 'precondition', 'busy'] as const
 export type InvalidReason = (typeof INVALID_REASONS)[number]
 
 /** The text of a revision Conflict that names no other cause. */
 export const REVISION_CONFLICT = 'The record changed. Read its current revision and retry your intended changes.'
+
+/** The text of a write that concurrent writes conflicted with on every attempt (Invalid.busy). */
+export const BUSY = 'Other changes were saving at the same time, so this change did not save. Try again.'
 
 /** The text of every failure that is not an answer to the request; the cause is logged, never sent. */
 export const UNAVAILABLE = 'The server could not complete this request. For a change, read the record before retrying.'
@@ -73,6 +77,8 @@ export const ERROR_ANSWERS = {
   'Invalid.rate': { answer: true, mcp: 'TOO_MANY_REQUESTS', recovery: 'retry_later', http: 429 },
   // The only precondition of an HTTP route is a full receipt quota, which the current app answered 413.
   'Invalid.precondition': { answer: true, mcp: 'PRECONDITION_FAILED', recovery: 'correct_arguments', http: 413 },
+  // A write conflict, as HTTP answers one; the transaction rolled back, so a retry is safe.
+  'Invalid.busy': { answer: true, mcp: 'CONFLICT', recovery: 'retry_later', http: 409 },
   Unavailable: { answer: false, mcp: 'INTERNAL_SERVER_ERROR', recovery: 'read_before_retry', http: 503 },
 } as const satisfies Record<string, Answer>
 
