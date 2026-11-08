@@ -203,7 +203,7 @@ export const expenses = pgTable(
   ],
 )
 
-const allocation = (name: 'expense_payers' | 'expense_shares') =>
+const allocation = (name: 'expense_payers' | 'expense_shares', weightRule: RegExp) =>
   pgTable(
     name,
     {
@@ -222,13 +222,13 @@ const allocation = (name: 'expense_payers' | 'expense_shares') =>
         'restrict',
       ),
       index().on(t.participantId),
-      // A share's weight takes the sign of a negative amount split by amount, such as a refund (DECISIONS.md, P-BAL-93, P-MONEY-52).
-      check(`${name}_weight_decimal`, sql`${t.weight} ~ ${sql.raw(`'${(name === 'expense_shares' ? DECIMAL : WEIGHT).source}'`)}`),
+      check(`${name}_weight_decimal`, sql`${t.weight} ~ ${sql.raw(`'${weightRule.source}'`)}`),
     ],
   )
 
-export const expensePayers = allocation('expense_payers')
-export const expenseShares = allocation('expense_shares')
+export const expensePayers = allocation('expense_payers', WEIGHT)
+// A share's weight takes the sign of a negative amount split by amount, such as a refund (DECISIONS.md, P-BAL-93, P-MONEY-52).
+export const expenseShares = allocation('expense_shares', DECIMAL)
 
 /** Append-only history: every group change and every expense revision with its full snapshot. */
 export const activities = pgTable(
