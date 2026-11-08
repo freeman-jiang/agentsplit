@@ -50,6 +50,21 @@ const logFailure = (data: { call: CallName; cause: Cause.Cause<unknown> }) =>
     else console.error(`${data.call.name} answered ${tag}`, meta)
   })
 
+/**
+ * The session check of each HTTP request, shared by the calls of its batch:
+ * they carry the same headers, so one lookup answers for all of them. A
+ * failed check is not kept, so each call reports its own failure.
+ */
+const checked = new WeakMap<RpcRequest['Service'], { readonly cookie: string | null; readonly principal: Promise<Principal | null> }>()
+function requestPrincipal(data: { request: RpcRequest['Service']; cookie: string | null; check: () => Promise<Principal | null> }): Promise<Principal | null> {
+  const found = checked.get(data.request)
+  if (found && found.cookie === data.cookie) return found.principal
+  const principal = data.check()
+  checked.set(data.request, { cookie: data.cookie, principal })
+  principal.catch(() => checked.delete(data.request))
+  return principal
+}
+
 export const AuthMiddlewareLive = Layer.effect(AuthMiddleware)(
   Effect.gen(function* () {
     const config = yield* AppConfig
@@ -64,7 +79,7 @@ export const AuthMiddlewareLive = Layer.effect(AuthMiddleware)(
         const { db } = request.value
         const cookie = (headers as Record<string, string | undefined>)['cookie'] ?? null
         const principal = yield* Effect.tryPromise({
-          try: () => sessionPrincipal(db, { cookie, secret: config.secret, baseUrl: config.baseUrl }),
+          try: () => requestPrincipal({ request: request.value, cookie, check: () => sessionPrincipal(db, { cookie, secret: config.secret, baseUrl: config.baseUrl }) }),
           catch: (error) => {
             console.error(`${call.name}: the session check failed`, { requestId: call.requestId }, error)
             return new Unavailable({ message: UNAVAILABLE })
