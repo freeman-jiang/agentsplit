@@ -15,7 +15,7 @@ import { iso } from './sql'
 // ---------- actors ----------
 
 /** The author the readers show for an activity without a user: the hourly recurring job (P-RECUR-17). */
-export const SYSTEM_ACTOR = 'Automatic recurrence'
+const SYSTEM_ACTOR = 'Automatic recurrence'
 /** The author the attribution shows for a user whose name was not recorded. */
 const UNKNOWN_ACTOR = 'Member'
 
