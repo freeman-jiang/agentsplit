@@ -1,7 +1,7 @@
 // Every MCP tool, in the order tools/list advertises them: the current app's
 // order (src/lib/mcp/registry.ts), then the v2 storage tools. The order and
 // names are MCP_TOOL_NAMES in src/shared/mcp.ts; MCP.md's tool table follows
-// this list (test/mcp-docs.test.ts).
+// this list (test/docs.test.ts).
 import { MCP_TOOL_NAMES, type McpToolName } from '../../../shared/mcp'
 import type { McpTool } from './registry'
 import { updateProfile } from './account'
