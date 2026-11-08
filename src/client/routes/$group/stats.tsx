@@ -10,6 +10,7 @@ import { CategoryIcon } from '~/client/components/category-icon'
 import { magnitude } from '~/client/components/balance/net'
 import { money, unitsOf } from '~/client/components/money'
 import { formatDay, formatMonth, localDate } from '~/client/dates'
+import { describeError } from '~/client/errors'
 import { statsQuery, type StatsScope } from '~/client/queries/history'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/client/ui/card'
 import { Checkbox } from '~/client/ui/checkbox'
@@ -95,7 +96,7 @@ function StatsTab() {
   const range = resolveRange({ period, custom, now })
   const scope = scopeOf({ currency, range })
   // Each filter change is one new request (P-STATS-02); the previous figures stay until it answers.
-  const { data } = useQuery({ ...statsQuery(groupId, { ...scope, today: localDate(now) }), placeholderData: keepPreviousData })
+  const { data, error } = useQuery({ ...statsQuery(groupId, { ...scope, today: localDate(now) }), placeholderData: keepPreviousData })
   const c = data?.currency
   const drill = { group, groupId, range }
   return (
@@ -129,17 +130,23 @@ function StatsTab() {
         {/* The date range describes the selection, so it sits with the filters, not in a card. */}
         {data && data.summary.count > 0 && <span className="self-center text-sm tabular-nums text-muted-foreground sm:ml-auto">Active period · {activeSpan(data.summary)}</span>}
       </div>
-      <div className="grid gap-6 xl:grid-cols-2">
-        <SummaryCard data={data} />
-        <StatsCard title="Totals" description="Spending summary of the entire group.">
-          {!data || !c ? <Lines rows={3} /> : <Totals data={data} currency={c} />}
-        </StatsCard>
-        <OverTimeCard data={data} drill={drill} />
-        <MonthlyCard data={data} />
-        <ParticipantsCard data={data} />
-        <CategoriesCard data={data} drill={drill} />
-        <RecurringCard data={data} />
-      </div>
+      {error ? (
+        <p role="alert" className="text-sm">
+          {describeError(error).message}
+        </p>
+      ) : (
+        <div className="grid gap-6 xl:grid-cols-2">
+          <SummaryCard data={data} />
+          <StatsCard title="Totals" description="Spending summary of the entire group.">
+            {!data || !c ? <Lines rows={3} /> : <Totals data={data} currency={c} />}
+          </StatsCard>
+          <OverTimeCard data={data} drill={drill} />
+          <MonthlyCard data={data} />
+          <ParticipantsCard data={data} />
+          <CategoriesCard data={data} drill={drill} />
+          <RecurringCard data={data} />
+        </div>
+      )}
     </section>
   )
 }
