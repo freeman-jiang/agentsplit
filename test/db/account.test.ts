@@ -3,7 +3,7 @@
 // security rules that sign-in and the server rely on.
 import { and, eq } from 'drizzle-orm'
 import type { Pool, PoolClient } from 'pg'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { authBootstrap, groups, legacyGroupClaims, memberships, oauthConnections } from '../../db/schema/app'
 import * as auth from '../../db/schema/auth'
 import { consentClient, getAccount, revokeApiKey, revokeConnection, updateProfile } from '~/server/account'
@@ -362,5 +362,17 @@ describe('security headers and readiness', () => {
     const healthy = await app().fetch(new Request(`${BASE}/api/health/readiness`))
     expect(healthy.status).toBe(200)
     expect(healthy.headers.get('cache-control')).toBe('no-cache, no-store, must-revalidate')
+  })
+
+  it('answers 503 with Retry-After and the security headers when no connection comes', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const failing = app(() => Promise.reject(new Error('timeout exceeded when trying to connect')))
+    for (const path of ['/api/rpc', '/api/mcp', '/household/expenses/export/csv']) {
+      const response = await failing.fetch(new Request(`${BASE}${path}`, path === '/api/rpc' ? { method: 'POST', headers: { origin: BASE }, body: '[]' } : {}))
+      expect({ path, status: response.status, retry: response.headers.get('retry-after') }).toEqual({ path, status: 503, retry: '5' })
+      expect(response.headers.get('content-security-policy')).toContain("default-src 'self'")
+      expect(await response.json()).toEqual({ error: 'AgentSplit is temporarily unavailable. Try again in a moment.' })
+    }
+    error.mockRestore()
   })
 })
