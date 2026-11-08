@@ -137,7 +137,7 @@ const FILTER_KEYS = Object.keys(FILTERS) as FilterKey[]
 const rule = (key: FilterKey) => FILTERS[key] as FilterRule<NonNullable<ExpenseFilter[FilterKey]>>
 
 /** The SQL conditions of a filter on expense row `e`. */
-export const filterConditions = (filter: ExpenseFilter): SQL[] =>
+export const filterConditions = (filter: { readonly [K in keyof ExpenseFilter]?: ExpenseFilter[K] | undefined }): SQL[] =>
   FILTER_KEYS.flatMap((key) => {
     const value = filter[key]
     return value === undefined ? [] : (rule(key).live(value) ?? [])
