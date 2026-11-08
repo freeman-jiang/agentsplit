@@ -30,25 +30,24 @@ function InvitationPage() {
   return (
     <main className="mx-auto w-full max-w-lg space-y-6 px-4 py-16">
       <h1 className="font-display text-4xl">{personal ? 'View a private expense' : 'Accept invitation'}</h1>
-      <p>This invitation is for one Google account. Check that you’re signed in with the email your friend invited.</p>
+      <p>This invitation is for one Google account. Make sure you are signed in with that account.</p>
       <p className="text-sm text-muted-foreground">Signed in as {me?.email}</p>
       {valid ? (
         <>
           <p>
-            {personal ? 'View' : 'Join'} <strong>{valid.groupName}</strong> as <strong>{valid.participantName}</strong>. Existing expenses and balances under this name
-            will be linked to your account.
+            {personal ? 'View' : 'Join'} <strong>{valid.groupName}</strong> as <strong>{valid.participantName}</strong>. The expenses and balances under this name
+            are linked to your account.
           </p>
           <AcceptInvitation token={token} />
           <div className="space-y-3 border-t pt-5 text-sm">
-            <h2 className="font-medium">What happens next?</h2>
+            <h2 className="font-medium">Next</h2>
             <p>
               {personal
-                ? 'You’ll go to this private expense. You can review the split, record repayments and see who owes whom.'
-                : 'You’ll go straight to the group. You can review expenses, add your own, record payments and see who owes whom.'}
+                ? 'You go to the expense. There you can check the split, record payments and see who owes whom.'
+                : 'You go to the group. There you can see expenses, add your own, record payments and see who owes whom.'}
             </p>
             <p>
-              Want ChatGPT or Claude to help? After joining, open <strong>Agents</strong> in the navigation and follow the setup steps. Or just keep using the
-              browser—an agent is optional.
+              To use ChatGPT or Claude, open <strong>Agents</strong> after you join. An agent is optional.
             </p>
           </div>
         </>
@@ -56,10 +55,10 @@ function InvitationPage() {
         <div className="space-y-3">
           <Alert>
             <AlertDescription>
-              This invitation is unavailable for this account. It may be addressed to another Google email, expired, revoked, or need reissuing.
+              You cannot use this invitation with this account. It is for another Google email, or it expired, or an admin revoked it.
             </AlertDescription>
           </Alert>
-          <p className="text-sm">Try the Google account your friend invited. If you’re already using that account, ask them for a fresh invitation link.</p>
+          <p className="text-sm">Sign in with the invited Google account. If you already use that account, ask for a new invitation link.</p>
         </div>
       )}
       <SwitchAccount token={token} />
