@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { describeError } from '~/client/errors'
+import { describeError, type Failure } from '~/client/errors'
 import { Alert, AlertDescription } from '~/client/ui/alert'
 import { Button } from '~/client/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/client/ui/card'
@@ -41,10 +41,12 @@ export function GroupForm(props: {
   children?: ReactNode
   cancel?: ReactNode
   onSubmit: (values: GroupFormValues) => Promise<void>
+  /** Opens the latest saved settings, offered after a revision conflict. */
+  onReload?: () => void
 }) {
   const [values, setValues] = useState(props.initial)
   const [touched, setTouched] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [failure, setFailure] = useState<Failure | null>(null)
   const [saving, setSaving] = useState(false)
   const issues = problems(values)
   const set = <K extends keyof GroupFormValues>(key: K, value: GroupFormValues[K]) => setValues((v) => ({ ...v, [key]: value }))
@@ -55,9 +57,18 @@ export function GroupForm(props: {
       </p>
     ) : null
 
-  const alert = error && (
+  const alert = failure && (
     <Alert variant="destructive">
-      <AlertDescription>{error}</AlertDescription>
+      <AlertDescription>
+        {failure.message}
+        {failure.kind === 'conflict' && props.onReload && (
+          <div className="mt-2">
+            <Button type="button" variant="outline" size="sm" onClick={props.onReload}>
+              Load the latest version
+            </Button>
+          </div>
+        )}
+      </AlertDescription>
     </Alert>
   )
   const actions = (
@@ -77,11 +88,11 @@ export function GroupForm(props: {
         setTouched(true)
         if (issues.name || issues.slug) return
         setSaving(true)
-        setError(null)
+        setFailure(null)
         try {
           await props.onSubmit({ ...values, name: values.name.trim() })
         } catch (e) {
-          setError(describeError(e).message)
+          setFailure(describeError(e))
         } finally {
           setSaving(false)
         }
