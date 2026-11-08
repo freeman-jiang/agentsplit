@@ -75,10 +75,14 @@ export async function getGroup(db: Db, data: { principal: Principal; groupId: st
 
 type Cursor = { readonly k: string; readonly c: string; readonly i: string }
 const encodeCursor = (c: Cursor) => btoa(JSON.stringify(c))
-const decodeCursor = (text: string): Cursor => {
+/** The keys of a cursor that encodeCursor wrote for `order`. */
+const decodeCursor = (data: { text: string; order: (typeof EXPENSE_ORDERS)[keyof typeof EXPENSE_ORDERS] }) => {
   try {
-    const value = JSON.parse(atob(text)) as Cursor
-    if (typeof value.k === 'string' && typeof value.c === 'string' && typeof value.i === 'string') return value
+    const value = JSON.parse(atob(data.text)) as Cursor
+    if (typeof value.k === 'string' && typeof value.c === 'string' && typeof value.i === 'string') {
+      const keys = { a: value.k, b: value.c, id: value.i }
+      if (data.order.valid(keys)) return keys
+    }
   } catch {}
   throw new Invalid({ message: 'Invalid cursor', field: 'cursor' })
 }
@@ -102,10 +106,7 @@ export async function listExpenses(
   const member = sql`WITH ${memberCte(data)}`
   const where: SQL[] = [sql`e.group_id = (SELECT id FROM g WHERE active)`, sql`e.deleted_at IS NULL`, ...filterConditions(f)]
   const order = EXPENSE_ORDERS[f.sort ?? 'date']
-  if (data.cursor) {
-    const c = decodeCursor(data.cursor)
-    where.push(order.after({ a: c.k, b: c.c, id: c.i }))
-  }
+  if (data.cursor) where.push(order.after(decodeCursor({ text: data.cursor, order })))
   const result = await db.execute<ExpenseRow & OrderedRow>(sql`
     ${member}
     SELECT ${expenseColumns(data.parts)}, ${order.keys}

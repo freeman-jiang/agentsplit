@@ -17,3 +17,9 @@ export const isRealDate = (value: string) => {
 
 /** A real calendar date in the YYYY-MM-DD form. */
 export const isCalendarDate = (value: string) => CALENDAR_DATE.test(value) && isRealDate(value)
+
+/** A UTC time as the server writes it for a page cursor: YYYY-MM-DDTHH:MM:SS, up to microseconds, and Z. */
+export const UTC_TIME = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,6})?Z$/
+
+/** A UTC time in that form on a real day. */
+export const isUtcTime = (value: string) => UTC_TIME.test(value) && isRealDate(value.slice(0, 10))

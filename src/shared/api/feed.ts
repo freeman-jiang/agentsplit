@@ -3,6 +3,7 @@
 // ungrouped form of create_expense call the same services.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
+import { isUtcTime, UTC_TIME } from '../dates'
 import { LIMITS } from '../limits'
 import { Category } from './expenses'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
@@ -33,7 +34,7 @@ import {
 /** The last row of a page: its expense date, its exact creation time (microseconds) and its ID. */
 export const FeedCursor = Schema.Struct({
   date: CalendarDate,
-  createdAt: Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$/)),
+  createdAt: Schema.String.check(Schema.isPattern(UTC_TIME), Schema.makeFilter((value: string) => isUtcTime(value) || 'Invalid time')),
   id: Id,
 })
 

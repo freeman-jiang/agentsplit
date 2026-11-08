@@ -21,22 +21,25 @@ export type AfterCommit = (work: (db: Db) => Promise<unknown>) => void
 export type CallName = { readonly name: string; readonly requestId?: string | undefined }
 
 /**
- * A database rule that refused the change: a CHECK or invariant trigger
- * (23514), a missing referenced row (23503), or a taken unique key (23505).
- * These answer the request, so they are not outages; the text names no table.
+ * What the database refused in the request: a CHECK or invariant trigger
+ * (23514), a missing referenced row (23503), a taken unique key (23505), or a
+ * date or time that it cannot read, such as February 30 (22007, 22008). These
+ * answer the request, so they are not outages; the text names no table.
  */
-const CONSTRAINTS: Readonly<Record<string, () => Invalid>> = {
+const REFUSALS: Readonly<Record<string, () => Invalid>> = {
   '23514': () => new Invalid({ message: 'The change breaks a rule of the ledger. Check the amounts, the splits and the other fields.' }),
   '23503': () => new Invalid({ message: 'The change names a record that does not exist.' }),
   '23505': () => new Invalid({ message: 'A record with this ID or name already exists. Read it before retrying.', reason: 'state' }),
+  '22007': () => new Invalid({ message: 'A date or time in the request is not valid.' }),
+  '22008': () => new Invalid({ message: 'A date or time in the request does not exist.' }),
 }
 
 /** The answer for a thrown value. Anything that is not an answer is logged with `call` and becomes Unavailable. */
 export function answerOf(error: unknown, call: CallName): CallError {
   if (isDomainError(error) || error instanceof Unavailable) return error
-  const refused = CONSTRAINTS[sqlState(error) ?? '']
+  const refused = REFUSALS[sqlState(error) ?? '']
   if (refused) {
-    console.warn(`${call.name}: the database refused the change`, { requestId: call.requestId }, error)
+    console.warn(`${call.name}: the database refused the request`, { requestId: call.requestId }, error)
     return refused()
   }
   console.error(`${call.name} failed`, { requestId: call.requestId }, error)
