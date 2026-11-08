@@ -34,6 +34,52 @@
   --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* Motion: one strong ease-out curve for everything that responds to the user. */
+@theme {
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-pop-in: pop-in 200ms var(--ease-out-strong);
+  --animate-pop-out: pop-out 150ms var(--ease-out-strong);
+  --animate-fade-in: fade-in 200ms var(--ease-out-strong);
+  --animate-fade-out: fade-out 150ms var(--ease-out-strong);
+}
+
+/* A surface grows from 96% and fades in, around its transform-origin. */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+/* Less motion: surfaces only fade. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-out {
+    to {
+      opacity: 0;
+    }
+  }
+}
+
 @layer base {
   /* Monochrome and quiet, after OpenAI and Apple: white or near-black surfaces,
      hairline borders, one ink color, and color only for money. */
