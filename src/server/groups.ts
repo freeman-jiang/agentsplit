@@ -15,7 +15,7 @@ import { randomId } from '../shared/ids'
 import type { Db } from './core/db'
 import { createInvitation, findInvitation, invitationProblem, listedInvitation, openInvitation, revokeInvitations, tokenOfLink } from './invitations'
 import { groupIdOf, groupIdOfInput, groupRef, memberCte, myMemberships, requireActive, requireMember, type Principal } from './core/access'
-import { accessText, groupSnapshot, invitationText, recordGroupEvent } from './activity'
+import { accessText, groupSnapshot, recordGroupEvent } from './activity'
 import { formatTotals, netsCte, totalsJson } from './balances'
 import { idempotent } from './idempotency'
 import { displayNames } from './people'
@@ -477,7 +477,7 @@ async function applyAccess(
         .set({ active: true, participantId: invitation.participantId, role: membership.active ? membership.role : 'member' })
         .where(and(eq(memberships.userId, me.userId), eq(memberships.groupId, groupId)))
     else await tx.insert(memberships).values({ userId: me.userId, groupId, role: 'member', participantId: invitation.participantId })
-    await log({ type: 'join_group', data: accessText({ action: 'join', whom: me.name }), participantId: invitation.participantId })
+    await log({ type: 'join_group', data: accessText.joined(me.name), participantId: invitation.participantId })
     return done()
   }
 
@@ -516,7 +516,7 @@ async function applyAccess(
         throw new Invalid({ message: 'The verified email must match the existing member account.' })
       if (targetAccess.participantId) throw new Invalid({ message: 'This member already has a fixed identity.', reason: 'state' })
       await tx.update(memberships).set({ participantId: participant.id }).where(and(eq(memberships.userId, target.id), eq(memberships.groupId, groupId)))
-      await log({ type: 'update_group', data: accessText({ action: 'Member identity bound', whom: `${target.name} as ${participant.name}` }), participantId: participant.id })
+      await log({ type: 'update_group', data: accessText.bound({ member: target.name, participant: participant.name }), participantId: participant.id })
       return done()
     }
     if (targetAccess?.active) throw new Invalid({ message: 'That account is already a member. Bind its identity in member settings if needed.', reason: 'state' })
@@ -529,14 +529,14 @@ async function applyAccess(
       createdBy: me.userId,
       baseUrl: data.baseUrl,
     })
-    await log({ type: 'update_group', data: invitationText({ action: 'created', participantName: participant.name }), participantId: participant.id })
+    await log({ type: 'update_group', data: accessText.invitation({ action: 'created', participantName: participant.name }), participantId: participant.id })
     return { result: { groupId, joined: true, invitation: { ...invitation, url: null } }, url }
   }
 
   if (input.action === 'revoke_invitation') {
     const [row] = await revokeInvitations(tx, { groupId, invitationId: input.invitationId })
     if (!row) throw new NotFound({ entity: 'pendingInvitation', id: input.invitationId })
-    await log({ type: 'update_group', data: invitationText({ action: 'revoked', participantName: row.participantName }) })
+    await log({ type: 'update_group', data: accessText.invitation({ action: 'revoked', participantName: row.participantName }) })
     return done()
   }
 
@@ -558,15 +558,15 @@ async function applyAccess(
   const where = and(eq(memberships.userId, targetUserId), eq(memberships.groupId, groupId))
   if (nextRole) {
     await tx.update(memberships).set({ role: nextRole }).where(where)
-    await log({ type: 'update_group', data: accessText({ action: 'set_role', whom: `${target.name} is now ${nextRole === 'admin' ? 'an admin' : 'a member'}` }), participantId: target.participantId })
+    await log({ type: 'update_group', data: accessText.role({ name: target.name, role: nextRole }), participantId: target.participantId })
     return done()
   }
   await tx.update(memberships).set({ active: false }).where(where)
   if (input.action === 'leave') {
-    await log({ type: 'leave_group', data: accessText({ action: 'leave', whom: target.name }), participantId: target.participantId })
+    await log({ type: 'leave_group', data: accessText.left(target.name), participantId: target.participantId })
     return done(false)
   }
-  await log({ type: 'update_group', data: accessText({ action: 'remove_member', whom: target.name }), participantId: target.participantId })
+  await log({ type: 'update_group', data: accessText.removed(target.name), participantId: target.participantId })
   return done()
 }
 

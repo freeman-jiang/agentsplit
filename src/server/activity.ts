@@ -3,11 +3,10 @@
 // readers also understand every format the current app and earlier v2 wrote.
 import { sql, type SQL } from 'drizzle-orm'
 import { activities } from '../../db/schema/app'
-import type { AccessRequest } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import { titleWithVendor } from '../shared/history'
 import type { V2ExpenseSnapshot, V2GroupSnapshot } from '../shared/snapshots'
-import type { ActivityType, ExpenseKind, Recurrence, SplitMode } from '../shared/vocabulary'
+import type { ActivityType, ExpenseKind, Recurrence, Role, SplitMode } from '../shared/vocabulary'
 import { randomId } from '../shared/ids'
 import type { Principal } from './core/access'
 import type { Db } from './core/db'
@@ -103,34 +102,39 @@ export function attributionOf(data: { events: readonly AttributionEvent[]; viewe
 
 // ---------- texts ----------
 
-type AccessAction = (typeof AccessRequest.Type)['action'] | 'Member identity bound' | 'Invitation created'
+/**
+ * The texts of access changes. Each names people by name, never by email or
+ * user ID, so readers show it in full (P-ACCESS-30). The Log reads an
+ * update_group text as "<text> by <actor>.".
+ */
+export const accessText = {
+  joined: (name: string) => `${name} joined`,
+  left: (name: string) => `${name} left`,
+  removed: (name: string) => `${name} removed`,
+  role: (data: { name: string; role: Role }) => `${data.name} made ${data.role === 'admin' ? 'an admin' : 'a member'}`,
+  bound: (data: { member: string; participant: string }) => `Member identity of ${data.member} bound to ${data.participant}`,
+  invitation: (data: { action: 'created' | 'revoked'; participantName: string | null }) =>
+    `Invitation ${data.action}${data.participantName ? ` for ${data.participantName}` : ''}`,
+}
 
 /**
- * The actions an access text starts with: the access requests, and the two
- * that the current app wrote as words (its group-access.ts log calls).
+ * The actions of the current app's access texts, "<action>: <target>" (its
+ * group-access.ts log calls: each access request, and two phrases). Its
+ * targets are user IDs and emails, so readers show only the action
+ * (P-ACCESS-30, P-EXPORT-14). v2 wrote names in this form before its
+ * sentences, and those rows read the same way.
  */
-const ACCESS_ACTIONS = {
-  join: true,
-  leave: true,
-  invite: true,
-  revoke_invitation: true,
-  remove_member: true,
-  set_role: true,
-  bind_member: true,
-  'Member identity bound': true,
-  'Invitation created': true,
-} as const satisfies Record<AccessAction, true>
-
-/**
- * The text of an access change: "<action>: <whom>". The current app stored
- * user IDs and email addresses as `whom`, so readers show only the action
- * (P-ACCESS-30, P-EXPORT-14); v2 stores names there, in the same form.
- */
-export const accessText = (data: { action: AccessAction; whom: string }) => `${data.action}: ${data.whom}`
-
-/** The text of an invitation change. It names the participant, never the email, so readers show it in full. */
-export const invitationText = (data: { action: 'created' | 'revoked'; participantName: string | null }) =>
-  `Invitation ${data.action}${data.participantName ? ` for ${data.participantName}` : ''}`
+const V1_ACCESS_ACTIONS: ReadonlySet<string> = new Set([
+  'join',
+  'leave',
+  'invite',
+  'revoke_invitation',
+  'remove_member',
+  'set_role',
+  'bind_member',
+  'Member identity bound',
+  'Invitation created',
+])
 
 /** The create_group text of a private context, and the text of its renewed invitation. */
 export const PRIVATE_CONTEXT_TEXT = 'Private expense'
@@ -157,15 +161,15 @@ export const savedTitle = (alias: SQL) => {
 
 /**
  * The text of an activity as it is shown and exported: an expense event's
- * "<vendor> — <title>" (stored, or from savedTitle), an access change without
- * its target, and any other text unchanged.
+ * "<vendor> — <title>" (stored, or from savedTitle), the current app's access
+ * change without its target, and any other text unchanged.
  */
 export function activityText(data: { type: ActivityType; data: string | null; saved: { title: string; vendor: string | null } | null }): string | null {
   if (data.data === null) return data.saved ? titleWithVendor(data.saved) : null
   if (!ACCESS_TYPES.has(data.type)) return data.data
   const at = data.data.indexOf(': ')
   const action = at === -1 ? null : data.data.slice(0, at)
-  return action !== null && Object.hasOwn(ACCESS_ACTIONS, action) ? action : data.data
+  return action !== null && V1_ACCESS_ACTIONS.has(action) ? action : data.data
 }
 
 // ---------- snapshots ----------
