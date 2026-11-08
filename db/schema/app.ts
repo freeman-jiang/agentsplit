@@ -440,7 +440,7 @@ export const authBootstrap = pgTable('auth_bootstrap', {
 
 /**
  * Upload targets that an agent asked for with create_expense or update_expense
- * (the current app's pending-receipts objects). The agent PUTs the bytes once
+ * (v1's pending-receipts objects). The agent PUTs the bytes once
  * to /api/receipt-uploads/<token>, and update_expense attaches them. A row is
  * deleted when its receipt is attached, or by the hourly cleanup.
  */
