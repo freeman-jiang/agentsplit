@@ -1,4 +1,6 @@
-import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
+import { createTableRelationsHelpers, extractTablesRelationalConfig, type ExtractTablesWithRelations, type RelationalSchemaConfig } from 'drizzle-orm'
+import { NodePgDatabase, NodePgSession } from 'drizzle-orm/node-postgres'
+import { PgDialect } from 'drizzle-orm/pg-core'
 import pg from 'pg'
 import * as app from '../../../db/schema/app'
 import * as auth from '../../../db/schema/auth'
@@ -9,7 +11,21 @@ export type Db = NodePgDatabase<typeof schema>
 // Expense dates are calendar dates: keep DATE as text, never a local Date.
 pg.types.setTypeParser(1082, (value: string) => value)
 
-export const makeDb = (client: pg.Client | pg.PoolClient | pg.Pool): Db => drizzle({ client, schema, casing: 'snake_case' })
+/** The schema's relational config, as drizzle() builds it from `schema`. */
+const relational: RelationalSchemaConfig<ExtractTablesWithRelations<typeof schema>> = (() => {
+  const tables = extractTablesRelationalConfig<ExtractTablesWithRelations<typeof schema>>(schema, createTableRelationsHelpers)
+  return { fullSchema: schema, schema: tables.tables, tableNamesMap: tables.tableNamesMap }
+})()
+/** One dialect for the process: it caches the snake_case name of each column. */
+const dialect = new PgDialect({ casing: 'snake_case' })
+
+/**
+ * What drizzle({ client, schema, casing: 'snake_case' }) returns, from the
+ * relational config and the dialect above. drizzle() builds both again on
+ * each call, by walking the whole schema: once per request, that was the
+ * largest CPU cost of a request in the capacity profile (docs/CAPACITY.md).
+ */
+export const makeDb = (client: pg.Client | pg.PoolClient | pg.Pool): Db => new NodePgDatabase(dialect, new NodePgSession(client, dialect, relational), relational)
 
 /** The app's advisory lock keys (the owner bootstrap takes one key, a quota decision two), one per kind of decision; no two may be equal. */
 export const ADVISORY_LOCKS = { ownerBootstrap: 170031011, receiptQuota: 170031012 } as const
