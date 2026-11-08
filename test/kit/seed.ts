@@ -10,7 +10,7 @@ import { createUngroupedExpense } from '../../src/server/ungrouped'
 import type { CurrencyCode } from '../../src/shared/currencies'
 import type { Role } from '../../src/shared/vocabulary'
 import { draft } from './drafts'
-import { principal } from './people'
+import { principal, userRows } from './people'
 
 /** An account's membership: its participant (null while it is not bound) and its role. */
 export type Member = { readonly userId: string; readonly participantId: string | null; readonly role: Role }
@@ -55,9 +55,8 @@ export type Household = { readonly groupId: string; readonly slug: string; reado
 export async function seedHousehold(db: Db, data: { groupId: string; slug: string; name: string; people: readonly [Person & { userId: string }, ...Person[]] }): Promise<Household> {
   const [first, ...rest] = data.people
   const owner = principal(first.userId, { name: first.name })
-  const now = new Date()
-  const accounts = data.people.flatMap((p) => (p.userId ? [{ id: p.userId, name: p.name, email: `${p.userId}@example.com`, emailVerified: true, createdAt: now, updatedAt: now }] : []))
-  await db.insert(user).values(accounts).onConflictDoNothing()
+  const accounts = data.people.flatMap((p) => (p.userId ? [principal(p.userId, { name: p.name })] : []))
+  await db.insert(user).values(userRows(accounts, { verified: true })).onConflictDoNothing()
   await seedGroup(db, {
     groupId: data.groupId,
     slug: data.slug,
