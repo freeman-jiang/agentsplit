@@ -38,7 +38,9 @@ describe('MCP.md', () => {
     const keys = Object.keys(FAIR_USE_LABELS) as (keyof typeof FAIR_USE_LIMITS)[]
     const rows = table('Fair-use limits')
     expect(rows.map(([label]) => label)).toEqual(keys.map((key) => FAIR_USE_LABELS[key]))
-    for (const [i, key] of keys.entries()) expect(rows[i]?.[1], key).toContain(value(key))
+    // The whole number: "10" must not pass for a limit of 1.
+    const whole = (text: string) => new RegExp(`(^|[^\\d.])${text.replaceAll('.', '\\.')}($|[^\\d.])`)
+    for (const [i, key] of keys.entries()) expect(rows[i]?.[1], key).toMatch(whole(value(key)))
   })
 
   it('states the rate limits, the token lifetimes and the upload times that the code applies', () => {
