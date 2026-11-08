@@ -2,6 +2,7 @@
   description = "AgentSplit dev shell";
 
   # Same revision as ~/dots/flake.lock, so the shell reuses the box's packages.
+  # It also fixes Bun, which the Dockerfile images and @types/bun follow (scripts/check-bun-version.ts).
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/7dcdd87373d72e7a2173e4db02e20d3d7f495cfd";
 
   outputs =

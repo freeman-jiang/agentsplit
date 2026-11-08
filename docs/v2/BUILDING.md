@@ -21,7 +21,7 @@ Run every command inside the dev shell, from the repository root: `direnv exec .
 
 - The test database name must contain `test` and have at most 53 characters. Without `TEST_DATABASE_URL`, the tests use `agentsplit_test` on the dev shell's PostgreSQL. The tests migrate that database once and give each test file its own copy (`<name>__<8 hex digits>`), so the files run in parallel; the run drops the copies at the end.
 - The end-to-end tests start Garage (and, with `--compose`, the app image and PostgreSQL 18) through `docker-compose` on the Podman socket. Each run uses new test-only secrets and removes its containers and volumes. Set `E2E_PORT` to run more than one suite at a time.
-- The GitHub workflow `.github/workflows/ci.yml` runs these checks in the same dev shell (`nix develop`), and two more: `drizzle-kit generate` must find no change between `db/schema` and the migrations, and `scripts/gen-auth-schema.ts` must leave `db/schema/auth.ts` as it is.
+- The GitHub workflow `.github/workflows/ci.yml` runs these checks in the same dev shell (`nix develop`), and three more: `scripts/check-bun-version.ts` must find one Bun version in the dev shell, the Dockerfile images and `@types/bun` (Dependabot leaves Bun alone, so bump the three together), `drizzle-kit generate` must find no change between `db/schema` and the migrations, and `scripts/gen-auth-schema.ts` must leave `db/schema/auth.ts` as it is.
 
 ## Local database
 
