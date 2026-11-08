@@ -7,11 +7,8 @@
     "dev": "vite",
     "dev:server": "bun --watch src/server/main/server.ts",
     "build": "vite build && bun scripts/build-server.ts",
-    "start": "bun dist/server/server.js",
     "check-types": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "bun db/migrate.ts"
+    "test": "vitest run"
   },
   "trustedDependencies": [],
   "dependencies": {
@@ -42,8 +39,6 @@
     "tailwind-merge": "3.7.0"
   },
   "devDependencies": {
-    "@better-auth/cli": "1.4.21",
-    "@effect/vitest": "4.1.0",
     "@playwright/test": "1.64.1",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.3",
@@ -54,7 +49,6 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
     "drizzle-kit": "0.31.11",
-    "fast-check": "4.10.2",
     "tailwindcss": "4.3.3",
     "tailwindcss-animate": "1.0.7",
     "typescript": "7.0.2",
