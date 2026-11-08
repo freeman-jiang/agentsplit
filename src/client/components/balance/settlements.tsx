@@ -23,7 +23,7 @@ export function SuggestedPayments(props: People & { currencies: Currencies; grou
       <h2 id="suggested-title" className="text-base font-semibold leading-tight">
         Suggested payments
       </h2>
-      <p className="mt-1.5 mb-4 text-sm text-muted-foreground">Record these payments to settle the group.</p>
+      <p className="mt-1.5 mb-4 text-sm text-muted-foreground">Record these payments to settle up.</p>
       {pending.length === 0 ? (
         <p className="text-sm text-muted-foreground">No payments needed.</p>
       ) : (
@@ -89,7 +89,7 @@ export function RepaymentSettlements(props: { names: ReadonlyMap<string, string>
               {nameOf(t.from, people)} owes {nameOf(t.to, people)} <strong>{money(t.amount, currency)}</strong>
             </span>
             <Link className="underline" to="/expenses/$expenseId/payments/create" params={{ expenseId: props.expenseId }} search={{ from: t.from, to: t.to, amount: t.amount, currencyCode: currency }}>
-              Record repayment
+              Record payment
             </Link>
           </div>
         ))

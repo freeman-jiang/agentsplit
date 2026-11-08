@@ -1125,10 +1125,10 @@ Items that end with `QUESTION:` look like bugs or doubtful behavior, so a person
 
 ## PWA/misc
 
-- [ ] P-PWA-01: The web manifest has name and short_name "AgentSplit", `start_url` `/`, `id` `/groups`, `display` standalone, background `#f5f1e8` and theme `#526044` (source: src/app/manifest.ts, README.md:30)
+- [ ] P-PWA-01: The web manifest has name and short_name "AgentSplit", `start_url` `/`, `id` `/groups`, `display` standalone, background `#f5f1e8` and theme `#526044` (source: src/app/manifest.ts, README.md:30) v2 changes the colours to `#ffffff` (DECISIONS.md, "Installed-app colours").
 - [ ] P-PWA-02: The manifest lists PNG icons at 48, 64, 128, 144, 192, 256 and 512 px plus a 512 px maskable icon (source: src/app/manifest.ts:13-55)
-- [ ] P-PWA-03: The page sets theme color `#526044`, Apple web-app capable with title "AgentSplit", and 192/512 px icons (source: src/app/layout.tsx:46-68)
-- [ ] P-PWA-04: The client generates iOS portrait and landscape splash images from `/logo-with-text.png` on `#526044` (source: src/app/apple-pwa-splash.tsx, src/app/layout.tsx:147)
+- [ ] P-PWA-03: The page sets theme color `#526044`, Apple web-app capable with title "AgentSplit", and 192/512 px icons (source: src/app/layout.tsx:46-68) v2 sets one theme color per colour scheme, `#ffffff` and `#141414` (DECISIONS.md, "Installed-app colours").
+- [ ] P-PWA-04: The client generates iOS portrait and landscape splash images from `/logo-with-text.png` on `#526044` (source: src/app/apple-pwa-splash.tsx, src/app/layout.tsx:147) v2 draws the brand mark and the name on the page's background (DECISIONS.md, "Installed-app colours").
 - [ ] P-PWA-05: The service worker registers only in production, at `/sw.js`, and takes control of the page (source: src/components/service-worker-registration.tsx:35-49, e2e/pwa.spec.ts "registers a service worker")
 - [ ] P-PWA-06: On install, the worker caches `/offline.html` in `agentsplit-static-v3` and skips waiting (source: public/sw.js:2-3)
 - [ ] P-PWA-07: On activate, the worker deletes every other cache and claims open clients (source: public/sw.js:4)

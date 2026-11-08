@@ -15,7 +15,7 @@ import { expenseRowFigures, type RowExpense, type Tone } from './figures'
  * under the text. Wide: date, category, text, the paid figure, the viewer's figure.
  */
 const rowClass =
-  'grid grid-cols-[2.5rem_minmax(0,1fr)_auto] items-start gap-x-3 px-3 py-3 transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-ring sm:min-h-16 sm:grid-cols-[2.5rem_2rem_minmax(0,1fr)_minmax(7rem,auto)_7rem] sm:items-center sm:gap-x-4 sm:px-4 sm:py-2.5'
+  'grid grid-cols-[2.5rem_minmax(0,1fr)_auto] items-start gap-x-3 px-3 py-3 press hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-ring sm:min-h-16 sm:grid-cols-[2.5rem_2rem_minmax(0,1fr)_minmax(7rem,auto)_7rem] sm:items-center sm:gap-x-4 sm:px-4 sm:py-2.5'
 
 /** Only the viewer's amount carries red or green. */
 const TONES: Record<Tone, string> = { neutral: '', positive: 'text-owed', negative: 'text-owe' }
@@ -96,13 +96,16 @@ export function ExpenseRow(props: {
           ]}
         />
       </div>
-      <RowFigure className="max-sm:hidden" testId="expense-paid" label={figures.paid.label} amount={paid} amountClass={cn('text-sm text-foreground/80', TONES[figures.paid.tone])} />
+      {/* At most 11rem, so a long list of payers truncates and the title keeps its room. */}
+      <RowFigure className="max-sm:hidden sm:max-w-44" testId="expense-paid" label={figures.paid.label} amount={paid} amountClass={cn('text-sm text-foreground/80', TONES[figures.paid.tone])} />
       <RowFigure testId="expense-personal" label={figures.personal.label} amount={amount(figures.personal.amount)} amountClass={cn('font-semibold', TONES[figures.personal.tone])} />
       {/* On narrow screens the paid figure, and the group, sit under the title and use the width under the viewer's figure too. */}
       <p className="col-span-2 col-start-2 flex min-w-0 gap-1 text-sm text-muted-foreground sm:hidden">
-        <span className={shown ? 'shrink-0' : 'min-w-0 truncate'}>
-          {figures.paid.label} <span className="tabular-nums">{paid}</span>
-        </span>
+        {/* A long list of payers truncates; the amount always shows. */}
+        <span className="min-w-0 truncate" title={figures.paid.label}>
+          {figures.paid.label}
+        </span>{' '}
+        <span className="shrink-0 tabular-nums">{paid}</span>
         {shown && <span className="min-w-0 truncate">· {placeName}</span>}
       </p>
     </Link>
@@ -128,7 +131,7 @@ function RowTitle(props: { title: string; payment: boolean; documentCount: numbe
         {props.title}
       </span>
       {props.documentCount > 0 && (
-        <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground" title={`${props.documentCount} receipt(s)`}>
+        <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground" title={`${props.documentCount} ${props.documentCount === 1 ? 'receipt' : 'receipts'}`}>
           <Paperclip aria-hidden="true" className="h-3 w-3" />
           {props.documentCount}
         </span>

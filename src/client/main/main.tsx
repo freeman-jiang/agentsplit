@@ -49,12 +49,11 @@ createRoot(root).render(
 
 // The startup images are for the next launch from the home screen, so they wait
 // until the browser is idle after the first render. Not every browser has
-// requestIdleCallback.
-// The brand color is index.html's theme-color, which the manifest repeats.
-const brand = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content
+// requestIdleCallback. They take the page's colours, so they match the theme
+// that shows now.
 const splash = () => {
-  if (brand) addAppleSplashImages({ icon: '/logo-with-text.png', color: brand })
-  else console.error('index.html has no theme-color meta tag, so the iOS startup images are skipped')
+  const page = getComputedStyle(document.body)
+  addAppleSplashImages({ background: page.backgroundColor, ink: page.color }).catch((error: unknown) => console.error('iOS startup images failed', error))
 }
 if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(splash)
 else window.setTimeout(splash, 0)

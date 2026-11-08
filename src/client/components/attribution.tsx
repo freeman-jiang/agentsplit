@@ -18,7 +18,7 @@ export function EntryAttribution(props: { attribution: typeof Attribution.Type; 
     <div className="space-y-0.5 text-[11px] leading-relaxed text-muted-foreground" data-testid="expense-metadata">
       <p>
         Added {stamp(a.createdAt ?? props.createdAt)}
-        {a.createdBy ? ` by ${a.createdBy.name}` : ' · original author unavailable'}
+        {a.createdBy ? ` by ${a.createdBy.name}` : ' · author unknown'}
       </p>
       {a.updatedAt && (
         <p>

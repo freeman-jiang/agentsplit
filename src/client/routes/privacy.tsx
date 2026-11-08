@@ -9,44 +9,45 @@ export const Route = createFileRoute('/privacy')({
 function Privacy() {
   return (
     <main className="mx-auto w-full max-w-3xl space-y-6 px-4 py-12">
-      <h1 className="font-display text-4xl">Privacy in AgentSplit</h1>
-      <p>AgentSplit is a self-hosted shared-expense app. This page describes how this instance handles your information.</p>
+      <h1 className="font-display text-4xl">Privacy</h1>
+      <p>This page says what this AgentSplit server stores about you and who can see it.</p>
       <section className="space-y-2">
         <h2 className="text-xl font-medium">Your Google account</h2>
         <p>
-          Google sign-in provides your account identifier, name, email address, verified-email status, and profile image. AgentSplit uses
-          this information to create your account and verify invitations. It does not request access to Gmail, Drive, Calendar, or your
-          contacts. Sign-in credentials and sessions are stored in the instance operator’s database.
+          Google sign-in gives AgentSplit your account ID, name, email address, whether the email is verified, and your profile image.
+          AgentSplit uses them to create your account and to check invitations. It does not ask for access to Gmail, Drive, Calendar or
+          your contacts. Sign-in data and sessions are stored in the operator’s database.
         </p>
       </section>
       <section className="space-y-2">
         <h2 className="text-xl font-medium">Groups and agents</h2>
         <p>
-          Your groups are private to their members. Members can see the ledger, receipts, activity history, and other members’ names and
-          email addresses. Group admins manage invitations and membership. A group URL alone does not grant access. Agent keys act with
-          their owner’s current group permissions and can be revoked in Account &amp; keys.
+          Only the members of a group can see it. Members see its expenses, payments, receipts, log, and the other members’ names and
+          email addresses. Group admins manage invitations and members. A group URL alone does not give access. An API key or a
+          connected agent acts with its owner’s group permissions. You can revoke it on the Account page.
         </p>
       </section>
       <section className="space-y-2">
         <h2 className="text-xl font-medium">Storage and history</h2>
         <p>
-          Accounts, expenses, and receipts are stored on the operator’s infrastructure. Expense edits and deletions retain an audit history, including the authenticated actor and receipt references. Removing an
-          expense or leaving a group does not erase this history. The instance operator has administrative access to the stored data.
-          Contact the operator about access, retention, or deletion requests.
+          Accounts, expenses and receipts are stored on the operator’s servers. The log keeps every edit and deletion of an expense,
+          with who made it and which receipts it had. Deleting an expense or leaving a group does not erase the log. The operator has
+          admin access to the stored data. Contact the operator to see, keep or delete your data.
         </p>
       </section>
       <section className="space-y-2">
         <h2 className="text-xl font-medium">External services</h2>
         <p>
-          Google processes sign-in under its own privacy policy. This deployment does not enable analytics or AI receipt processing. If you connect an external agent, the information you ask that
-          agent to access is also handled by its provider. API keys are stored as hashes; newly created keys are shown once.
+          Google handles sign-in under its own privacy policy. This server has no analytics and does not send receipts to an AI. If you
+          connect an agent, its provider also gets the data you ask the agent to read. API keys are stored as hashes. A new key is shown
+          only once.
         </p>
       </section>
       <section className="space-y-2">
         <h2 className="text-xl font-medium">Browser storage</h2>
         <p>
-          AgentSplit uses a session cookie to keep you signed in and local browser storage for display preferences. The service worker
-          caches application assets, not private group pages or receipts.
+          AgentSplit uses a session cookie to keep you signed in, and browser storage for display settings. The service worker saves the
+          app’s code files, not group pages or receipts.
         </p>
       </section>
     </main>

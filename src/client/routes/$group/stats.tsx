@@ -101,7 +101,7 @@ function StatsTab() {
   const drill = { group, groupId, range }
   return (
     <section>
-      <h2 className="sr-only">Totals</h2>
+      <h2 className="sr-only">Stats</h2>
       <div className="mb-4 flex flex-wrap items-start gap-3" aria-label="Statistics filters">
         {data && data.currencies.length > 0 && (
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -128,7 +128,7 @@ function StatsTab() {
           )}
         </div>
         {/* The date range describes the selection, so it sits with the filters, not in a card. */}
-        {data && data.summary.count > 0 && <span className="self-center text-sm tabular-nums text-muted-foreground sm:ml-auto">Active period · {activeSpan(data.summary)}</span>}
+        {data && data.summary.count > 0 && <span className="self-center text-sm tabular-nums text-muted-foreground sm:ml-auto">Expense dates · {activeSpan(data.summary)}</span>}
       </div>
       {error ? (
         <p role="alert" className="text-sm">
@@ -137,7 +137,7 @@ function StatsTab() {
       ) : (
         <div className="grid gap-6 xl:grid-cols-2">
           <SummaryCard data={data} />
-          <StatsCard title="Totals" description="Spending summary of the entire group.">
+          <StatsCard title="Totals" description="Spending of the whole group and your part of it.">
             {!data || !c ? <Lines rows={3} /> : <Totals data={data} currency={c} />}
           </StatsCard>
           <OverTimeCard data={data} drill={drill} />
@@ -193,7 +193,7 @@ function SummaryCard({ data }: { data: Overview | undefined }) {
       {!s || !c ? (
         <Lines rows={2} />
       ) : s.count === 0 ? (
-        <Empty>There are no expenses yet.</Empty>
+        <Empty>No expenses.</Empty>
       ) : (
         <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 xl:grid-cols-2">
           <Metric label="Expenses">{s.count}</Metric>
@@ -232,9 +232,9 @@ function Totals({ data, currency }: { data: Overview; currency: CurrencyCode }) 
   )
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 xl:grid-cols-2">
-      <Metric label={isNegative(data.total) ? 'Total group earnings' : 'Total group spendings'}>{money(magnitude(data.total), currency)}</Metric>
-      {data.yourPaid !== null && personal(isNegative(data.yourPaid) ? 'Your total earnings' : 'Your total spendings', data.yourPaid)}
-      {data.yourShare !== null && personal('Your total share', data.yourShare)}
+      <Metric label={isNegative(data.total) ? 'Group income' : 'Group spending'}>{money(magnitude(data.total), currency)}</Metric>
+      {data.yourPaid !== null && personal(isNegative(data.yourPaid) ? 'You received' : 'You paid', data.yourPaid)}
+      {data.yourShare !== null && personal('Your share', data.yourShare)}
     </div>
   )
 }
@@ -275,7 +275,7 @@ function BarRow(props: { label: ReactNode; value: number; max: number; color: st
       onClick={props.onClick}
       aria-label={props.aria}
       className={cn(
-        'group -mx-2 grid w-[calc(100%+1rem)] cursor-pointer grid-cols-[minmax(0,1fr)_auto_1rem] items-center gap-x-3 gap-y-1.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'group -mx-2 grid w-[calc(100%+1rem)] cursor-pointer grid-cols-[minmax(0,1fr)_auto_1rem] items-center gap-x-3 gap-y-1.5 rounded-md px-2 py-1.5 text-left text-sm press hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         props.columns,
       )}
     >
@@ -293,7 +293,9 @@ function BarRow(props: { label: ReactNode; value: number; max: number; color: st
 }
 
 function OverTimeCard({ data, drill }: { data: Overview | undefined; drill: Drill }) {
+  // The last month stays set while the dialog closes, so it can play its exit animation.
   const [month, setMonth] = useState<string | null>(null)
+  const [open, setOpen] = useState(false)
   const c = data?.currency
   const max = data ? Math.max(0, ...data.months.map((m) => Number(m.total))) : 0
   return (
@@ -301,7 +303,7 @@ function OverTimeCard({ data, drill }: { data: Overview | undefined; drill: Dril
       {!data || !c ? (
         <Lines rows={4} />
       ) : data.months.length === 0 ? (
-        <Empty>There are no expenses yet.</Empty>
+        <Empty>No expenses.</Empty>
       ) : (
         <div className="flex flex-col gap-0.5">
           {data.months.map((m) => (
@@ -315,7 +317,10 @@ function OverTimeCard({ data, drill }: { data: Overview | undefined; drill: Dril
               // Lighter than the monthly chart below, so the two month lists read as different charts.
               color="hsl(var(--muted-foreground))"
               amount={money(m.total, c)}
-              onClick={() => setMonth(m.month)}
+              onClick={() => {
+                setMonth(m.month)
+                setOpen(true)
+              }}
             />
           ))}
         </div>
@@ -326,8 +331,9 @@ function OverTimeCard({ data, drill }: { data: Overview | undefined; drill: Dril
           scope={{ currency: c, month }}
           title={formatMonth(month)}
           description="Expenses in this month for the selected period."
-          empty="There are no expenses in this month."
-          onClose={() => setMonth(null)}
+          empty="No expenses in this month."
+          open={open}
+          onClose={() => setOpen(false)}
         />
       )}
     </StatsCard>
@@ -335,7 +341,9 @@ function OverTimeCard({ data, drill }: { data: Overview | undefined; drill: Dril
 }
 
 function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Drill }) {
+  // The last category stays set while the dialog closes, so it can play its exit animation.
   const [selected, setSelected] = useState<Overview['categories'][number] | null>(null)
+  const [open, setOpen] = useState(false)
   const c = data?.currency
   const max = data ? Math.max(0, ...data.categories.map((x) => Number(x.total))) : 0
   return (
@@ -343,7 +351,7 @@ function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Dr
       {!data || !c ? (
         <Lines rows={4} />
       ) : data.categories.length === 0 ? (
-        <Empty>There are no expenses yet.</Empty>
+        <Empty>No expenses.</Empty>
       ) : (
         <div className="flex flex-col gap-0.5">
           {data.categories.map((x, i) => (
@@ -357,7 +365,10 @@ function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Dr
               max={max}
               color={chartColor(i)}
               amount={`${money(x.total, c)} (${x.percent}%)`}
-              onClick={() => setSelected(x)}
+              onClick={() => {
+                setSelected(x)
+                setOpen(true)
+              }}
             />
           ))}
         </div>
@@ -368,8 +379,9 @@ function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Dr
           scope={{ currency: c, categoryId: selected.categoryId }}
           title={selected.name}
           description="Expenses in this category for the selected period."
-          empty="There are no expenses in this category."
-          onClose={() => setSelected(null)}
+          empty="No expenses in this category."
+          open={open}
+          onClose={() => setOpen(false)}
         />
       )}
     </StatsCard>
@@ -401,14 +413,14 @@ function MonthlyCard({ data }: { data: Overview | undefined }) {
   const years = new Set(view?.months.map((m) => m.key.slice(0, 4)))
   const controls = (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex h-9 shrink-0 items-center gap-2 rounded-xl border border-input px-3 text-sm">
+      <div className="flex h-9 shrink-0 items-center gap-2 rounded-xl border border-input px-3 text-sm pointer-coarse:h-11">
         <Checkbox id="round-amounts" checked={round} onCheckedChange={(value) => setRound(value === true)} />
         <Label htmlFor="round-amounts" className="font-normal">
           Round amounts
         </Label>
       </div>
-      <ChoiceSelect aria-label="Category grouping" value={grouping} options={GROUPINGS} onChange={setGrouping} wrapperClassName="w-36 sm:w-32" className="h-9 sm:text-sm" />
-      <Segmented label="Chart type" value={chart} options={CHART_TYPES} onChange={setChart} className="h-9 shrink-0" />
+      <ChoiceSelect aria-label="Category grouping" value={grouping} options={GROUPINGS} onChange={setGrouping} wrapperClassName="w-36 sm:w-32" className="h-9 sm:text-sm pointer-coarse:h-11" />
+      <Segmented label="Chart type" value={chart} options={CHART_TYPES} onChange={setChart} className="h-9 shrink-0 pointer-coarse:h-11" />
     </div>
   )
   return (
@@ -416,7 +428,7 @@ function MonthlyCard({ data }: { data: Overview | undefined }) {
       {!view || !c ? (
         <Lines rows={3} />
       ) : view.months.length === 0 ? (
-        <p className="py-4 text-sm text-muted-foreground">No spending data yet.</p>
+        <p className="py-4 text-sm text-muted-foreground">No expenses.</p>
       ) : (
         <div className={cn('gap-4', chart === 'columns' && 'grid lg:grid-cols-[minmax(0,1fr)_13rem] lg:items-end')}>
           <section className="space-y-3">
@@ -530,16 +542,16 @@ function StackedColumns({ view, visible, colors, currency, round, grouping, incl
 function ParticipantsCard({ data }: { data: Overview | undefined }) {
   const c = data?.currency
   return (
-    <StatsCard wide title="Spending by participant" description="How much each participant paid and their share of the expenses.">
+    <StatsCard wide title="Spending by person" description="What each person paid, and their share of the expenses.">
       {!data || !c ? (
         <Lines rows={3} />
       ) : data.participants.length === 0 ? (
-        <Empty>There are no expenses yet.</Empty>
+        <Empty>No expenses.</Empty>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="h-8 px-2 pl-0">Participant</TableHead>
+              <TableHead className="h-8 px-2 pl-0">Person</TableHead>
               <TableHead className="h-8 px-2 text-right">Paid</TableHead>
               <TableHead className="h-8 px-2 text-right">Count</TableHead>
               <TableHead className="h-8 px-2 pr-0 text-right">Share</TableHead>

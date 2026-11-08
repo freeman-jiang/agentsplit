@@ -6,10 +6,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 /**
  * The confirmation of a destructive action. It stays open and says why when
  * the action fails (P-EXP-52). It opens from `trigger`, or, for a menu item,
- * from the caller's `open` state. `pending` replaces "Deleting…" while it runs.
+ * from the caller's `open` state. `confirm` is the verb on the confirm button,
+ * "Delete" by default; `pending` replaces "Deleting…" while it runs.
  */
 export function DeleteDialog(
-  props: { title: string; description?: string; onConfirm: () => Promise<unknown>; pending?: string } & (
+  props: { title: string; description?: string; onConfirm: () => Promise<unknown>; confirm?: string; pending?: string } & (
     | { trigger: ReactElement; open?: undefined; onOpenChange?: undefined }
     | { trigger?: undefined; open: boolean; onOpenChange: (open: boolean) => void }
   ),
@@ -58,7 +59,7 @@ export function DeleteDialog(
               }
             }}
           >
-            {busy ? (props.pending ?? 'Deleting…') : 'Yes'}
+            {busy ? (props.pending ?? 'Deleting…') : (props.confirm ?? 'Delete')}
           </Button>
           <Button type="button" variant="outline" onClick={() => setOpen(false)}>
             Cancel

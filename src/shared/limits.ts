@@ -119,7 +119,7 @@ export const FAIR_USE_LABELS = {
   clientRegistrationsPerHour: 'Client registrations per IP address',
 } as const satisfies Record<keyof typeof FAIR_USE_LIMITS, string>
 
-export const FAIR_USE = 'These are fair-use limits that keep AgentSplit free. A normal household never reaches them.'
+export const FAIR_USE = 'AgentSplit is free, with fair-use limits.'
 
 /** Bytes as people read them: "42 MB", "1.5 MB", "0.2 MB". One MB is 1024 × 1024 bytes, as the 500 MB quota is. */
 export function megabytes(bytes: number): string {
@@ -138,10 +138,10 @@ export const numberText = (value: number) =>
 
 /** The answer to an upload that does not fit the uploader's receipt storage. */
 export const storageFullMessage = (usedBytes: number) =>
-  `You're out of receipt space (${megabytes(usedBytes)} of ${megabytes(LIMITS.receiptStorageBytes)}). Download or delete old receipts in Settings, under Storage and limits, to free space. ${FAIR_USE}`
+  `Your receipt storage is full (${megabytes(usedBytes)} of ${megabytes(LIMITS.receiptStorageBytes)}). To free space, delete old receipts in Account, under Storage and limits. Download them first if you need them. ${FAIR_USE}`
 
 export const tooManyWritesMessage = (seconds: number) =>
-  `You're making changes too quickly. Wait ${seconds} ${seconds === 1 ? 'second' : 'seconds'} and try again. ${FAIR_USE}`
+  `Too many changes. Wait ${seconds} ${seconds === 1 ? 'second' : 'seconds'}, then try again. ${FAIR_USE}`
 
 export const groupLimitMessage = `You have created ${LIMITS.groupsCreated} groups, the most one account can create. Use one of your groups, or ask someone else to create the new one. ${FAIR_USE}`
 
@@ -151,4 +151,4 @@ export const apiKeyLimitMessage = `You have ${LIMITS.apiKeys} API keys, the most
 
 /** The error code that the sign-in page explains. */
 export const SIGN_UP_LIMIT_CODE = 'SIGN_UP_LIMIT'
-export const signUpLimitMessage = `AgentSplit has reached today's limit for new accounts. Please try again tomorrow. Existing accounts can still sign in. ${FAIR_USE}`
+export const signUpLimitMessage = `AgentSplit has reached today's limit for new accounts. Try again tomorrow. Existing accounts can still sign in. ${FAIR_USE}`

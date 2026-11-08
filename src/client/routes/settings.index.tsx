@@ -30,9 +30,9 @@ function Settings() {
   const { data: account } = useSuspenseQuery(accountQuery)
   return (
     <main className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 sm:px-8">
-      <h1 className="font-display text-4xl">Account &amp; agent keys</h1>
+      <h1 className="font-display text-4xl">Account</h1>
       <Link to="/settings/connections" className="block underline">
-        Manage connected apps (ChatGPT and OAuth)
+        Connected apps
       </Link>
       <Profile name={account.profile.name} email={account.profile.email} />
       <Preferences />
@@ -67,7 +67,7 @@ function Profile(props: { name: string; email: string }) {
         }}
       >
         <label htmlFor="account-display-name" className="block text-sm font-medium">
-          Display name · used everywhere
+          Display name
         </label>
         <Input
           id="account-display-name"
@@ -81,18 +81,17 @@ function Profile(props: { name: string; email: string }) {
           }}
         />
         <p id="account-name-help" className="text-sm text-muted-foreground">
-          This is your one account name across all groups and expenses. Changing it updates current views and future entries. Past
-          audit records keep the name recorded at the time.
+          Your name in all groups and expenses. The log keeps the old name on past changes.
         </p>
-        <Button disabled={save.isPending || !displayName.trim()}>{save.isPending ? 'Saving…' : 'Save display name'}</Button>
+        <Button disabled={save.isPending || !displayName.trim()}>{save.isPending ? 'Saving…' : 'Save name'}</Button>
         {save.error && (
           <p role="alert" className="text-sm text-destructive">
-            {describeError(save.error, 'Could not save your display name.').message}
+            {describeError(save.error, 'Could not save your name.').message}
           </p>
         )}
         {saved && (
           <p role="status" className="text-sm">
-            Display name updated everywhere. Historical records are unchanged.
+            Name saved.
           </p>
         )}
       </form>
@@ -142,10 +141,9 @@ function ApiKeys(props: { keys: ReadonlyArray<typeof ApiKeySummary.Type> }) {
   const reload = () => afterWrite({ queryClient, scope: 'account' })
   return (
     <section className="space-y-4">
-      <h2 className="text-xl font-medium">Agent API keys</h2>
+      <h2 className="text-xl font-medium">API keys</h2>
       <p className="text-sm text-muted-foreground">
-        Each key acts as you and inherits your current group memberships and admin permissions. Create a separate key for each agent.
-        Revoking a key stops its future requests.
+        A key acts as you, with your groups and your admin rights. Create one key for each agent. A revoked key stops working.
       </p>
       <form
         className="flex flex-wrap gap-3"
@@ -154,7 +152,7 @@ function ApiKeys(props: { keys: ReadonlyArray<typeof ApiKeySummary.Type> }) {
           setPending(true)
           setError('')
           // Better Auth creates the key: it owns the prefix, the hash and the rate limit.
-          const result = await authCall({ run: () => authClient.apiKey.create({ name: label }), refused: 'Could not create key', failed: 'Could not create key. Check your connection.' })
+          const result = await authCall({ run: () => authClient.apiKey.create({ name: label }), refused: 'Could not create the key.', failed: 'Could not create the key. Check your connection and try again.' })
           setPending(false)
           if ('error' in result) return setError(result.error)
           setSecret(result.data.key)
@@ -166,7 +164,7 @@ function ApiKeys(props: { keys: ReadonlyArray<typeof ApiKeySummary.Type> }) {
           <span className="sr-only">Key name</span>
           <Input
             aria-label="Key name"
-            placeholder="e.g. My Codex"
+            placeholder="My Codex"
             maxLength={LIMITS.apiKeyNameMax}
             required
             value={label}
@@ -182,7 +180,7 @@ function ApiKeys(props: { keys: ReadonlyArray<typeof ApiKeySummary.Type> }) {
       )}
       {secret && (
         <div className="space-y-3 rounded-2xl border bg-card p-4">
-          <p className="font-medium">Copy your new key now. It is shown only once.</p>
+          <p className="font-medium">Copy the key now. You cannot see it again.</p>
           <p className="text-sm text-muted-foreground">
             Paste the key exactly as copied into your client’s API key or {API_KEY_HEADER} header field. No prefix is needed.
           </p>
@@ -191,7 +189,7 @@ function ApiKeys(props: { keys: ReadonlyArray<typeof ApiKeySummary.Type> }) {
             <CopyButton text={secret} title="Copy API key" />
           </div>
           <Button variant="outline" size="sm" onClick={() => setSecret('')}>
-            I’ve saved it
+            Done
           </Button>
         </div>
       )}
@@ -199,7 +197,7 @@ function ApiKeys(props: { keys: ReadonlyArray<typeof ApiKeySummary.Type> }) {
         {props.keys.map((key) => (
           <li key={key.id} className="flex items-center justify-between gap-4 py-4">
             <div className="min-w-0">
-              <p className="break-words font-medium">{key.name ?? 'Agent key'}</p>
+              <p className="break-words font-medium">{key.name ?? 'API key'}</p>
               <p className="text-xs text-muted-foreground">
                 {key.start ? `${key.start}… · ` : ''}Created {formatMoment.numericDate(key.createdAt)}
               </p>
@@ -211,7 +209,8 @@ function ApiKeys(props: { keys: ReadonlyArray<typeof ApiKeySummary.Type> }) {
                 </Button>
               }
               title={`Revoke ${key.name ?? 'this key'}?`}
-              description="Its agent will lose access."
+              description="Agents that use it lose access."
+              confirm="Revoke"
               pending="Revoking…"
               onConfirm={async () => {
                 setError('')
@@ -221,9 +220,9 @@ function ApiKeys(props: { keys: ReadonlyArray<typeof ApiKeySummary.Type> }) {
           </li>
         ))}
       </ul>
-      {props.keys.length === 0 && <p className="text-sm text-muted-foreground">No agent keys yet.</p>}
+      {props.keys.length === 0 && <p className="text-sm text-muted-foreground">No API keys.</p>}
       <Link to="/agents" className="inline-block underline underline-offset-4">
-        Connect Codex, Claude Code, or another agent →
+        How to connect an agent →
       </Link>
     </section>
   )

@@ -33,7 +33,7 @@ export type ResolvedExpense = Omit<ExpenseDraft, 'amount' | 'payers' | 'shares' 
 /** One problem of a draft. `row` names the payer or share it is about; its field is then `payers.<index>` or `shares.<index>`. */
 export type ExpenseIssue = { readonly field: string; readonly message: string; readonly row?: { readonly list: 'payers' | 'shares'; readonly participantId: string } }
 
-// The current app's messages (messages/en-US.json SchemaErrors), in English only.
+// Based on the current app's messages (messages/en-US.json SchemaErrors), in English only.
 const moneyMessage = (text: string, currency: CurrencyCode) =>
   DECIMAL.test(text) ? `${currency} amounts allow at most ${CURRENCIES[currency].decimals} decimal places` : 'Enter a decimal amount such as 12.34'
 
@@ -118,12 +118,12 @@ export function checkMoney(data: { money: MoneyDraft; participantIds: ReadonlySe
       return void problem('Each payment must be nonzero, with the same sign as the amount')
     payers.push({ participantId: payer.participantId, amount: parsed })
   })
-  if (draft.payers.length === 0) issue('payers', 'You must select a participant.')
+  if (draft.payers.length === 0) issue('payers', 'Choose who paid.')
   if (amount !== undefined && payers.length === draft.payers.length && payers.length && sumMinor(payers.map((p) => p.amount)) !== amount)
     issue('payers', sumMessage({ what: 'payments', sum: sumMinor(payers.map((p) => p.amount)), amount, currency }))
 
   // Shares: as the current app.
-  if (draft.shares.length === 0) issue('shares', 'The expense must be paid for at least one participant.')
+  if (draft.shares.length === 0) issue('shares', 'Choose at least one person to share the expense.')
   if (draft.shares.length > LIMITS.participantsPerGroup) issue('shares', `At most ${LIMITS.participantsPerGroup} people`)
   const shareIds = new Set<string>()
   const weights: { participantId: string; weight: string }[] = []
@@ -145,9 +145,9 @@ export function checkMoney(data: { money: MoneyDraft; participantIds: ReadonlySe
     try {
       weight = parseWeight(share.weight)
     } catch {
-      return void problem(/^-/.test(share.weight) ? 'All shares must be higher than 0.' : 'Enter a decimal amount such as 12.34')
+      return void problem(/^-/.test(share.weight) ? 'Each share must be more than 0.' : 'Enter a decimal amount such as 12.34')
     }
-    if (weight.units === 0n) return void problem('All shares must be higher than 0.')
+    if (weight.units === 0n) return void problem('Each share must be more than 0.')
     // An even split ignores the weight, but the current app still requires it to be positive.
     if (draft.splitMode === 'evenly') return void weights.push({ participantId: share.participantId, weight: '1' })
     if (draft.splitMode === 'percentage') {

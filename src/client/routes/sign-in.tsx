@@ -33,29 +33,28 @@ function SignIn() {
   const invitation = destination !== null && isInvitationPath(destination)
   return (
     <main className="mx-auto w-full max-w-lg space-y-6 px-4 py-16">
-      <h1 className="font-display text-4xl">{invitation ? 'You’ve been invited to AgentSplit' : 'Welcome to AgentSplit'}</h1>
+      <h1 className="font-display text-4xl">{invitation ? 'You have an invitation to AgentSplit' : 'Sign in to AgentSplit'}</h1>
       <p className="text-muted-foreground">
         {invitation
-          ? 'AgentSplit keeps shared expenses, payments and balances in one place. Sign in with the Google email your invitation was sent to.'
-          : 'Log in with your Google account to access your expenses and groups.'}
+          ? 'AgentSplit tracks shared expenses, payments and balances. Sign in with the Google account that got the invitation.'
+          : 'Sign in with Google to see your groups and expenses.'}
       </p>
       {invitation && (
         <ol className="list-decimal space-y-3 ps-5 text-sm">
           <li>
-            <strong>Sign in with Google.</strong> If you’re new, we’ll create your account automatically. No separate password is needed.
+            <strong>Sign in with Google.</strong> This creates your account if you do not have one. There is no password.
           </li>
           <li>
-            <strong>Accept the invitation.</strong> You’ll return here to confirm the group and your name.
+            <strong>Accept the invitation.</strong> You come back here to check the group and your name.
           </li>
           <li>
-            <strong>Use your group.</strong> View expenses, record payments and check balances in your browser. Connecting an AI agent
-            is optional.
+            <strong>Use the group.</strong> See expenses, record payments and check balances. An AI agent is optional.
           </li>
         </ol>
       )}
       {error && (
         <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-4 text-sm">
-          {error === SIGN_UP_LIMIT_CODE ? signUpLimitMessage : `Sign-in did not finish (${error}). Please try again.`}
+          {error === SIGN_UP_LIMIT_CODE ? signUpLimitMessage : `Sign-in failed (${error}). Try again.`}
         </p>
       )}
       <LoginButton

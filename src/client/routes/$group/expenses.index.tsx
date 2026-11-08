@@ -80,9 +80,9 @@ function ExpensesTab() {
       </div>
       {!g.participantId && (
         <p className="mb-4 rounded-2xl border bg-card p-3 text-sm">
-          Your account is not linked to a participant in this group, so amounts are not shown from your side.{' '}
+          Your account is not linked to a person in this group, so your share is not shown.{' '}
           <Link to="/$group/edit" params={{ group }} hash="members" className="underline underline-offset-4">
-            Choose your participant
+            See People
           </Link>
         </p>
       )}
@@ -92,13 +92,13 @@ function ExpensesTab() {
           value={sort}
           options={SORTS}
           onChange={(value) => void navigate({ search: (s) => ({ ...s, sort: value }), replace: true })}
-          className="min-h-10 text-sm max-sm:grid max-sm:w-full max-sm:grid-cols-2"
+          className="min-h-10 text-sm max-sm:grid max-sm:w-full max-sm:grid-cols-2 pointer-coarse:min-h-11"
         />
         <div className="relative min-w-48 flex-1">
           <Search aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search for an expense…"
+            placeholder="Search expenses"
             aria-label="Search expenses"
             maxLength={LIMITS.searchMax}
             value={text}
@@ -119,9 +119,9 @@ function ExpensesTab() {
           <p className="py-8 text-center text-sm text-muted-foreground">No expenses match your search.</p>
         ) : (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            Your group doesn’t contain any expense yet.{' '}
+            No expenses yet.{' '}
             <Link to="/$group/expenses/create" params={{ group }} className="underline underline-offset-4">
-              Create the first one
+              Add an expense
             </Link>
           </p>
         )

@@ -15,6 +15,6 @@ test('the landing page’s Sign in with Google starts Google sign-in at once (P-
 
 test('/sign-in still serves the redirects that need it, with the requested page kept (P-AUTH-49)', async ({ page }) => {
   await page.goto('/sign-in?next=%2Fgroups')
-  await expect(page.getByRole('heading', { name: 'Welcome to AgentSplit' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Sign in to AgentSplit' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sign in with Google' })).toBeVisible()
 })

@@ -47,23 +47,23 @@ function CreateGroup() {
       >
         <Card className="mb-4">
           <CardHeader>
-            <CardTitle>Participants</CardTitle>
-            <CardDescription>Enter the name for each participant.</CardDescription>
+            <CardTitle>People</CardTitle>
+            <CardDescription>Add a name for each person.</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="mb-4 text-sm" data-testid="creator-identity">
-              You ({me?.name || 'signed-in account'}) are added automatically. Add other participants below, then invite them from Settings.
+              You ({me?.name || 'your account'}) are in the group. Add the other people here, then invite them from the group’s Settings tab.
             </p>
             <ul className="flex flex-col gap-2">
               {people.map((person, index) => (
                 <li key={person.key} className="flex gap-2">
                   <label className="sr-only" htmlFor={`participant-${person.key}`}>
-                    Participant #{index + 1}
+                    Person {index + 1}
                   </label>
                   <Input
                     id={`participant-${person.key}`}
                     className="text-base"
-                    placeholder="New"
+                    placeholder="Name"
                     maxLength={LIMITS.nameMax}
                     value={person.name}
                     onChange={(e) => setPeople((list) => list.map((p) => (p.key === person.key ? { ...p, name: e.target.value } : p)))}
@@ -73,7 +73,7 @@ function CreateGroup() {
                     variant="ghost"
                     size="icon"
                     className="text-destructive"
-                    aria-label={`Remove participant #${index + 1}`}
+                    aria-label={`Remove person ${index + 1}`}
                     onClick={() => setPeople((list) => list.filter((p) => p.key !== person.key))}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -84,7 +84,7 @@ function CreateGroup() {
           </CardContent>
           <CardFooter>
             <Button type="button" variant="secondary" disabled={people.length >= LIMITS.participantsPerGroup - 1} onClick={() => setPeople((list) => [...list, { key: nextRow++, name: '' }])}>
-              Add participant
+              Add person
             </Button>
           </CardFooter>
         </Card>

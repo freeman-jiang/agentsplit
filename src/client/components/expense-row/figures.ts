@@ -38,7 +38,7 @@ export function expenseRowFigures(data: { expense: RowExpense; viewer: string | 
     amount: text(abs(amount)),
     tone: 'neutral',
   }
-  if (!viewer) return { paid, personal: { label: 'identity not linked', amount: null, tone: 'neutral' } }
+  if (!viewer) return { paid, personal: { label: 'not linked', amount: null, tone: 'neutral' } }
   const paidByViewer = expense.payers.filter((p) => p.participantId === viewer).reduce((sum, p) => sum + unitsOf(p.amount, currency), 0n)
   const shareRow = expense.shares.find((s) => s.participantId === viewer)
   if (!payer && !shareRow) return { paid, personal: { label: 'not involved', amount: null, tone: 'neutral' } }
@@ -61,5 +61,5 @@ export function expenseRowFigures(data: { expense: RowExpense; viewer: string | 
 export function attributionLine(data: { addedBy: string | null; editedBy: string | null }) {
   if (data.editedBy) return `Last edited by ${data.editedBy}`
   if (data.addedBy) return `Added by ${data.addedBy}`
-  return 'Original author unavailable'
+  return 'Author unknown'
 }

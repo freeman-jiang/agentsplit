@@ -68,7 +68,7 @@ function Summary({ activity }: { activity: ActivityItem }) {
   if (isBaseline(activity))
     return (
       <>
-        History begins here for an existing expense: <span className="font-medium text-foreground">{expenseTitle}</span>
+        The log starts here for <span className="font-medium text-foreground">{expenseTitle}</span>
       </>
     )
   switch (activity.type) {
@@ -85,24 +85,24 @@ function Summary({ activity }: { activity: ActivityItem }) {
           {activity.data} by {who}.
         </>
       ) : (
-        <>Group settings were modified by {who}.</>
+        <>{who} changed the group settings.</>
       )
     case 'create_expense':
       return (
         <>
-          Expense {title} created by {who}.
+          {who} added the expense {title}.
         </>
       )
     case 'update_expense':
       return (
         <>
-          Expense {title} updated by {who}.
+          {who} edited the expense {title}.
         </>
       )
     case 'delete_expense':
       return (
         <>
-          Expense {title} deleted by {who}.
+          {who} deleted the expense {title}.
         </>
       )
   }
@@ -114,7 +114,7 @@ function LogHeader({ children }: { children: ReactNode }) {
   return (
     <section>
       <h2 className="font-display text-xl">Log</h2>
-      <p className="mb-6 text-sm text-muted-foreground">Changes recorded in this group.</p>
+      <p className="mb-6 text-sm text-muted-foreground">All changes in this group.</p>
       {children}
     </section>
   )
@@ -162,7 +162,7 @@ function LogTab() {
   if (activities.length === 0)
     return (
       <LogHeader>
-        <p className="py-6 text-sm">There is not yet any activity in your group.</p>
+        <p className="py-6 text-sm">No changes yet.</p>
       </LogHeader>
     )
   const today = new Date()

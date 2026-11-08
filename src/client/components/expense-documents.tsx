@@ -38,7 +38,7 @@ export function ExpenseDocuments(props: { groupId: string; documents: readonly F
     const file = await prepareReceipt(original)
     setUploading(false)
     if (file.size > LIMITS.receiptBytes) {
-      toast.error('The file is too big', { description: `The maximum file size you can upload is ${mebibytes(LIMITS.receiptBytes)}. Yours is ${mebibytes(file.size)}.` })
+      toast.error('File too large', { description: `The limit is ${mebibytes(LIMITS.receiptBytes)}. This file is ${mebibytes(file.size)}.` })
       return
     }
     setUploading(true)
@@ -46,9 +46,9 @@ export function ExpenseDocuments(props: { groupId: string; documents: readonly F
       const doc = await upload({ groupId: props.groupId, file })
       props.onChange([...latest.current, doc])
     } catch (error) {
-      toast.error('Error while uploading document', {
-        description: error instanceof Error ? error.message : 'Something wrong happened when uploading the document. Please retry later or select a different file.',
-        action: { label: 'Retry', onClick: () => void send(original) },
+      toast.error('Could not upload the receipt', {
+        description: error instanceof Error ? error.message : 'Try again, or choose a different file.',
+        action: { label: 'Try again', onClick: () => void send(original) },
       })
     } finally {
       setUploading(false)
@@ -73,7 +73,7 @@ export function ExpenseDocuments(props: { groupId: string; documents: readonly F
             type="button"
             onClick={() => setOpen(index)}
             className="h-20 w-20 overflow-hidden border bg-muted"
-            aria-label={`Open document ${index + 1}`}
+            aria-label={`Open receipt ${index + 1}`}
           >
             <img src={receiptDownloadPath({ groupId: props.groupId, url: doc.url })} alt="" width={doc.width} height={doc.height} className="h-full w-full object-cover" loading="lazy" />
           </button>
@@ -84,19 +84,19 @@ export function ExpenseDocuments(props: { groupId: string; documents: readonly F
         type="file"
         accept={RECEIPT_CONTENT_TYPES.join(',')}
         className="hidden"
-        aria-label="Attach documents"
+        aria-label="Attach receipt"
         onChange={(event) => {
           const file = event.target.files?.[0]
           event.target.value = ''
           if (file) void send(file)
         }}
       />
-      <Button type="button" variant="outline" className="h-20 w-20" disabled={uploading} onClick={() => input.current?.click()} aria-label="Attach documents">
+      <Button type="button" variant="outline" className="h-20 w-20" disabled={uploading} onClick={() => input.current?.click()} aria-label="Attach receipt">
         {uploading ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : <Paperclip className="h-5 w-5" aria-hidden="true" />}
       </Button>
       <Dialog open={shown !== undefined} onOpenChange={(value) => !value && setOpen(null)}>
         <DialogContent className="max-h-dvh max-w-[100vw] sm:max-w-3xl">
-          <DialogTitle className="sr-only">Document</DialogTitle>
+          <DialogTitle className="sr-only">Receipt</DialogTitle>
           {shown && (
             <>
               <img src={receiptDownloadPath({ groupId: props.groupId, url: shown.url })} alt="Receipt" className="max-h-[75dvh] w-full object-contain" />
@@ -110,7 +110,7 @@ export function ExpenseDocuments(props: { groupId: string; documents: readonly F
                   }}
                 >
                   <X className="mr-1 h-4 w-4" aria-hidden="true" />
-                  Delete document
+                  Remove receipt
                 </Button>
                 <Button type="button" variant="outline" onClick={() => setOpen(null)}>
                   Close

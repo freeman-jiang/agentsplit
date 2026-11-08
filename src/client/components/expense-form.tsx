@@ -55,7 +55,7 @@ function Field(props: { id: string; label: ReactNode; error?: string | undefined
   )
 }
 
-const PRIVATE_HINT = 'Edits stay in this expense’s private log.'
+const PRIVATE_HINT = 'Changes go to this expense’s private log.'
 
 type ExpenseFormProps = {
   participants: ReadonlyArray<typeof Participant.Type>
@@ -190,14 +190,14 @@ export function ExpenseForm(props: ExpenseFormProps) {
             </Field>
           </div>
           <Field id="vendor" label="Vendor (optional)" error={shown('vendor')}>
-            <Input id="vendor" className="h-11" placeholder="e.g. Costco" maxLength={LIMITS.vendorMax} value={state.vendor} onChange={(e) => set({ vendor: e.target.value })} onBlur={() => touch('vendor')} />
+            <Input id="vendor" className="h-11" placeholder="Costco" maxLength={LIMITS.vendorMax} value={state.vendor} onChange={(e) => set({ vendor: e.target.value })} onBlur={() => touch('vendor')} />
           </Field>
 
           <fieldset className="space-y-1.5">
             <legend className="text-sm leading-none font-medium">{income ? 'Received by' : 'Paid by'}</legend>
             {state.payerMode === 'one' ? (
               <NativeSelect id="payer" className="h-11" aria-label={income ? 'Received by' : 'Paid by'} value={state.payer} aria-invalid={!!payersError} onChange={(e) => set({ payer: e.target.value })}>
-                <option value="">Select a participant</option>
+                <option value="">Choose a person</option>
                 {participants.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -274,7 +274,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
               const error = rowError('shares', p.id)
               return (
                 <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 sm:py-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 pointer-coarse:min-h-11">
                     <Checkbox
                       id={`share-${p.id}`}
                       checked={selected}
@@ -329,7 +329,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
 
         <div className="divide-y rounded-2xl border bg-card">
           <details className="px-4 py-1.5 sm:px-6" open={!!state.notes || state.documents.length > 0 || !!shown('notes')}>
-            <DisclosureSummary>Notes & receipts</DisclosureSummary>
+            <DisclosureSummary>Notes and receipts</DisclosureSummary>
             <div className="space-y-4 pt-2 pb-3">
               <Field id="notes" label="Notes" error={shown('notes')}>
                 <Textarea id="notes" rows={4} value={state.notes} onChange={(e) => set({ notes: e.target.value })} onBlur={() => touch('notes')} />
@@ -338,7 +338,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
               {target.groupId !== null && (
                 <div className="space-y-1.5">
                   <p className="text-sm font-medium">Receipts</p>
-                  <p className="text-xs text-muted-foreground">See and attach receipts to the {noun}.</p>
+                  <p className="text-xs text-muted-foreground">JPEG or PNG images.</p>
                   <ExpenseDocuments groupId={target.groupId} documents={state.documents} onChange={(documents) => set({ documents })} />
                 </div>
               )}
@@ -370,17 +370,17 @@ export function ExpenseForm(props: ExpenseFormProps) {
               </Field>
               <Field
                 id="recurrence"
-                label="Expense Recurrence"
+                label="Repeat"
                 hint={
                   props.mode === 'edit' && props.detail.nextOccurrence
-                    ? `The next copy is created on ${props.detail.nextOccurrence}. Choose None to stop the series.`
-                    : 'Select how often the expense should repeat.'
+                    ? `The next copy is added on ${props.detail.nextOccurrence}. Choose None to stop.`
+                    : 'How often to add this expense again.'
                 }
               >
                 <ChoiceSelect id="recurrence" className="h-11" disabled={isPrivate} value={state.recurrence} options={RECURRENCE_OPTIONS} onChange={(recurrence) => set({ recurrence })} />
               </Field>
               {!income && !isPrivate && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 pointer-coarse:min-h-11">
                   <Checkbox id="is-payment" checked={state.kind === 'payment'} onCheckedChange={(value) => set({ kind: value === true ? 'payment' : 'expense' })} />
                   <Label htmlFor="is-payment" className="font-normal">
                     This is a payment
@@ -389,10 +389,10 @@ export function ExpenseForm(props: ExpenseFormProps) {
               )}
               {/* Each private expense has its own people, so a saved default would never apply again. */}
               {!isPrivate && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 pointer-coarse:min-h-11">
                   <Checkbox id="save-default" checked={state.saveDefault} onCheckedChange={(value) => set({ saveDefault: value === true })} />
                   <Label htmlFor="save-default" className="font-normal">
-                    Save as default splitting options
+                    Save this split as the default
                   </Label>
                 </div>
               )}
@@ -417,16 +417,16 @@ export function ExpenseForm(props: ExpenseFormProps) {
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-4 sm:rounded-2xl sm:border sm:bg-card sm:py-4 sm:ps-6 sm:pe-4">
-          <Summary state={state} names={names} hint={isPrivate ? PRIVATE_HINT : 'Edits stay in the group’s log.'} />
+          <Summary state={state} names={names} hint={isPrivate ? PRIVATE_HINT : 'Changes go to the group’s log.'} />
           <div className="flex flex-wrap gap-2">
             <Button type="submit" disabled={busy}>
-              {props.mode === 'create' ? (busy ? 'Creating…' : 'Create') : busy ? 'Saving…' : 'Save changes'}
+              {props.mode === 'create' ? (busy ? 'Adding…' : `Add ${noun}`) : busy ? 'Saving…' : 'Save changes'}
             </Button>
             {props.mode === 'edit' && (
               <DeleteDialog
-                trigger={<Button variant="destructive">Delete</Button>}
+                trigger={<Button variant="destructive">Delete {noun}</Button>}
                 title="Delete this expense?"
-                description={isPrivate ? 'It leaves the expense list and the balances. This expense’s private log keeps its history.' : "It leaves the expense list and the balances. The group's log keeps its history."}
+                description={isPrivate ? 'It is removed from the list and the balances. The private log keeps its history.' : 'It is removed from the list and the balances. The group’s log keeps its history.'}
                 onConfirm={write.remove}
               />
             )}
