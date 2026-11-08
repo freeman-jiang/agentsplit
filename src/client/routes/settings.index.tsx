@@ -164,7 +164,7 @@ function ApiKeys(props: { keys: ReadonlyArray<typeof ApiKeySummary.Type> }) {
           <span className="sr-only">Key name</span>
           <Input
             aria-label="Key name"
-            placeholder="e.g. My Codex"
+            placeholder="My Codex"
             maxLength={LIMITS.apiKeyNameMax}
             required
             value={label}
