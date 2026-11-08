@@ -133,7 +133,7 @@ function Dashboard() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="font-display text-3xl">Dashboard</h1>
-            <p className="mt-2 hidden text-sm text-muted-foreground sm:block">Your balances and shared expenses, in one place.</p>
+            <p className="mt-2 hidden text-sm text-muted-foreground sm:block">Your balance and your expenses.</p>
           </div>
           <Button asChild>
             <Link to="/expenses/create">Add expense</Link>
@@ -149,14 +149,14 @@ function Dashboard() {
             <label className="relative col-span-2 text-sm sm:col-span-1">
               <span className="sr-only">Search</span>
               <Search aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input type="search" className="ps-9" placeholder="Search descriptions or merchants" maxLength={LIMITS.searchMax} {...select('q')} />
+              <Input type="search" className="ps-9" placeholder="Search descriptions and vendors" maxLength={LIMITS.searchMax} {...select('q')} />
             </label>
             <label className="text-sm">
               <span className="sr-only">Group</span>
               <NativeSelect value={text(params.group) || 'all'} onChange={(e) => update('group', e.target.value === 'all' ? '' : e.target.value)}>
                 <option value="all">All expenses</option>
                 <option value="ungrouped">No group</option>
-                <option value="grouped">Any named group</option>
+                <option value="grouped">Any group</option>
                 {options.data?.groups.map((g) => (
                   <option key={g.id} value={g.id}>
                     {g.name}
@@ -168,7 +168,7 @@ function Dashboard() {
               <span className="sr-only">Show</span>
               <NativeSelect value={text(params.view) === 'all' ? 'all' : 'mine'} onChange={(e) => update('view', e.target.value === 'all' ? 'all' : '')}>
                 <option value="mine">Involving me</option>
-                <option value="all">All accessible expenses</option>
+                <option value="all">All expenses I can see</option>
               </NativeSelect>
             </label>
           </div>
@@ -225,7 +225,7 @@ function Dashboard() {
                 <Input type="date" {...select('from')} />
               </label>
               <label className="space-y-2 text-sm">
-                <span>Through date</span>
+                <span>To date</span>
                 <Input type="date" {...select('to')} />
               </label>
             </div>
@@ -244,8 +244,8 @@ function Dashboard() {
           <p role="status">Loading expenses…</p>
         ) : expenses.length === 0 ? (
           <div className="rounded-2xl border border-dashed px-6 py-12 text-center">
-            <h2 className="font-display text-xl">No expenses here yet</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Add an expense or adjust your filters.</p>
+            <h2 className="font-display text-xl">No expenses</h2>
+            <p className="mt-2 text-sm text-muted-foreground">Add an expense or change the filters.</p>
           </div>
         ) : (
           <div aria-label="Expense history" className="divide-y overflow-hidden rounded-2xl border bg-card">

@@ -29,7 +29,7 @@ export const Route = createFileRoute('/groups/')({
     <GroupsPage>
       <p role="status" className="text-sm">
         <Loader2 className="mr-2 inline w-4 animate-spin" aria-hidden="true" />
-        Loading recent groups…
+        Loading groups…
       </p>
     </GroupsPage>
   ),
@@ -42,9 +42,9 @@ function LoadError() {
   return (
     <GroupsPage>
       <div className="space-y-2 text-sm">
-        <p>Could not load your groups. Try again.</p>
+        <p>Could not load your groups.</p>
         <Button variant="secondary" onClick={() => router.invalidate()}>
-          Retry
+          Try again
         </Button>
       </div>
     </GroupsPage>
@@ -106,7 +106,7 @@ function GroupsPage({ children }: { children: React.ReactNode }) {
     <main className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 sm:space-y-6 sm:px-8 sm:py-8">
       <div className="flex items-start justify-between gap-2">
         <h1 className="flex-1 font-display text-3xl">
-          <Link to="/groups">My groups</Link>
+          <Link to="/groups">Groups</Link>
         </h1>
         <Button asChild>
           <Link to="/groups/create">Create group</Link>
@@ -127,7 +127,7 @@ function Groups() {
   const marks = useGroupMarks()
   const denied = search.access === 'denied' && (
     <Alert variant="destructive">
-      <AlertDescription>That group did not open. It may not exist, or your account is not a member. Ask an admin for an invitation.</AlertDescription>
+      <AlertDescription>You cannot open that group. It does not exist, or you are not a member. Ask a group admin for an invitation.</AlertDescription>
     </Alert>
   )
 
@@ -137,12 +137,12 @@ function Groups() {
         {denied}
         <TotalBalance directory={data} />
         <div className="space-y-2 text-sm">
-          <p>You are not in any group yet.</p>
+          <p>You are not in a group.</p>
           <p>
             <Link to="/groups/create" className="text-primary underline-offset-4 hover:underline">
-              Create one
-            </Link>{' '}
-            or ask a group admin to invite you.
+              Create a group
+            </Link>
+            , or ask a group admin to invite you.
           </p>
         </div>
       </GroupsPage>
@@ -245,7 +245,7 @@ function GroupCard({ group, starred, archived, marks }: { group: Group; starred:
         <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
           <span className="flex items-center">
             <Users className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />
-            <span aria-label={`${group.participantCount} participants`}>{group.participantCount}</span>
+            <span aria-label={`${group.participantCount} ${group.participantCount === 1 ? 'person' : 'people'}`}>{group.participantCount}</span>
           </span>
           <span className="flex items-center">
             <Calendar className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />
@@ -264,17 +264,17 @@ function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
     <Card className="p-4 sm:px-6 sm:py-5">
       <div className="flex items-baseline justify-between gap-4">
         <CardTitle className="text-sm">Your balance in groups</CardTitle>
-        <CardDescription className="hidden text-xs sm:block">Your combined balance across all your groups. Ungrouped expenses are on the dashboard.</CardDescription>
+        <CardDescription className="hidden text-xs sm:block">All your groups. Expenses with no group are on the Dashboard.</CardDescription>
       </div>
       {directory.unboundGroupCount > 0 && (
         <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-          Link your participant identity in {directory.unboundGroupCount} {directory.unboundGroupCount === 1 ? 'group' : 'groups'} to see a complete total. Only linked
-          groups are included below.
+          Your account is not linked to a person in {directory.unboundGroupCount} {directory.unboundGroupCount === 1 ? 'group' : 'groups'}. The total leaves{' '}
+          {directory.unboundGroupCount === 1 ? 'it' : 'them'} out.
         </p>
       )}
       {outstanding.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">
-          {directory.unboundGroupCount ? 'No outstanding balance in linked groups.' : 'You are all settled up across your groups.'}
+          {directory.unboundGroupCount ? 'Settled up in the linked groups.' : 'Settled up in all your groups.'}
         </p>
       ) : (
         <TotalAmounts totals={outstanding} />
