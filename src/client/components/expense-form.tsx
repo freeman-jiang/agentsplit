@@ -6,7 +6,6 @@ import { Link } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { cn } from '~/client/cn'
 import { money } from '~/client/components/money'
-import { formatMoment } from '~/client/dates'
 import { Button } from '~/client/ui/button'
 import { Checkbox } from '~/client/ui/checkbox'
 import { ChoiceSelect } from '~/client/ui/choice-select'
@@ -22,6 +21,7 @@ import { privatePeopleIssue } from '~/shared/expense-rules'
 import { LIMITS } from '~/shared/limits'
 import { DECIMAL, formatMinor, minor } from '~/shared/minor'
 import { RECURRENCE_LABELS, RECURRENCES, SPLIT_MODE_LABELS, SPLIT_MODES, type SplitMode } from '~/shared/vocabulary'
+import { EntryAttribution } from './attribution'
 import { DeleteDialog } from './delete-dialog'
 import { ExpenseDocuments } from './expense-documents'
 import { amountInput, autoAmounts, check, isIncome, payerRemainder, saveSplitDefaults, type FormState } from './expense-form-state'
@@ -135,7 +135,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
       <h2 className="font-display text-xl">
         {headingVerb} {noun}
       </h2>
-      {props.mode === 'edit' && <Attribution detail={props.detail} />}
+      {props.mode === 'edit' && <EntryAttribution attribution={props.detail.attribution} createdAt={props.detail.expense.createdAt} />}
 
       <div className="space-y-6">
 
@@ -462,22 +462,5 @@ function Summary(props: { state: FormState; names: ReadonlyMap<string, string>; 
       </p>
       <p className="mt-1 text-xs text-muted-foreground">{props.hint}</p>
     </aside>
-  )
-}
-
-function Attribution(props: { detail: DetailData }) {
-  const { added, edited, myLastEdit } = props.detail
-  const lines = [
-    added ? `Added ${formatMoment.date(added.at)}${added.by ? ` by ${added.by}` : ''}` : null,
-    edited ? `Last edited ${formatMoment.date(edited.at)}${edited.by ? ` by ${edited.by}` : ''}` : null,
-    myLastEdit ? `Your last edit ${formatMoment.date(myLastEdit)}` : null,
-  ].filter(Boolean)
-  if (lines.length === 0) return null
-  return (
-    <ul className="space-y-0.5 text-xs text-muted-foreground" aria-label="Attribution">
-      {lines.map((line) => (
-        <li key={line}>{line}</li>
-      ))}
-    </ul>
   )
 }

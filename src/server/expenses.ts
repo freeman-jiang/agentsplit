@@ -42,9 +42,7 @@ export async function getExpenseDetail(db: Db, data: { principal: Principal; gro
       downloadUrl: receiptDownloadPath({ groupId, url: d.url }),
       deleted: d.deleted,
     })),
-    added: expense.addedAt ? { at: expense.addedAt, by: expense.addedBy } : null,
-    edited: expense.editedAt ? { at: expense.editedAt, by: expense.editedBy } : null,
-    myLastEdit: attributionOf({ events: expense.attributionEvents ?? [], viewer: data.principal.userId }).lastEditedByYouAt,
+    attribution: attributionOf({ events: expense.attributionEvents ?? [], viewer: data.principal.userId }),
     nextOccurrence: open?.nextExpenseDate ?? null,
   }
 }

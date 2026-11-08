@@ -8,6 +8,7 @@ import { LIMITS } from '../limits'
 import { Category } from './expenses'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
 import {
+  Attribution,
   CalendarDate,
   CallerTotals,
   CategoryId,
@@ -59,17 +60,6 @@ export const FeedFilter = Schema.Struct({
   /** Inclusive bounds on the expense date. */
   from: Schema.optionalKey(CalendarDate),
   to: Schema.optionalKey(CalendarDate),
-})
-
-const Actor = Schema.Struct({ userId: Schema.NullOr(Schema.String), name: Schema.String, source: Schema.String })
-
-/** Who added and last edited an expense, from its history. Never inferred from the payer. */
-export const Attribution = Schema.Struct({
-  createdAt: Schema.NullOr(Schema.String),
-  updatedAt: Schema.NullOr(Schema.String),
-  lastEditedByYouAt: Schema.NullOr(Schema.String),
-  createdBy: Schema.NullOr(Actor),
-  updatedBy: Schema.NullOr(Actor),
 })
 
 export const GroupRef = Schema.Struct({ id: Schema.String, name: Schema.String, slug: Schema.NullOr(Schema.String) })
@@ -132,7 +122,6 @@ export const PendingInvitation = Schema.Struct({
 /** Everything the expense page needs, for any expense the caller can see. */
 export const ExpenseContext = Schema.Struct({
   expense: Expense,
-  attribution: Attribution,
   group: Schema.Struct({ ...GroupRef.fields, kind: GroupKindSchema }),
   role: RoleSchema,
   participantId: Schema.NullOr(Schema.String),

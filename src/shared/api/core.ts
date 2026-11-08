@@ -119,6 +119,17 @@ export const Transfer = Schema.Struct({ from: Schema.String, to: Schema.String, 
 export const SharePart = Schema.Struct({ participantId: Schema.String, amount: DecimalOutput, weight: Schema.String })
 const PartInput = Schema.Struct({ participantId: Id, amount: DecimalString })
 
+const Actor = Schema.Struct({ userId: Schema.NullOr(Schema.String), name: Schema.String, source: Schema.String })
+
+/** Who added and last edited an expense, from its history. Never inferred from the payer. */
+export const Attribution = Schema.Struct({
+  createdAt: Schema.NullOr(Schema.String),
+  updatedAt: Schema.NullOr(Schema.String),
+  lastEditedByYouAt: Schema.NullOr(Schema.String),
+  createdBy: Schema.NullOr(Actor),
+  updatedBy: Schema.NullOr(Actor),
+})
+
 export const Expense = Schema.Struct({
   id: Schema.String,
   groupId: Schema.String,
