@@ -18,16 +18,30 @@ import { principal } from '../kit/people'
 import { BASE, MCP_URL, startHarness, type Harness } from './harness'
 
 /** Claude Code's published Client ID Metadata Document, as served on 2026-11-05. */
-const CLAUDE_CODE = 'https://claude.ai/oauth/claude-code-client-metadata'
-const CLAUDE_CODE_METADATA = {
-  client_id: CLAUDE_CODE,
-  client_name: 'Claude Code',
-  client_uri: 'https://claude.ai',
-  redirect_uris: ['http://localhost/callback', 'http://127.0.0.1/callback'],
-  grant_types: ['authorization_code', 'refresh_token'],
-  response_types: ['code'],
-  token_endpoint_auth_method: 'none',
-}
+const { CLAUDE_CODE, CLAUDE_CODE_METADATA } = vi.hoisted(() => {
+  const clientId = 'https://claude.ai/oauth/claude-code-client-metadata'
+  return {
+    CLAUDE_CODE: clientId,
+    CLAUDE_CODE_METADATA: {
+      client_id: clientId,
+      client_name: 'Claude Code',
+      client_uri: 'https://claude.ai',
+      redirect_uris: ['http://localhost/callback', 'http://127.0.0.1/callback'],
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none',
+    },
+  }
+})
+// The app fetches CIMD documents with Better Auth's Node transport (node:https, not fetch).
+// Here it answers Claude Code's document only, so the tests never reach the network.
+vi.mock('@better-auth/cimd/node', () => ({
+  fetchClientMetadataResource: async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (url === CLAUDE_CODE) return Response.json(CLAUDE_CODE_METADATA)
+    throw new Error(`Unexpected network request: ${url}`)
+  },
+}))
 const RESOURCE_METADATA = `${BASE}/.well-known/oauth-protected-resource/api/mcp`
 const CHALLENGE = mcpChallenge(BASE)
 const ALL = OAUTH_SCOPES.join(' ')
@@ -35,7 +49,6 @@ const ALL = OAUTH_SCOPES.join(' ')
 const FOREIGN_GROUP = 'g-foreign'
 
 let h: Harness
-const realFetch = globalThis.fetch
 const nextUser = counter('oauth-user')
 
 /** An account with a web session, admin of its own group of two people. */
@@ -53,17 +66,8 @@ beforeAll(async () => {
   h = await startHarness()
   await h.account('stranger')
   await h.group({ id: FOREIGN_GROUP, name: 'Not yours', people: ['ps'], members: [['stranger', 'ps', 'admin']] })
-  // The CIMD fetcher reaches the network through fetch; answer Claude Code's document only.
-  vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    if (url === CLAUDE_CODE) return Response.json(CLAUDE_CODE_METADATA)
-    throw new Error(`Unexpected network request: ${url}`)
-  })
 })
-afterAll(async () => {
-  vi.stubGlobal('fetch', realFetch)
-  await h.close()
-})
+afterAll(() => h.close())
 afterEach(() => {
   vi.useRealTimers()
 })
