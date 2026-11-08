@@ -71,6 +71,7 @@
         {
           default = pkgs.mkShell {
             packages = [
+              # Vitest and Playwright run on Node (their bins start with `env node`); the server runs on Bun.
               pkgs.nodejs_26
               pkgs.bun
               postgresql
