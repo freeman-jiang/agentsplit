@@ -24,7 +24,7 @@
 - Workers Free CPU (Freeman, 2026-11-05): accept the current cost and cut over on Workers Free. Reads cost about 8 ms of CPU before their rows; pages of 30 expenses sit near 13 ms at p50 (BASELINE.md). After the cutover, watch the Worker's errors and CPU, and serve the hottest reads through plain JSON routes instead of Effect RPC only if errors appear.
 - Payments store category 1 (Payment) on every path (P-BAL-92, approved in group C).
 - Revision snapshots record the expense's receipts, so history shows them (history area question 1).
-- Retries of a private-expense create or an invitation renewal return Conflict or `url: null` instead of a stored result, because the response holds a secret link that is never stored. An agent renews the invitation to get a new link.
+- A retried private-expense create returns Conflict instead of a stored result, because the response holds secret links that are never stored. An invitation renewal takes no idempotency key: a retry issues a new link and revokes the previous one. An agent renews the invitation to get a new link.
 
 ## A. Decided by PLAN.md (no further approval needed)
 

@@ -197,7 +197,8 @@ export class FeedApi extends RpcGroup.make(
     error: WriteError,
   }),
   Rpc.make('expenses.renewInvitation', {
-    payload: { groupId: Id, participantId: Id, idempotencyKey: IdempotencyKey },
+    // No idempotency key: the answer holds a new secret link, which is never stored, so a retry issues another link and revokes this one.
+    payload: { groupId: Id, participantId: Id },
     success: RenewedInvitation,
     error: WriteError,
   }),
