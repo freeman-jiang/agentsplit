@@ -52,4 +52,4 @@ v2 runs on Coolify on the Oracle host, as the current app does (DECISIONS.md, "H
 ## Findings from the current app
 
 - The speed baseline is in [BASELINE.md](BASELINE.md). Opening an expense is a full page load, and each screen downloads its data again.
-- Real data: 2 groups (both USD), 48 expenses (4 in JPY), no amount with more precision than its currency, no repayments. Three deleted expenses imported from Splitwise have even splits with share values other than 1; even splits ignore the values, so they do not change any balance.
+- Real data: every group uses USD, a few expenses are in JPY, no amount with more precision than its currency, no repayments. Three deleted expenses imported from Splitwise have even splits with share values other than 1; even splits ignore the values, so they do not change any balance.

@@ -7,7 +7,7 @@ Rebuild AgentSplit as v2 on the standard dev-box stack and move production to it
 - The repository is a public fork of Spliit. Never change its visibility. Never commit secrets or real household data.
 - Production runs Next.js and Prisma on Coolify (Oracle), at https://agentsplit.freemanjiang.com. It has its own PostgreSQL 17 and Garage, and it holds real household data. The household groups are the most important.
 - Read these first: `DEPLOYMENT.md` (data-preservation rules), `MCP.md`, `AUTH.md`, `PRIVACY.md`, and `~/dots/devbox/NEW-APP.md`.
-- Verified backups from 2026-11-04 are in `~/backups/agentsplit/2026-11-04/` (pg_dump, Garage volumes, all 13 receipt objects). Take a new verified backup before every production step.
+- Verified backups from 2026-11-04 are in `~/backups/agentsplit/2026-11-04/` (pg_dump, Garage volumes, every receipt object). Take a new verified backup before every production step.
 - The uncommitted `tooling` branch has a working flake (Node 26, Bun, PostgreSQL 17 in UTC, Nix Chromium) and these test findings:
   - The integration scripts need a PostgreSQL server in UTC, fake auth configuration (`BASE_URL`, Google test client, `BETTER_AUTH_SECRET`), and `scripts/package.json` with `"type": "module"`.
   - The OAuth authorize test must send `sec-fetch-mode: navigate`, as a browser does.
