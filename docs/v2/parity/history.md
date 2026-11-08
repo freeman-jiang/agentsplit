@@ -53,7 +53,7 @@ History rows keep the format that wrote them. Imported rows have `schemaVersion:
 | P-HIST-64, -69 | browser | Title "Log", description and empty text in `routes/$group/activity.tsx`. |
 | P-HIST-65 | browser | 20 per page; scrolling loaded 20, 40, 60, then 65 events. |
 | P-HIST-66, -67 | browser | en-US week start (Sunday), as the current app's en-US locale. Today shows the time only; older groups also show the date. |
-| P-HIST-68 | changed | Same strings. Access changes read "<action> by <name>." (for example "Invitation created by Alice."), never the email or the user ID (P-ACCESS-30). |
+| P-HIST-68 | changed | Same strings. An access change reads "<change> by <name>." and names people (for example "Invitation created for Bob by Alice." or "Bob removed by Alice."), never the email or the user ID (P-ACCESS-30). A row in the current app's form, "<action>: <user ID or email>", shows only the action. |
 | P-HIST-70 | changed, browser | Payments link to `/<group>/payments/<id>/edit`, expenses to `/<group>/expenses/<id>/edit`, under the group path in use. Deleted expenses do not link. Those editor routes belong to the expenses area. |
 | P-HIST-71 to -74, -76 to -79 | covered, browser | The fields and values: `legacy/history.test.ts` (all fields equal the current app's panel). Browser: the change markers, the deletion text, the group panel, a `javascript:` pointer that is not a link, and opening a panel without navigation. |
 | P-HIST-72 | changed (minor) | Amount-split weights show at the currency's precision ("share 30.00", not "share 30"). A v1 revision and the v2 revision after it then compare equal when nothing changed. |
@@ -74,7 +74,7 @@ History rows keep the format that wrote them. Imported rows have `schemaVersion:
 | P-EXPORT-07, -17, -28 | covered, browser | Headers checked on the dev server; `contentDisposition` test. |
 | P-EXPORT-08, -09, -10, -12, -13 | covered | `db/stats-export.test.ts`. JSON amounts are at the currency's precision ("30.00"), where the current app wrote minimal decimals ("30"). Both forms are exact. |
 | P-EXPORT-11 | covered | Same fields and enum names. Additions for multiple payers: `payers` (each payer's part), and `amount` on each `paidFor` row. `paidById` is the payer who paid most. |
-| P-EXPORT-14 | changed | Activities have no `actorUserId` or `agentKeyId`, and access-change `data` keeps only the action ("Invitation created"). |
+| P-EXPORT-14 | changed | Activities have no `actorUserId` or `agentKeyId`. Access-change `data` names people, never emails or user IDs ("Invitation created for Bob", "Bob made an admin"); a row in the current app's form keeps only the action ("Invitation created"). |
 | P-EXPORT-15 | changed | "AgentSplit Export - <group> - YYYY-MM-DD.json", as the CSV name. |
 | P-EXPORT-16 | changed | A missing group and a group without access both answer 403, so the response does not reveal which groups exist. |
 | P-EXPORT-18 to -27 | covered | The CSV test checks every cell of six rows: formula escapes, a payment, a negative amount, JPY, an imported expense, and each row summing to zero. Participant columns follow the group's name order. |

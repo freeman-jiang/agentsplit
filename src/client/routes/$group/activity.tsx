@@ -82,7 +82,7 @@ function Summary({ activity }: { activity: ActivityItem }) {
     case 'leave_group':
       return <>{who} left the group</>
     case 'update_group':
-      // Access changes say what changed, never whom (P-ACCESS-30).
+      // Access changes name people, never emails or user IDs (P-ACCESS-30).
       return activity.data ? (
         <>
           {activity.data} by {who}.

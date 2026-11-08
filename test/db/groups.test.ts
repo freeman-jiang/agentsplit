@@ -496,6 +496,8 @@ describe('roles, removal and leaving', () => {
       message: 'The verified email must match the existing member account.',
     })
     await access(alice, { action: 'bind_member', groupId: g.id, userId: cara.userId, email: cara.email, participantId: kim.id })
+    const log = await database.tx((db) => listActivities(db, { principal: alice, groupId: g.id, limit: 1 }))
+    expect(log.activities[0]?.data).toBe('Member identity of Cara bound to Kim')
     d = await details(alice, g.id)
     expect(d.unboundMembers).toEqual([])
     expect(d.people.find((p) => p.id === kim.id)).toMatchObject({ name: 'Cara', status: 'joined' })
@@ -504,7 +506,7 @@ describe('roles, removal and leaving', () => {
     })
   })
 
-  it('shows an access change without its target, and an invitation text in full (P-ACCESS-30)', async () => {
+  it('shows the current app’s access change without its target, and v2’s texts in full (P-ACCESS-30)', async () => {
     const g = await create(alice, { participants: ['Mom: Jane'] })
     const mom = (await details(alice, g.id)).people.find((p) => p.name === 'Mom: Jane')!
     await access(alice, { action: 'invite', groupId: g.id, email: 'mom@example.com', participantId: mom.id })
@@ -512,6 +514,21 @@ describe('roles, removal and leaving', () => {
     await database.tx((db) => db.insert(activities).values({ id: `${g.id}-v1`, groupId: g.id, type: 'update_group', data: 'Invitation created: mom@example.com', actorUserId: alice.userId, actorName: 'Alice', source: 'web' }))
     const page = await database.tx((db) => listActivities(db, { principal: alice, groupId: g.id, limit: 10 }))
     expect(page.activities.filter((a) => a.type === 'update_group').map((a) => a.data)).toEqual(['Invitation created', 'Invitation created for Mom: Jane'])
+  })
+
+  it('names people in the access changes it records (P-ACCESS-30)', async () => {
+    const { group } = await groupWithBob()
+    await access(alice, { action: 'set_role', groupId: group.id, userId: bob.userId, role: 'admin' })
+    await access(alice, { action: 'set_role', groupId: group.id, userId: bob.userId, role: 'member' })
+    await access(alice, { action: 'remove_member', groupId: group.id, userId: bob.userId })
+    const page = await database.tx((db) => listActivities(db, { principal: alice, groupId: group.id, limit: 10, order: 'asc' }))
+    expect(page.activities.filter((a) => a.type !== 'create_group').map((a) => [a.type, a.data])).toEqual([
+      ['update_group', 'Invitation created for Bob placeholder'],
+      ['join_group', 'Bob joined'],
+      ['update_group', 'Bob made an admin'],
+      ['update_group', 'Bob made a member'],
+      ['update_group', 'Bob removed'],
+    ])
   })
 
   it('answers a non-member of a private context with the group denial, before its own rules', async () => {
