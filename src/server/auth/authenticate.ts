@@ -69,7 +69,7 @@ export async function authenticate(db: Db, data: { request: Request; baseUrl: st
     if (!headers.has(API_KEY_HEADER) && key.split('.').length === 3) return await oauth(db, data)
     const verified = await verifyApiKey(db, key)
     if (!verified.valid) {
-      // The current app answered a rate-limited key with 401; v2 answers 429 (DECISIONS.md, P-MCP-56).
+      // The current app answered a rate-limited key with 401; v2 answers 429 (docs/history/v2/DECISIONS.md, P-MCP-56).
       if (verified.code === 'RATE_LIMITED')
         return {
           response: jsonError({ status: 429, message: 'API key request rate exceeded', headers: { 'Retry-After': String(Math.max(1, Math.ceil(verified.tryAgainInMs / 1000))) } }),

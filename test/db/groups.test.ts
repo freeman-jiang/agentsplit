@@ -1,5 +1,5 @@
 // Groups and access against a real database: settings, people, slugs,
-// invitations and membership changes. Item IDs refer to docs/v2/PARITY.md.
+// invitations and membership changes. Item IDs refer to docs/history/v2/PARITY.md.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { activities, groups, invitations, memberships } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'

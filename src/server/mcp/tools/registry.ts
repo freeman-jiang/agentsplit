@@ -45,7 +45,7 @@ export type McpTool = {
  * of a failed call, from the error registry (src/shared/errors.ts). The
  * runner (calls.ts) has turned every failure into a declared error. Only an
  * unexpected failure of a write leaves its outcome unknown; an access denial
- * has a certain outcome (DECISIONS.md, P-MCP-41).
+ * has a certain outcome (docs/history/v2/DECISIONS.md, P-MCP-41).
  */
 export function errorBody(data: { error: CallError; kind: 'read' | 'write' }) {
   const { error } = data

@@ -32,7 +32,7 @@ export const actorName = sql`CASE WHEN a.source = 'system' AND a.actor_name IS N
  * The source of activity row `alias` as it is shown and exported. Agent writes
  * are `agent`, as in the current app and the imported history. Rows that v2
  * wrote before this rule have `mcp`, and activities are permanent, so the
- * readers rename them (DECISIONS.md, parity audit, P-DB-79).
+ * readers rename them (docs/history/v2/DECISIONS.md, parity audit, P-DB-79).
  */
 export const activitySource = (alias: SQL) => sql`CASE WHEN ${alias}.source = 'mcp' THEN 'agent' ELSE ${alias}.source END`
 

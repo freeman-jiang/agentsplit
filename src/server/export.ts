@@ -1,6 +1,6 @@
 // CSV and JSON exports of a group's live expenses (and, in JSON, its history).
 // Formats follow the current app (src/lib/export-csv.ts, src/lib/export-json.ts)
-// with the DECISIONS.md changes: no user IDs, connection IDs or email
+// with the docs/history/v2/DECISIONS.md changes: no user IDs, connection IDs or email
 // addresses (P-EXPORT-14), rows in a defined order (P-EXPORT-29), and the group
 // name in both file names (P-EXPORT-15).
 import { sql } from 'drizzle-orm'

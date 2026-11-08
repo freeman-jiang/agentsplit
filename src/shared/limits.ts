@@ -4,7 +4,7 @@
 // Technical buffers (body envelopes, header reads) stay beside their code.
 // The fair-use limits exist only to stop abuse: AgentSplit is free, with no
 // paid tier, and they are set high enough that a household never meets them.
-// No Effect import: the client bundle uses this module (BUILDING.md).
+// No Effect import: the client bundle uses this module (docs/BUILDING.md).
 
 const MiB = 1024 * 1024
 

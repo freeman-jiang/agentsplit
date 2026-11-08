@@ -27,7 +27,7 @@ function calledTools(body: unknown): string[] {
  * A call that needs write scope with a token that lacks it is refused with an
  * HTTP 403 step-up challenge before it runs. The current app answered 200 with
  * the challenge inside the result, and MCP clients never re-authorized
- * (docs/v2/OAUTH-CLAUDE-CODE.md).
+ * (docs/history/v2/OAUTH-CLAUDE-CODE.md).
  */
 function needsStepUp(principal: McpPrincipal, body: unknown) {
   return principal.scopes !== null && !principal.scopes.includes(OAUTH_WRITE_SCOPE) && calledTools(body).some(isWriteTool)

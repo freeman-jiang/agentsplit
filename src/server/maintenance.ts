@@ -1,4 +1,4 @@
-// The cutover's freeze (docs/v2/CUTOVER.md). With AGENTSPLIT_MAINTENANCE set,
+// The cutover's freeze (docs/history/v2/CUTOVER.md). With AGENTSPLIT_MAINTENANCE set,
 // the server answers every request except the health checks with 503, so the
 // container can start, migrate and pass Coolify's health check while users
 // see a maintenance page and nothing writes to the database.

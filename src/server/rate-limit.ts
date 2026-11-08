@@ -42,6 +42,6 @@ export const takeWrite = (db: Db, take: Take) => takeToken(db, { ...take, table:
 /**
  * Takes one request from the user's MCP budget (LIMITS.mcpRequestsPerMinute):
  * the current app's token bucket, kept in PostgreSQL so that every process
- * shares it (DECISIONS.md, P-MCP-85).
+ * shares it (docs/history/v2/DECISIONS.md, P-MCP-85).
  */
 export const takeMcpRequest = (db: Db, take: Take) => takeToken(db, { ...take, table: mcpRateLimits, capacity: LIMITS.mcpRequestsPerMinute, periodSeconds: 60 })

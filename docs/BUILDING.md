@@ -1,6 +1,6 @@
-# Building AgentSplit v2
+# Building AgentSplit
 
-This guide is for every person or agent who adds to v2. Read [PLAN.md](PLAN.md), [DESIGN.md](DESIGN.md) and [DECISIONS.md](DECISIONS.md) first. The parity checklist is [PARITY.md](PARITY.md).
+This guide is for every person or agent who changes AgentSplit. The record of how v2 was planned and checked against the old app is in [history/](history/README.md). You do not need it to run or change the app, but the rules below cite its decisions (DECISIONS.md) and parity items (PARITY.md, `P-...` IDs).
 
 ## Commands
 
@@ -28,7 +28,7 @@ Run every command inside the dev shell, from the repository root: `direnv exec .
 - One PostgreSQL 18 server runs for the whole machine at `127.0.0.1:5437`, started with `db-start` from your main checkout, with its data in that checkout's `.pg/`. Stop it with `db-stop`. Do not run `db-start` in a second checkout or a worktree: a second server would fight for the port. If it is not running, report that.
 - Use your own database names, so parallel work does not collide: `agentsplit_test_<area>` for tests (the name must contain `test`) and `agentsplit_dev_<area>` for a dev server.
 - `db-reset <name>` drops and recreates a database whose name contains `test`, `e2e`, `perf` or `dev`.
-- Never touch `agentsplit_dev` or `agentsplit_restore_test`; the lead uses them. `db/local-databases.json` lists them with the disposable name parts, and `db-reset`, the test kit and `scripts/seed-synthetic.ts` refuse them (`test/local-databases.test.ts`). A new database to protect goes there.
+- Never touch `agentsplit_dev` or `agentsplit_restore_test`; the maintainer uses them. `db/local-databases.json` lists them with the disposable name parts, and `db-reset`, the test kit and `scripts/seed-synthetic.ts` refuse them (`test/local-databases.test.ts`). A new database to protect goes there.
 - Use synthetic data only (`scripts/seed-synthetic.ts`, or the test kit in `test/kit/`). Never copy the production backups.
 
 ## Dev server
@@ -58,8 +58,7 @@ Each area owns its own files, so areas can be built in parallel:
 3. **Domain service:** `src/server/<area>.ts` holds the functions. Each takes `(db, { principal, groupId, ... })`, where `groupId` is the caller's group reference (an ID or a slug), checks access itself, and returns values or throws the shared domain errors (`Forbidden`, `NotFound`, `Conflict`, `Invalid`). It never builds an HTTP response.
 4. **Handlers:** `src/server/handlers/<area>.ts` exports a layer of `Api.toLayerHandler(tag, ...)` calls built with `read`, `write` and `publicRead` from `src/server/rpc.ts`. Add it to `Layer.mergeAll` in `src/server/main/app.ts` (a one-line edit).
 5. **Client:** queries in `src/client/queries/<area>.ts` (`queryOptions` and `infiniteQueryOptions`) with keys from `queries/keys.ts`, screens as TanStack Router file routes under `src/client/routes/`. Replace the placeholder route of your screen.
-6. **Tests:** `test/db/<area>.test.ts` for services against a real database, and the parity record below. Build the data with the test kit (`test/kit/`: the database copy and its transaction, principals, web and MCP drafts, images, uploads, session cookies, groups written as `createGroup` writes them (`seedGroup`), the hourly recurring run that throws on a failed link (`scheduledRun`), ID counters and the MCP client), and reach the app through `test/db/harness.ts` (`startHarness`, `testApp`, and the calls `checked` for MCP and `webRpc` for RPC), which serves every request through `createApp`. Each test makes its own rows, so it passes alone and in any order (`bun run test -- --sequence.shuffle.tests`).
-7. **Parity record:** `docs/v2/parity/<area>.md` lists every PARITY.md item you covered, with the test that proves it, and every item you could not cover, with the reason.
+6. **Tests:** `test/db/<area>.test.ts` for services against a real database. Build the data with the test kit (`test/kit/`: the database copy and its transaction, principals, web and MCP drafts, images, uploads, session cookies, groups written as `createGroup` writes them (`seedGroup`), the hourly recurring run that throws on a failed link (`scheduledRun`), ID counters and the MCP client), and reach the app through `test/db/harness.ts` (`startHarness`, `testApp`, and the calls `checked` for MCP and `webRpc` for RPC), which serves every request through `createApp`. Each test makes its own rows, so it passes alone and in any order (`bun run test -- --sequence.shuffle.tests`).
 
 ## Server modules
 
@@ -107,11 +106,11 @@ The client reaches the server only through `rpc()` (`src/client/rpc.ts`), which 
 - Value lists (kinds, split modes, recurrences, roles, group kinds, activity types and sources, upload states, receipt types, and v1's names for them) live only in `src/shared/vocabulary.ts`. Every limit (field lengths, people per group, page sizes, times, rates and the fair-use limits) lives only in `src/shared/limits.ts`. The contract, the Drizzle enums and CHECKs, the MCP schemas and descriptions, the rule messages and the client derive from these two modules; `test/db/database-rules.test.ts` compares the database's CHECKs with them. A new list or limit goes there, not into a schema.
 - Expense dates are `YYYY-MM-DD` strings. Times are `timestamptz` and ISO strings in the API.
 - The membership check happens on the server for every read and write, through `src/server/core/access.ts`: `requireMember`, or `memberCte` as the first CTE of the same statement, and `myMemberships` for a read across groups. Both resolve a group reference with `agentsplit_group_id` (an ID, a current slug in any case, or a retired slug), so never match `id` or `slug` by hand. Pass a reference that a caller sent through `groupIdOfInput` or `groupRef`.
-- The database triggers and CHECKs are the last line of defense. Never disable them. A migration may replace a rule only with one that refuses at least as much, or with one that lets through what an owner decision allows (as 0017 and 0019 do for a refund split by amount), and may drop a rule only when what it protects is gone; DECISIONS.md section H records each such change.
+- The database triggers and CHECKs are the last line of defense. Never disable them. A migration may replace a rule only with one that refuses at least as much, or with one that lets through what an owner decision allows (as 0017 and 0019 do for a refund split by amount), and may drop a rule only when what it protects is gone; [DECISIONS.md](history/v2/DECISIONS.md) section H records each such change.
 
 ### Speed
 
-The Workers Free CPU limit no longer applies (DECISIONS.md, "Hosting changes to Coolify"), but the rules stay: they keep the pages fast on one small host.
+The Workers Free CPU limit no longer applies ([DECISIONS.md](history/v2/DECISIONS.md), "Hosting changes to Coolify"), but the rules stay: they keep the pages fast on one small host.
 
 - One SQL statement per screen read where possible. Let PostgreSQL build nested results as JSON (`json_agg`, `json_build_object`), with minor units as text. Read expenses with `expenseColumns` and `toExpense` from `src/server/expense-read.ts`, the one expense read model; see `getGroup` and `listExpenses` in `src/server/ledger.ts`.
 - Do not call Better Auth on the RPC path. The session is already resolved by the middleware.
@@ -121,7 +120,7 @@ The Workers Free CPU limit no longer applies (DECISIONS.md, "Hosting changes to 
 
 ### Behavior
 
-- Parity with v1 or better, as PARITY.md lists, with the changes in DECISIONS.md. Port screens from v1's code, which Git keeps in the commit before the move of v2 to the root (`git show 746ec00^:src/app/<path>`, and `src/components`): the same fields, labels, order, empty states and access rules.
+- Parity with v1 or better, as [PARITY.md](history/v2/PARITY.md) lists, with the changes in [DECISIONS.md](history/v2/DECISIONS.md). Port screens from v1's code, which Git keeps in the commit before the move of v2 to the root (`git show 746ec00^:src/app/<path>`, and `src/components`): the same fields, labels, order, empty states and access rules.
 - English only. Use the English text of v1's `messages/en-US.json` (`git show 746ec00^:messages/en-US.json`) for screens that v1 translates.
 - Use the UI kit in `src/client/ui/`, `cn` from `src/client/cn.ts`, and `money()` from `src/client/components/money.ts`. The color, radius and font tokens and the Tailwind theme that reads them live together in `src/client/styles.css`; there is no Tailwind config file.
 - Group pages render inside the shared layout in `src/client/routes/$group.tsx`. Never recreate the balance rail in a tab.
@@ -132,6 +131,6 @@ The Workers Free CPU limit no longer applies (DECISIONS.md, "Hosting changes to 
 - Match the surrounding style. Comments explain why, in short sentences.
 - Commit each finished change with a message that says what changed and why. Do not add AI attribution.
 
-## What only the lead does
+## What the maintainer does
 
-Deploying, anything on Coolify or the Oracle host, Cloudflare or GitHub settings, production, and merging branches.
+The maintainer deploys, changes the production host, Cloudflare and GitHub settings, and merges pull requests. A contributor opens a pull request and never needs production access or production data.

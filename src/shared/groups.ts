@@ -1,11 +1,11 @@
 // Pure group rules shared by the client and the server. No Effect import here:
-// the client bundle must stay free of the Effect runtime (BUILDING.md).
+// the client bundle must stay free of the Effect runtime (docs/BUILDING.md).
 import { LIMITS } from './limits'
 
 /**
  * Root routes and infrastructure names a group cannot claim (P-GROUP-94).
  * `assets` is v2's own: the client build serves its chunks under /assets/
- * (DECISIONS.md).
+ * (docs/history/v2/DECISIONS.md).
  */
 export const RESERVED_GROUP_SLUGS = [
   'sign-in',
