@@ -103,8 +103,10 @@ export async function putUpload(data: { db: Db; bucket: Bucket; request: Request
  * Every receipt of a group as one ZIP file, at /<group>/expenses/export/receipts,
  * for members only, with the same credentials as the exports. `withDb` runs
  * the database work; the file streams from storage after it is done, so the
- * connection is released first. A receipt whose object is missing is listed
- * in MISSING.txt at the end of the file instead.
+ * connection is released first. A receipt whose object is missing, or that
+ * storage fails to read, is listed in MISSING.txt at the end of the file
+ * instead: a failure mid-stream would end the download as a file that no
+ * unzip tool can open.
  */
 export async function downloadReceiptArchive(data: {
   withDb: <A>(work: (db: Db) => Promise<A>) => Promise<A>
@@ -127,17 +129,30 @@ export async function downloadReceiptArchive(data: {
   const { bucket } = data
   async function* files(): AsyncGenerator<ZipEntry | null> {
     const missing: string[] = []
+    const unreadable: string[] = []
     for (const entry of archive.entries) {
-      const object = await bucket.get(entry.key)
-      if (!object) {
+      let bytes: Uint8Array | null
+      try {
+        const object = await bucket.get(entry.key)
+        bytes = object ? await object.bytes() : null
+      } catch (error) {
+        console.error('Reading a receipt for the ZIP download failed', { key: entry.key }, error)
+        unreadable.push(entry.name)
+        yield null
+        continue
+      }
+      if (!bytes) {
         missing.push(entry.name)
         yield null
         continue
       }
-      yield { name: entry.name, time: entry.time, bytes: await object.bytes() }
+      yield { name: entry.name, time: entry.time, bytes }
     }
-    if (missing.length)
-      yield { name: 'MISSING.txt', time: new Date(), bytes: new TextEncoder().encode(`These receipts were not found in storage:\n${missing.join('\n')}\n`) }
+    const sections = [
+      missing.length ? `These receipts were not found in storage:\n${missing.join('\n')}\n` : '',
+      unreadable.length ? `These receipts could not be read from storage. Download the file again later:\n${unreadable.join('\n')}\n` : '',
+    ].filter(Boolean)
+    if (sections.length) yield { name: 'MISSING.txt', time: new Date(), bytes: new TextEncoder().encode(sections.join('\n')) }
   }
   return new Response(zipStream(files()), {
     headers: {

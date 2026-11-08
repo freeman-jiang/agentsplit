@@ -216,6 +216,23 @@ describe('permanent receipt deletion', () => {
 })
 
 describe('receipt uploads and downloads', () => {
+  it('keeps the receipt ZIP file valid when storage fails on one receipt, and names that receipt', async () => {
+    const g = await groupOf('ivy')
+    for (let i = 0; i < 2; i++) expect((await upload({ userId: 'ivy', groupId: g })).status).toBe(200)
+    const [broken, ...rest] = await h.withDb((db) => db.select({ url: receipts.url }).from(receipts).where(eq(receipts.groupId, g)))
+    const brokenKey = keyOf(broken?.url ?? '')
+    const down = testApp({
+      pool: h.pool,
+      bucket: { ...h.storage.bucket, get: (key, options) => (key === brokenKey ? Promise.reject(new Error('storage is down')) : h.storage.bucket.get(key, options)) },
+    })
+    const response = await down.fetch(new Request(`${BASE}/groups/${g}/expenses/export/receipts`, { headers: { cookie: cookies.get('ivy') ?? '' } }))
+    const zip = new Uint8Array(await response.arrayBuffer())
+    // The end-of-central-directory record closes every complete ZIP file, and counts its entries.
+    const end = new DataView(zip.buffer, zip.length - 22)
+    expect({ signature: end.getUint32(0, true), entries: end.getUint16(10, true) }).toEqual({ signature: 0x06054b50, entries: rest.length + 1 })
+    expect(new TextDecoder().decode(zip)).toMatch(/could not be read from storage[^]*Not attached\//)
+  })
+
   it('refuses a download without a session or an API key before reading storage', async () => {
     const g = await groupOf('ursula')
     const uploaded = (await (await upload({ userId: 'ursula', groupId: g })).json()) as { url: string }
