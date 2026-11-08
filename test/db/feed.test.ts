@@ -16,6 +16,7 @@ import { materializeDue } from '~/server/recurring'
 import { createExpense, updateExpense } from '~/server/ledger'
 import { AccountBalances, ExpenseContext, FeedOptions, FeedPage } from '~/shared/api'
 import type { ExpenseDraft } from '~/shared/expense-rules'
+import { CATEGORY } from '~/shared/vocabulary'
 import { testDatabase, type TestDatabase } from '../kit/database'
 import { draft } from '../kit/drafts'
 import { counter } from '../kit/ids'
@@ -57,7 +58,7 @@ async function fill(h: Flat, prefix: string) {
   await h.create(h.alice, `${prefix}groceries`, { vendor: 'Costco', notes: 'contains rent' })
   await h.create(h.bob, `${prefix}rent`, { title: 'Rent 100%', categoryId: 18, expenseDate: '2026-10-02', payers: [{ participantId: h.pb, amount: '30' }] })
   await h.create(h.bob, `${prefix}cara`, { title: 'Cara only', payers: [{ participantId: h.pc, amount: '30' }], shares: [{ participantId: h.pc, weight: '1' }] })
-  await h.create(h.alice, `${prefix}pay`, { kind: 'payment', title: 'Payback', categoryId: 1, payers: [{ participantId: h.pb, amount: '30' }], shares: [{ participantId: h.pa, weight: '1' }] })
+  await h.create(h.alice, `${prefix}pay`, { kind: 'payment', title: 'Payback', categoryId: CATEGORY.payment, payers: [{ participantId: h.pb, amount: '30' }], shares: [{ participantId: h.pa, weight: '1' }] })
   await h.create(h.alice, `${prefix}eur`, { currency: 'EUR', title: 'Euro snacks', expenseDate: '2026-09-01' })
 }
 

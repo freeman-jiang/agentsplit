@@ -212,7 +212,7 @@ describe('payments and balances', () => {
     for (const s of usd?.settlements ?? [])
       await h.create({
         expenseId: nextExpense(),
-        expense: h.expense({ kind: 'payment', title: 'Payment', vendor: null, categoryId: 1, amount: s.amount, payers: [{ participantId: s.from, amount: s.amount }], shares: [{ participantId: s.to, weight: '1' }] }),
+        expense: h.expense({ kind: 'payment', title: 'Payment', vendor: null, categoryId: CATEGORY.payment, amount: s.amount, payers: [{ participantId: s.from, amount: s.amount }], shares: [{ participantId: s.to, weight: '1' }] }),
       })
     const after = (await h.balances()).currencies.find((c) => c.currency === 'USD')
     expect(after?.balances.map((b) => b.net)).toEqual(['0.00', '0.00', '0.00'])

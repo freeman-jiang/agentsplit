@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { user } from '../../db/schema/auth'
 import { createAuth } from '~/server/auth/auth'
 import { takeWrite } from '~/server/rate-limit'
-import { apiKeyLimitMessage, LIMITS, SIGN_UP_LIMIT_CODE } from '~/shared/limits'
+import { apiKeyLimitMessage, LIMITS, SIGN_UP_LIMIT_CODE, tooManyWritesMessage } from '~/shared/limits'
 import { testSettings } from '../kit/config'
 import { BASE, failure, startHarness, type Harness } from './harness'
 
@@ -18,14 +18,14 @@ beforeAll(async () => {
 afterAll(() => h.close())
 
 describe('other limits', () => {
-  it('allows 60 writes a minute per user, refilled one a second, at a fixed clock', async () => {
+  it('allows LIMITS.writesPerMinute writes a minute per user, refilled evenly over the minute, at a fixed clock', async () => {
     for (const id of ['gail', 'hank']) await h.account(id)
     const at = new Date('2026-11-05T12:00:00.000Z')
     const take = (userId: string, time: Date) => h.withDb((db) => takeWrite(db, { userId, at: time }))
     for (let i = 0; i < LIMITS.writesPerMinute; i++) expect(await take('gail', at)).toBe(0)
     expect(await take('gail', at)).toBe(1)
-    // One second later exactly one more write fits.
-    const later = new Date(at.getTime() + 1000)
+    // One refill later exactly one more write fits.
+    const later = new Date(at.getTime() + 60_000 / LIMITS.writesPerMinute)
     expect(await take('gail', later)).toBe(0)
     expect(await take('gail', later)).toBe(1)
     // Another user's budget is separate.
@@ -40,7 +40,7 @@ describe('other limits', () => {
     for (let i = 0; i < LIMITS.writesPerMinute; i++) await h.withDb((db) => takeWrite(db, { userId: 'ines', at: ahead }))
     const refused = await failure(h, { name: 'update_profile', args: { name: 'Too fast' }, headers: key })
     expect(refused).toMatchObject({ code: 'TOO_MANY_REQUESTS', outcomeUnknown: false, recovery: 'retry_later' })
-    expect(refused.message).toMatch(/^You're making changes too quickly\. Wait 1 second and try again\./)
+    expect(refused.message.startsWith(tooManyWritesMessage(1))).toBe(true)
     const [row] = await h.withDb((db) => db.select({ name: user.name }).from(user).where(eq(user.id, 'ines')))
     expect(row?.name).toBe('ines')
   })

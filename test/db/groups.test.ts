@@ -94,14 +94,14 @@ describe('creating groups', () => {
     expect(log[0]!.snapshot).toMatchObject({ schemaVersion: 2, kind: 'group', group: { name: 'Flat', revision: 1 } })
   })
 
-  it('names the creator "Member" when the account name is empty, and cuts long names to 50 characters (P-GROUP-27, -30)', async () => {
+  it('names the creator "Member" when the account name is empty, and cuts long names to LIMITS.nameMax characters (P-GROUP-27, -30)', async () => {
     const blank = await create({ ...cara, name: '   ' })
     expect((await details(cara, blank.id)).people[0]?.name).toBe('Cara') // the verified account name is the display name
     const [row] = await database.tx((db) => db.execute<{ name: string }>(sql`SELECT name FROM participants WHERE group_id = ${blank.id}`).then((r) => r.rows))
     expect(row?.name).toBe('Member')
     const long = await create({ ...cara, name: 'x'.repeat(80) })
     const [p] = await database.tx((db) => db.execute<{ name: string }>(sql`SELECT name FROM participants WHERE group_id = ${long.id}`).then((r) => r.rows))
-    expect(p?.name).toHaveLength(50)
+    expect(p?.name).toHaveLength(LIMITS.nameMax)
   })
 
   it('refuses duplicate participant names, including the creator name (P-GROUP-31)', async () => {

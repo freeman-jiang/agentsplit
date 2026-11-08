@@ -13,6 +13,8 @@ import { type Principal } from '~/server/core/access'
 import { createUngroupedExpense, renewPrivateInvitation, type PrivatePerson } from '~/server/ungrouped'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { randomId } from '~/shared/ids'
+import { LIMITS } from '~/shared/limits'
+import { CATEGORY } from '~/shared/vocabulary'
 import { BASE } from '../kit/config'
 import { testDatabase, type TestDatabase } from '../kit/database'
 import { draft } from '../kit/drafts'
@@ -73,7 +75,7 @@ const repay = (data: { dinner: Dinner; by: Principal; expenseId?: string; amount
       groupId: data.dinner.id,
       expenseId: data.expenseId ?? randomId(),
       idempotencyKey: key(),
-      expense: meal({ kind: 'payment', title: 'Payment', amount: data.amount ?? '30', categoryId: 1, payer: data.dinner.friend, people: [data.dinner.me] }),
+      expense: meal({ kind: 'payment', title: 'Payment', amount: data.amount ?? '30', categoryId: CATEGORY.payment, payer: data.dinner.friend, people: [data.dinner.me] }),
     }),
   )
 
@@ -283,7 +285,7 @@ describe('ungrouped expenses', () => {
     const hash = Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret))).toString('hex')
     const [stored] = await tx((db) => db.select().from(invitations).where(eq(invitations.groupId, id)))
     expect(stored?.tokenHash).toBe(hash)
-    expect(stored && stored.expiresAt.getTime() - Date.now()).toBeGreaterThan(6.9 * 86_400_000)
+    expect(stored && stored.expiresAt.getTime() - Date.now()).toBeGreaterThan((LIMITS.invitationDays - 0.1) * 86_400_000)
     // Expired invitations stay listed for the creator, so they can be renewed.
     await tx((db) => db.update(invitations).set({ expiresAt: new Date(0) }).where(eq(invitations.groupId, id)))
     expect((await tx((db) => expenseContext(db, { principal: alice, expenseId: id }))).context?.invitations).toHaveLength(1)
