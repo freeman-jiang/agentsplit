@@ -14,12 +14,14 @@ import { deleteReceipts, purgeDeletedReceipts } from '~/server/storage'
 import { LIMITS, storageFullMessage } from '~/shared/limits'
 import { GROUP_DENIED } from '~/shared/errors'
 import { RECEIPTS_PATH } from '~/shared/paths'
+import { testSettings } from '../kit/config'
 import { draft, mcpExpense } from '../kit/drafts'
 import { counter } from '../kit/ids'
 import { png } from '../kit/images'
 import { principal } from '../kit/people'
 import { receiptUpload } from '../kit/upload'
 import { waitFor } from '../kit/wait'
+import { FAKE_BUCKET_ORIGIN } from './fake-bucket'
 import { BASE, startHarness, testApp, type Harness } from './harness'
 
 let h: Harness
@@ -52,12 +54,11 @@ const fill = (data: { userId: string; groupId: string; bytes: number }) => {
   return h.withDb((db) => db.insert(receipts).values({ id, groupId: data.groupId, url: receiptUrl(`receipts/${id}.jpg`), createdBy: data.userId, bytes: data.bytes }))
 }
 /** GET /api/receipts with the user's session, or with no credential when `userId` is null. */
-const download = (data: { userId: string | null; groupId: string; url?: string }) =>
-  h.fetch(
-    new Request(`${BASE}${RECEIPTS_PATH}?${new URLSearchParams({ groupId: data.groupId, ...(data.url === undefined ? {} : { url: data.url }) })}`, {
-      headers: data.userId ? { cookie: cookies.get(data.userId) ?? '' } : {},
-    }),
-  )
+const downloadRequest = (data: { userId: string | null; groupId: string; url?: string }) =>
+  new Request(`${BASE}${RECEIPTS_PATH}?${new URLSearchParams({ groupId: data.groupId, ...(data.url === undefined ? {} : { url: data.url }) })}`, {
+    headers: data.userId ? { cookie: cookies.get(data.userId) ?? '' } : {},
+  })
+const download = (data: { userId: string | null; groupId: string; url?: string }) => h.fetch(downloadRequest(data))
 const usage = (userId: string) => h.withDb((db) => receiptUsage(db, userId))
 const keyOf = (url: string) => receiptKey(url) ?? ''
 
@@ -319,5 +320,41 @@ describe('receipt uploads and downloads', () => {
     const response = await download({ userId: 'bert', groupId: g, url: uploaded.url })
     expect(response.status).toBe(200)
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(png({ width: 40, height: 30, bytes: 64 }))
+  })
+})
+
+describe('receipt downloads by redirect (RECEIPT_DOWNLOADS=redirect)', () => {
+  // A redirect hands out a working URL for the image, so a refused or deleted receipt must never get one.
+  it('refuses as streaming does, answers 410 for a deleted receipt, and sends a member to storage with the allowed type', async () => {
+    const app = testApp({ pool: h.pool, settings: testSettings({ receiptDownloads: { mode: 'redirect', origin: FAKE_BUCKET_ORIGIN } }), bucket: h.storage.bucket })
+    const g = await groupOf('tara', 'uma')
+    await groupOf('vince')
+    const uploaded = (await (await upload({ userId: 'tara', groupId: g })).json()) as { id: string; url: string }
+    for (const userId of [null, 'vince']) {
+      const streamed = await download({ userId, groupId: g, url: uploaded.url })
+      const redirected = await app.fetch(downloadRequest({ userId, groupId: g, url: uploaded.url }))
+      const answer = async (response: Response) => ({ status: response.status, location: response.headers.get('location'), body: await response.json() })
+      expect({ userId, ...(await answer(redirected)) }).toEqual({ userId, ...(await answer(streamed)) })
+      expect(redirected.status).toBe(userId ? 403 : 401)
+    }
+
+    const toStorage = async () => {
+      const response = await app.fetch(downloadRequest({ userId: 'uma', groupId: g, url: uploaded.url }))
+      expect({ status: response.status, cache: response.headers.get('cache-control') }).toEqual({ status: 307, cache: 'private, no-store' })
+      const location = new URL(response.headers.get('location') ?? '')
+      expect(`${location.origin}${location.pathname}`).toBe(`${FAKE_BUCKET_ORIGIN}/agentsplit-receipts/${keyOf(uploaded.url)}`)
+      return Object.fromEntries(location.searchParams)
+    }
+    expect(await toStorage()).toMatchObject({ 'response-content-type': 'image/png', 'response-content-disposition': 'inline', 'X-Amz-Expires': '300' })
+    // An object that claims another type is still served as a receipt type.
+    h.storage.objects.set(keyOf(uploaded.url), { bytes: png({ width: 1, height: 1 }), contentType: 'text/html' })
+    expect(await toStorage()).toMatchObject({ 'response-content-type': 'image/jpeg' })
+    // The page lets the images load from storage.
+    expect((await app.fetch(new Request(`${BASE}/`))).headers.get('content-security-policy')).toContain(`img-src 'self' data: blob: ${FAKE_BUCKET_ORIGIN};`)
+
+    await h.tx((db) => deleteReceipts(db, { principal: principal('tara'), receiptIds: [uploaded.id] }))
+    const gone = await app.fetch(downloadRequest({ userId: 'uma', groupId: g, url: uploaded.url }))
+    expect({ status: gone.status, location: gone.headers.get('location') }).toEqual({ status: 410, location: null })
+    expect(((await gone.json()) as { error: string }).error).toMatch(/^Receipt deleted by TARA on \d{4}-\d\d-\d\d$/)
   })
 })

@@ -22,6 +22,12 @@ export type AppSettings = AuthSettings & {
   readonly perfInstrumentation: boolean
   /** AGENTSPLIT_MAINTENANCE: answer 503 (maintenance.ts) and pause the hourly job. */
   readonly maintenance: boolean
+  /**
+   * RECEIPT_DOWNLOADS: `stream` sends each receipt image through the server;
+   * `redirect` sends the reader to a presigned URL on the bucket's `origin`,
+   * which the page's img-src then allows (receipt-routes.ts, headers.ts).
+   */
+  readonly receiptDownloads: { readonly mode: 'stream' } | { readonly mode: 'redirect'; readonly origin: string }
 }
 
 export type ServerSettings = {
@@ -60,6 +66,11 @@ export function readSettings(env: Env): ServerSettings {
   if (!URL.canParse(baseUrl)) throw new Error('Set BASE_URL to the public URL of the app, such as https://agentsplit.example')
   const secret = required('BETTER_AUTH_SECRET')
   if (secret.length < 32) throw new Error('Set BETTER_AUTH_SECRET to at least 32 characters')
+  const endpoint = required('S3_UPLOAD_ENDPOINT')
+  // Streaming stays the default: Garage on Coolify has an internal address that browsers cannot reach.
+  const downloads = optional('RECEIPT_DOWNLOADS') ?? 'stream'
+  if (downloads !== 'stream' && downloads !== 'redirect') throw new Error('Set RECEIPT_DOWNLOADS to stream or redirect')
+  if (downloads === 'redirect' && !URL.canParse(endpoint)) throw new Error('Set S3_UPLOAD_ENDPOINT to the URL of the S3 API, such as https://<account ID>.r2.cloudflarestorage.com')
   return {
     app: {
       baseUrl,
@@ -71,12 +82,14 @@ export function readSettings(env: Env): ServerSettings {
       // Off in every deployment; only performance runs set it, as in the current app.
       perfInstrumentation: flag('PERF_INSTRUMENTATION'),
       maintenance: flag('AGENTSPLIT_MAINTENANCE'),
+      // Path-style presigned URLs are on the endpoint's origin (s3.ts).
+      receiptDownloads: downloads === 'redirect' ? { mode: 'redirect', origin: new URL(endpoint).origin } : { mode: 'stream' },
     },
     databaseUrl: required('DATABASE_URL'),
     poolSize: whole('DATABASE_POOL_SIZE', 10, 'connections'),
     migrationsDir: optional('MIGRATIONS_DIR'),
     s3: {
-      endpoint: required('S3_UPLOAD_ENDPOINT'),
+      endpoint,
       region: optional('S3_UPLOAD_REGION') ?? 'garage',
       bucket: optional('S3_UPLOAD_BUCKET') ?? 'agentsplit-receipts',
       accessKeyId: required('S3_UPLOAD_KEY'),

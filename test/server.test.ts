@@ -101,5 +101,13 @@ describe('settings', () => {
     expect(() => readSettings({ ...env, BETTER_AUTH_SECRET: 'short' })).toThrow('Set BETTER_AUTH_SECRET to at least 32 characters')
     expect(() => readSettings({ ...env, GOOGLE_CLIENT_ID: ' ' })).toThrow('Set GOOGLE_CLIENT_ID')
     expect(() => readSettings({ ...env, SIGN_UP_DAILY_LIMIT: '10k' })).toThrow('Set SIGN_UP_DAILY_LIMIT to a whole number of accounts per day')
+    expect(() => readSettings({ ...env, RECEIPT_DOWNLOADS: 'presign' })).toThrow('Set RECEIPT_DOWNLOADS to stream or redirect')
+  })
+
+  // On Coolify, browsers cannot reach Garage: a redirect there would break every receipt image.
+  it('streams receipts unless RECEIPT_DOWNLOADS=redirect, and then allows the endpoint origin', () => {
+    expect(readSettings(env).app.receiptDownloads).toEqual({ mode: 'stream' })
+    const r2 = { ...env, S3_UPLOAD_ENDPOINT: 'https://account.r2.cloudflarestorage.com', RECEIPT_DOWNLOADS: 'redirect' }
+    expect(readSettings(r2).app.receiptDownloads).toEqual({ mode: 'redirect', origin: 'https://account.r2.cloudflarestorage.com' })
   })
 })
