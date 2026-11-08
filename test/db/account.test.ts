@@ -163,6 +163,8 @@ describe('connected apps', () => {
       connection('c2', 'reader', ['agentsplit:read', 'agentsplit:write'], day(3)),
       connection('c3', 'no-consent', ['agentsplit:read'], day(4)),
       connection('c4', 'revoked', ['agentsplit:read'], day(5), day(6)),
+      // A disabled client's tokens fail verifyConnection, so Settings must not list it either.
+      connection('c5', 'disabled', ['agentsplit:read'], day(7)),
     ])
     const consent = (clientId: string, scopes: string[]) => ({ id: `consent-${userId}-${clientId}`, clientId, userId, scopes, createdAt: day(1) })
     await db.insert(auth.oauthConsent).values([
@@ -170,6 +172,7 @@ describe('connected apps', () => {
       // Consent reduced to read only after the grant: write is gone at once.
       consent('reader', ['agentsplit:read']),
       consent('revoked', ['agentsplit:read']),
+      consent('disabled', ['agentsplit:read']),
     ])
     await db.insert(auth.oauthRefreshToken).values({ id: `${userId}-r1`, token: `hash-${userId}-r1`, clientId: 'chatgpt', userId, scopes: ['agentsplit:read'] })
     await db.insert(auth.oauthAccessToken).values({ id: `${userId}-a1`, token: `hash-${userId}-a1`, clientId: 'chatgpt', userId, scopes: ['agentsplit:read'] })

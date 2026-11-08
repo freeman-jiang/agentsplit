@@ -6,7 +6,7 @@
 // valid until they expire, so a revoked connection is what stops them.
 import type { OAuthProviderExtension } from '@better-auth/oauth-provider'
 import { APIError } from 'better-call'
-import { and, arrayContains, eq, isNull, sql } from 'drizzle-orm'
+import { and, arrayContains, eq, isNull, sql, type SQL } from 'drizzle-orm'
 import { oauthConnections } from '../../../db/schema/app'
 import * as authSchema from '../../../db/schema/auth'
 import { Forbidden } from '../../shared/api'
@@ -66,6 +66,16 @@ export type OAuthResult =
   /** Valid, but read access is no longer granted: answer 403 insufficient_scope. */
   | { readonly kind: 'no-read' }
 
+/**
+ * Whether the client of an unrevoked connection still has access for the
+ * user: it exists, is not disabled, and has a consent. verifyConnection
+ * checks the token's connection with it, and Settings lists the connections
+ * it keeps.
+ */
+export const clientStillGranted = (data: { userId: SQL; clientId: SQL }) =>
+  sql`(EXISTS (SELECT 1 FROM oauth_client oc WHERE oc.client_id = ${data.clientId} AND oc.disabled IS NOT TRUE)
+    AND EXISTS (SELECT 1 FROM oauth_consent s WHERE s.user_id = ${data.userId} AND s.client_id = ${data.clientId}))`
+
 type GrantRow = {
   connection_user: string | null
   connection_client: string | null
@@ -75,8 +85,7 @@ type GrantRow = {
   user_name: string | null
   user_email: string | null
   verified: boolean | null
-  client_disabled: boolean | null
-  client_exists: boolean
+  granted: boolean
   consent_scopes: string[] | null
 }
 
@@ -92,12 +101,11 @@ export async function verifyConnection(db: Db, data: { connectionId: string; use
     SELECT
       c.user_id AS connection_user, c.client_id AS connection_client, c.scopes AS connection_scopes, c.revoked_at IS NOT NULL AS revoked,
       u.id AS user_id, u.name AS user_name, u.email AS user_email, u.email_verified AS verified,
-      oc.disabled AS client_disabled, oc.id IS NOT NULL AS client_exists,
+      ${clientStillGranted({ userId: sql`${data.userId}`, clientId: sql`${data.clientId}` })} AS granted,
       (SELECT scopes FROM oauth_consent WHERE user_id = ${data.userId} AND client_id = ${data.clientId} LIMIT 1) AS consent_scopes
     FROM (SELECT 1) one
     LEFT JOIN oauth_connections c ON c.id = ${data.connectionId}
     LEFT JOIN "user" u ON u.id = ${data.userId}
-    LEFT JOIN oauth_client oc ON oc.client_id = ${data.clientId}
   `)
   const row = result.rows[0]
   if (
@@ -108,8 +116,7 @@ export async function verifyConnection(db: Db, data: { connectionId: string; use
     row.connection_client !== data.clientId ||
     !row.verified ||
     !row.user_id ||
-    !row.client_exists ||
-    row.client_disabled === true ||
+    !row.granted ||
     !row.consent_scopes
   )
     return { kind: 'invalid' }
