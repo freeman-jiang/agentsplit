@@ -33,30 +33,12 @@
   --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-/* Motion: one strong ease-out curve for everything that responds to the user. */
+/* Motion: dialogs and menus fade, and nothing else moves. */
 @theme {
-  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
-  --animate-pop-in: pop-in 200ms var(--ease-out-strong);
-  --animate-pop-out: pop-out 150ms var(--ease-out-strong) forwards;
-  --animate-fade-in: fade-in 200ms var(--ease-out-strong);
-  --animate-fade-out: fade-out 150ms var(--ease-out-strong) forwards;
-  --animate-menu-in: pop-in 150ms var(--ease-out-strong);
-  --animate-menu-out: pop-out 120ms var(--ease-out-strong) forwards;
+  --animate-fade-in: fade-in 150ms ease-out;
+  --animate-fade-out: fade-out 100ms ease-in forwards;
 }
 
-/* A surface grows from 96% and fades in, around its transform-origin. */
-@keyframes pop-in {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-}
-@keyframes pop-out {
-  to {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-}
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -65,19 +47,6 @@
 @keyframes fade-out {
   to {
     opacity: 0;
-  }
-}
-/* Less motion: surfaces only fade. */
-@media (prefers-reduced-motion: reduce) {
-  @keyframes pop-in {
-    from {
-      opacity: 0;
-    }
-  }
-  @keyframes pop-out {
-    to {
-      opacity: 0;
-    }
   }
 }
 
