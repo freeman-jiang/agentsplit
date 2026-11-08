@@ -43,6 +43,7 @@ export async function createUngroupedExpense(
   },
 ) {
   const known = await contacts(tx, { userId: data.principal.userId })
+  // contactsSql lists the caller only while their email is verified, as every credential requires (src/server/auth/), so a caller missing here lost it after signing in.
   if (!known.some((c) => c.id === data.principal.userId)) throw new Unauthorized()
   if (data.people.length > LIMITS.participantsPerGroup) throw new Invalid({ message: participantLimitMessage, field: 'people' })
   const people = data.people.map((person) => {
