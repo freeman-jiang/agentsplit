@@ -9,7 +9,6 @@
   lib,
   pkgs,
   agentsplitRev,
-  hostNixpkgs,
   ...
 }:
 {
@@ -87,17 +86,19 @@
   };
 
   # Admin access is Tailscale SSH, which the tailnet policy controls. The
-  # state in /var/lib/tailscale keeps the node's identity across deploys. An
-  # install with nixos-anywhere puts a one-time auth key here (DEPLOYMENT.md);
-  # a node that is already logged in never reads it.
+  # state in /var/lib/tailscale keeps the node's identity across deploys. A
+  # nixos-anywhere install copies a one-time auth key into this file with the
+  # other files (DEPLOYMENT.md); a node that is already logged in never reads
+  # it. On GCE the first join reads the key from the metadata instead (gce.nix).
   services.tailscale = {
     enable = true;
     authKeyFile = "/etc/agentsplit/tailscale-auth-key";
-    # The same flags as the first join in dots (infra/aws), so a later
-    # `tailscale up` does not ask to log in again. tag:app accepts connections
-    # from the dev box and Freeman's devices and starts none. The host keeps the
-    # VPC's DNS resolver: the security group allows no DNS to the internet, so a
-    # resolver pushed by the tailnet would break name lookups.
+    # The flags of the first join, so a later `tailscale up` does not ask to
+    # log in again. tag:app accepts connections from the dev box and Freeman's
+    # devices and starts none. The host keeps the provider's DNS resolver (the
+    # GCE metadata server or the VPC resolver on EC2): the cloud firewall
+    # allows no DNS to the internet, so a resolver pushed by the tailnet would
+    # break name lookups.
     extraUpFlags = [
       "--ssh"
       "--hostname=agentsplit"
@@ -119,34 +120,12 @@
     trustedInterfaces = [ "tailscale0" ];
   };
 
-  # Daily operating system upgrades: the deployed commit of this flake, with
-  # nixpkgs-host at the head of its release branch, which gets only backports
-  # and security fixes. The app, its Bun and its dependencies stay as deployed,
-  # because they come from the locked nixpkgs input; app changes reach the
-  # host only through deploy-host. A new kernel reboots the host in the window.
-  system.autoUpgrade = {
-    enable = agentsplitRev != null;
-    flake = "github:freeman-jiang/agentsplit/${toString agentsplitRev}#agentsplit";
-    flags = [
-      "--override-input"
-      "nixpkgs-host"
-      hostNixpkgs
-      "--no-write-lock-file"
-    ];
-    dates = "*-*-* 09:20:00";
-    randomizedDelaySec = "20min";
-    allowReboot = true;
-    rebootWindow = {
-      lower = "09:00";
-      upper = "10:30";
-    };
-  };
-  # Evaluation needs about 1 GB. The kernel stops the upgrade before the server or the database.
-  systemd.services.nixos-upgrade.serviceConfig = {
-    MemoryMax = "1G";
-    OOMScoreAdjust = 500;
-  };
-
+  # The host never evaluates or builds Nix: an evaluation of this flake needs
+  # about 600 MB, more than 1 GB leaves free. Operating system updates come
+  # from the dev box instead (`deploy-host --update`, weekly; DEPLOYMENT.md),
+  # which builds the deployed commit with nixpkgs-host at the head of its
+  # release branch. The host only receives the built system and fetches its
+  # paths from the binary cache.
   nix = {
     settings = {
       experimental-features = [
@@ -154,6 +133,8 @@
         "flakes"
       ];
       auto-optimise-store = true;
+      # Fail at once if a path must be built on the host.
+      max-jobs = 0;
     };
     # A deploy's copy does not take the CPU or the disk from the server.
     daemonCPUSchedPolicy = "idle";
