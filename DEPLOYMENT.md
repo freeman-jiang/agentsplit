@@ -152,8 +152,16 @@ The secrets are root-only files in `/etc/agentsplit/`. They are never in the Nix
 
 The source of each file is a sops file in the dots repository, which the dev box decrypts. The copy goes over Tailscale SSH, through stdin:
 
+| File on the host | Source in dots |
+| --- | --- |
+| `agentsplit.env` | `secrets/agentsplit.env` |
+| `cloudflared.env` | `secrets/agentsplit-cloudflared.env` |
+| `root-password-hash` | the key `root_password_hash` in `secrets/agentsplit-host.yaml` |
+
 ```sh
 sops -d secrets/agentsplit.env | ssh root@agentsplit 'install -D -m 0400 /dev/stdin /etc/agentsplit/agentsplit.env'
+sops -d secrets/agentsplit-cloudflared.env | ssh root@agentsplit 'install -D -m 0400 /dev/stdin /etc/agentsplit/cloudflared.env'
+sops -d --extract '["root_password_hash"]' secrets/agentsplit-host.yaml | ssh root@agentsplit 'install -D -m 0400 /dev/stdin /etc/agentsplit/root-password-hash'
 ssh root@agentsplit systemctl restart agentsplit
 ```
 
@@ -185,13 +193,15 @@ The configuration mounts the file systems by the labels `nixos` and `ESP`, as th
 On EC2 (the dots side creates the instance):
 
 1. Create the instance from the official NixOS 26.05 aarch64 image, with no inbound rule, IMDSv2 only, and a 20 GB gp3 volume.
-2. Join it to the tailnet as `agentsplit`, with Tailscale SSH on.
+2. Join it to the tailnet as `agentsplit` with `--advertise-tags=tag:app --hostname=agentsplit --ssh`. These are the flags in `nix/host/default.nix`.
 3. Check the access: `ssh root@agentsplit true`.
-4. Copy `agentsplit.env` and `cloudflared.env` (above). Set `AGENTSPLIT_MAINTENANCE=1` until the cutover.
+4. Copy `agentsplit.env`, `cloudflared.env` and `root-password-hash` (above). Set `AGENTSPLIT_MAINTENANCE=1` until the cutover.
 5. On the dev box, in a checkout of a pushed commit, run `direnv exec . deploy-host`.
 6. Check that no unit failed: `ssh root@agentsplit systemctl --failed`.
 
-The first deploy replaces the image's configuration: sshd, the SSM agent and the EC2 user-data service stop. Tailscale keeps its state in `/var/lib/tailscale`, so the node keeps its name and its address.
+The first deploy replaces the image's configuration: sshd, the SSM agent and the EC2 user-data service stop. After it, the way in when Tailscale fails is the EC2 serial console, as root with the password in `secrets/agentsplit-host.yaml`. The account allows serial console access (dots, `infra/aws`).
+
+The security group allows outbound traffic only on TCP 443, TCP and UDP 7844 (cloudflared), UDP 3478 and UDP 41641 (Tailscale). DNS goes to the VPC resolver and time to 169.254.169.123 (`nix/host/ec2.nix`); the security group does not filter either. Tailscale keeps its state in `/var/lib/tailscale`, so the node keeps its name and its address.
 
 On another provider:
 
