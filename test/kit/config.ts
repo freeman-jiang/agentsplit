@@ -14,5 +14,6 @@ export const testSettings = (over: Partial<AppSettings> = {}): AppSettings => ({
   signUpDailyLimit: LIMITS.signUpsPerDay,
   perfInstrumentation: false,
   maintenance: false,
+  receiptDownloads: { mode: 'stream' },
   ...over,
 })

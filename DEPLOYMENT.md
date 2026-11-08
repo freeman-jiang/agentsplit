@@ -45,6 +45,7 @@ Set these in the Coolify resource environment. Never commit, print or paste thei
 | `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET` | The Garage access key and secret. The same values as the old app. |
 | `AGENTSPLIT_MAINTENANCE` | The maintenance switch (below): `1`, `true`, `yes` or `on` turns it on. Empty in normal operation. |
 | `SIGN_UP_DAILY_LIMIT` | Optional. New accounts per 24 hours, a whole number; empty means 200. Existing accounts always sign in (AUTH.md). |
+| `RECEIPT_DOWNLOADS` | Optional. `stream` (the default when empty) sends each receipt image through the app. `redirect` checks access the same way, then answers 307 to a presigned GET URL on storage that works for 5 minutes, so the image does not pass through the server. The page then allows images from the origin of `S3_UPLOAD_ENDPOINT`. Leave it empty on Coolify, because browsers cannot reach Garage there. The NixOS host on R2 sets `redirect`. |
 
 v2 does not read `STORAGE_HOST`, `MCP_ACCESS_GRANTS`, `AUTH_BOOTSTRAP_LEGACY_USER_ID` or `BETTER_AUTH_TELEMETRY`. Keep them, because the old Compose file needs them for a rollback.
 

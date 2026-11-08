@@ -1,7 +1,7 @@
 // Receipt uploads against the built server and a real Garage: an agent's PUT
 // body streams into the bucket, and update_expense reads the image header back
-// from it; a member's browser upload is stored and served back. The database
-// tests cover the refusals.
+// from it; a member's browser upload is stored and served back, also to an
+// <img> on the app's page. The database tests cover the refusals.
 import { expect, test } from '@playwright/test'
 import { randomId } from '../src/shared/ids'
 import { png } from '../test/kit/images'
@@ -9,6 +9,8 @@ import { mcpClient } from '../test/kit/mcp'
 import { addExpense, agentKey, draft, seedHousehold } from './fixtures'
 
 const PNG = Buffer.from(png({ width: 1, height: 1 }))
+/** A whole 1 × 1 PNG: PNG is only a header, which a browser cannot draw. */
+const WHOLE_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
 
 type Target = { uploadId: string; url: string; method: string; headers: Record<string, string> }
 
@@ -48,18 +50,32 @@ test('an agent uploads a receipt to its target, attaches it, and downloads it wi
   expect(Buffer.from(await download.body()).equals(PNG)).toBe(true)
 })
 
-test('a member uploads a receipt from the browser and downloads it (P-RECEIPT-07)', async ({ context, baseURL }) => {
+test('a member uploads a receipt from the browser and downloads it (P-RECEIPT-07)', async ({ context, page, baseURL }) => {
   const household = await seedHousehold(context, baseURL ?? '')
   // context.request sends the browser's session cookie.
   const upload = await context.request.post('/api/receipts', {
     headers: { origin: baseURL ?? '' },
-    multipart: { groupId: household.groupId, file: { name: 'receipt.png', mimeType: 'image/png', buffer: PNG } },
+    multipart: { groupId: household.groupId, file: { name: 'receipt.png', mimeType: 'image/png', buffer: WHOLE_PNG } },
   })
   expect(upload.status()).toBe(200)
   const stored = (await upload.json()) as { url: string; width: number; height: number }
   expect(stored).toMatchObject({ width: 1, height: 1 })
-  const download = await context.request.get(`/api/receipts?${new URLSearchParams({ groupId: household.groupId, url: stored.url })}`)
+  const path = `/api/receipts?${new URLSearchParams({ groupId: household.groupId, url: stored.url })}`
+  const download = await context.request.get(path)
   expect(download.status()).toBe(200)
   expect(download.headers()['content-type']).toBe('image/png')
-  expect(Buffer.from(await download.body()).equals(PNG)).toBe(true)
+  expect(Buffer.from(await download.body()).equals(WHOLE_PNG)).toBe(true)
+  // With RECEIPT_DOWNLOADS=redirect the image comes from Garage's origin, which the page's policy must allow.
+  await page.goto('/')
+  const width = await page.evaluate(
+    (src) =>
+      new Promise<number>((resolve) => {
+        const image = new Image()
+        image.onload = () => resolve(image.naturalWidth)
+        image.onerror = () => resolve(0)
+        image.src = src
+      }),
+    path,
+  )
+  expect(width).toBe(1)
 })
