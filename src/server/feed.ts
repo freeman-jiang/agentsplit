@@ -10,7 +10,7 @@ import { groupIdOfInput, myMemberships, type Principal } from './core/access'
 import { attributionOf } from './activity'
 import { balanceSums, settlementsOf, type BalanceSum } from './balances'
 import type { Db } from './core/db'
-import { EXPENSE_ORDERS, expenseColumns, involves, toExpense, type ExpenseRow, type OrderedRow } from './expense-read'
+import { EXPENSE_ORDERS, expenseColumns, filterConditions, involves, toExpense, type ExpenseRow, type OrderedRow } from './expense-read'
 import { listedInvitation } from './invitations'
 import { contactsSql, participantName, participantsJson } from './people'
 import { escapeLike, iso } from './sql'
@@ -49,11 +49,8 @@ export async function listFeed(db: Db, data: { principal: Principal; filter: Fee
     const term = escapeLike(search)
     where.push(sql`(e.title ILIKE ${term} OR e.vendor ILIKE ${term})`)
   }
-  if (f.currency) where.push(sql`e.currency = ${f.currency}`)
-  if (f.categoryId !== undefined) where.push(sql`e.category_id = ${f.categoryId}`)
-  if (f.kind) where.push(sql`e.kind = ${f.kind}`)
-  if (f.from) where.push(sql`e.expense_date >= ${f.from}::date`)
-  if (f.to) where.push(sql`e.expense_date <= ${f.to}::date`)
+  const { currency, categoryId, kind, from, to } = f
+  where.push(...filterConditions({ currency, categoryId, kind, from, to }))
   // One default for the UI and for agents (DECISIONS.md, P-FEED-19).
   if (f.involvingMe ?? true) where.push(sql`m.participant_id IS NOT NULL AND ${involves(sql`m.participant_id`)}`)
   if (f.personUserId)
