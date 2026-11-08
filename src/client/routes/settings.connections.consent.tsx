@@ -1,8 +1,7 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
-import { authClient } from '~/client/auth-client'
-import { describeError } from '~/client/errors'
+import { authCall, authClient } from '~/client/auth-client'
 import { consentClientQuery } from '~/client/queries/account'
 import { meQuery } from '~/client/queries/session'
 import { Button } from '~/client/ui/button'
@@ -11,6 +10,8 @@ import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE, type OAuthScope } from '~/shared/a
 export const Route = createFileRoute('/settings/connections/consent')({
   component: Consent,
 })
+
+const UNAUTHORIZED = 'Unable to authorize this connection'
 
 type Request = { clientId: string; redirectHost: string; scopes: string[]; claims: string[] }
 
@@ -76,19 +77,23 @@ function ConsentScreen(props: { request: Request; clientName: string | null }) {
   async function respond(accept: boolean) {
     setPending(true)
     setError('')
-    try {
-      // The OAuth provider client plugin adds this page's signed query as oauth_query.
-      const result = await authClient.$fetch<{ redirect: boolean; url: string }>('/oauth2/consent', {
-        method: 'POST',
-        body: { accept, scope: scopes.filter((s) => allowWrite || s !== OAUTH_WRITE_SCOPE).join(' ') },
-      })
-      if (result.error || !result.data?.url) throw new Error(describeError(result.error, 'Unable to authorize this connection').message)
+    // The OAuth provider client plugin adds this page's signed query as oauth_query.
+    const result = await authCall({
+      run: () =>
+        authClient.$fetch<{ redirect: boolean; url: string }>('/oauth2/consent', {
+          method: 'POST',
+          body: { accept, scope: scopes.filter((s) => allowWrite || s !== OAUTH_WRITE_SCOPE).join(' ') },
+        }),
+      refused: UNAUTHORIZED,
+      failed: UNAUTHORIZED,
+    })
+    if ('data' in result && result.data.url) {
       // Better Auth's client already follows redirect=true responses. Avoid a second navigation.
       if (!result.data.redirect) window.location.assign(result.data.url)
-    } catch (cause) {
-      setError(describeError(cause, 'Unable to authorize this connection').message)
-      setPending(false)
+      return
     }
+    setError('error' in result ? result.error : UNAUTHORIZED)
+    setPending(false)
   }
   return (
     <main className="mx-auto max-w-lg space-y-6 px-4 py-12">
