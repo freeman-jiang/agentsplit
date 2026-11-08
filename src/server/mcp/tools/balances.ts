@@ -76,7 +76,8 @@ export const getBalances = defineTool({
       return { currencies: [...current.balances].map(bucket) }
     }
     const saved = await balances.historicalBalances(db, { ...scope, ...boundaryOf(input) }).catch((error: unknown) => {
-      throw error instanceof Invalid && error.message === balances.INCOMPLETE_HISTORY
+      // The only precondition of historicalBalances is a history without saved states at the boundary.
+      throw error instanceof Invalid && error.reason === 'precondition'
         ? new Invalid({ ...error, message: `${error.message} Read list_expenses at the same boundary to inspect history coverage.` })
         : error
     })
