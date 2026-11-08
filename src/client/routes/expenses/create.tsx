@@ -52,12 +52,12 @@ function ExpenseSetup({ options }: { options: Options }) {
   const [invitations, setInvitations] = useState<Invitations | null>(null)
   const reference = useQuery(referenceQuery)
   const navigate = useNavigate()
-  if (!self) return <p role="alert">Your verified account could not be loaded.</p>
+  if (!self) return <p role="alert">Could not load your account.</p>
   if (invitations)
     return (
       <div className="space-y-5">
         <h1 className="font-display text-3xl">Expense saved</h1>
-        <p>Share these private invitations with the people listed. Each link works only for its email address.</p>
+        <p>Send each person their invitation link. Each link works only for its email address.</p>
         {invitations.map((invitation) => (
           <label key={invitation.email} className="block space-y-2 text-sm">
             <span>{invitation.email}</span>
@@ -78,7 +78,7 @@ function ExpenseSetup({ options }: { options: Options }) {
           ← Change people
         </Button>
         <p className="text-sm text-muted-foreground">
-          No group · Private to {people.map((p) => p.name).join(', ')}. You can attach receipts after saving.
+          No group · Private to {people.map((p) => p.name).join(', ')}. You can add receipts after you save.
         </p>
         {reference.data ? (
           <PrivateExpense id={id} people={people} selfId={self.id} reference={reference.data} onInvitations={setInvitations} />
@@ -92,7 +92,7 @@ function ExpenseSetup({ options }: { options: Options }) {
   const addInvited = () => {
     const invited = invitedPerson({ name, email })
     if (!invited) return setError(INVITED_PERSON_PROBLEM)
-    if (people.some((p) => normalizeEmail(p.email) === invited.email)) return setError('That person is already included.')
+    if (people.some((p) => normalizeEmail(p.email) === invited.email)) return setError('That person is already in the list.')
     // A known contact's email links that account, so no invitation is needed.
     const existing = options.people.find((p) => normalizeEmail(p.email) === invited.email)
     setPeople((current) => [...current, { id: randomId(), name: existing?.name ?? invited.name, email: invited.email, ...(existing ? { userId: existing.id } : {}) }])
@@ -107,7 +107,7 @@ function ExpenseSetup({ options }: { options: Options }) {
           ← Expenses
         </Link>
         <h1 className="mt-4 font-display text-3xl">Add expense</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Choose a group, or split privately with people.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Choose a group, or choose people for an expense with no group.</p>
       </div>
       <label className="block space-y-2 text-sm">
         <span>Group (optional)</span>
@@ -121,8 +121,8 @@ function ExpenseSetup({ options }: { options: Options }) {
         </NativeSelect>
       </label>
       {!groupId && (
-        <section className="space-y-4" aria-label="Expense participants">
-          <h2 className="font-display text-xl">Who’s involved?</h2>
+        <section className="space-y-4" aria-label="People">
+          <h2 className="font-display text-xl">People</h2>
           <ul className="divide-y overflow-hidden rounded-2xl border px-4">
             {people.map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-4 py-3">
@@ -177,7 +177,7 @@ function ExpenseSetup({ options }: { options: Options }) {
               <Button variant="outline" onClick={addInvited}>
                 Add person
               </Button>
-              <p className="text-xs text-muted-foreground">After saving, you’ll get an invitation link to share. No email or chat message is sent automatically.</p>
+              <p className="text-xs text-muted-foreground">After you save, you get an invitation link to send. AgentSplit does not send email or messages.</p>
             </div>
           </details>
         </section>
