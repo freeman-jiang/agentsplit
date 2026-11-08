@@ -25,7 +25,7 @@ export function PrivateContextHeader({ data, repayment }: { data: typeof Expense
       </div>
       {data.context && repayment && (
         <p className="text-sm">
-          Repayment for{' '}
+          Payment for{' '}
           <Link to="/expenses/$expenseId" params={{ expenseId: data.context.expenseId }} className="underline">
             {data.context.title}
           </Link>

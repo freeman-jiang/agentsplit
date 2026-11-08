@@ -59,10 +59,10 @@ function Landing() {
       <section className="w-full py-16">
         <div className="mx-auto flex w-full max-w-screen-md flex-col items-center gap-6 px-4 text-center">
           <h1 className="py-2 font-display text-4xl leading-none! sm:text-5xl md:text-6xl">
-            Shared expenses. <strong className="block font-semibold text-muted-foreground">Simply settled.</strong>
+            Split expenses <strong className="block font-semibold text-muted-foreground">with people and agents.</strong>
           </h1>
           <p className="max-w-lg leading-normal text-pretty text-muted-foreground sm:text-xl sm:leading-8">
-            Keep track of everyday expenses with the people you share them with. In your browser, or with your agent.
+            Record shared expenses and payments, and see who owes whom. Use the website or your AI agent.
           </p>
           <LoginButton label="Sign in with Google" selectAccount={false} callbackURL="/" errorCallbackURL="/sign-in" />
         </div>
@@ -275,7 +275,7 @@ function FeedRow({ expense: e }: { expense: typeof FeedItem.Type }) {
       names={new Map(e.people.map((p) => [p.id, p.name]))}
       attribution={attributionLine({ addedBy: attribution.createdBy?.name ?? null, editedBy: attribution.updatedBy?.name ?? null })}
       place={e.group}
-      context={!e.group && e.kind === 'payment' && e.contextExpenseTitle ? `Repayment for ${e.contextExpenseTitle}` : null}
+      context={!e.group && e.kind === 'payment' && e.contextExpenseTitle ? `Payment for ${e.contextExpenseTitle}` : null}
     />
   )
 }

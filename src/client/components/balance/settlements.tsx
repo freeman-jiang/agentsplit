@@ -89,7 +89,7 @@ export function RepaymentSettlements(props: { names: ReadonlyMap<string, string>
               {nameOf(t.from, people)} owes {nameOf(t.to, people)} <strong>{money(t.amount, currency)}</strong>
             </span>
             <Link className="underline" to="/expenses/$expenseId/payments/create" params={{ expenseId: props.expenseId }} search={{ from: t.from, to: t.to, amount: t.amount, currencyCode: currency }}>
-              Record repayment
+              Record payment
             </Link>
           </div>
         ))

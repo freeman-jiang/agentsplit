@@ -99,9 +99,9 @@ function PrivateRepayments({ data }: { data: Context }) {
   const name = (id: string) => names.get(id) ?? 'Unknown'
   const failure = error || (payments.error ? describeError(payments.error).message : '')
   return (
-    <section className="space-y-4 border-t pt-6" aria-label="Repayments for this expense">
+    <section className="space-y-4 border-t pt-6" aria-label="Payments for this expense">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-2xl">Repayments for this expense</h2>
+        <h2 className="font-display text-2xl">Payments for this expense</h2>
         <Button variant="outline" asChild>
           <Link to="/expenses/$expenseId/payments/create" params={{ expenseId: context.expenseId }}>
             Record payment
