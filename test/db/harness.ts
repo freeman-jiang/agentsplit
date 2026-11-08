@@ -15,7 +15,7 @@ import { instrumentPool } from '~/server/perf'
 import { BASE, SECRET, testSettings } from '../kit/config'
 import { testDatabase } from '../kit/database'
 import { mcpClient, type Call } from '../kit/mcp'
-import { principal } from '../kit/people'
+import { principal, userRows } from '../kit/people'
 import { createPrivateContext, seedGroup } from '../kit/seed'
 import { signIn } from '../kit/session'
 import { fakeBucket } from './fake-bucket'
@@ -63,9 +63,8 @@ export async function startHarness(options: { perf?: boolean; maintenance?: bool
 
   /** An account (verified unless asked) with a signed web session cookie. */
   async function account(id: string, data: { name?: string; verified?: boolean } = {}) {
-    const now = new Date()
     return withDb(async (db) => {
-      await db.insert(user).values({ id, name: data.name ?? id, email: `${id}@example.com`, emailVerified: data.verified ?? true, createdAt: now, updatedAt: now })
+      await db.insert(user).values(userRows([principal(id, { name: data.name ?? id })], { verified: data.verified ?? true }))
       return { id, cookie: (await signIn(db, { userId: id, secret: SECRET, baseUrl: BASE })).header }
     })
   }
