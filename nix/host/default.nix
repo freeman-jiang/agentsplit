@@ -82,8 +82,21 @@
   services.tailscale = {
     enable = true;
     authKeyFile = "/etc/agentsplit/tailscale-auth-key";
-    extraUpFlags = [ "--ssh" ];
-    extraSetFlags = [ "--ssh" ];
+    # The same flags as the first join in dots (infra/aws), so a later
+    # `tailscale up` does not ask to log in again. tag:app accepts connections
+    # from the dev box and Freeman's devices and starts none. The host keeps the
+    # VPC's DNS resolver: the security group allows no DNS to the internet, so a
+    # resolver pushed by the tailnet would break name lookups.
+    extraUpFlags = [
+      "--ssh"
+      "--hostname=agentsplit"
+      "--advertise-tags=tag:app"
+      "--accept-dns=false"
+    ];
+    extraSetFlags = [
+      "--ssh"
+      "--accept-dns=false"
+    ];
   };
   services.openssh.enable = false;
   networking.firewall = {
