@@ -1,4 +1,4 @@
-// The current app's scripts/test-ungrouped-expenses.ts scenarios, ported to v2:
+// v1's scripts/test-ungrouped-expenses.ts scenarios (in Git before the move of v2 to the root), ported:
 // feed privacy, private contexts, invitations, ordering and settlement.
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -18,6 +18,7 @@ import { testDatabase, type TestDatabase } from '../kit/database'
 import { draft } from '../kit/drafts'
 import { counter } from '../kit/ids'
 import { principal, userRows } from '../kit/people'
+import { seedGroup } from '../kit/seed'
 
 let database: TestDatabase
 
@@ -87,19 +88,24 @@ beforeAll(async () => {
   await tx(async (db) => {
     await db.insert(user).values(userRows([alice, bob, carol, outsider, guest], { verified: true }))
     await db.insert(user).values(userRows([unverified]))
-    await db.insert(groups).values({ id: 'house', kind: 'named', slug: 'household', name: 'Household', defaultCurrency: 'USD' })
-    await db.insert(participants).values([
-      { id: 'h-alice', groupId: 'house', name: 'Alice' },
-      { id: 'h-bob', groupId: 'house', name: 'Bob' },
-      { id: 'h-carol', groupId: 'house', name: 'Carol' },
-      { id: 'h-unverified', groupId: 'house', name: 'Unverified' },
-    ])
-    await db.insert(memberships).values([
-      { userId: alice.userId, groupId: 'house', role: 'admin', participantId: 'h-alice' },
-      { userId: bob.userId, groupId: 'house', participantId: 'h-bob' },
-      { userId: carol.userId, groupId: 'house', participantId: 'h-carol' },
-      { userId: unverified.userId, groupId: 'house', participantId: 'h-unverified' },
-    ])
+    await seedGroup(db, {
+      groupId: 'house',
+      slug: 'household',
+      name: 'Household',
+      people: [
+        { id: 'h-alice', name: 'Alice' },
+        { id: 'h-bob', name: 'Bob' },
+        { id: 'h-carol', name: 'Carol' },
+        { id: 'h-unverified', name: 'Unverified' },
+      ],
+      creator: alice,
+      members: [
+        { userId: alice.userId, participantId: 'h-alice', role: 'admin' },
+        { userId: bob.userId, participantId: 'h-bob', role: 'member' },
+        { userId: carol.userId, participantId: 'h-carol', role: 'member' },
+        { userId: unverified.userId, participantId: 'h-unverified', role: 'member' },
+      ],
+    })
   })
   await tx((db) => createExpense(db, { principal: bob, groupId: 'house', expenseId: 'only-bob', idempotencyKey: key(), expense: meal({ title: 'Only Bob', payer: 'h-bob', people: ['h-bob'] }) }))
   await tx((db) =>
@@ -169,22 +175,24 @@ describe('ungrouped expenses', () => {
   })
 
   it('stable newest-first pagination survives a new expense at the head', async () => {
-    const all = await feedIds({ principal: alice, filter: { involvingMe: false } })
-    const first = await tx((db) => listFeed(db, { principal: alice, filter: { involvingMe: false }, cursor: null, limit: 1 }))
+    // A feed of its own, so the shared fixture keeps its expenses.
+    const pager = principal('u-pager', { name: 'Pager' })
+    const groupId = 'pager-home'
+    await tx(async (db) => {
+      await db.insert(user).values(userRows([pager], { verified: true }))
+      await seedGroup(db, { groupId, slug: null, name: 'Pager home', people: [{ id: 'pg-me', name: 'Pager' }], creator: pager, members: [{ userId: pager.userId, participantId: 'pg-me', role: 'admin' }] })
+    })
+    const add = (expenseId: string, expenseDate: string) =>
+      tx((db) => createExpense(db, { principal: pager, groupId, expenseId, idempotencyKey: key(), expense: meal({ title: expenseId, expenseDate, payer: 'pg-me', people: ['pg-me'] }) }))
+    for (const [expenseId, date] of [['pg-1', '2026-10-01'], ['pg-2', '2026-10-02'], ['pg-3', '2026-10-03']] as const) await add(expenseId, date)
+    const all = await feedIds({ principal: pager, filter: { involvingMe: false } })
+    expect(all).toEqual(['pg-3', 'pg-2', 'pg-1'])
+    const first = await tx((db) => listFeed(db, { principal: pager, filter: { involvingMe: false }, cursor: null, limit: 1 }))
     expect(first.nextCursor).not.toBeNull()
-    // Alice alone shares it, so no balance changes.
-    await tx((db) =>
-      createExpense(db, {
-        principal: alice,
-        groupId: 'house',
-        expenseId: 'new-head',
-        idempotencyKey: key(),
-        expense: meal({ title: 'New head', expenseDate: '2026-10-10', payer: 'h-alice', people: ['h-alice'] }),
-      }),
-    )
-    const next = await tx((db) => listFeed(db, { principal: alice, filter: { involvingMe: false }, cursor: first.nextCursor, limit: 100 }))
+    await add('pg-head', '2026-10-10')
+    const next = await tx((db) => listFeed(db, { principal: pager, filter: { involvingMe: false }, cursor: first.nextCursor, limit: 100 }))
     expect([...first.expenses.map((e) => e.id), ...next.expenses.map((e) => e.id)]).toEqual(all)
-    expect((await tx((db) => listFeed(db, { principal: alice, filter: {}, cursor: null, limit: 1 }))).expenses[0]?.title).toBe('New head')
+    expect((await tx((db) => listFeed(db, { principal: pager, filter: {}, cursor: null, limit: 1 }))).expenses[0]?.id).toBe('pg-head')
   })
 
   it('private access cannot be expanded or reclassified', async () => {

@@ -91,11 +91,12 @@ describe('agent receipt uploads', () => {
     expect((await download(mallory)).status).toBe(403)
     expect((await download({ 'x-api-key': 'agentsplit_not-a-real-key-0123456789abcdef' })).status).toBe(401)
     // A key at its rate limit keeps the endpoint's 429, so the agent waits instead of thinking its key is revoked.
-    await h.withDb((db) => db.execute(sql`UPDATE apikey SET request_count = 1000, last_request = now() WHERE reference_id = 'alice'`))
-    const limited = await download(alice)
+    // A second key of Alice's, so the shared key keeps its budget for the later tests.
+    const spent = await h.apiKeyWithId('alice')
+    await h.withDb((db) => db.execute(sql`UPDATE apikey SET request_count = 1000, last_request = now() WHERE id = ${spent.id}`))
+    const limited = await download({ 'x-api-key': spent.key })
     expect(limited.status).toBe(429)
     expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0)
-    await h.withDb((db) => db.execute(sql`UPDATE apikey SET request_count = 0 WHERE reference_id = 'alice'`))
   })
 
   it('keeps or removes receipts with documents, and refuses a receipt of another group', async () => {
