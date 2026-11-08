@@ -57,12 +57,11 @@ function Root() {
       </div>
       <footer className="mt-16 flex flex-col gap-2 safe-px-4 pt-8 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:safe-px-8">
         <p>
-          <span className="font-medium text-foreground">AgentSplit</span> · A little less keeping track. ·{' '}
+          <span className="font-medium text-foreground">AgentSplit</span> ·{' '}
           <Link to="/privacy" className="underline underline-offset-4">
             Privacy
           </Link>
         </p>
-        <p>Built on Spliit, by Sebastien Castiel and contributors.</p>
       </footer>
       {/* On phones the toasts sit above the home indicator. */}
       <Toaster position="bottom-center" mobileOffset={{ bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))' }} />
