@@ -10,7 +10,7 @@ import { getSavedExpense, listActivities } from '~/server/history'
 import { createExpense, updateExpense } from '~/server/ledger'
 import { receiptUsage } from '~/server/receipt-quota'
 import { downloadReceipt } from '~/server/receipt-routes'
-import { NEW_URL_PREFIX } from '~/server/receipts'
+import { receiptKey, receiptUrl } from '~/server/receipts'
 import { deleteReceipts, purgeDeletedReceipts } from '~/server/storage'
 import { LIMITS, storageFullMessage } from '~/shared/limits'
 import { receiptDownloadPath } from '~/shared/paths'
@@ -49,10 +49,10 @@ const fillers = counter('fill')
 /** Usage that is already there: a receipt row of `bytes` uploaded by `userId`. */
 const fill = (data: { userId: string; groupId: string; bytes: number }) => {
   const id = fillers()
-  return h.withDb((db) => db.insert(receipts).values({ id, groupId: data.groupId, url: `${NEW_URL_PREFIX}receipts/${id}.jpg`, createdBy: data.userId, bytes: data.bytes }))
+  return h.withDb((db) => db.insert(receipts).values({ id, groupId: data.groupId, url: receiptUrl(`receipts/${id}.jpg`), createdBy: data.userId, bytes: data.bytes }))
 }
 const usage = (userId: string) => h.withDb((db) => receiptUsage(db, userId))
-const keyOf = (url: string) => url.replace(NEW_URL_PREFIX, '')
+const keyOf = (url: string) => receiptKey(url) ?? ''
 
 describe('receipt storage quota', () => {
   it('counts the uploader’s receipts and refuses an upload that does not fit, with the plain message', async () => {

@@ -10,14 +10,14 @@ import { Forbidden, Invalid } from '../shared/api'
 import { randomId, SECRET_TOKEN } from '../shared/ids'
 import { LIMITS } from '../shared/limits'
 import { absoluteUrl, receiptUploadPath } from '../shared/paths'
-import { RECEIPT_FORMATS, receiptTypeOf, type ReceiptContentType } from '../shared/vocabulary'
+import { receiptTypeOf, type ReceiptContentType } from '../shared/vocabulary'
 import { removeOrphans, storageUnavailable, type Bucket } from './bucket'
 import type { Db } from './core/db'
 import { randomToken, sha256Hex } from './core/ids'
 import type { Principal } from './core/access'
 import type { StoredDocument } from './expense-read'
 import { spaceFor } from './receipt-quota'
-import { imageInfo, NEW_URL_PREFIX, type ImageInfo } from './receipts'
+import { imageInfo, newReceiptKey, receiptUrl, type ImageInfo } from './receipts'
 
 /** The first read for the image header. Phone JPEGs carry their frame header well inside it. */
 const HEADER_BYTES = 256 * 1024
@@ -60,7 +60,7 @@ export async function prepareUploads(
         userId: data.principal.userId,
         groupId: data.groupId,
         expenseId: data.expenseId,
-        key: `receipts/${randomId()}.${RECEIPT_FORMATS[file.contentType].extension}`,
+        key: newReceiptKey(file.contentType),
         contentType: file.contentType,
         bytes: file.bytes,
         expiresAt,
@@ -194,7 +194,7 @@ export async function attachUploads(
     const info = await storedImage(data.bucket, row)
     // The key's extension and the stored Content-Type come from the declared type, so the content must match it.
     if (!info || receiptTypeOf(info.format) !== row.contentType) throw new Invalid({ message: 'Receipts must be valid JPEG or PNG images' })
-    const url = `${NEW_URL_PREFIX}${row.key}`
+    const url = receiptUrl(row.key)
     await tx.insert(receipts).values({ id: randomId(), groupId: data.groupId, url, createdBy: data.principal.userId, bytes: row.bytes })
     documents.push({ id: randomId(), url, width: info.width, height: info.height })
   }

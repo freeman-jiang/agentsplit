@@ -6,7 +6,7 @@ import { sql } from 'drizzle-orm'
 import { receipts } from '../../db/schema/app'
 import { Invalid, NotFound, type DocumentInput } from '../shared/api'
 import { LIMITS, mebibytes } from '../shared/limits'
-import { RECEIPT_FORMATS, receiptTypeOf, type ReceiptFormat } from '../shared/vocabulary'
+import { RECEIPT_FORMATS, receiptTypeOf, type ReceiptContentType, type ReceiptFormat } from '../shared/vocabulary'
 import { randomId } from '../shared/ids'
 import { removeOrphans, storageUnavailable, type Bucket } from './bucket'
 import type { Db } from './core/db'
@@ -19,7 +19,13 @@ import type { Tombstone } from './expense-read'
  * name is from the time v2 stored receipts in R2. The current app's objects
  * and v2's share one bucket and one key scheme.
  */
-export const NEW_URL_PREFIX = 'r2://agentsplit-receipts/'
+const NEW_URL_PREFIX = 'r2://agentsplit-receipts/'
+
+/** The object key of a new receipt of `contentType`, which receiptKey reads back from its URL. */
+export const newReceiptKey = (contentType: ReceiptContentType) => `receipts/${randomId()}.${RECEIPT_FORMATS[contentType].extension}`
+
+/** The stored URL of the receipt at object key `key`. */
+export const receiptUrl = (key: string) => `${NEW_URL_PREFIX}${key}`
 
 export type ImageInfo = { format: ReceiptFormat; width: number; height: number }
 
@@ -123,8 +129,8 @@ export async function storeReceipt(db: Db, data: { bucket: Bucket; principal: Pr
   const early = await spaceFor(db, { userId, bytes: bytes.length, lock: false, outstanding: false })
   if (early) throw new Invalid({ message: early, reason: 'precondition' })
   const contentType = receiptTypeOf(info.format)
-  const key = `receipts/${randomId()}.${RECEIPT_FORMATS[contentType].extension}`
-  const url = `${NEW_URL_PREFIX}${key}`
+  const key = newReceiptKey(contentType)
+  const url = receiptUrl(key)
   const id = randomId()
   let refused: string | null
   try {
