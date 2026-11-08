@@ -40,8 +40,13 @@ export const Route = createFileRoute('/$group')({
     }
     return { groupId: g.id }
   },
-  // The page title reads the group's name from here (page-title.ts).
-  loader: ({ context }) => context.queryClient.ensureQueryData(groupQuery(context.groupId)),
+  loader: ({ context }) => {
+    const { queryClient, groupId } = context
+    // The rail's first read joins the tab's own read in one request; the rail reads again on later mounts and on focus.
+    if (!queryClient.getQueryData(balancesQuery(groupId).queryKey)) void queryClient.prefetchQuery(balancesQuery(groupId))
+    // The page title reads the group's name from here (page-title.ts).
+    return queryClient.ensureQueryData(groupQuery(groupId))
+  },
   component: GroupLayout,
 })
 

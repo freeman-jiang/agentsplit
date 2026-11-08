@@ -3,6 +3,7 @@
 // key, as Claude Code sends it. Every unit throws on a refused or failed
 // request, so a rate limit that a run meets stops it instead of skewing it.
 import type { Browser, BrowserContext, Page } from '@playwright/test'
+import { SESSION_REFRESH_KEY } from '../../src/shared/account'
 import { MCP_PATH } from '../../src/shared/mcp'
 import { randomId } from '../../src/shared/ids'
 import { LEGACY } from '../../test/kit/mcp'
@@ -27,6 +28,8 @@ export function contexts(clients: Clients) {
         const made = await clients.browser.newContext({ baseURL: clients.edge, extraHTTPHeaders: { 'x-forwarded-for': u.ip }, serviceWorkers: 'block' })
         const { cookie } = clients.credentialsOf(u.userId)
         await made.addCookies([{ name: cookie.name, value: cookie.value, url: clients.edge, httpOnly: true, sameSite: 'Lax' }])
+        // The month's opens run minutes apart here, but a person's are hours or days apart: each page load refreshes the session, as then.
+        await made.addInitScript((key) => localStorage.removeItem(key), SESSION_REFRESH_KEY)
         made.setDefaultTimeout(STEP_MS)
         return made
       })()
