@@ -49,8 +49,10 @@ import { credentials, generator, seedPeople, type Credentials, type SyntheticUse
 import { agentConnect, agentRead, agentWrite, appOpen, appOpenWithExpense, contexts, READ_TOOLS, type Clients } from './capacity/workload'
 
 const DATABASE = 'agentsplit_capacity'
-/** The tables that every balance reads in full for its group. */
-const HOT_TABLES = ['public.expenses', 'public.expense_payers', 'public.expense_shares'] as const
+/** The tables of the payers and shares of expenses: what every balance read in full before the running balances. */
+const PART_TABLES = ['public.expenses', 'public.expense_payers', 'public.expense_shares'] as const
+/** What every balance reads in full for its group: one row per participant and currency (db/migrations/0020). */
+const HOT_TABLE = 'public.balance_totals'
 const SECONDS_PER_MONTH = 30 * 86_400
 const MB = 1024 * 1024
 const GB = 1024 * MB
@@ -600,10 +602,12 @@ try {
   const rawGrowth = (rawAfter.tables - before.sizes.tables) / U
   const expensesPerMonth = profile.webExpenses + profile.agentExpenses
   const yearData = 12 * growth
-  // A balance sums every payer and share row of the group (ledgerParts in src/server/balances.ts), so these
-  // tables must stay in memory. The activity log and the idempotency keys are read by page or by key.
-  const hotGrowth = HOT_TABLES.reduce((sum, name) => sum + ((after.byTable.get(name) ?? 0) - (before.sizes.byTable.get(name) ?? 0)), 0) / U
-  const hotYear = 12 * hotGrowth
+  // A balance reads its group's rows of balance_totals, one per participant and currency, so that table must stay
+  // in memory. It grows with people and currencies, not with expenses. The expense lists, the activity log and the
+  // idempotency keys are read by page or by key through indexes.
+  const partGrowth = PART_TABLES.reduce((sum, name) => sum + ((after.byTable.get(name) ?? 0) - (before.sizes.byTable.get(name) ?? 0)), 0) / U
+  const hotPerUser = (after.byTable.get(HOT_TABLE) ?? 0) / userCount
+  if (hotPerUser <= 0) throw new Error(`${HOT_TABLE} is empty: the running balances are missing`)
   const dumpRatio = (fullDump.bytes - emptyDump.bytes) / after.tables
   // Below the ticks' resolution the difference can come out negative; a dump never costs less than nothing.
   const dumpCpuPerByte = Math.max(0, fullDump.cpuSeconds - emptyDump.cpuSeconds) / after.tables
@@ -613,7 +617,7 @@ try {
   say(`  CPU on this machine: ${fixed(cpuHere * 1000, 0)} ms (Bun ${fixed(cpuServerHere * 1000, 0)}, PostgreSQL ${fixed(cpuPostgresHere * 1000, 0)}, background after the run ${fixed((background / U) * 1000, 0)})`)
   say(`  CPU on the target (x${fixed(cpuScale, 2)}): ${fixed(cpuHere * cpuScale * 1000, 0)} ms`)
   say(`  Bytes from the origin: ${kb(originBytes)}; with ${packetOverhead} B per packet (assumed): ${kb(wireBytes)}`)
-  say(`  Database growth, live rows: ${kb(growth)} (${kb(growth / expensesPerMonth)} per new expense; expenses, payers and shares ${kb(hotGrowth)}); before VACUUM FULL: ${kb(rawGrowth)}`)
+  say(`  Database growth, live rows: ${kb(growth)} (${kb(growth / expensesPerMonth)} per new expense; expenses, payers and shares ${kb(partGrowth)}); before VACUUM FULL: ${kb(rawGrowth)}`)
   say(`  Commits ${fixed(delta('commits'), 0)}, WAL ${kb(delta('walBytes'))}, WAL fsyncs ${fixed(delta('walFsyncs'), 0)}, data page writes ${fixed(delta('dataWrites'), 0)}, buffer reads ${fixed(delta('blocks'), 0)} (${fixed(delta('blockReads'), 0)} from the OS)`)
   const grownTables = [...after.byTable.entries()].map(([name, bytes]) => [name, bytes - (before.sizes.byTable.get(name) ?? 0)] as const).filter(([, b]) => b > 0).sort((a, b) => b[1] - a[1]).slice(0, 6)
   say(`  Growth by table: ${grownTables.map(([name, bytes]) => `${name.replace(/^public\./, '')} ${kb(bytes / U)}`).join(', ')}`)
@@ -645,7 +649,7 @@ try {
   const diskPerUserYear = yearData * (1 + dumpsKept * dumpRatio)
   const diskUsers = disk / diskPerUserYear
   const cache = flag('page-cache-mb') * MB
-  const cacheUsers = cache / hotYear
+  const cacheUsers = cache / hotPerUser
   const writeIops = flag('write-iops')
   const writesPerUser = (delta('walFsyncs') + delta('dataWrites')) / SECONDS_PER_MONTH
   const writeUsers = writeIops / (writesPerUser * peak)
@@ -669,7 +673,7 @@ try {
     {
       name: 'Page cache, after one year',
       users: cacheUsers,
-      basis: `${flag('page-cache-mb')} MB (assumed); ${kb(hotYear)} per person-year of expenses, payers and shares, which every balance reads in full`,
+      basis: `${flag('page-cache-mb')} MB (assumed); ${kb(hotPerUser)} per person of balance_totals, which every balance reads; it grows with people and currencies, not expenses`,
       binding: true,
     },
     { name: 'Disk writes', users: writeUsers, basis: `${writeIops} IOPS; ${fixed(delta('walFsyncs') + delta('dataWrites'), 0)} WAL fsyncs and page writes per person-month x peak ${peak}`, binding: true },

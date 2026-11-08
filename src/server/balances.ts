@@ -18,31 +18,61 @@ import { displayNames, participantName } from './people'
 export type BalanceSum = { currency: CurrencyCode; participantId: string; paid: string; owed: string }
 
 /**
- * What each payer paid and each sharer owes, as rows `(expense_id, group_id,
- * participant_id, paid, owed)` of live expenses `x`: the one rule of what a
- * balance counts. `group` limits it to one group.
+ * What a balance counts: the payers and shares of live expenses, summed per
+ * group, participant and currency. Triggers keep these sums in balance_totals
+ * with every write of a payer or share row (db/migrations/0020), and a row
+ * exists there while it counts at least one payer or share; balances read
+ * that table. This is the same sum over the rows themselves, as balances read
+ * it before, from each expense's own currency and deleted_at: the invariant
+ * check (balanceDrift) compares the two.
  */
-const ledgerParts = (group?: SQL) => {
+const ledgerRecompute = (group?: SQL) => {
   const where = group ? sql`WHERE group_id = ${group}` : sql``
   return sql`(
-    SELECT x.currency, parts.* FROM (
+    SELECT parts.group_id, parts.participant_id, x.currency, sum(parts.paid)::bigint AS paid, sum(parts.owed)::bigint AS owed, count(*)::integer AS parts FROM (
       SELECT expense_id, group_id, participant_id, amount AS paid, 0::bigint AS owed FROM expense_payers ${where}
       UNION ALL
       SELECT expense_id, group_id, participant_id, 0::bigint, amount FROM expense_shares ${where}
-    ) parts JOIN expenses x ON x.id = parts.expense_id AND x.deleted_at IS NULL)`
+    ) parts JOIN expenses x ON x.id = parts.expense_id AND x.deleted_at IS NULL
+    GROUP BY parts.group_id, parts.participant_id, x.currency)`
+}
+
+/** A sum per group, participant and currency where balance_totals and the payer and share rows disagree. Sums are minor units as text; null means no row. */
+export type BalanceDrift = {
+  groupId: string
+  participantId: string
+  currency: string
+  stored: { paid: string; owed: string; parts: number } | null
+  counted: { paid: string; owed: string; parts: number } | null
+}
+
+/**
+ * Every sum where balance_totals differs from the payer and share rows, in
+ * `groupId` or in every group. Empty when the running balances are right.
+ * It reads every payer and share row it checks, so it is for tests and the
+ * maintainer's check (scripts/check-balances.ts), never a request.
+ */
+export async function balanceDrift(db: Db, data: { groupId?: string } = {}): Promise<BalanceDrift[]> {
+  const group = data.groupId === undefined ? undefined : sql`${data.groupId}`
+  const result = await db.execute<BalanceDrift>(sql`
+    SELECT coalesce(t.group_id, r.group_id) AS "groupId", coalesce(t.participant_id, r.participant_id) AS "participantId", coalesce(t.currency, r.currency) AS currency,
+      CASE WHEN t.group_id IS NULL THEN NULL ELSE json_build_object('paid', t.paid::text, 'owed', t.owed::text, 'parts', t.parts) END AS stored,
+      CASE WHEN r.group_id IS NULL THEN NULL ELSE json_build_object('paid', r.paid::text, 'owed', r.owed::text, 'parts', r.parts) END AS counted
+    FROM (SELECT * FROM balance_totals ${group ? sql`WHERE group_id = ${group}` : sql``}) t
+    FULL JOIN ${ledgerRecompute(group)} r ON r.group_id = t.group_id AND r.participant_id = t.participant_id AND r.currency = t.currency
+    WHERE (t.paid, t.owed, t.parts) IS DISTINCT FROM (r.paid, r.owed, r.parts)
+    ORDER BY 1, 2, 3
+  `)
+  return result.rows
 }
 
 /**
  * Each participant's paid and owed sums per currency in group `group`, as a
  * JSON array of BalanceSum. Minor units travel as text. `currency` keeps one currency.
  */
-export const balanceSums = (data: { group: SQL; currency?: CurrencyCode | undefined }) => sql`coalesce((SELECT json_agg(json_build_object('currency', s.currency, 'participantId', s.participant_id, 'paid', s.paid::text, 'owed', s.owed::text))
-  FROM (
-    SELECT p.currency, p.participant_id, sum(p.paid) AS paid, sum(p.owed) AS owed
-    FROM ${ledgerParts(data.group)} p
-    ${data.currency ? sql`WHERE p.currency = ${data.currency}` : sql``}
-    GROUP BY p.currency, p.participant_id
-  ) s), '[]')`
+export const balanceSums = (data: { group: SQL; currency?: CurrencyCode | undefined }) => sql`coalesce((SELECT json_agg(json_build_object('currency', t.currency, 'participantId', t.participant_id, 'paid', t.paid::text, 'owed', t.owed::text))
+  FROM balance_totals t
+  WHERE t.group_id = ${data.group} ${data.currency ? sql`AND t.currency = ${data.currency}` : sql``}), '[]')`
 
 /** Balances per currency and person from balanceSums, with the zero-sum check of computeBalances. */
 const balancesOf = (sums: readonly BalanceSum[]) =>
@@ -69,9 +99,8 @@ export const settlementsOf = (sums: readonly BalanceSum[]) =>
  * participant_id) rows; a row without a participant counts nothing.
  */
 export const netsCte = sql`nets AS (
-  SELECT p.group_id, p.currency, p.participant_id, sum(p.paid - p.owed) AS net
-  FROM mine JOIN ${ledgerParts()} p ON p.group_id = mine.group_id AND p.participant_id = mine.participant_id
-  GROUP BY p.group_id, p.currency, p.participant_id
+  SELECT t.group_id, t.currency, t.participant_id, t.paid - t.owed AS net
+  FROM mine JOIN balance_totals t ON t.group_id = mine.group_id AND t.participant_id = mine.participant_id
 ),
 totals AS (SELECT currency, sum(net) AS net FROM nets GROUP BY currency)`
 

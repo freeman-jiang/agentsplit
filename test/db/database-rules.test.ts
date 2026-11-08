@@ -75,9 +75,9 @@ async function insertExpense(
   )
   await c.query(`INSERT INTO activities (id, group_id, type, expense_id, expense_revision, snapshot) VALUES ($1, $2, 'create_expense', $3, 1, '{}'::jsonb)`, [id('act'), g.group, data.expense])
   for (const [participant, amount, weight = '1'] of data.payers ?? [[g.alice, data.amount]])
-    await c.query(`INSERT INTO expense_payers (expense_id, group_id, participant_id, amount, weight) VALUES ($1, $2, $3, $4, $5)`, [data.expense, g.group, participant, amount, weight])
+    await c.query(`INSERT INTO expense_payers (expense_id, group_id, participant_id, amount, weight, currency, live) VALUES ($1, $2, $3, $4, $5, 'USD', true)`, [data.expense, g.group, participant, amount, weight])
   for (const [participant, amount, weight = String(amount)] of data.shares)
-    await c.query(`INSERT INTO expense_shares (expense_id, group_id, participant_id, amount, weight) VALUES ($1, $2, $3, $4, $5)`, [data.expense, g.group, participant, amount, weight])
+    await c.query(`INSERT INTO expense_shares (expense_id, group_id, participant_id, amount, weight, currency, live) VALUES ($1, $2, $3, $4, $5, 'USD', true)`, [data.expense, g.group, participant, amount, weight])
 }
 const newExpense = async (g: Group) => {
   const expense = id('e')

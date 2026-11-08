@@ -81,8 +81,8 @@ async function insertLegacy(g: Group): Promise<string> {
   const id = next()
   await tx(async (db) => {
     await db.insert(expenses).values({ id, groupId: g.id, revision: 0, kind: 'expense', title: 'Legacy unknown history', categoryId: 0, expenseDate: '2001-01-01', currency: 'USD', amount: minor(1200n), splitMode: 'evenly', createdAt: new Date('2001-01-01T00:00:00Z') })
-    await db.insert(expensePayers).values({ expenseId: id, groupId: g.id, participantId: g.alice, amount: minor(1200n) })
-    await db.insert(expenseShares).values([g.alice, g.bob].map((participantId) => ({ expenseId: id, groupId: g.id, participantId, amount: minor(600n), weight: '1' })))
+    await db.insert(expensePayers).values({ expenseId: id, groupId: g.id, participantId: g.alice, amount: minor(1200n), currency: 'USD', live: true })
+    await db.insert(expenseShares).values([g.alice, g.bob].map((participantId) => ({ expenseId: id, groupId: g.id, participantId, amount: minor(600n), weight: '1', currency: 'USD' as const, live: true })))
   })
   return id
 }
