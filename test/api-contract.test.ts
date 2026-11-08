@@ -1,20 +1,19 @@
 // Each area defines its procedures in its own file and they are merged into one
 // group. Two areas defining the same tag would make one handler silently
-// replace the other at runtime, so a duplicate fails here.
+// replace the other at runtime, so a duplicate fails here, and so does an area
+// that the contract exports but AgentSplitApi does not merge.
 import { expect, it } from 'vitest'
-import { AgentSplitApi } from '~/shared/api'
-import * as account from '~/shared/api/account'
-import * as core from '~/shared/api/core'
-import * as expenses from '~/shared/api/expenses'
-import * as feed from '~/shared/api/feed'
-import * as groups from '~/shared/api/groups'
-import * as history from '~/shared/api/history'
-import * as storage from '~/shared/api/storage'
+import * as api from '~/shared/api'
 
-it('gives every procedure a unique tag across all areas', () => {
-  const groupsOf = [core.CoreApi, groups.GroupsApi, feed.FeedApi, account.AccountApi, expenses.ExpensesApi, history.HistoryApi, storage.StorageApi]
-  const tags = groupsOf.flatMap((group) => [...group.requests.keys()])
+/** An RpcGroup: its procedures and merge (effect/rpc exports no guard). `unknown`: the barrel also exports schemas and errors. */
+const isRpcGroup = (value: unknown): value is { readonly requests: ReadonlyMap<string, unknown> } =>
+  typeof value === 'function' && 'requests' in value && value.requests instanceof Map && 'merge' in value && typeof value.merge === 'function'
+
+it('gives every procedure a unique tag across all areas, and merges every area', () => {
+  const areas = Object.values(api).filter((value) => value !== api.AgentSplitApi && isRpcGroup(value))
+  expect(areas.length).toBeGreaterThanOrEqual(7)
+  const tags = areas.flatMap((group) => (isRpcGroup(group) ? [...group.requests.keys()] : []))
   const duplicates = tags.filter((tag, i) => tags.indexOf(tag) !== i)
   expect(duplicates).toEqual([])
-  expect(AgentSplitApi.requests.size).toBe(tags.length)
+  expect(api.AgentSplitApi.requests.size).toBe(tags.length)
 })
