@@ -7,7 +7,7 @@ import { LIMITS, mebibytes } from '../shared/limits'
 import { todayUtc } from '../shared/dates'
 import { RECEIPT_CONTENT_TYPES } from '../shared/vocabulary'
 import type { Principal } from './core/access'
-import { httpReader, type Reader } from './auth/authenticate'
+import type { Reader } from './auth/authenticate'
 import { storageUnavailable, type Bucket, type StoredObject } from './bucket'
 import type { Db } from './core/db'
 import { contentDisposition } from './headers'
@@ -107,13 +107,12 @@ export async function putUpload(data: { db: Db; bucket: Bucket; request: Request
 export async function downloadReceiptArchive(data: {
   withDb: <A>(work: (db: Db) => Promise<A>) => Promise<A>
   bucket: Bucket
-  request: Request
   group: string
-  baseUrl: string
-  secret: string
+  /** The caller (httpReader), read on the archive's connection. */
+  readerOf: (db: Db) => Promise<Reader>
 }): Promise<Response> {
   const prepared = await data.withDb(async (db): Promise<Response | Awaited<ReturnType<typeof receiptArchive>>> => {
-    const reader = await httpReader(db, { request: data.request, baseUrl: data.baseUrl, secret: data.secret, signIn: 'Sign in required' })
+    const reader = await data.readerOf(db)
     if ('response' in reader) return reader.response
     try {
       return await receiptArchive(db, { principal: reader.principal, groupId: data.group })
