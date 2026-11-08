@@ -30,7 +30,7 @@ import { GroupsHandlers } from '../handlers/groups'
 import { HistoryHandlers } from '../handlers/history'
 import { StorageHandlers } from '../handlers/storage'
 import { compressed } from '../compression'
-import { secured, securityHeaders } from '../headers'
+import { API_HEADERS, documentHeaders, isHtml, secured } from '../headers'
 import { jsonError } from '../core/errors'
 import { maintenanceResponse } from '../maintenance'
 import { handleMcp } from '../mcp/endpoint'
@@ -59,7 +59,9 @@ export function createApp(platform: Platform) {
   const { baseUrl, secret } = config
   const mcpSettings: McpSettings = { baseUrl, bucket }
   const { receiptDownloads } = config
-  const headers = securityHeaders({ receiptOrigin: receiptDownloads.mode === 'redirect' ? receiptDownloads.origin : undefined })
+  const documents = documentHeaders({ receiptOrigin: receiptDownloads.mode === 'redirect' ? receiptDownloads.origin : undefined })
+  /** A response of a route that keeps the document headers, though it may not be HTML: a static file or a receipt route. */
+  const asDocument = async (response: Response | Promise<Response>) => secured({ response: await response, headers: documents })
 
   // Built once: the RPC server's shared fiber must not belong to any one
   // request. Per-request state (the database connection) arrives in each
@@ -138,6 +140,21 @@ export function createApp(platform: Platform) {
   /** SELECT 1 on a pooled connection, so a failed connect is reported as unhealthy too. */
   const checkDatabase = () => withClient(async (client) => void (await client.query('SELECT 1')))
 
+  /** /api/receipts: a receipt image or its storage redirect, and a web upload. */
+  async function receiptRoute(request: Request, url: URL): Promise<Response> {
+    // Not withConnection: the image streams from the bucket after the database work is done, with its own headers.
+    if (request.method === 'GET')
+      return withDb(async (db) =>
+        downloadReceipt({ db, bucket, url, reader: await readerOf({ request, signIn: 'Authentication required' })(db), downloads: receiptDownloads.mode }),
+      )
+    if (request.method === 'POST') {
+      // An upload is a cookie-authorized write: other origins are refused before any database work, as for RPC.
+      if (!originAllowed({ request, baseUrl, cookieWrite: true })) return jsonError({ status: 403, message: 'Origin not allowed' })
+      return withDb(async (db) => uploadReceipt({ db, bucket, request, principal: await requestSession(db, { request, secret, baseUrl }) }))
+    }
+    return jsonError({ status: 405, message: 'Method not allowed' })
+  }
+
   async function route(request: Request): Promise<Response> {
     const paused = config.maintenance && maintenanceResponse(request)
     if (paused) return paused
@@ -161,30 +178,18 @@ export function createApp(platform: Platform) {
     if (HEALTH_PATHS.has(url.pathname)) return url.pathname === LIVENESS_PATH ? livenessResponse() : readinessResponse(checkDatabase)
     if (url.pathname === ROBOTS_PATH) return robotsTxt(baseUrl)
     if (url.pathname === SITEMAP_PATH) return sitemapXml(baseUrl)
-    if (url.pathname === RECEIPTS_PATH) {
-      // Not withConnection: the image streams from the bucket after the database work is done, with its own headers.
-      if (request.method === 'GET')
-        return withDb(async (db) =>
-          downloadReceipt({ db, bucket, url, reader: await readerOf({ request, signIn: 'Authentication required' })(db), downloads: receiptDownloads.mode }),
-        )
-      if (request.method === 'POST') {
-        // An upload is a cookie-authorized write: other origins are refused before any database work, as for RPC.
-        if (!originAllowed({ request, baseUrl, cookieWrite: true })) return jsonError({ status: 403, message: 'Origin not allowed' })
-        return withDb(async (db) => uploadReceipt({ db, bucket, request, principal: await requestSession(db, { request, secret, baseUrl }) }))
-      }
-      return jsonError({ status: 405, message: 'Method not allowed' })
-    }
+    if (url.pathname === RECEIPTS_PATH) return asDocument(receiptRoute(request, url))
     // An agent's upload target from create_expense or update_expense. The secret in the path is the credential.
     const uploadToken = receiptUploadTokenOf(url.pathname)
     if (uploadToken !== null) {
-      if (request.method !== 'PUT') return jsonError({ status: 405, message: 'Method not allowed', headers: { Allow: 'PUT' } })
-      return withDb((db) => putUpload({ db, bucket, request, token: uploadToken }))
+      if (request.method !== 'PUT') return asDocument(jsonError({ status: 405, message: 'Method not allowed', headers: { Allow: 'PUT' } }))
+      return asDocument(withDb((db) => putUpload({ db, bucket, request, token: uploadToken })))
     }
     const download = request.method === 'GET' ? exportRouteOf(url.pathname) : null
     if (download) {
       const { group, format } = download
       const reader = readerOf({ request, signIn: 'Sign in required' })
-      if (format === 'receipts') return downloadReceiptArchive({ withDb, bucket, group, readerOf: reader })
+      if (format === 'receipts') return asDocument(downloadReceiptArchive({ withDb, bucket, group, readerOf: reader }))
       return withConnection(request, async (db) => downloadExport({ db, reader: await reader(db), group, format }), 'private, no-store')
     }
     // The current app's presigned upload route is gone for good (P-RECEIPT-28).
@@ -196,7 +201,7 @@ export function createApp(platform: Platform) {
       const target = await withDb((db) => groupRedirect(db, { path: idPath }))
       if (target) return new Response(null, { status: 307, headers: { Location: `${target}${url.search}`, 'Cache-Control': 'private, no-store' } })
     }
-    return platform.assets(request)
+    return asDocument(platform.assets(request))
   }
 
   return {
@@ -209,7 +214,7 @@ export function createApp(platform: Platform) {
         console.error('Request failed', { path: new URL(request.url).pathname }, error)
         response = jsonError({ status: 503, message: 'AgentSplit is temporarily unavailable. Try again in a moment.', headers: { 'Retry-After': '5' } })
       }
-      return secured({ response, headers })
+      return secured({ response, headers: isHtml(response) ? documents : API_HEADERS })
     },
     /**
      * The hourly job (server.ts schedules it). It creates due
