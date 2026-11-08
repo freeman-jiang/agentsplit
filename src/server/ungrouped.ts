@@ -128,9 +128,9 @@ export async function createUngroupedExpense(
 
 /**
  * Issues a new private link for an original person who has not joined, and
- * revokes the earlier ones. Only the expense's creator may do this. Like the
- * create, the response holds a secret, so it is not stored for the key; a retry
- * issues another link and revokes this one.
+ * revokes the earlier ones. Only the expense's creator may do this. The
+ * response holds a secret that is never stored, so a retry issues another link
+ * and revokes this one.
  */
 export async function renewPrivateInvitation(tx: Db, data: { principal: Principal; baseUrl: string; groupId: string; participantId: string }) {
   const membership = await requireMember(tx, { principal: data.principal, groupId: data.groupId })

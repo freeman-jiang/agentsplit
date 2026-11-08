@@ -12,7 +12,7 @@ import { describeError } from '~/client/errors'
 import { expenseDetailQuery, paymentsQuery, referenceQuery } from '~/client/queries/expenses'
 import { expenseContextQuery } from '~/client/queries/feed'
 import { afterWrite, reloadEntry } from '~/client/queries/keys'
-import { newIdempotencyKey, rpc } from '~/client/rpc'
+import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 import type { ExpenseContext } from '~/shared/api'
 import { InvitationLink, PrivateContextHeader } from '../-private-context'
@@ -134,7 +134,7 @@ function PrivateRepayments({ data }: { data: Context }) {
                 setRenewing(true)
                 setError('')
                 try {
-                  const result = await rpc((api) => api('expenses.renewInvitation', { groupId: data.group.id, participantId: invitation.participantId, idempotencyKey: newIdempotencyKey() }))
+                  const result = await rpc((api) => api('expenses.renewInvitation', { groupId: data.group.id, participantId: invitation.participantId }))
                   // Links are kept per person, so the new one stays on screen after the list reloads.
                   setLinks((current) => ({ ...current, [result.participantId]: result.url }))
                   await afterWrite({ queryClient, scope: 'group', groupId: data.group.id })
