@@ -411,7 +411,7 @@ describe('expense writes and reads', () => {
     expect(((await checked('get_group', { groupId: 'Lists' }, headers))['group'] as { id: string }).id).toBe(groupId)
     expect(((await checked('list_activity', { groupId: 'lists', limit: 1 }, headers))['activities'] as { groupId: string }[])[0]?.groupId).toBe(groupId)
     const reimbursement = (await checked('list_expenses', { groupId, filter: 'Payback' }, headers))['expenses'] as Record<string, unknown>[]
-    expect(reimbursement[0]).toMatchObject({ isReimbursement: true, paidBy: { id: b, name: `Name ${b}` }, paidFor: [{ participant: { id: a, name: 'Lena' }, shares: '1' }], category: { id: 0 } })
+    expect(reimbursement[0]).toMatchObject({ isReimbursement: true, paidBy: { id: b, name: `Name ${b}` }, paidFor: [{ participant: { id: a, name: 'Lena' }, shares: '1' }], category: { id: 1 } })
   })
 
   it('refuses bad list bounds and history selections before reading', async () => {
