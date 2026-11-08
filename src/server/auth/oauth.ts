@@ -22,15 +22,15 @@ import { verifyConnection, type OAuthResult } from './oauth-connections'
 /** The jwt plugin's default grace period for rotated keys: 30 days. */
 const GRACE_MS = 2_592_000 * 1000
 
-type JwkRow = { id: string; public_key: string; alg: string | null; crv: string | null; expires_at: Date | null }
+type JwkRow = { id: string; public_key: string; alg: string | null; crv: string | null; expires_ms: number | null }
 
 /** The JWKS that /api/auth/jwks publishes (better-auth jwt plugin getJwks), read from the table. */
-async function loadJwks(db: Db) {
-  const result = await db.execute<JwkRow>(sql`SELECT id, public_key, alg, crv, expires_at FROM jwks`)
+export async function loadJwks(db: Db) {
+  const result = await db.execute<JwkRow>(sql`SELECT id, public_key, alg, crv, (extract(epoch FROM expires_at) * 1000)::float8 AS expires_ms FROM jwks`)
   const now = Date.now()
   return {
     keys: result.rows
-      .filter((k) => !k.expires_at || k.expires_at.getTime() + GRACE_MS > now)
+      .filter((k) => k.expires_ms === null || k.expires_ms + GRACE_MS > now)
       .map((k) => ({ alg: k.alg ?? 'EdDSA', ...(k.crv ? { crv: k.crv } : {}), ...(JSON.parse(k.public_key) as Record<string, string>), kid: k.id })),
   }
 }
@@ -46,7 +46,7 @@ const jwksCacheKey = {}
 const reservationId = (identifier: string) => sha256Base64url(`reserve:${identifier}`)
 /** The identifier prefix of a DPoP replay row, the same as Better Auth's. */
 const DPOP_PROOF = 'dpop-proof:'
-const replayStore = (db: Db): DpopReplayStore => ({
+export const replayStore = (db: Db): DpopReplayStore => ({
   reserve: async ({ key, expiresAt }) => {
     const identifier = `${DPOP_PROOF}${key}`
     const result = await db.execute(sql`

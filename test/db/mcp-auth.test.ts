@@ -1,13 +1,16 @@
 // The MCP path verifies credentials without building Better Auth. These tests
 // hold it to Better Auth's own answers on the same rows.
-import { DPOP_SIGNING_ALGORITHMS } from 'better-auth/oauth2'
+import { createDpopReplayStore, DPOP_SIGNING_ALGORITHMS } from 'better-auth/oauth2'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { apikey } from '../../db/schema/auth'
+import { apikey, jwks } from '../../db/schema/auth'
 import { verifyApiKey } from '~/server/auth/api-key'
 import { readApiKey } from '~/server/auth/authenticate'
 import { DPOP_ALGORITHMS, protectedResourceMetadata } from '~/server/auth/challenge'
+import { createAuth } from '~/server/auth/auth'
+import { loadJwks, replayStore } from '~/server/auth/oauth'
 import { sha256Base64url } from '~/server/core/ids'
+import { testSettings } from '../kit/config'
 import { BASE, startHarness, type Harness } from './harness'
 
 // These tests create many API keys for one account; the fair-use cap has its own test (test/db/limits.test.ts).
@@ -26,6 +29,40 @@ afterAll(() => h.close())
 describe('copied Better Auth values', () => {
   it('lists the DPoP algorithms Better Auth accepts', () => {
     expect([...DPOP_ALGORITHMS]).toEqual([...DPOP_SIGNING_ALGORITHMS])
+  })
+
+  it('reads the same JWKS that Better Auth publishes, rotated keys within the grace period included', async () => {
+    const day = 24 * 60 * 60 * 1000
+    const key = (id: string, x: string, data: { expiresAt: Date | null; alg: string | null; crv: string | null }) => ({
+      id,
+      publicKey: JSON.stringify({ kty: 'OKP', crv: 'Ed25519', x }),
+      privateKey: 'unused',
+      createdAt: new Date(Date.now() - 60 * day),
+      ...data,
+    })
+    await h.withDb((db) =>
+      db.insert(jwks).values([
+        key('jwk-current', 'a'.repeat(43), { expiresAt: null, alg: null, crv: null }),
+        key('jwk-rotated', 'b'.repeat(43), { expiresAt: new Date(Date.now() - 10 * day), alg: 'EdDSA', crv: 'Ed25519' }),
+        key('jwk-retired', 'c'.repeat(43), { expiresAt: new Date(Date.now() - 31 * day), alg: 'EdDSA', crv: null }),
+      ]),
+    )
+    const published = (await (await h.betterAuth(new Request(`${BASE}/api/auth/jwks`))).json()) as { keys: { kid: string }[] }
+    const ours = await h.withDb((db) => loadJwks(db))
+    const byKid = (keys: readonly { kid: string }[]) => [...keys].sort((a, b) => a.kid.localeCompare(b.kid))
+    expect(byKid(ours.keys)).toEqual(byKid(published.keys))
+    expect(ours.keys.map((k) => k.kid)).not.toContain('jwk-retired')
+  })
+
+  it('reserves a DPoP proof in the same row as Better Auth, so each refuses a proof that the other saw', async () => {
+    const theirs = await h.withDb(async (db) => createDpopReplayStore((await createAuth({ ...testSettings(), db }).$context).internalAdapter))
+    const now = new Date()
+    const proof = (key: string) => ({ key, now, expiresAt: new Date(now.getTime() + 60_000) })
+    const ours = (key: string) => h.withDb(async (db) => replayStore(db).reserve(proof(key)))
+    expect(await ours('proof-ours-first')).toBe(true)
+    expect(await theirs.reserve(proof('proof-ours-first'))).toBe(false)
+    expect(await theirs.reserve(proof('proof-theirs-first'))).toBe(true)
+    expect(await ours('proof-theirs-first')).toBe(false)
   })
 })
 
