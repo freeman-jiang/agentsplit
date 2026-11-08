@@ -5,31 +5,22 @@ import { writeFileSync } from 'node:fs'
 import { getSchema } from 'better-auth/db'
 import { AUTH_RATE_LIMIT, authPlugins } from '../src/server/auth/auth-options'
 
-type Field = {
-  type: string | string[]
-  required?: boolean
-  unique?: boolean
-  fieldName?: string
-  references?: { model: string; field: string; onDelete?: string }
-  defaultValue?: unknown
-  index?: boolean
-  bigint?: boolean
-}
+type Table = ReturnType<typeof getSchema>[string]
+type Field = Table['fields'][string]
+type Reference = NonNullable<Field['references']>
 
-const schema = getSchema({ plugins: authPlugins(), rateLimit: AUTH_RATE_LIMIT }) as Record<
-  string,
-  { fields: Record<string, Field> }
->
+const schema = getSchema({ plugins: authPlugins(), rateLimit: AUTH_RATE_LIMIT })
 
 /**
  * Rules of v1's schema that getSchema() does not declare: unique
- * keys (P-DB-115, P-DB-116, P-DB-121) and the owner of an API key (P-DB-117).
- * Keys are model and field names as getSchema() gives them.
+ * keys (P-DB-115, P-DB-116) and the owner of an API key (P-DB-117).
+ * Keys are model and field names as getSchema() gives them. The keys that
+ * getSchema() declares itself, such as oauthClientResource's (P-DB-121), come
+ * from its `indexes`.
  */
-const EXTRA: Record<string, { unique?: string[][]; references?: Record<string, NonNullable<Field['references']>> }> = {
+const EXTRA: Record<string, { unique?: string[][]; references?: Record<string, Reference> }> = {
   account: { unique: [['providerId', 'accountId']] },
   apikey: { unique: [['key']], references: { referenceId: { model: 'user', field: 'id', onDelete: 'cascade' } } },
-  oauthClientResource: { unique: [['clientId', 'resourceId']] },
 }
 
 const snake = (s: string) => s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`).replace(/^_/, '')
@@ -67,9 +58,12 @@ for (const table of tables) {
   const name = camel(table.modelName)
   lines.push(`export const ${name} = pgTable(`, `  '${snake(table.modelName)}',`, '  {', "    id: text().primaryKey(),")
   const extra = EXTRA[table.modelName] ?? {}
-  const keys = (extra.unique ?? []).filter((columns) => columns.length > 1)
-  const single = new Set((extra.unique ?? []).filter((columns) => columns.length === 1).flat())
+  const declared = table.indexes ?? []
+  const uniqueKeys = [...(extra.unique ?? []), ...declared.filter((i) => i.unique).map((i) => [...i.columns])]
+  const keys = uniqueKeys.filter((columns) => columns.length > 1)
+  const single = new Set(uniqueKeys.filter((columns) => columns.length === 1).flat())
   const indexes: string[] = []
+  const compositeIndexes = declared.filter((i) => !i.unique).map((i) => [...i.columns])
   for (const [key, given] of Object.entries(table.fields)) {
     const references = extra.references?.[key]
     const field: Field = { ...given, ...(references ? { references } : {}), ...(single.has(key) ? { unique: true } : {}) }
@@ -94,6 +88,7 @@ for (const table of tables) {
   lines.push('  },')
   const constraints = [
     ...indexes.map((p) => `index().on(t.${p})`),
+    ...compositeIndexes.map((columns) => `index().on(${columns.map((c) => `t.${camel(c)}`).join(', ')})`),
     ...keys.map((columns) => `unique().on(${columns.map((c) => `t.${camel(c)}`).join(', ')})`),
   ]
   if (constraints.length) lines.push(`  (t) => [${constraints.join(', ')}],`)
