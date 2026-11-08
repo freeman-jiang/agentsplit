@@ -16,6 +16,7 @@ import type { Db } from './core/db'
 import { documentRows, EXPENSE_FIELDS, EXPENSE_ORDERS, expenseColumns, filterConditions, loadExpenses, toExpense, type ExpenseField, type ExpenseFilter, type ExpenseParts, type ExpenseRow, type OrderedRow, type ReadExpense, type StoredDocument } from './expense-read'
 import { idempotent, storedRequestJson, type StoredRequest } from './idempotency'
 import { participantsJson } from './people'
+import { deletedForGood } from './receipt-quota'
 import { assertPrivateWrite, privateContextOf, type PrivateContext } from './private-context'
 import { stopRecurrence, syncRecurrence, type LinkState } from './recurring'
 import { textList } from './sql'
@@ -259,7 +260,7 @@ async function writeDocuments(tx: Db, data: { groupId: string; expenseId: string
   const urls = [...new Set(data.documents.map((d) => d.url))]
   if (urls.length) {
     const registered = await tx.execute<{ url: string; deleted: boolean }>(
-      sql`SELECT url, EXISTS (SELECT 1 FROM deleted_receipts d WHERE d.receipt_id = receipts.id) AS deleted
+      sql`SELECT url, ${deletedForGood(sql`receipts`)} AS deleted
         FROM receipts WHERE group_id = ${data.groupId} AND url IN (${textList(urls)})`,
     )
     if (registered.rows.length !== urls.length) throw new Invalid({ message: 'Attach only receipts uploaded to this group', field: 'documents' })

@@ -15,7 +15,7 @@ import type { Db } from './core/db'
 import { myMemberships, requireMember, type Principal } from './core/access'
 import { apiKeyCount } from './auth/api-key'
 import { removeDocuments } from './ledger'
-import { receiptUsage } from './receipt-quota'
+import { countsAgainst, deletedForGood, receiptUsage } from './receipt-quota'
 import { receiptKey } from './receipts'
 import { groupsCreated } from './groups'
 import { iso, textList } from './sql'
@@ -28,7 +28,7 @@ export async function storageUsage(db: Db, data: { principal: Principal }) {
     WITH mine AS (
       SELECT r.bytes, EXISTS (SELECT 1 FROM ${myMemberships(data.principal.userId)} m WHERE m.group_id = r.group_id) AS member
       FROM receipts r
-      WHERE r.created_by = ${data.principal.userId} AND NOT EXISTS (SELECT 1 FROM deleted_receipts d WHERE d.receipt_id = r.id)
+      WHERE ${countsAgainst(data.principal.userId)}
     )
     SELECT coalesce((SELECT sum(bytes) FROM mine), 0)::text AS bytes,
       (SELECT count(*)::int FROM mine) AS count,
@@ -80,7 +80,7 @@ export async function listReceipts(
     minBytes?: number | undefined
   },
 ) {
-  const where: SQL[] = [sql`r.created_by = ${data.principal.userId}`, sql`NOT EXISTS (SELECT 1 FROM deleted_receipts d WHERE d.receipt_id = r.id)`]
+  const where: SQL[] = [countsAgainst(data.principal.userId)]
   if (data.groupId !== undefined) {
     const { groupId } = await requireMember(db, { principal: data.principal, groupId: data.groupId })
     where.push(sql`r.group_id = ${groupId}`)
@@ -130,7 +130,7 @@ export async function deleteReceipts(tx: Db, data: { principal: Principal; recei
   if (!ids.length) return { deleted: [], freedBytes: 0 }
   const result = await tx.execute<DeleteRow>(sql`
     SELECT r.id, r.group_id, r.url, r.created_by, r.bytes, m.role, m.group_id IS NOT NULL AS active,
-      EXISTS (SELECT 1 FROM deleted_receipts d WHERE d.receipt_id = r.id) AS deleted
+      ${deletedForGood(sql`r`)} AS deleted
     FROM receipts r LEFT JOIN ${myMemberships(userId)} m ON m.group_id = r.group_id
     WHERE r.id IN (${textList(ids)})
   `)
@@ -184,7 +184,7 @@ export async function purgeDeletedReceipts(data: { db: Db; bucket: Bucket; recei
   const open = await data.db.execute<{ id: string; url: string; shared: boolean }>(sql`
     SELECT d.receipt_id AS id, r.url,
       EXISTS (SELECT 1 FROM receipts o WHERE o.url = r.url AND o.id <> r.id
-        AND NOT EXISTS (SELECT 1 FROM deleted_receipts x WHERE x.receipt_id = o.id)) AS shared
+        AND NOT ${deletedForGood(sql`o`)}) AS shared
     FROM deleted_receipts d JOIN receipts r ON r.id = d.receipt_id
     WHERE d.purged_at IS NULL ${only}
     ORDER BY d.deleted_at LIMIT 500
