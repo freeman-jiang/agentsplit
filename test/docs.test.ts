@@ -1,14 +1,17 @@
-// MCP.md is the agents' contract, and nothing else ties it to the code: a tool
+// MCP.md is the agents' contract, and AUTH.md, PRIVACY.md and DEPLOYMENT.md
+// state the limits to people. Nothing else ties them to the code: a tool
 // added, moved or turned into a write, a new error code, or a changed limit or
-// token lifetime would leave the document wrong without any failure.
+// token lifetime would leave a document wrong without any failure.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { LONG_SIDE } from '../src/client/components/receipt-files'
 import { MCP_TOOLS } from '../src/server/mcp/tools'
 import { ERROR_ANSWERS } from '../src/shared/errors'
 import { FAIR_USE_LABELS, FAIR_USE_LIMITS, LIMITS, mebibytes, megabytes } from '../src/shared/limits'
 
-const doc = readFileSync(join(import.meta.dirname, '..', 'MCP.md'), 'utf8')
+const read = (file: string) => readFileSync(join(import.meta.dirname, '..', file), 'utf8')
+const doc = read('MCP.md')
 
 /** The body rows of the first table under a `## heading`, as cells. */
 function table(heading: string): string[][] {
@@ -53,5 +56,37 @@ describe('MCP.md', () => {
       `after ${LIMITS.uploadAttachHours + 1} hours`,
     ])
       expect(doc).toContain(text)
+  })
+})
+
+describe.each([
+  {
+    file: 'AUTH.md',
+    sentences: [
+      `at most ${LIMITS.signUpsPerDay} created in 24 hours`,
+      `A session lasts ${LIMITS.sessionDays} days and is refreshed once a day.`,
+      `expires after ${LIMITS.invitationDays} days`,
+      `A key allows ${LIMITS.apiKeyRequestsPerMinute} requests in 60 seconds.`,
+      `at most ${LIMITS.apiKeys} keys`,
+      `at most ${LIMITS.clientRegistrationsPerHour} times per IP address per hour`,
+      `Access tokens are signed JWTs that live ${LIMITS.accessTokenSeconds} seconds.`,
+      `a refresh token that lives ${LIMITS.refreshTokenDays} days`,
+    ],
+  },
+  {
+    file: 'PRIVACY.md',
+    sentences: [
+      `expire after ${LIMITS.invitationDays} days`,
+      `expires after ${LIMITS.uploadTargetSeconds} seconds`,
+      `at most ${LONG_SIDE} pixels on the long side`,
+      `Each account has ${megabytes(LIMITS.receiptStorageBytes)} of receipt storage`,
+      `Unattached agent uploads are deleted after ${LIMITS.uploadAttachHours + 1} hours.`,
+    ],
+  },
+  { file: 'DEPLOYMENT.md', sentences: [`empty means ${LIMITS.signUpsPerDay}.`] },
+])('$file', ({ file, sentences }) => {
+  it('states the limits that the code applies', () => {
+    const text = read(file)
+    for (const sentence of sentences) expect(text).toContain(sentence)
   })
 })
