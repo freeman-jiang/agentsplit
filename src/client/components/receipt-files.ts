@@ -1,14 +1,15 @@
 // Receipt files in the browser: photos shrink before upload, and a receipt
 // deleted for good shows who deleted it and when.
+import { formatMoment } from '~/client/dates'
 
 /** The long side of an uploaded photo, in pixels. Receipt text stays readable at this size. */
-const LONG_SIDE = 2000
+export const LONG_SIDE = 2000
 const JPEG_QUALITY = 0.85
 /** A file this small with a long side of at most LONG_SIDE uploads unchanged: most screenshots, whose text a JPEG would blur. */
 const KEEP_BYTES = 1024 * 1024
 
 /**
- * The file to upload: a JPEG of at most 2000 px on the long side, quality 0.85,
+ * The file to upload: a JPEG of at most LONG_SIDE px on the long side, quality 0.85,
  * with the camera's orientation applied. A small image uploads unchanged, and
  * so does a file the browser cannot decode (the server checks every upload).
  */
@@ -45,4 +46,4 @@ export type Tombstone = { readonly by: string; readonly at: string }
 
 /** "Receipt deleted by Alice on Nov 7, 2026". */
 export const tombstoneText = (tombstone: Tombstone) =>
-  `Receipt deleted by ${tombstone.by} on ${new Date(tombstone.at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`
+  `Receipt deleted by ${tombstone.by} on ${formatMoment.date(tombstone.at)}`

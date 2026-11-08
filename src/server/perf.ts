@@ -1,6 +1,6 @@
 // Per-request counts of database work for performance runs, as the current
-// app reports them (P-PWA-49). Only PERF_INSTRUMENTATION=1 turns this on:
-// otherwise no connection is wrapped and secured() adds no header.
+// app reports them (P-PWA-49). Only PERF_INSTRUMENTATION turns this on:
+// otherwise no connection is wrapped and no response gets the headers.
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type pg from 'pg'
 
@@ -18,9 +18,9 @@ export const withPerfCounters = <A>(counters: PerfCounters, work: () => Promise<
 
 /**
  * Counts each statement of `client` into the request in scope. Call it once
- * for each new connection: `pool.on('connect', countQueries)`.
+ * for each new connection (instrumentPool).
  */
-export function countQueries(client: pg.PoolClient): void {
+function countQueries(client: pg.PoolClient): void {
   // pg's overloads cannot be named in one signature; arguments and results pass through unchanged.
   type Query = (...args: unknown[]) => unknown
   const query = client.query.bind(client) as Query
@@ -41,4 +41,17 @@ export function countQueries(client: pg.PoolClient): void {
     return result instanceof Promise ? result.finally(done) : result
   }
   client.query = counted as typeof client.query
+}
+
+/** Counts the statements of every connection that `pool` opens from now on. */
+export const instrumentPool = (pool: pg.Pool) => void pool.on('connect', countQueries)
+
+/** The response of `work`, with the statements and database time it took in the current app's headers. */
+export async function withPerfHeaders(work: () => Promise<Response>): Promise<Response> {
+  const counters: PerfCounters = { queries: 0, dbMs: 0 }
+  const response = await withPerfCounters(counters, work)
+  const copy = new Response(response.body, response)
+  copy.headers.set('x-perf-db-queries', String(counters.queries))
+  copy.headers.set('server-timing', `db;dur=${counters.dbMs.toFixed(1)}`)
+  return copy
 }

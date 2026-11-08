@@ -1,35 +1,29 @@
-// Splitting without Effect, for the client and the server alike. The schema
-// of a split mode is SplitModeSchema in shared/api/core.ts.
-import { minor, sumMinor, type Minor } from './minor'
+// Splitting without Effect, for the client and the server alike.
+import { compareIds } from './ids'
+import type { CurrencyCode } from './currencies'
+import { formatMinor, minor, minorOf, sumMinor, type Minor } from './minor'
+import type { SplitMode } from './vocabulary'
 
-export const SPLIT_MODES = ['evenly', 'shares', 'percentage', 'amount'] as const
-export type SplitMode = (typeof SPLIT_MODES)[number]
-
-/**
- * The current app's names of the split modes and the recurrence rules. Its
- * MCP tools, its exports and its saved form defaults use them.
- */
-export const MODE_NAMES = { evenly: 'EVENLY', shares: 'BY_SHARES', percentage: 'BY_PERCENTAGE', amount: 'BY_AMOUNT' } as const satisfies Record<SplitMode, string>
-export const RULE_NAMES = { none: 'NONE', daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY' } as const
-
-/** A weight is an exact non-negative decimal: a share count, a percentage, or an amount. */
+/** A weight is an exact non-negative decimal: a share count, a percentage, or an amount. The stored share weights of a negative amount split by amount carry its sign, which resolveShares drops. */
 export type Weight = { readonly units: bigint; readonly scale: number }
 
+/** The text of a weight. The database CHECKs payer weights with it (db/schema/app.ts); share weights may carry a sign. */
+export const WEIGHT = /^(0|[1-9][0-9]*)(?:\.([0-9]+))?$/
+
 export function parseWeight(text: string): Weight {
-  const match = /^(0|[1-9][0-9]*)(?:\.([0-9]+))?$/.exec(text)
+  const match = WEIGHT.exec(text)
   if (!match) throw new Error(`Invalid split weight: ${text}`)
   const fraction = (match[2] ?? '').replace(/0+$/, '')
   return { units: BigInt((match[1] ?? '0') + fraction), scale: fraction.length }
 }
 
-const atScale = (weight: Weight, scale: number) => weight.units * 10n ** BigInt(scale - weight.scale)
-
-export class SplitError extends Error {
-  readonly _tag = 'SplitError'
-  constructor(readonly reason: 'no-participants' | 'zero-weights' | 'amount-mismatch') {
-    super(`Split failed: ${reason}`)
-  }
+/** The canonical text of a weight, without trailing zeros: "1.5" for 1.50, "2" for 2.0. */
+export function formatWeight(weight: Weight): string {
+  const digits = weight.units.toString().padStart(weight.scale + 1, '0')
+  return weight.scale === 0 ? digits : `${digits.slice(0, -weight.scale)}.${digits.slice(-weight.scale)}`.replace(/\.?0+$/, '')
 }
+
+const atScale = (weight: Weight, scale: number) => weight.units * 10n ** BigInt(scale - weight.scale)
 
 /**
  * Divides `amount` in proportion to `weights`, in whole minor units.
@@ -67,9 +61,6 @@ export function apportion(data: {
   return parts.map((part) => minor(negative ? -part : part))
 }
 
-/** Code-unit order, as the current app sorts participant IDs (`a < b`). */
-export const compareIds = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
-
 export type ShareInput = {
   readonly amount: Minor
   readonly mode: SplitMode
@@ -95,11 +86,19 @@ export function resolveShares(input: ShareInput): ReadonlyMap<string, Minor> {
   return new Map(people.map((p, i) => [p.participantId, parts[i] ?? minor(0n)]))
 }
 
+/** A share's weight as people read it: an amount split stores minor units, shown as an amount; any other weight as stored. */
+export const weightText = (data: { splitMode: SplitMode; currency: CurrencyCode; weight: string }) =>
+  data.splitMode === 'amount' ? formatMinor({ amount: minor(BigInt(data.weight)), currency: data.currency }) : data.weight
+
 /** The payer who receives the first leftover unit: the largest payment, then the smallest ID. */
 export function preferredPayer(payers: ReadonlyArray<{ readonly participantId: string; readonly amount: Minor }>): string {
   const [first] = [...payers].sort(
     (a, b) => (b.amount > a.amount ? 1 : b.amount < a.amount ? -1 : 0) || compareIds(a.participantId, b.participantId),
   )
-  if (!first) throw new SplitError('no-participants')
+  if (!first) throw new Error('Split failed: no-participants')
   return first.participantId
 }
+
+/** The payer an expense names when it shows one payer: the one who paid the most (preferredPayer), or null without payers. */
+export const mainPayer = (expense: { readonly currency: CurrencyCode; readonly payers: ReadonlyArray<{ readonly participantId: string; readonly amount: string }> }) =>
+  expense.payers.length ? preferredPayer(expense.payers.map((p) => ({ participantId: p.participantId, amount: minorOf(p.amount, expense.currency) }))) : null

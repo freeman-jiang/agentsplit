@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import type { CurrencyCode } from './currencies'
-import { minor, type Minor } from './money'
-import { compareIds } from './split'
+import { minor, type Minor } from './minor'
+import { compareIds } from './ids'
 
 /** One ledger entry as balances see it: who paid and who owes, in one currency. */
 export type LedgerEntry = {
@@ -12,7 +12,7 @@ export type LedgerEntry = {
 
 export type Balance = { readonly paid: Minor; readonly owed: Minor; readonly net: Minor }
 
-export class LedgerImbalanceError extends Schema.TaggedError<LedgerImbalanceError>()(
+class LedgerImbalanceError extends Schema.TaggedError<LedgerImbalanceError>()(
   'LedgerImbalanceError',
   { currency: Schema.String, net: Schema.String },
 ) {}
@@ -52,7 +52,7 @@ export type Settlement = { readonly from: string; readonly to: string; readonly 
 
 /**
  * Suggested repayments for one currency, stable across settlements: creditors
- * first, then by participant ID; the largest debtor at the end pays the first
+ * first, then by participant ID. The last debtor in that order pays the first
  * creditor. This is the current app's rule (src/lib/balances.ts).
  */
 export function suggestSettlements(balances: ReadonlyMap<string, Balance>): Settlement[] {

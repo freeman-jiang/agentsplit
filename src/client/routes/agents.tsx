@@ -1,10 +1,10 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowDown } from 'lucide-react'
-import { cn } from '~/client/cn'
-import { CopyButton } from '~/client/components/copy-button'
-import { requireSignedIn } from '~/client/queries/account'
+import { requireSignedIn } from '~/client/queries/session'
 import { Button } from '~/client/ui/button'
-import { disclosure, DisclosureSummary } from '~/client/ui/disclosure'
+import { CopyButton } from '~/client/ui/copy-button'
+import { DisclosureSummary } from '~/client/ui/disclosure'
+import { API_KEY_HEADER, MCP_PATH, type McpToolName } from '~/shared/mcp'
 
 export const Route = createFileRoute('/agents')({
   beforeLoad: ({ context, location }) => requireSignedIn({ queryClient: context.queryClient, location }),
@@ -29,28 +29,29 @@ function Configuration(props: { title: string; description: string; code: string
   )
 }
 
+/** A tool name in the text, checked against the server's tools. */
+const tool = (name: McpToolName) => name
+
 function AgentSetup() {
   // The SPA is served only from BASE_URL, so this page's origin is the MCP origin.
-  const endpoint = new URL('/api/mcp', window.location.origin).href
-  const codex = `[mcp_servers.agentsplit]\nurl = ${JSON.stringify(endpoint)}\nenv_http_headers = { "X-API-Key" = "AGENTSPLIT_API_KEY" }`
+  const endpoint = new URL(MCP_PATH, window.location.origin).href
+  const codex = `[mcp_servers.agentsplit]\nurl = ${JSON.stringify(endpoint)}\nenv_http_headers = { ${JSON.stringify(API_KEY_HEADER)} = "AGENTSPLIT_API_KEY" }`
   const claude = JSON.stringify(
-    { mcpServers: { agentsplit: { type: 'http', url: endpoint, headers: { 'X-API-Key': '${AGENTSPLIT_API_KEY}' } } } },
+    { mcpServers: { agentsplit: { type: 'http', url: endpoint, headers: { [API_KEY_HEADER]: '${AGENTSPLIT_API_KEY}' } } } },
     null,
     2,
   )
   const instructions = `Use AgentSplit at ${endpoint} through MCP. Use the OAuth connection or API key already configured in my client.
 
-Start with list_groups. A group URL alone does not grant access. If I provide an invitation link addressed to my Google email, use manage_group_access with action=join and shareUrl. Read get_group for members, roles and participant IDs, and get_reference_data for currencies, categories and split modes.
+Start with ${tool('list_groups')}. A group URL alone does not grant access. If I provide an invitation link addressed to my Google email, use ${tool('manage_group_access')} with action=join and shareUrl. Read ${tool('get_group')} for members, roles and participant IDs, and ${tool('get_reference_data')} for currencies, categories and split modes.
 
-Use exact decimal strings for money and keep currencies separate. Read the current revision before editing or deleting. Record payments with create_expense and isReimbursement=true. For private receipt downloadUrl values, use the same connection credentials: OAuth Authorization header or X-API-Key. Only make changes I request, and confirm the committed result.`
+Use exact decimal strings for money and keep currencies separate. Read the current revision before editing or deleting. Record payments with ${tool('create_expense')} and isReimbursement=true. For private receipt downloadUrl values, use the same connection credentials: OAuth Authorization header or ${API_KEY_HEADER}. Only make changes I request, and confirm the committed result.`
   return (
-    // The shared page frame, with a narrower reading column on its left edge.
     <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
       <div className="max-w-3xl space-y-10 lg:space-y-8">
-        {/* The Dashboard's header rhythm: title, one muted line, then the content at one gap. */}
         <header className="space-y-6">
           <div>
-            <h1 className="font-display text-3xl tracking-tight">Set up your agent</h1>
+            <h1 className="font-display text-3xl">Set up your agent</h1>
             <p className="mt-2 text-sm text-muted-foreground">Choose one way to connect. Both use your AgentSplit account and current group permissions.</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -86,9 +87,8 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
             </h2>
             <p className="text-sm text-muted-foreground">No API key needed. Your first Google sign-in creates your account automatically.</p>
           </div>
-          {/* One divided list: the section's gaps stay outside the rows. */}
           <div className="divide-y border-y">
-            <details className={cn(disclosure, 'py-1')}>
+            <details className="py-1">
               <DisclosureSummary>ChatGPT</DisclosureSummary>
               <div className="space-y-4 pt-2 pb-4 text-sm leading-relaxed">
                 <ol className="list-decimal space-y-3 ps-5">
@@ -135,7 +135,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
                 </a>
               </div>
             </details>
-            <details className={cn(disclosure, 'py-1')}>
+            <details className="py-1">
               <DisclosureSummary>Claude</DisclosureSummary>
               <div className="space-y-4 pt-2 pb-4 text-sm leading-relaxed">
                 <ol className="list-decimal space-y-3 ps-5">
@@ -211,9 +211,9 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
           <div className="space-y-3 rounded-2xl border bg-card p-4 text-sm">
             <div className="flex items-center justify-between gap-3">
               <span>
-                Header name: <code>X-API-Key</code>
+                Header name: <code>{API_KEY_HEADER}</code>
               </span>
-              <CopyButton text="X-API-Key" title="Copy header name" />
+              <CopyButton text={API_KEY_HEADER} title="Copy header name" />
             </div>
             <p>
               Header value: <strong>your API key, exactly as copied</strong>
@@ -223,7 +223,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
             Keep the key in your client’s private settings or environment. Do not paste it into an agent conversation or a group note.
           </p>
           <div className="divide-y border-y">
-            <details className={cn(disclosure, 'py-1')}>
+            <details className="py-1">
               <DisclosureSummary>Codex app</DisclosureSummary>
               <ol className="list-decimal space-y-3 ps-5 pt-2 pb-4 text-sm leading-relaxed">
                 <li>
@@ -233,7 +233,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
                   Enter <strong>agentsplit</strong> as the name and paste the MCP server URL into <strong>URL</strong>.
                 </li>
                 <li>
-                  Under <strong>Headers</strong>, add <code>X-API-Key</code> with your key as its value. No prefix, quotes, or environment
+                  Under <strong>Headers</strong>, add <code>{API_KEY_HEADER}</code> with your key as its value. No prefix, quotes, or environment
                   variable is needed.
                 </li>
                 <li>
@@ -241,7 +241,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
                 </li>
               </ol>
             </details>
-            <details className={cn(disclosure, 'py-1')}>
+            <details className="py-1">
               <DisclosureSummary>Codex CLI and configuration files</DisclosureSummary>
               <div className="space-y-5 pt-2 pb-4">
                 <p className="text-sm text-muted-foreground">{ENVIRONMENT}</p>
@@ -253,7 +253,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
                 />
               </div>
             </details>
-            <details className={cn(disclosure, 'py-1')}>
+            <details className="py-1">
               <DisclosureSummary>Claude Code with an API key</DisclosureSummary>
               <div className="space-y-4 pt-2 pb-4">
                 <p className="text-sm text-muted-foreground">{ENVIRONMENT}</p>
@@ -279,7 +279,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
             </p>
           </div>
           <div className="divide-y border-y">
-            <details className={cn(disclosure, 'py-1')}>
+            <details className="py-1">
               <DisclosureSummary>Detailed agent instructions</DisclosureSummary>
               <div className="space-y-3 pt-2 pb-4">
                 <CopyButton text={instructions} title="Copy agent instructions" />

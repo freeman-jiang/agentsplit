@@ -20,7 +20,7 @@ test('an ungrouped expense uses the full expense form with the private options, 
 
   // The live share preview of the full form: 30.00 evenly between two people.
   await expect(page.getByTestId('share-preview')).toHaveText(['$15.00', '$15.00'])
-  // The current app's privateExpense options.
+  // v1's privateExpense options.
   await expect(page.getByLabel('Expense Recurrence')).toBeDisabled()
   await expect(page.getByLabel('This is a payment')).toHaveCount(0)
   await expect(page.getByLabel('Save as default splitting options')).toHaveCount(0)
@@ -30,7 +30,7 @@ test('an ungrouped expense uses the full expense form with the private options, 
   // Every person stays involved: Dana neither pays nor shares, so the form refuses the save.
   await page.getByLabel('Dana Guest').uncheck()
   await page.getByRole('button', { name: 'Create' }).click()
-  await expect(page.getByText(/cannot be changed\. Each person must pay or share/)).toBeVisible()
+  await expect(page.getByText(/Include yourself and exactly the people paying for or sharing this expense/)).toBeVisible()
   await page.getByLabel('Dana Guest').check()
 
   await page.getByRole('button', { name: 'Create' }).click()

@@ -1,7 +1,7 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Pencil } from 'lucide-react'
-import { groupQuery } from '~/client/queries'
+import { groupQuery } from '~/client/queries/groups'
 import { Button } from '~/client/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/client/ui/card'
 
@@ -11,7 +11,8 @@ export const Route = createFileRoute('/$group/information')({
 
 function Information() {
   const { group } = Route.useParams()
-  const { data: g } = useSuspenseQuery(groupQuery(group))
+  const { groupId } = Route.useRouteContext()
+  const { data: g } = useSuspenseQuery(groupQuery(groupId))
   return (
     <Card className="mb-4">
       <CardHeader>

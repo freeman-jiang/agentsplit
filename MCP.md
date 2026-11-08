@@ -6,7 +6,7 @@ AgentSplit serves its ledger to agents at one MCP Streamable HTTP endpoint:
 https://agentsplit.freemanjiang.com/api/mcp
 ```
 
-The endpoint is stateless and answers with JSON. It accepts 2025 clients and 2026-07-28 requests; a modern request must send `MCP-Protocol-Version`. The tools call the same domain services as the web app, so membership, validation, splits and history are the same for people and agents. The code is in `v2/src/server/mcp/`.
+The endpoint is stateless and answers with JSON. It accepts 2025 clients and 2026-07-28 requests; a modern request must send `MCP-Protocol-Version`. The tools call the same domain services as the web app, so membership, validation, splits and history are the same for people and agents. The code is in `src/server/mcp/`.
 
 The signed-in `/agents` page shows the endpoint, client setup steps and copyable instructions.
 
@@ -105,6 +105,10 @@ A receipt counts against the account that uploaded it until someone deletes it f
 
 The 23 tools, in the order that `tools/list` gives them. Read tools need `agentsplit:read`; write tools also need `agentsplit:write`.
 
+A `groupId` argument takes the group's ID or its slug: the current slug in any case, or a slug the group used before. Every result names the group by its ID.
+
+`list_groups`, `list_expenses`, `list_activity` and `list_receipts` page by offset, as the current app did: `cursor` is the number of rows to skip (0 by default), and the next page starts at the returned `nextCursor` while `hasMore` is true. `list_all_expenses` pages by key instead: give back its `nextCursor` object unchanged, so a new expense never shifts a later page.
+
 | Tool | Kind | Purpose |
 | --- | --- | --- |
 | `list_all_expenses` | read | The feed of expenses and payments across named groups and private ungrouped expenses, newest first. `involvingMe` defaults to true. |
@@ -115,7 +119,7 @@ The 23 tools, in the order that `tools/list` gives them. Read tools need `agents
 | `create_group` | write | Create a group. The creator becomes admin and a participant. |
 | `update_group` | write | Admins: change settings, the slug or participants, with the current `expectedRevision`. |
 | `manage_group_access` | write | Join with an invitation, leave, and (admins) invite, revoke, remove members, set roles, bind a legacy member, or renew a private invitation. |
-| `list_expenses` | read | A group's expenses, with filters and pagination, now or at a past point in history. |
+| `list_expenses` | read | A group's expenses, with filters and pagination, now or at a past point in history. `filter` matches the title, the vendor or the notes. |
 | `get_expense` | read | One expense with payers, splits, attribution and receipt download URLs, now or at a past revision. A receipt that was deleted for good has `deleted` and no download URL. |
 | `create_expense` | write | Create a group or ungrouped expense, a payment, or a recurring expense. Can request receipt upload targets. |
 | `update_expense` | write | Change only the given fields, with `expectedRevision`. Attaches uploaded receipts or removes receipt references. |
@@ -150,12 +154,12 @@ The server instructions and the `create_expense` and `update_expense` descriptio
 1. Record the full payment, including the payer's own share. `amount` is everything that was paid, never only what others owe.
 2. Include the payer in `paidFor` with their share, unless the payer paid only for other people.
 3. Put the full calculation in `notes`, so that a person can recalculate every number: each item, tax, tip, discount and each person's part. Keep the title short.
-4. Record a payment (a repayment or a reimbursement) with `create_expense` and `isReimbursement: true`. The people who sent money go in `paidBy` or `payers`; the people who received it go in `paidFor`. A payment may involve several people and may have a negative amount.
+4. Record a payment (a repayment or a reimbursement) with `create_expense` and `isReimbursement: true`. The people who sent money go in `paidBy` or `payers`; the people who received it go in `paidFor`. A payment may involve several people and may have a negative amount. Without `category`, a payment stores category 1 (Payment), as the web app's payment forms do; any other expense stores 0 (General).
 5. Record money that one person receives and the group shares, such as a refund, as an expense with a negative amount: the receiver in `paidBy`, everyone who shares it in `paidFor`.
 
 ## Receipt uploads
 
-Receipts are JPEG or PNG, at most 5 MiB each, at most 10 per request. `get_reference_data` tells whether uploads are enabled. Each upload counts against the caller's receipt storage (500 MB).
+Receipts are JPEG or PNG, at most 5 MiB each, at most 10 per request. Uploads are always on: `get_reference_data` reports `attachments.enabled: true`. Each upload counts against the caller's receipt storage (500 MB).
 
 1. Add `uploads` to `create_expense` or `update_expense`, for example `[{ "filename": "receipt.png", "contentType": "image/png", "bytes": 12345 }]`. An `update_expense` with empty `changes` requests targets without a new revision.
 2. Read each target from the response:
@@ -178,7 +182,7 @@ A target or an upload alone saves nothing. The hourly job deletes unattached upl
 
 The storage quota is checked twice. When the files would not fit, counting the uploads that the caller can still attach, the write keeps its result and `uploadError` says: "You're out of receipt space (X of 500 MB). Download or delete old receipts…". If the space runs out between the target and the attach, `update_expense` fails with `PRECONDITION_FAILED` and the same message, and changes nothing.
 
-To download a receipt, GET its `documents[].downloadUrl` (`/api/receipts?groupId=…&url=…`) with the same credential: `X-API-Key`, or the OAuth `Authorization` header. The `url` field is a private storage pointer, not a download link. To download every receipt of a group as one ZIP file, GET `/<groupId>/expenses/export/receipts` with the same credential. To remove a receipt from an expense, send `changes.documents` with the references to keep; old revisions keep their receipts, and it still counts against its uploader.
+To download a receipt, GET its `documents[].downloadUrl` (`/api/receipts?groupId=…&url=…`) with the same credential: `X-API-Key`, or the OAuth `Authorization` header. The `url` field is a private storage pointer, not a download link. To download every receipt of a group as one ZIP file, GET `/<groupId>/expenses/export/receipts` with the same credential. These downloads answer like the MCP endpoint: HTTP 401 for a missing or refused credential, 429 with `Retry-After` for a key over its rate limit, and 503 when authentication is unavailable. To remove a receipt from an expense, send `changes.documents` with the references to keep; old revisions keep their receipts, and it still counts against its uploader.
 
 ## Deleting receipts
 
@@ -200,12 +204,14 @@ A successful result has `structuredContent` and the same JSON as text. A failed 
 
 | `code` | Meaning |
 | --- | --- |
-| `BAD_REQUEST` | The arguments are invalid. `recovery` is `correct_arguments`. |
+| `BAD_REQUEST` | The arguments are invalid, or the change breaks a rule of the ledger that the database enforces. `recovery` is `correct_arguments`. |
 | `FORBIDDEN` | The account or connection has no access. The outcome is certain. |
-| `NOT_FOUND` | The group, expense or history point does not exist. |
-| `CONFLICT` | The record changed, or the ID exists. `recovery` is `read_current_revision`. |
-| `PRECONDITION_FAILED` | A historical read has incomplete history, receipts are disabled, or an attach does not fit the caller's receipt storage. |
+| `NOT_FOUND` | The group, expense, receipt, invitation, member or history point does not exist. |
+| `CONFLICT` | The record changed, the ID exists, or the request conflicts with the current state (the last admin, a used invitation). `recovery` is `read_current_revision`. |
+| `PRECONDITION_FAILED` | A historical read has incomplete history, or an attach does not fit the caller's receipt storage. |
 | `TOO_MANY_REQUESTS` | The account made more than about 60 changes in a minute. Nothing changed. `recovery` is `retry_later`; wait the seconds that the message gives. |
-| `INTERNAL_SERVER_ERROR` | An unexpected failure. For a write, `outcomeUnknown` is true and `recovery` is `read_before_retry`. |
+| `INTERNAL_SERVER_ERROR` | An unexpected failure, also on a read. For a write, `outcomeUnknown` is true and `recovery` is `read_before_retry`. For a read, `recovery` is `correct_arguments`. |
+
+The web app and the agent tools share one error table (`src/shared/errors.ts`), so a refusal has the same meaning and text on both.
 
 Schema failures may come back from the MCP SDK as validation errors. Responses never contain database, storage or credential details. Claim that a write succeeded only after a committed result.

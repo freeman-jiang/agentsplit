@@ -2,45 +2,53 @@
 // email-bound invitations. Every function checks access itself, so the RPC
 // handlers and the MCP tools cannot skip it. Ported from the current app's
 // createGroup and updateGroup (src/lib/api.ts) and src/lib/group-access.ts.
-import { and, asc, eq, gt, inArray, isNull, ne, or, sql } from 'drizzle-orm'
-import {
-  activities,
-  groups,
-  groupSlugHistory,
-  invitations,
-  memberships,
-  participants,
-} from '../../db/schema/app'
+import { and, eq, inArray, ne, sql, type SQL } from 'drizzle-orm'
+import { groups, groupSlugHistory, invitations, memberships, participants } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { Conflict, Forbidden, groupAccessDenied, Invalid, NotFound } from '../shared/api'
-import {
-  INVITATION_DAYS,
-  INVITATION_TOKEN,
-  normalizeSlug,
-  slugProblem,
-  type AccessRequest,
-  type GroupChanges,
-  type GroupCreateInput,
-} from '../shared/api/groups'
+import type { AccessRequest, GroupChanges, GroupCreateInput } from '../shared/api/groups'
 import type { CurrencyCode } from '../shared/currencies'
+import { normalizeEmail, normalizeSlug, participantNameOf, slugProblem } from '../shared/groups'
 import { groupLimitMessage, LIMITS, participantLimitMessage } from '../shared/limits'
-import { formatMinor, minor } from '../shared/money'
-import type { Db } from './db'
-import { randomId, randomToken, sha256Hex } from './ids'
-import { actor, displayNames, idempotent, requireMember, type Principal } from './ledger'
-import { groupsCreated, iso } from './sql'
+import type { GroupKind, Role } from '../shared/vocabulary'
+import { randomId } from '../shared/ids'
+import type { Db } from './core/db'
+import { createInvitation, findInvitation, invitationProblem, listedInvitation, openInvitation, revokeInvitations, tokenOfLink } from './invitations'
+import { groupIdOf, groupIdOfInput, groupRef, memberCte, myMemberships, requireActive, requireMember, type Principal } from './core/access'
+import { accessText, groupSnapshot, recordGroupEvent } from './activity'
+import { formatTotals, netsCte, totalsJson } from './balances'
+import { idempotent } from './idempotency'
+import { displayNames } from './people'
+import { iso, textList } from './sql'
+
+/** The named groups that `userId` created, from their create_group activities (LIMITS.groupsCreated). Groups are never deleted. */
+export const groupsCreated = (userId: string) => sql`(SELECT count(*)::int FROM activities a JOIN groups g ON g.id = a.group_id AND g.kind = 'named'
+  WHERE a.type = 'create_group' AND a.actor_user_id = ${userId})`
 
 type AccessInput = typeof AccessRequest.Type
 type CreateInput = typeof GroupCreateInput.Type
 type ChangesInput = typeof GroupChanges.Type
 
-const PAGE = 100
-
 // ---------- reads ----------
+
+/**
+ * A page of the caller's named groups, newest first, as the CTE `page`: the
+ * directory and MCP's list_groups list the same groups in the same order.
+ * `refs` keeps only the groups that its references name.
+ */
+const groupPage = (data: { principal: Principal; offset: number; limit: number; refs?: SQL }) => sql`page AS (
+  SELECT g.id, g.slug, g.name, g.information, g.revision, g.default_currency, g.created_at,
+    (SELECT count(*)::int FROM participants p WHERE p.group_id = g.id) AS participant_count
+  FROM ${myMemberships(data.principal.userId)} m JOIN groups g ON g.id = m.group_id
+  WHERE g.kind = 'named'
+    ${data.refs ? sql`AND g.id IN (SELECT ${groupIdOf(sql`r.ref`)} FROM ${data.refs})` : sql``}
+  ORDER BY g.created_at DESC, g.id DESC
+  OFFSET ${data.offset} LIMIT ${data.limit + 1}
+)`
 
 type DirectoryRow = {
   groups: { id: string; slug: string | null; name: string; participantCount: number; createdAt: string }[]
-  totals: { currency: string; net: string }[]
+  totals: { currency: CurrencyCode; net: string }[]
   unbound: number
 }
 
@@ -50,96 +58,128 @@ type DirectoryRow = {
  * membership, private expenses included, so it matches the home total.
  */
 export async function listDirectory(db: Db, data: { principal: Principal; offset: number }) {
-  const offset = Math.max(Math.trunc(data.offset) || 0, 0)
+  const { offset } = data
   const result = await db.execute<DirectoryRow>(sql`
-    WITH mine AS (
-      SELECT m.group_id, m.participant_id, g.kind FROM memberships m JOIN groups g ON g.id = m.group_id
-      WHERE m.user_id = ${data.principal.userId} AND m.active
-    ),
-    page AS (
-      SELECT g.id, g.slug, g.name, g.created_at,
-        (SELECT count(*)::int FROM participants p WHERE p.group_id = g.id) AS participant_count
-      FROM mine JOIN groups g ON g.id = mine.group_id
-      WHERE mine.kind = 'named'
-      ORDER BY g.created_at DESC, g.id DESC
-      OFFSET ${offset} LIMIT ${PAGE + 1}
-    ),
-    nets AS (
-      SELECT e.currency, sum(parts.amount) AS net
-      FROM mine
-      JOIN (
-        SELECT expense_id, group_id, participant_id, amount FROM expense_payers
-        UNION ALL
-        SELECT expense_id, group_id, participant_id, -amount FROM expense_shares
-      ) parts ON parts.group_id = mine.group_id AND parts.participant_id = mine.participant_id
-      JOIN expenses e ON e.id = parts.expense_id AND e.deleted_at IS NULL
-      GROUP BY e.currency
-    )
+    WITH mine AS ${myMemberships(data.principal.userId)},
+    ${groupPage({ principal: data.principal, offset, limit: LIMITS.directoryPage })},
+    ${netsCte}
     SELECT
       coalesce((SELECT json_agg(json_build_object('id', id, 'slug', slug, 'name', name, 'participantCount', participant_count,
         'createdAt', ${iso(sql`created_at`)}) ORDER BY created_at DESC, id DESC) FROM page), '[]') AS groups,
-      coalesce((SELECT json_agg(json_build_object('currency', currency, 'net', net::text) ORDER BY currency) FROM nets), '[]') AS totals,
+      ${totalsJson} AS totals,
       (SELECT count(*)::int FROM mine WHERE participant_id IS NULL) AS unbound
   `)
   const [row] = result.rows
   if (!row) throw new Error('The directory query returned no row')
   return {
-    groups: row.groups.slice(0, PAGE),
-    nextOffset: row.groups.length > PAGE ? offset + PAGE : null,
-    totals: row.totals.map((t) => {
-      const currency = t.currency as CurrencyCode
-      return { currency, net: formatMinor({ amount: minor(BigInt(t.net)), currency }) }
-    }),
+    groups: row.groups.slice(0, LIMITS.directoryPage),
+    nextOffset: row.groups.length > LIMITS.directoryPage ? offset + LIMITS.directoryPage : null,
+    totals: formatTotals(row.totals),
     unboundGroupCount: row.unbound,
   }
 }
 
-type DetailsRow = {
-  kind: 'named' | 'private'
+type PageRow = {
   id: string
   slug: string | null
   name: string
   information: string
-  default_currency: string
   revision: number
-  role: 'admin' | 'member'
+  default_currency: CurrencyCode
+  created_at: string
+  participant_count: number
+}
+
+/**
+ * MCP's list_groups: a page of the caller's named groups, newest first, by
+ * offset, as the current app paged them. `groupIds` keeps only the groups it
+ * names (IDs or slugs), and one that is not the caller's denies the whole read.
+ */
+export async function listGroupPage(db: Db, data: { principal: Principal; offset: number; limit: number; groupIds?: readonly string[] }) {
+  const requested = data.groupIds ? [...new Set(data.groupIds.map(groupRef))] : undefined
+  if (requested?.length === 0) return { groups: [], hasMore: false }
+  const refs = requested && sql`unnest(ARRAY[${textList(requested)}]::text[]) AS r(ref)`
+  if (refs) {
+    const denied = await db.execute<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM ${refs}
+      WHERE NOT EXISTS (SELECT 1 FROM ${myMemberships(data.principal.userId)} m WHERE m.group_id = ${groupIdOf(sql`r.ref`)})`)
+    if (denied.rows[0]?.n !== 0) throw groupAccessDenied()
+  }
+  const result = await db.execute<PageRow>(sql`
+    WITH ${groupPage({ principal: data.principal, offset: data.offset, limit: data.limit, ...(refs ? { refs } : {}) })}
+    SELECT id, slug, name, information, revision, default_currency, ${iso(sql`created_at`)} AS created_at, participant_count
+    FROM page ORDER BY page.created_at DESC, page.id DESC`)
+  return {
+    groups: result.rows.slice(0, data.limit).map((g) => ({
+      id: g.id,
+      slug: g.slug,
+      name: g.name,
+      information: g.information,
+      revision: g.revision,
+      defaultCurrency: g.default_currency,
+      createdAt: g.created_at,
+      participantCount: g.participant_count,
+    })),
+    hasMore: result.rows.length > data.limit,
+  }
+}
+
+type DetailsRow = {
+  kind: GroupKind
+  id: string
+  slug: string | null
+  name: string
+  information: string
+  default_currency: CurrencyCode
+  revision: number
+  role: Role
   participant_id: string | null
   active: boolean
   people: {
     id: string
     name: string
     memberEmail: string | null
-    memberRole: 'admin' | 'member' | null
+    memberRole: Role | null
     userId: string | null
     invitedEmail: string | null
     inExpenses: boolean
     reserved: boolean
   }[]
-  unbound: { userId: string; name: string; email: string; role: 'admin' | 'member' }[]
+  unbound: { userId: string; name: string; email: string; role: Role }[]
+  members: { userId: string; name: string; email: string; role: Role; participantId: string | null }[]
   invitations: { id: string; email: string; participantId: string | null; participantName: string | null; expiresAt: string }[]
+  context_expense_id: string | null
+  created: string
 }
 
-/** The Settings tab in one statement that also checks the caller's membership. Only admins see invitations. */
-export async function getGroupDetails(db: Db, data: { principal: Principal; group: string }) {
+/** Whether participant `person` pays or shares in any expense; such a person cannot be removed. */
+const inExpenses = (person: SQL) =>
+  sql`(EXISTS (SELECT 1 FROM expense_payers x WHERE x.participant_id = ${person}) OR EXISTS (SELECT 1 FROM expense_shares x WHERE x.participant_id = ${person}))`
+
+/** Whether participant `person` of group `group` is bound to an account or invited; such a person cannot be renamed or removed. */
+const reserved = (data: { group: SQL; person: SQL }) =>
+  sql`(EXISTS (SELECT 1 FROM memberships r WHERE r.group_id = ${data.group} AND r.participant_id = ${data.person})
+    OR EXISTS (SELECT 1 FROM invitations r WHERE r.group_id = ${data.group} AND r.participant_id = ${data.person}))`
+
+/**
+ * The Settings tab and MCP's get_group in one statement that also checks the
+ * caller's membership. Only admins see invitations.
+ */
+export async function getGroupDetails(db: Db, data: { principal: Principal; groupId: string }) {
   const result = await db.execute<DetailsRow>(sql`
-    WITH g AS (
-      SELECT g.id, g.kind, g.slug, g.name, g.information, g.default_currency, g.revision, m.role, m.participant_id, m.active
-      FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
-      WHERE g.id = agentsplit_group_id(${data.group})
-    ),
+    WITH ${memberCte(data)},
     pending AS (
       SELECT i.id, i.email, i.participant_id, i.participant_name, i.expires_at FROM invitations i, g
-      WHERE i.group_id = g.id AND g.role = 'admin' AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > now()
+      WHERE i.group_id = g.id AND g.role = 'admin' AND ${listedInvitation({ i: sql`i`, kind: sql`g.kind` })}
     )
-    SELECT g.*,
+    SELECT g.*, ${iso(sql`g.created_at`)} AS created,
+      (SELECT pc.expense_id FROM private_contexts pc WHERE pc.group_id = g.id) AS context_expense_id,
       coalesce((SELECT json_agg(json_build_object(
           'id', p.id, 'name', d.name,
           'memberEmail', u.email, 'memberRole', m.role, 'userId', m.user_id,
           'invitedEmail', (SELECT pi.email FROM pending pi WHERE pi.participant_id = p.id LIMIT 1),
-          'inExpenses', EXISTS (SELECT 1 FROM expense_payers x WHERE x.participant_id = p.id)
-            OR EXISTS (SELECT 1 FROM expense_shares x WHERE x.participant_id = p.id),
-          'reserved', EXISTS (SELECT 1 FROM memberships r WHERE r.group_id = g.id AND r.participant_id = p.id)
-            OR EXISTS (SELECT 1 FROM invitations r WHERE r.group_id = g.id AND r.participant_id = p.id)
+          'inExpenses', ${inExpenses(sql`p.id`)},
+          'reserved', ${reserved({ group: sql`g.id`, person: sql`p.id` })}
         ) ORDER BY p.created_at, p.id)
         FROM participants p
         JOIN (${displayNames(sql`g.id`)}) d ON d.id = p.id
@@ -149,20 +189,22 @@ export async function getGroupDetails(db: Db, data: { principal: Principal; grou
       coalesce((SELECT json_agg(json_build_object('userId', u.id, 'name', u.name, 'email', u.email, 'role', m.role) ORDER BY m.created_at, u.id)
         FROM memberships m JOIN "user" u ON u.id = m.user_id
         WHERE m.group_id = g.id AND m.active AND m.participant_id IS NULL), '[]') AS unbound,
+      coalesce((SELECT json_agg(json_build_object('userId', u.id, 'name', u.name, 'email', u.email, 'role', m.role, 'participantId', m.participant_id)
+          ORDER BY m.created_at, u.id)
+        FROM memberships m JOIN "user" u ON u.id = m.user_id WHERE m.group_id = g.id AND m.active), '[]') AS members,
       coalesce((SELECT json_agg(json_build_object('id', id, 'email', email, 'participantId', participant_id, 'participantName', participant_name,
           'expiresAt', ${iso(sql`expires_at`)}) ORDER BY expires_at, id)
         FROM pending), '[]') AS invitations
     FROM g
   `)
-  const [g] = result.rows
-  if (!g?.active) throw groupAccessDenied()
+  const g = requireActive(result.rows[0])
   return {
     kind: g.kind,
     id: g.id,
     slug: g.slug,
     name: g.name,
     information: g.information,
-    defaultCurrency: g.default_currency as CurrencyCode,
+    defaultCurrency: g.default_currency,
     revision: g.revision,
     role: g.role,
     participantId: g.participant_id,
@@ -178,16 +220,15 @@ export async function getGroupDetails(db: Db, data: { principal: Principal; grou
     })),
     unboundMembers: g.unbound,
     invitations: g.invitations,
+    /** Every active member in the order they joined, with their account name; MCP's get_group lists them. */
+    members: g.members,
+    /** The expense of a private context; null for a named group. */
+    contextExpenseId: g.context_expense_id,
+    createdAt: g.created,
   }
 }
 
 // ---------- writes: settings and people ----------
-
-/** The stored form of an invitation token: hex SHA-256, as in the current app, so imported invitations keep working. */
-export const invitationTokenHash = (token: string) => sha256Hex(token)
-
-/** The secret of an invitation link: 32 random bytes in base64url without padding, 43 characters. */
-export const newInvitationToken = randomToken
 
 /** The normalized slug, null to remove it, or an Invalid error. */
 function checkedSlug(raw: string | null): string | null {
@@ -210,37 +251,12 @@ async function claimSlug(tx: Db, data: { slug: string; groupId: string }) {
   await tx.delete(groupSlugHistory).where(eq(groupSlugHistory.slug, data.slug))
 }
 
-/**
- * The history snapshot of a group and its participants, in the given order.
- * The caller reads them; this only builds the shape.
- */
-export function groupSnapshotOf<C extends string>(data: {
-  group: { id: string; name: string; slug: string | null; information: string; defaultCurrency: C; revision: number }
-  participants: readonly { id: string; name: string }[]
-}) {
-  const { group } = data
-  return {
-    schemaVersion: 2 as const,
-    kind: 'group' as const,
-    group: {
-      id: group.id,
-      name: group.name,
-      slug: group.slug,
-      information: group.information,
-      // The field name the history reader expects (V2GroupSnapshot in src/shared/history.ts).
-      currency: group.defaultCurrency,
-      revision: group.revision,
-      participants: data.participants,
-    },
-  }
-}
-
 /** The group and its participants as they are now, for a history snapshot. */
-async function groupSnapshot(tx: Db, groupId: string) {
+async function currentSnapshot(tx: Db, groupId: string) {
   const [group] = await tx.select().from(groups).where(eq(groups.id, groupId))
   if (!group) throw new NotFound({ entity: 'group', id: groupId })
   const people = await tx.execute<{ id: string; name: string }>(sql`${displayNames(sql`${groupId}`)} ORDER BY p.created_at, p.id`)
-  return groupSnapshotOf({ group, participants: people.rows })
+  return groupSnapshot({ group, participants: people.rows })
 }
 
 export async function createGroup(
@@ -254,39 +270,46 @@ export async function createGroup(
     // Fair use. Under SERIALIZABLE, two creates that both read the count cannot both commit past it.
     const created = await tx.execute<{ count: number }>(sql`SELECT ${groupsCreated(data.principal.userId)} AS count`)
     if ((created.rows[0]?.count ?? 0) >= LIMITS.groupsCreated) throw new Invalid({ message: groupLimitMessage })
-    const creator = { id: randomId(), name: data.principal.name.trim().slice(0, 50) || 'Member' }
+    const creator = { id: randomId(), name: participantNameOf(data.principal.name) }
     const people = [creator, ...data.group.participants.map((name) => ({ id: randomId(), name }))]
     if (people.length > LIMITS.participantsPerGroup) throw new Invalid({ message: participantLimitMessage, field: 'participants' })
     if (new Set(people.map((p) => p.name)).size !== people.length)
       throw new Invalid({ message: 'The creator is added automatically. Give each other participant a distinct name.', field: 'participants' })
     const slug = checkedSlug(data.group.slug)
     if (slug) await claimSlug(tx, { slug, groupId })
-    await tx.insert(groups).values({
-      id: groupId,
-      kind: 'named',
-      slug,
-      name: data.group.name,
-      information: data.group.information,
-      defaultCurrency: data.group.defaultCurrency,
-      revision: 1,
-    })
-    // One statement per row keeps created_at in insertion order, so the creator is listed first.
-    for (const person of people) await tx.insert(participants).values({ ...person, groupId, createdAt: sql`clock_timestamp()` })
-    await tx.insert(memberships).values({ userId: data.principal.userId, groupId, role: 'admin', participantId: creator.id })
-    await tx.insert(activities).values({
-      id: randomId(),
-      groupId,
-      type: 'create_group',
-      groupRevision: 1,
-      data: data.group.name,
-      snapshot: await groupSnapshot(tx, groupId),
-      ...actor(data.principal),
+    await writeNewGroup(tx, {
+      group: { id: groupId, slug, name: data.group.name, information: data.group.information, defaultCurrency: data.group.defaultCurrency },
+      people,
+      members: [{ userId: data.principal.userId, participantId: creator.id, role: 'admin' }],
+      creator: data.principal,
     })
     return { id: groupId, slug, revision: 1 }
   })
 }
 
-/** Locks the group row for this transaction and returns it. */
+/**
+ * The rows of a new named group at revision 1: the group, its people in the
+ * given order, the memberships and the create_group event of `creator`.
+ * createGroup writes them after its checks; the test kit's seedGroup writes
+ * them with fixed IDs.
+ */
+export async function writeNewGroup(
+  tx: Db,
+  data: {
+    group: { id: string; slug: string | null; name: string; information: string; defaultCurrency: CurrencyCode }
+    people: readonly { id: string; name: string }[]
+    members: readonly { userId: string; participantId: string | null; role: Role }[]
+    creator: Principal
+  },
+): Promise<void> {
+  const groupId = data.group.id
+  await tx.insert(groups).values({ ...data.group, kind: 'named', revision: 1 })
+  // One statement per row keeps created_at in insertion order, so the creator is listed first.
+  for (const person of data.people) await tx.insert(participants).values({ ...person, groupId, createdAt: sql`clock_timestamp()` })
+  if (data.members.length) await tx.insert(memberships).values(data.members.map((m) => ({ ...m, groupId })))
+  await recordGroupEvent(tx, { groupId, type: 'create_group', principal: data.creator, groupRevision: 1, data: data.group.name, snapshot: await currentSnapshot(tx, groupId) })
+}
+
 async function lockGroup(tx: Db, groupId: string) {
   const [row] = await tx.select().from(groups).where(eq(groups.id, groupId)).for('update')
   if (!row) throw new NotFound({ entity: 'group', id: groupId })
@@ -301,10 +324,9 @@ async function lockGroup(tx: Db, groupId: string) {
  */
 export async function updateGroup(
   tx: Db,
-  data: { principal: Principal; group: string; expectedRevision: number; idempotencyKey: string | null; changes: ChangesInput },
+  data: { principal: Principal; groupId: string; expectedRevision: number; idempotencyKey: string | null; changes: ChangesInput },
 ): Promise<{ id: string; slug: string | null; revision: number }> {
-  const { groupId, role } = await requireMember(tx, data)
-  if (role !== 'admin') throw new Forbidden({ message: 'Only group admins can edit group settings' })
+  const { groupId } = await requireMember(tx, { ...data, admin: 'Only group admins can edit group settings' })
   const request = { op: 'update_group', groupId, expectedRevision: data.expectedRevision, changes: data.changes }
   return idempotent(tx, { principal: data.principal, key: data.idempotencyKey, request }, async () => {
     const group = await lockGroup(tx, groupId)
@@ -334,14 +356,7 @@ export async function updateGroup(
         ...(changes.defaultCurrency === undefined ? {} : { defaultCurrency: changes.defaultCurrency }),
       })
       .where(eq(groups.id, groupId))
-    await tx.insert(activities).values({
-      id: randomId(),
-      groupId,
-      type: 'update_group',
-      groupRevision: revision,
-      snapshot: await groupSnapshot(tx, groupId),
-      ...actor(data.principal),
-    })
+    await recordGroupEvent(tx, { groupId, type: 'update_group', principal: data.principal, groupRevision: revision, snapshot: await currentSnapshot(tx, groupId) })
     return { id: groupId, slug, revision }
   })
 }
@@ -349,10 +364,8 @@ export async function updateGroup(
 async function replacePeople(tx: Db, data: { groupId: string; people: NonNullable<ChangesInput['participants']> }) {
   const current = await tx.execute<{ id: string; name: string; reserved: boolean; in_expenses: boolean }>(sql`
     SELECT d.id, d.name,
-      EXISTS (SELECT 1 FROM memberships r WHERE r.group_id = ${data.groupId} AND r.participant_id = d.id)
-        OR EXISTS (SELECT 1 FROM invitations r WHERE r.group_id = ${data.groupId} AND r.participant_id = d.id) AS reserved,
-      EXISTS (SELECT 1 FROM expense_payers x WHERE x.participant_id = d.id)
-        OR EXISTS (SELECT 1 FROM expense_shares x WHERE x.participant_id = d.id) AS in_expenses
+      ${reserved({ group: sql`${data.groupId}`, person: sql`d.id` })} AS reserved,
+      ${inExpenses(sql`d.id`)} AS in_expenses
     FROM (${displayNames(sql`${data.groupId}`)}) d
   `)
   // Fair use. A group that is over the limit already can still rename or remove people.
@@ -396,18 +409,11 @@ type AccessResult = {
   invitation: { id: string; email: string; participantId: string | null; participantName: string | null; expiresAt: string; url: string | null } | null
 }
 
-/** The group ID an invitation URL names, or an error. Only `<this origin>/invite/<token>` links count (P-ACCESS-42). */
-async function invitationFromUrl(tx: Db, data: { shareUrl: string; baseUrl: string }) {
-  let url: URL | null = null
-  try {
-    url = new URL(data.shareUrl)
-  } catch {
-    url = null
-  }
-  const token = url?.pathname.match(/^\/invite\/([A-Za-z0-9_-]{43})$/)?.[1]
-  if (!url || url.origin !== new URL(data.baseUrl).origin || url.username || url.password || !token)
-    throw new Invalid({ message: 'Use an email-bound invitation link from this app. A group URL does not grant access.', field: 'shareUrl' })
-  const [invitation] = await tx.select().from(invitations).where(eq(invitations.tokenHash, invitationTokenHash(token)))
+/** The invitation that a join's link names, or an error. */
+async function invitationOfLink(tx: Db, data: { shareUrl: string; baseUrl: string }) {
+  const token = tokenOfLink(data)
+  if (!token) throw new Invalid({ message: 'Use an email-bound invitation link from this app. A group URL does not grant access.', field: 'shareUrl' })
+  const invitation = await findInvitation(tx, token)
   if (!invitation) throw new NotFound({ entity: 'invitation', id: 'token' })
   return invitation
 }
@@ -437,32 +443,21 @@ async function applyAccess(
 ): Promise<{ result: AccessResult; url: string | null }> {
   const input = data.request
   const me = data.principal
-  const pendingInvitation = input.action === 'join' ? await invitationFromUrl(tx, { shareUrl: input.shareUrl, baseUrl: data.baseUrl }) : null
-  const groupId = pendingInvitation?.groupId ?? (input.action === 'join' ? null : (await groupIdOf(tx, input.groupId)))
+  const pendingInvitation = input.action === 'join' ? await invitationOfLink(tx, { shareUrl: input.shareUrl, baseUrl: data.baseUrl }) : null
+  const groupId = pendingInvitation?.groupId ?? (input.action === 'join' ? null : (await resolveGroup(tx, input.groupId)))
   if (!groupId) throw groupAccessDenied()
   const group = await lockGroup(tx, groupId)
   const [membership] = await tx.select().from(memberships).where(and(eq(memberships.userId, me.userId), eq(memberships.groupId, groupId)))
   const done = (joined = true): { result: AccessResult; url: null } => ({ result: { groupId, joined, invitation: null }, url: null })
   const log = (entry: { type: 'join_group' | 'leave_group' | 'update_group'; data: string; participantId?: string | null }) =>
-    tx.insert(activities).values({ id: randomId(), groupId, type: entry.type, data: entry.data, participantId: entry.participantId ?? null, ...actor(me) })
-
-  if (group.kind === 'private') {
-    if (input.action === 'remove_member' || input.action === 'set_role') throw new Forbidden({ message: 'Private expense membership cannot be reassigned.' })
-    if (input.action === 'invite' || input.action === 'bind_member') {
-      const [person] = await tx.execute<{ email: string }>(
-        sql`SELECT email FROM private_people WHERE group_id = ${groupId} AND participant_id = ${input.participantId}`,
-      ).then((r) => r.rows)
-      if (!person || person.email !== input.email.trim().toLowerCase())
-        throw new Forbidden({ message: 'Only the original people may access this private expense.' })
-    }
-  }
+    recordGroupEvent(tx, { groupId, principal: me, ...entry })
 
   if (input.action === 'join') {
     const invitation = pendingInvitation
     if (!invitation) throw groupAccessDenied()
-    if (invitation.revokedAt || invitation.expiresAt <= new Date() || invitation.email !== me.email.toLowerCase())
-      throw new Forbidden({ message: 'This invitation is expired, revoked, or addressed to a different email' })
-    if (!invitation.participantId)
+    const problem = invitationProblem({ invitation, email: me.email })
+    if (problem === 'closed') throw new Forbidden({ message: 'This invitation is expired, revoked, or addressed to a different email' })
+    if (problem === 'no-participant' || !invitation.participantId)
       throw new Invalid({ message: 'This older invitation has no participant identity. Ask an admin to issue a new invitation.', reason: 'state' })
     if (membership?.participantId && membership.participantId !== invitation.participantId)
       throw new Invalid({ message: 'Your account is already tied to another participant in this group.', reason: 'state' })
@@ -482,15 +477,25 @@ async function applyAccess(
         .set({ active: true, participantId: invitation.participantId, role: membership.active ? membership.role : 'member' })
         .where(and(eq(memberships.userId, me.userId), eq(memberships.groupId, groupId)))
     else await tx.insert(memberships).values({ userId: me.userId, groupId, role: 'member', participantId: invitation.participantId })
-    await log({ type: 'join_group', data: `join: ${me.name}`, participantId: invitation.participantId })
+    await log({ type: 'join_group', data: accessText.joined(me.name), participantId: invitation.participantId })
     return done()
   }
 
   if (!membership?.active) throw groupAccessDenied()
+  if (group.kind === 'private') {
+    if (input.action === 'remove_member' || input.action === 'set_role') throw new Forbidden({ message: 'Private expense membership cannot be reassigned.' })
+    if (input.action === 'invite' || input.action === 'bind_member') {
+      const [person] = await tx.execute<{ email: string }>(
+        sql`SELECT email FROM private_people WHERE group_id = ${groupId} AND participant_id = ${input.participantId}`,
+      ).then((r) => r.rows)
+      if (!person || person.email !== normalizeEmail(input.email))
+        throw new Forbidden({ message: 'Only the original people may access this private expense.' })
+    }
+  }
   if (input.action !== 'leave' && membership.role !== 'admin') throw new Forbidden({ message: 'Only group admins can manage access' })
 
   if (input.action === 'invite' || input.action === 'bind_member') {
-    const email = input.email.trim().toLowerCase()
+    const email = normalizeEmail(input.email)
     const [participant] = await tx.select().from(participants).where(and(eq(participants.id, input.participantId), eq(participants.groupId, groupId)))
     if (!participant) throw new Invalid({ message: 'Choose a participant in this group.', field: 'participantId' })
     const [target] = await tx.select().from(user).where(sql`lower(${user.email}) = ${email}`)
@@ -502,17 +507,8 @@ async function applyAccess(
     const [claimed] = await tx.select({ userId: memberships.userId }).from(memberships).where(and(eq(memberships.groupId, groupId), eq(memberships.participantId, participant.id)))
     if (claimed && claimed.userId !== target?.id) throw new Invalid({ message: 'That participant is already tied to another account.', reason: 'state' })
     const [pending] = await tx
-      .select({ id: invitations.id })
-      .from(invitations)
-      .where(
-        and(
-          eq(invitations.groupId, groupId),
-          isNull(invitations.acceptedAt),
-          isNull(invitations.revokedAt),
-          gt(invitations.expiresAt, new Date()),
-          or(eq(invitations.email, email), eq(invitations.participantId, participant.id)),
-        ),
-      )
+      .execute(sql`SELECT 1 FROM invitations i WHERE i.group_id = ${groupId} AND ${openInvitation(sql`i`)} AND (i.email = ${email} OR i.participant_id = ${participant.id}) LIMIT 1`)
+      .then((result) => result.rows)
     if (pending) throw new Invalid({ message: 'An invitation already reserves this email or participant. Revoke it before making another.', reason: 'state' })
 
     if (input.action === 'bind_member') {
@@ -520,54 +516,30 @@ async function applyAccess(
         throw new Invalid({ message: 'The verified email must match the existing member account.' })
       if (targetAccess.participantId) throw new Invalid({ message: 'This member already has a fixed identity.', reason: 'state' })
       await tx.update(memberships).set({ participantId: participant.id }).where(and(eq(memberships.userId, target.id), eq(memberships.groupId, groupId)))
-      await log({ type: 'update_group', data: `Member identity bound: ${target.name} as ${participant.name}`, participantId: participant.id })
+      await log({ type: 'update_group', data: accessText.bound({ member: target.name, participant: participant.name }), participantId: participant.id })
       return done()
     }
     if (targetAccess?.active) throw new Invalid({ message: 'That account is already a member. Bind its identity in member settings if needed.', reason: 'state' })
 
-    const token = newInvitationToken()
-    const invitation = {
-      id: randomId(),
+    const { url, ...invitation } = await createInvitation(tx, {
       groupId,
       email,
       participantId: participant.id,
       participantName: participant.name,
-      tokenHash: invitationTokenHash(token),
       createdBy: me.userId,
-      expiresAt: new Date(Date.now() + INVITATION_DAYS * 24 * 60 * 60 * 1000),
-    }
-    await tx.insert(invitations).values(invitation)
-    await log({ type: 'update_group', data: `Invitation created for ${participant.name}`, participantId: participant.id })
-    return {
-      result: {
-        groupId,
-        joined: true,
-        invitation: {
-          id: invitation.id,
-          email,
-          participantId: participant.id,
-          participantName: participant.name,
-          expiresAt: invitation.expiresAt.toISOString(),
-          url: null,
-        },
-      },
-      url: new URL(`/invite/${token}`, data.baseUrl).href,
-    }
+      baseUrl: data.baseUrl,
+    })
+    await log({ type: 'update_group', data: accessText.invitation({ action: 'created', participantName: participant.name }), participantId: participant.id })
+    return { result: { groupId, joined: true, invitation: { ...invitation, url: null } }, url }
   }
 
   if (input.action === 'revoke_invitation') {
-    const revoked = await tx
-      .update(invitations)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(invitations.id, input.invitationId), eq(invitations.groupId, groupId), isNull(invitations.acceptedAt), isNull(invitations.revokedAt)))
-      .returning({ participantName: invitations.participantName })
-    const [row] = revoked
-    if (!row) throw new NotFound({ entity: 'invitation', id: input.invitationId })
-    await log({ type: 'update_group', data: `Invitation revoked${row.participantName ? ` for ${row.participantName}` : ''}` })
+    const [row] = await revokeInvitations(tx, { groupId, invitationId: input.invitationId })
+    if (!row) throw new NotFound({ entity: 'pendingInvitation', id: input.invitationId })
+    await log({ type: 'update_group', data: accessText.invitation({ action: 'revoked', participantName: row.participantName }) })
     return done()
   }
 
-  // leave, remove_member, set_role
   const targetUserId = input.action === 'leave' ? me.userId : input.userId
   const [target] = await tx
     .select({ role: memberships.role, active: memberships.active, participantId: memberships.participantId, name: user.name })
@@ -586,42 +558,28 @@ async function applyAccess(
   const where = and(eq(memberships.userId, targetUserId), eq(memberships.groupId, groupId))
   if (nextRole) {
     await tx.update(memberships).set({ role: nextRole }).where(where)
-    await log({ type: 'update_group', data: `set_role: ${target.name} is now ${nextRole === 'admin' ? 'an admin' : 'a member'}`, participantId: target.participantId })
+    await log({ type: 'update_group', data: accessText.role({ name: target.name, role: nextRole }), participantId: target.participantId })
     return done()
   }
   await tx.update(memberships).set({ active: false }).where(where)
   if (input.action === 'leave') {
-    await log({ type: 'leave_group', data: `leave: ${target.name}`, participantId: target.participantId })
+    await log({ type: 'leave_group', data: accessText.left(target.name), participantId: target.participantId })
     return done(false)
   }
-  await log({ type: 'update_group', data: `remove_member: ${target.name}`, participantId: target.participantId })
+  await log({ type: 'update_group', data: accessText.removed(target.name), participantId: target.participantId })
   return done()
 }
 
-async function groupIdOf(tx: Db, ref: string) {
-  const result = await tx.execute<{ id: string | null }>(sql`SELECT agentsplit_group_id(${ref}) AS id`)
+async function resolveGroup(tx: Db, ref: string) {
+  const result = await tx.execute<{ id: string | null }>(sql`SELECT ${groupIdOfInput(ref)} AS id`)
   return result.rows[0]?.id ?? null
 }
 
-/** What the invite page shows to the signed-in visitor. Anything but a valid invitation for this account is "unavailable". */
+/** What the invite page shows to the signed-in visitor. Anything but a usable invitation for this account is "unavailable". */
 export async function previewInvitation(db: Db, data: { principal: Principal; token: string }) {
-  if (!INVITATION_TOKEN.test(data.token)) return { status: 'unavailable' as const }
-  const [row] = await db
-    .select({
-      kind: groups.kind,
-      groupName: groups.name,
-      participantName: invitations.participantName,
-      participantId: invitations.participantId,
-      email: invitations.email,
-      expiresAt: invitations.expiresAt,
-      revokedAt: invitations.revokedAt,
-    })
-    .from(invitations)
-    .innerJoin(groups, eq(groups.id, invitations.groupId))
-    .where(eq(invitations.tokenHash, invitationTokenHash(data.token)))
-    .orderBy(asc(invitations.id))
-    .limit(1)
-  if (!row || row.revokedAt || row.expiresAt <= new Date() || row.email !== data.principal.email.toLowerCase() || !row.participantId)
-    return { status: 'unavailable' as const }
-  return { status: 'valid' as const, kind: row.kind, groupName: row.groupName, participantName: row.participantName ?? '' }
+  const invitation = await findInvitation(db, data.token)
+  if (!invitation || invitationProblem({ invitation, email: data.principal.email })) return { status: 'unavailable' as const }
+  const [group] = await db.select({ kind: groups.kind, name: groups.name }).from(groups).where(eq(groups.id, invitation.groupId))
+  if (!group) return { status: 'unavailable' as const }
+  return { status: 'valid' as const, kind: group.kind, groupName: group.name, participantName: invitation.participantName ?? '' }
 }

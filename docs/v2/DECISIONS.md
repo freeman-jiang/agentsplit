@@ -7,7 +7,7 @@
 - Groups B, C, E and G: approved as recommended. Group D: keep as recommended.
 - P-BAL-93, payments: **keep the server permissive.** Negative amounts stay allowed for expenses and payments, and a payment may involve several people. The ledger must model every money scenario: one person pays and the others owe them, or one person receives money (a refund or a reward) and everyone, possibly including them, shares it.
 - Group F, translations: **English only.** v2 does not port the locale files.
-- Hosting: **stay on Workers Free** and keep each request within the CPU budget.
+- Hosting: **stay on Workers Free** and keep each request within the CPU budget. (Replaced by "Hosting changes to Coolify" below.)
 - P-FEED-19 (lead, under the approval of group C): "involving me" defaults to true in the UI and in the API, so agents see what people see. The MCP tool description states the default.
 - P-EXP-20 (Freeman, 2026-11-05): refetch on every visit, as the current app does, instead of a 30-second cache. A screen shows the data the tab already holds at once and replaces it with the fresh answer when it arrives.
 - MCP group currency (Freeman, 2026-11-05): `create_group` and `update_group` refuse a currency symbol that several currencies use, such as "$", and ask the agent for `currencyCode`. A symbol that only one currency uses still works.
@@ -21,17 +21,18 @@
   - Browser-visible differences (decided after the side-by-side images in `docs/v2/parity/diffs/`): restore one-click Google sign-in on the landing page (P-AUTH-59, P-AUTH-60) and the current app's group URLs, `/groups/<id>/…` for a group without a slug and `/<slug>` kept as typed (P-GROUP-98, P-GROUP-100, P-PWA-21, P-PWA-23). Keep as v2 has them: one receipt image instead of a carousel (P-RECEIPT-06), "share 30.00" on by-amount revisions (P-HIST-72), unknown URLs redirect to the groups page (P-GROUP-101, P-GROUP-102, P-PWA-25, P-PWA-26), search also matches notes (P-EXP-11), and the private form hides "Save as default splitting options" (P-UNGROUP-15). Item 2 (Save and Cancel return) showed no difference.
 - **Hosting changes to Coolify** (Freeman, 2026-11-05): "if it doesn't work still it's fine, let's just host everything on Coolify, less things to manage, everything's there." It did not work: writes stay at about 33 ms of CPU after the statement cut, against Workers Free's 10 ms. So v2 runs on Coolify on Oracle, like the current app, and the Workers Free CPU budget no longer applies. This replaces the Cloudflare Worker, Hyperdrive and R2 decisions above. PLAN.md and CUTOVER.md are updated to match.
 - Coolify preview (Freeman, 2026-11-05): create a separate Coolify application on the Oracle host for the v2 preview: branch `v2`, synthetic data only, its own Postgres and Garage, on a preview domain. It does not touch the production application. Remove it after the cutover unless Freeman keeps it.
-- Workers Free CPU (Freeman, 2026-11-05): accept the current cost and cut over on Workers Free. Reads cost about 8 ms of CPU before their rows; pages of 30 expenses sit near 13 ms at p50 (BASELINE.md). After the cutover, watch the Worker's errors and CPU, and serve the hottest reads through plain JSON routes instead of Effect RPC only if errors appear.
+- Workers Free CPU (Freeman, 2026-11-05; replaced by "Hosting changes to Coolify" above): accept the current cost and cut over on Workers Free. Reads cost about 8 ms of CPU before their rows; pages of 30 expenses sit near 13 ms at p50 (BASELINE.md). After the cutover, watch the Worker's errors and CPU, and serve the hottest reads through plain JSON routes instead of Effect RPC only if errors appear.
 - Payments store category 1 (Payment) on every path (P-BAL-92, approved in group C).
+- Reserved slugs (lead, 2026-11-07): v2 also reserves `assets`, which the current app's list (P-GROUP-94) lacks. The client build serves its chunks under `/assets/`, so a group with that slug would get no pages. Production has no group with that slug.
 - Revision snapshots record the expense's receipts, so history shows them (history area question 1).
-- Retries of a private-expense create or an invitation renewal return Conflict or `url: null` instead of a stored result, because the response holds a secret link that is never stored. An agent renews the invitation to get a new link.
+- A retried private-expense create returns Conflict instead of a stored result, because the response holds secret links that are never stored. An invitation renewal takes no idempotency key: a retry issues a new link and revokes the previous one. An agent renews the invitation to get a new link.
 
 ## A. Decided by PLAN.md (no further approval needed)
 
 The plan's invariants require these changes. v2 already implements most of them.
 
 - Money and dates: integer minor units (P-DB-32), a complete conversion or none (P-DB-35), payer and share sums checked by the database (P-DB-36), precision fixed by the integer type (P-DB-37), `timestamptz` (P-DB-145), calendar `date` for recurrence (P-DB-66), a non-null recurrence (P-DB-46), a role limited to admin or member (P-DB-95), and UTC on every server (P-DB-144).
-- History stays permanent; no migration disables history triggers (P-DB-131). Only the importer writes revision 0 rows (P-DB-15). An expense never moves between groups (P-DB-09; enforced by the revision trigger).
+- History stays permanent; no migration disables history triggers (P-DB-131). Only the one-time importer wrote revision 0 rows (P-DB-15); it is gone, and no code path writes them now. An expense never moves between groups (P-DB-09; enforced by the revision trigger).
 - The signing keys are imported with the production secret (P-DB-128).
 - Stale tests and docs are corrected, not ported (P-MCP-173, P-MCP-174, P-MCP-175). `postinstall` no longer migrates (P-PWA-48).
 - Authorize keeps redirecting only real browser navigations (P-MCP-118). Edits and deletes keep requiring `expectedRevision` (P-HIST-24).
@@ -88,3 +89,12 @@ Decision: option 2, English only.
 ## G. Minor wording and leftovers (recommended: fix as part of the rewrite)
 
 P-AUTH-03 (client errors reported as 503), P-AUTH-30 (bootstrap errors on every session lookup), P-AUTH-61 (stale AUTH.md), P-GROUP-07 and P-GROUP-08 (copy), P-GROUP-19 (link prompt), P-GROUP-50 (untranslated tab label), P-EXP-97 (prefill link), P-HIST-68 and P-HIST-75 (log wording), P-EXPORT-15 (export file name), P-PWA-31 (robots.txt), P-MCP-56 (rate-limit answer is 401 instead of 429), P-MCP-158 (connection order), P-DB-70 (receipt rows immutable by trigger).
+
+## H. Database rules changed after the cutover
+
+- 0013 added CHECKs for `groups.kind`, `expenses.kind` and `activities.source` with the lists of `src/shared/vocabulary.ts`. The columns had none; every stored row held a listed value.
+- 0014 dropped the 0006 trigger that filled `recurring_links.anchor_day` on insert. Only the one-time importer needed it, and the importer is gone (owner decision); the column stays NOT NULL, so a link without the day is still refused.
+- 0015 made the reference from `private_contexts` to its expense DEFERRABLE INITIALLY DEFERRED, so ungrouped creation writes the context before the expense and the expense write checks the private rules. The reference is still checked, at commit instead of at the insert.
+- 0017 let a share weight carry a sign, so that a negative amount split by amount (a refund) can be stored (P-BAL-93, P-MONEY-52). A CHECK cannot see the expense, so 0017 allowed a sign in every split mode. 0019 restores the rest of the rule at commit: a signed share weight is refused unless the expense is split by amount and its amount is negative. The form of a weight stays a CHECK (`1.` and `--1` are refused).
+- 0018 rewrote the payer weight CHECK of 0001 in the text that `db/schema/app.ts` declares. It accepts the same values.
+

@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
-/** The server is started by scripts/e2e.sh: the production build on wrangler dev, with a fresh database. */
+/** scripts/e2e.sh starts the server: the production build (or, with --compose, the image) on a fresh database. */
 export default defineConfig({
   testDir: './e2e',
   outputDir: './test-results',
@@ -10,7 +10,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: [['list']],
   use: {
-    baseURL: process.env['E2E_BASE_URL'] ?? 'http://localhost:5190',
+    baseURL: process.env['E2E_BASE_URL'],
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

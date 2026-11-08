@@ -2,7 +2,8 @@ import { useMatches } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import type { FileRoutesById } from '~/client/routeTree.gen'
 
-const DEFAULT_TITLE = 'AgentSplit · Shared expenses, simply settled'
+/** index.html's title, read before any route sets its own. */
+const DEFAULT_TITLE = document.title
 
 /**
  * The title of every route, as in the current app (P-GROUP-48). `null` keeps
@@ -46,7 +47,7 @@ const TITLES: Record<Exclude<keyof FileRoutesById, '__root__'>, string | null> =
 const hasName = (value: unknown): value is { name: string } =>
   typeof value === 'object' && value !== null && 'name' in value && typeof value.name === 'string'
 
-/** Sets the document title from the deepest matched route. Used once, in the root layout. */
+/** Sets the document title from the deepest matched route. */
 export function useDocumentTitle() {
   const title = useMatches({
     select: (matches) => {

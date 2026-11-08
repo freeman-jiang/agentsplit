@@ -3,16 +3,16 @@
 import { McpServer, type StandardSchemaWithJSON, type Tool } from '@modelcontextprotocol/server'
 import { Result } from 'effect'
 import type { Bucket } from '../bucket'
-import { serializable, type Db } from '../db'
-import { assertOAuthWrite, type McpPrincipal } from './authenticate'
-import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from './constants'
-import { INSTRUCTIONS } from './instructions'
-import { tooManyWritesMessage } from '../../shared/limits'
-import { takeWrite } from '../rate-limit'
-import { errorBody, ToolError, type McpTool } from './registry'
+import type { McpPrincipal } from '../auth/authenticate'
+import { assertOAuthWrite } from '../auth/oauth-connections'
+import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE } from '../../shared/account'
+import { answerOf, runRead, runWrite, type AfterCommit } from '../calls'
+import type { Db } from '../core/db'
+import { INSTRUCTIONS } from './tools/instructions'
+import { errorBody, type McpTool } from './tools/registry'
 import { MCP_TOOLS } from './tools'
 
-export const SERVER_INFO = { name: 'agentsplit', version: '0.4.0' } as const
+const SERVER_INFO = { name: 'agentsplit', version: '0.4.0' } as const
 
 const READ = [{ type: 'oauth2' as const, scopes: [OAUTH_READ_SCOPE] }]
 const WRITE = [{ type: 'oauth2' as const, scopes: [OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE] }]
@@ -70,40 +70,38 @@ const outputOf = (tool: McpTool): StandardSchemaWithJSON => ({
   },
 })
 
-const SCHEMAS = new Map(MCP_TOOLS.map((tool) => [tool.name, { input: inputOf(tool), output: outputOf(tool) }]))
+/** Reads commit nothing, so they have no work for after a commit. */
+const readOnly: AfterCommit = () => {
+  throw new Error('Only a write tool can run work after its commit')
+}
 
-export function createServer(data: { db: Db; principal: McpPrincipal; baseUrl: string; bucket: Bucket; documentsEnabled: boolean }): McpServer {
+const REGISTERED = MCP_TOOLS.map((tool) => ({ tool, input: inputOf(tool), output: outputOf(tool) }))
+
+/** What every tool call of the process shares: the app's URL for links, and the receipts bucket. */
+export type McpSettings = { readonly baseUrl: string; readonly bucket: Bucket }
+
+export function createServer(data: { db: Db; principal: McpPrincipal; settings: McpSettings }): McpServer {
   const server = new McpServer(SERVER_INFO, { instructions: INSTRUCTIONS })
-  for (const tool of MCP_TOOLS) {
-    const schemas = SCHEMAS.get(tool.name)
-    if (!schemas) throw new Error(`No schemas for ${tool.name}`)
+  for (const { tool, input, output } of REGISTERED) {
     server.registerTool(
       tool.name,
-      { description: tool.description, inputSchema: schemas.input, outputSchema: schemas.output, annotations: annotations(tool) },
+      { description: tool.description, inputSchema: input, outputSchema: output, annotations: annotations(tool) },
       async (args: unknown) => {
+        const call = { name: `MCP tool ${tool.name}` }
+        const context = { principal: data.principal, ...data.settings }
         try {
-          // Work for after the commit. A retried transaction starts the list again.
-          const after: ((db: Db) => Promise<unknown>)[] = []
-          const afterCommit = (work: (db: Db) => Promise<unknown>) => void after.push(work)
-          const run = (db: Db) =>
-            tool.run({ db, principal: data.principal, baseUrl: data.baseUrl, bucket: data.bucket, documentsEnabled: data.documentsEnabled, afterCommit }, args)
-          const write = async (tx: Db) => {
-            after.length = 0
-            await assertOAuthWrite(tx, data.principal)
-            return run(tx)
-          }
-          if (tool.kind === 'write') {
-            // The fair-use write budget, shared with the web app; outside the transaction, as there.
-            const wait = await takeWrite(data.db, data.principal.userId)
-            if (wait > 0) throw new ToolError('TOO_MANY_REQUESTS', tooManyWritesMessage(wait))
-          }
-          const structuredContent = (tool.kind === 'write' ? await serializable(data.db, write) : await run(data.db)) as Record<string, unknown>
-          for (const work of after) await work(data.db).catch((error: unknown) => console.error(`MCP tool ${tool.name}: work after the commit failed`, error))
+          const structuredContent = (await (tool.kind === 'write'
+            ? runWrite({
+                db: data.db,
+                principal: data.principal,
+                call,
+                check: (tx) => assertOAuthWrite(tx, data.principal),
+                work: (tx, afterCommit) => tool.run({ ...context, db: tx, afterCommit }, args),
+              })
+            : runRead({ db: data.db, call, work: (db) => tool.run({ ...context, db, afterCommit: readOnly }, args) }))) as Record<string, unknown>
           return { content: [{ type: 'text' as const, text: JSON.stringify(structuredContent) }], structuredContent }
         } catch (error) {
-          const body = errorBody({ error, kind: tool.kind })
-          // Never return database, storage or configuration details; log them instead.
-          if (body.error.code === 'INTERNAL_SERVER_ERROR') console.error(`MCP tool ${tool.name} failed`, error)
+          const body = errorBody({ error: answerOf(error, call), kind: tool.kind })
           return { isError: true, content: [{ type: 'text' as const, text: JSON.stringify(body) }] }
         }
       },

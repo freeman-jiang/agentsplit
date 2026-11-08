@@ -1,124 +1,150 @@
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, Copy } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { DeleteDialog } from '~/client/components/delete-dialog'
 import { GroupForm } from '~/client/components/group-form'
-import { errorMessage, groupDetailsQuery, newIdempotencyKey, refreshGroups } from '~/client/queries/groups'
-import { rpc } from '~/client/rpc'
+import { formatMoment } from '~/client/dates'
+import { describeError } from '~/client/errors'
+import { groupDetailsQuery } from '~/client/queries/groups'
+import { afterWrite, type WriteScope } from '~/client/queries/keys'
+import { newIdempotencyKey, rpc } from '~/client/rpc'
 import { Alert, AlertDescription } from '~/client/ui/alert'
 import { Button } from '~/client/ui/button'
+import { CopyButton } from '~/client/ui/copy-button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/client/ui/dropdown-menu'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
 import type { AccessRequest, GroupChanges, GroupDetails } from '~/shared/api'
 import { groupRef } from '~/shared/groups'
+import { LIMITS } from '~/shared/limits'
+import type { Role } from '~/shared/vocabulary'
 
 export const Route = createFileRoute('/$group/edit')({
-  loader: ({ context, params }) => context.queryClient.ensureQueryData(groupDetailsQuery(params.group)),
+  loader: ({ context }) => context.queryClient.ensureQueryData(groupDetailsQuery(context.groupId)),
   pendingComponent: () => <p role="status">Loading people…</p>,
-  errorComponent: ({ error }) => <p role="alert">{errorMessage(error)}</p>,
+  errorComponent: ({ error }) => <p role="alert">{describeError(error).message}</p>,
   component: Settings,
 })
 
 type Details = typeof GroupDetails.Type
 
+/** A people change saved on this page: the revision it expected, and the one it made. */
+type PeopleSaved = (saved: { expected: number; revision: number }) => void
+
 function Settings() {
   const { group } = Route.useParams()
-  const { data } = useSuspenseQuery(groupDetailsQuery(group))
+  const { groupId } = Route.useRouteContext()
+  const { data } = useSuspenseQuery(groupDetailsQuery(groupId))
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const refresh = () => afterWrite({ queryClient, scope: 'group', groupId })
+  // The settings as the form opened them, and the revision its save names. A
+  // refetch replaces neither, so a typed draft stays, and a save after someone
+  // else's change answers with the conflict text. A people change on this page
+  // moves the revision on without reopening the form.
+  const [state, setState] = useState({ details: data, revision: data.revision })
+  // Another group's settings on the same route open as they are now.
+  const opened = state.details.id === data.id ? state : { details: data, revision: data.revision }
+  if (opened !== state) setState(opened)
+  const reopen = (details: Details) => setState({ details, revision: details.revision })
+  const reload = async () => {
+    try {
+      reopen(await queryClient.fetchQuery(groupDetailsQuery(groupId)))
+    } catch (cause) {
+      toast.error(describeError(cause).message)
+    }
+  }
+  const settings = opened.details
   return (
     <div className="space-y-6">
       {/* Only admins can change settings, so members see only the People section (P-GROUP-59). */}
       {data.role === 'admin' && (
         <GroupForm
-          key={data.revision}
+          key={`${settings.id}:${settings.revision}`}
           mode="edit"
-          initial={{ name: data.name, slug: data.slug ?? '', information: data.information, defaultCurrency: data.defaultCurrency }}
+          initial={{ name: settings.name, slug: settings.slug ?? '', information: settings.information, defaultCurrency: settings.defaultCurrency }}
           onSubmit={async (values) => {
             const result = await rpc((api) =>
               api('groups.update', {
                 groupId: data.id,
-                expectedRevision: data.revision,
+                expectedRevision: opened.revision,
                 idempotencyKey: newIdempotencyKey(),
                 changes: { ...values, slug: values.slug.trim() || null },
               }),
-            ).catch(async (e: unknown) => {
-              await refreshGroups(queryClient)
-              throw new Error(errorMessage(e))
-            })
-            await refreshGroups(queryClient)
+            ).finally(refresh)
+            // The form opens the saved settings as the server stored them; if that read failed, it keeps the values just saved.
+            const fresh = queryClient.getQueryData(groupDetailsQuery(groupId).queryKey)
+            if (fresh && fresh.revision >= result.revision) reopen(fresh)
+            else setState((o) => ({ ...o, revision: result.revision }))
             toast.success('Group settings saved')
             // A new or removed slug changes the page's URL (P-GROUP-104).
             if (groupRef(result) !== group) await navigate({ to: '/$group/edit', params: { group: groupRef(result) }, replace: true })
           }}
+          onReload={() => void reload()}
         />
       )}
-      <People details={data} />
+      <People details={data} onPeopleSaved={(saved) => setState((o) => (o.revision === saved.expected ? { ...o, revision: saved.revision } : o))} />
     </div>
   )
 }
 
-/** One access or people change at a time, with its error shown at the top of the section. */
-function useActions(details: Details) {
+/**
+ * One access or people change at a time. An inline action shows its error at
+ * the top of the section; a confirmed action (`confirmed`) rejects instead, so
+ * its dialog stays open and says why.
+ */
+function useActions(details: Details, onPeopleSaved: PeopleSaved) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const run = async <A,>(work: () => Promise<A>): Promise<A | null> => {
+  const group: WriteScope = { scope: 'group', groupId: details.id }
+  /** `scope`: what the write made stale, from its answer; a failed write refreshes the group. */
+  const run = async <A,>(data: { work: () => Promise<A>; rethrow: boolean; scope?: (result: A) => WriteScope }): Promise<A | null> => {
     setBusy(true)
     setError(null)
+    let stale: WriteScope = group
     try {
-      return await work()
+      const result = await data.work()
+      stale = data.scope?.(result) ?? group
+      return result
     } catch (e) {
-      setError(errorMessage(e))
+      if (data.rethrow) throw e
+      setError(describeError(e).message)
       return null
     } finally {
-      await refreshGroups(queryClient)
+      await afterWrite({ queryClient, ...stale })
       setBusy(false)
     }
+  }
+  const access = (request: typeof AccessRequest.Type) => async () => {
+    const result = await rpc((api) => api('groups.access', { idempotencyKey: newIdempotencyKey(), request }))
+    if (!result.joined) await navigate({ to: '/groups' })
+    return result
+  }
+  const accessScope = (result: { joined: boolean }): WriteScope => (result.joined ? group : { scope: 'left', groupId: details.id })
+  const savePeople = (participants: NonNullable<(typeof GroupChanges.Type)['participants']>) => async () => {
+    const expected = details.revision
+    const result = await rpc((api) => api('groups.update', { groupId: details.id, expectedRevision: expected, idempotencyKey: newIdempotencyKey(), changes: { participants } }))
+    onPeopleSaved({ expected, revision: result.revision })
+    return result
   }
   return {
     busy,
     error,
-    access: (request: typeof AccessRequest.Type) =>
-      run(async () => {
-        const result = await rpc((api) => api('groups.access', { idempotencyKey: newIdempotencyKey(), request }))
-        if (!result.joined) {
-          queryClient.removeQueries({ queryKey: ['group'] })
-          await navigate({ to: '/groups' })
-        }
-        return result
-      }),
-    savePeople: (participants: NonNullable<(typeof GroupChanges.Type)['participants']>) =>
-      run(() =>
-        rpc((api) =>
-          api('groups.update', { groupId: details.id, expectedRevision: details.revision, idempotencyKey: newIdempotencyKey(), changes: { participants } }),
-        ),
-      ),
+    access: (request: typeof AccessRequest.Type) => run({ work: access(request), rethrow: false, scope: accessScope }),
+    savePeople: (participants: Parameters<typeof savePeople>[0]) => run({ work: savePeople(participants), rethrow: false }),
+    confirmed: {
+      access: (request: typeof AccessRequest.Type) => run({ work: access(request), rethrow: true, scope: accessScope }),
+      savePeople: (participants: Parameters<typeof savePeople>[0]) => run({ work: savePeople(participants), rethrow: true }),
+    },
   }
 }
 
-async function copy(text: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast.success('Copied')
-  } catch {
-    toast.error('Could not copy. Select the text and copy it yourself.')
-  }
-}
-
-function CopyButton({ text, title }: { text: string; title: string }) {
-  return (
-    <Button type="button" variant="outline" size="icon" className="shrink-0" title={title} aria-label={title} onClick={() => copy(text)}>
-      <Copy className="h-4 w-4" />
-    </Button>
-  )
-}
-
-function People({ details }: { details: Details }) {
-  const actions = useActions(details)
+function People({ details, onPeopleSaved }: { details: Details; onPeopleSaved: PeopleSaved }) {
+  const actions = useActions(details, onPeopleSaved)
   const admin = details.role === 'admin'
   const busy = actions.busy
   const [inviting, setInviting] = useState<string | null>(null)
@@ -127,10 +153,11 @@ function People({ details }: { details: Details }) {
   const [newName, setNewName] = useState('')
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null)
   const [bindings, setBindings] = useState<Record<string, string>>({})
+  const [removing, setRemoving] = useState<{ userId: string; name: string } | null>(null)
   const people = details.people
   const list = (rename?: { id: string; name: string }) => people.map((p) => ({ id: p.id, name: p.id === rename?.id ? rename.name : p.name }))
 
-  const memberActions = (member: { userId: string; name: string; role: 'admin' | 'member' }) =>
+  const memberActions = (member: { userId: string; name: string; role: Role }) =>
     admin && (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -145,13 +172,7 @@ function People({ details }: { details: Details }) {
           >
             {member.role === 'admin' ? 'Remove admin role' : 'Make admin'}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={busy}
-            onSelect={() => {
-              if (window.confirm(`Remove ${member.name}'s access? Their expenses will remain.`))
-                void actions.access({ action: 'remove_member', groupId: details.id, userId: member.userId })
-            }}
-          >
+          <DropdownMenuItem disabled={busy} onSelect={() => setRemoving(member)}>
             Remove access
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -222,16 +243,15 @@ function People({ details }: { details: Details }) {
                         )}
                         {/* People in an expense, bound or invited cannot be removed (P-GROUP-84). */}
                         {!person.reserved && !person.inExpenses && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => {
-                              if (window.confirm(`Delete ${person.name} from this group?`)) void actions.savePeople(list().filter((p) => p.id !== person.id))
-                            }}
-                          >
-                            Delete person
-                          </Button>
+                          <DeleteDialog
+                            trigger={
+                              <Button variant="ghost" size="sm" disabled={busy}>
+                                Delete person
+                              </Button>
+                            }
+                            title={`Delete ${person.name} from this group?`}
+                            onConfirm={() => actions.confirmed.savePeople(list().filter((p) => p.id !== person.id))}
+                          />
                         )}
                       </div>
                     )}
@@ -249,7 +269,7 @@ function People({ details }: { details: Details }) {
                     <label className="text-sm" htmlFor={`name-${person.id}`}>
                       Name for {person.name}
                     </label>
-                    <Input id={`name-${person.id}`} required maxLength={50} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+                    <Input id={`name-${person.id}`} required maxLength={LIMITS.nameMax} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
                   </div>
                   <Button size="sm" disabled={busy || !editing.name.trim()}>
                     Save name
@@ -292,7 +312,7 @@ function People({ details }: { details: Details }) {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Only this Google account can join as {person.name}. Share the invitation link; it expires in 7 days.
+                    Only this Google account can join as {person.name}. Share the invitation link; it expires in {LIMITS.invitationDays} days.
                   </p>
                 </form>
               )}
@@ -302,13 +322,15 @@ function People({ details }: { details: Details }) {
                   <p className="text-sm">Send this to {person.name}. AgentSplit does not send an email automatically.</p>
                   <div className="flex items-center gap-3">
                     <code className="min-w-0 flex-1 text-xs break-all">{created.url}</code>
-                    <CopyButton text={created.url} title="Copy invitation" />
+                    <CopyButton variant="outline" className="shrink-0" text={created.url} title="Copy invitation" />
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm">Copy a message with the steps to join</span>
                     <CopyButton
+                      variant="outline"
+                      className="shrink-0"
                       title="Copy invitation message"
-                      text={`Join ${details.name} on AgentSplit:\n${created.url}\n\nOpen the link and sign in with Google using ${created.email}. Your account will be created automatically if you’re new. Then click Accept invitation to join as ${person.name} and see our shared expenses and balances.\n\nYou can use the website, or open Agents after joining to connect ChatGPT or Claude. An agent is optional.\n\nThe invitation expires ${new Date(created.expiresAt).toLocaleString()}.`}
+                      text={`Join ${details.name} on AgentSplit:\n${created.url}\n\nOpen the link and sign in with Google using ${created.email}. Your account will be created automatically if you’re new. Then click Accept invitation to join as ${person.name} and see our shared expenses and balances.\n\nYou can use the website, or open Agents after joining to connect ChatGPT or Claude. An agent is optional.\n\nThe invitation expires ${formatMoment.full(created.expiresAt)}.`}
                     />
                   </div>
                 </div>
@@ -339,18 +361,20 @@ function People({ details }: { details: Details }) {
                       </option>
                     ))}
                 </NativeSelect>
-                <Button
-                  size="sm"
-                  disabled={busy || !bindings[member.userId]}
-                  onClick={() => {
+                <DeleteDialog
+                  trigger={
+                    <Button size="sm" disabled={busy || !bindings[member.userId]}>
+                      Link identity
+                    </Button>
+                  }
+                  title={`Permanently link ${member.email} to ${people.find((p) => p.id === bindings[member.userId])?.name}?`}
+                  description="This identity cannot be switched later."
+                  pending="Linking…"
+                  onConfirm={async () => {
                     const participantId = bindings[member.userId]
-                    const name = people.find((p) => p.id === participantId)?.name
-                    if (participantId && window.confirm(`Permanently link ${member.email} to ${name}? This identity cannot be switched later.`))
-                      void actions.access({ action: 'bind_member', groupId: details.id, userId: member.userId, email: member.email, participantId })
+                    if (participantId) await actions.confirmed.access({ action: 'bind_member', groupId: details.id, userId: member.userId, email: member.email, participantId })
                   }}
-                >
-                  Link identity
-                </Button>
+                />
               </div>
             )}
             {memberActions(member)}
@@ -381,24 +405,35 @@ function People({ details }: { details: Details }) {
             New person&apos;s name
           </label>
           <div className="flex flex-wrap gap-2">
-            <Input id="new-person" className="min-w-0 flex-1" maxLength={50} required value={newName} onChange={(e) => setNewName(e.target.value)} />
+            <Input id="new-person" className="min-w-0 flex-1" maxLength={LIMITS.nameMax} required value={newName} onChange={(e) => setNewName(e.target.value)} />
             <Button disabled={busy || !newName.trim()}>Add person</Button>
           </div>
         </form>
       )}
       {/* Leaving is destructive, so it sits apart from the people actions. */}
       <div className="border-t pt-4">
-        <Button
-          variant="ghost"
-          className="-ms-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
-          disabled={busy}
-          onClick={() => {
-            if (window.confirm('Leave this group? You will need a new invitation to return.')) void actions.access({ action: 'leave', groupId: details.id })
-          }}
-        >
-          Leave group
-        </Button>
+        <DeleteDialog
+          trigger={
+            <Button variant="ghost" className="-ms-4 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={busy}>
+              Leave group
+            </Button>
+          }
+          title="Leave this group?"
+          description="You will need a new invitation to return."
+          pending="Leaving…"
+          onConfirm={() => actions.confirmed.access({ action: 'leave', groupId: details.id })}
+        />
       </div>
+      <DeleteDialog
+        open={removing !== null}
+        onOpenChange={(open) => !open && setRemoving(null)}
+        title={`Remove ${removing?.name ?? ''}'s access?`}
+        description="Their expenses will remain."
+        pending="Removing…"
+        onConfirm={async () => {
+          if (removing) await actions.confirmed.access({ action: 'remove_member', groupId: details.id, userId: removing.userId })
+        }}
+      />
     </section>
   )
 }

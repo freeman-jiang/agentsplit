@@ -1,12 +1,15 @@
-// The signed-in user's account: profile, API keys, connected apps, and the
-// one-time owner bootstrap. This module does not import Better Auth: the RPC
-// handlers do not call Better Auth (docs/v2/BUILDING.md).
-import { and, eq, isNull, sql } from 'drizzle-orm'
-import { authBootstrap, oauthConnections } from '../../db/schema/app'
+// The signed-in user's account: profile, API keys and connected apps. This
+// module does not import Better Auth: the RPC handlers do not call Better Auth
+// (docs/v2/BUILDING.md).
+import { and, eq, sql } from 'drizzle-orm'
 import * as authSchema from '../../db/schema/auth'
-import { Forbidden, Invalid, NotFound, PROFILE_NAME_MAX } from '../shared/api'
-import type { Db } from './db'
-import type { Principal } from './ledger'
+import { Forbidden, Invalid, NotFound } from '../shared/api'
+import { OAUTH_WRITE_SCOPE } from '../shared/account'
+import { trimmedName } from '../shared/groups'
+import { LIMITS } from '../shared/limits'
+import type { Db } from './core/db'
+import type { Principal } from './core/access'
+import { clientStillGranted, revokeOAuthConnection } from './auth/oauth-connections'
 import { iso } from './sql'
 
 type AccountRow = {
@@ -33,8 +36,8 @@ export async function getAccount(db: Db, data: { principal: Principal }): Promis
         SELECT json_agg(json_build_object(
             'clientId', g.client_id,
             'name', COALESCE(oc.name, 'Connected app'),
-            'canWrite', 'agentsplit:write' = ANY(g.scopes) AND EXISTS (
-              SELECT 1 FROM oauth_consent s WHERE s.user_id = u.id AND s.client_id = g.client_id AND 'agentsplit:write' = ANY(s.scopes))
+            'canWrite', ${OAUTH_WRITE_SCOPE}::text = ANY(g.scopes) AND EXISTS (
+              SELECT 1 FROM oauth_consent s WHERE s.user_id = u.id AND s.client_id = g.client_id AND ${OAUTH_WRITE_SCOPE}::text = ANY(s.scopes))
           ) ORDER BY g.latest DESC, g.client_id)
         FROM (
           SELECT c.client_id, max(c.created_at) AS latest, array_agg(DISTINCT scope) AS scopes
@@ -43,26 +46,25 @@ export async function getAccount(db: Db, data: { principal: Principal }): Promis
           GROUP BY c.client_id
         ) g
         JOIN oauth_client oc ON oc.client_id = g.client_id
-        WHERE EXISTS (SELECT 1 FROM oauth_consent s WHERE s.user_id = u.id AND s.client_id = g.client_id)
+        WHERE ${clientStillGranted({ userId: sql`u.id`, clientId: sql`g.client_id` })}
       ), '[]'::json)
     ) AS account
     FROM "user" u WHERE u.id = ${data.principal.userId}
   `)
   const row = result.rows[0]
-  if (!row) throw new NotFound({ entity: 'user', id: data.principal.userId })
+  if (!row) throw new NotFound({ entity: 'account', id: data.principal.userId })
   return row.account
 }
 
 /** Sets the one global display name of the caller. Past snapshots and audit names keep the old name. */
 export async function updateProfile(db: Db, data: { principal: Principal; name: string }) {
-  const name = data.name.trim()
-  if (name.length < 1 || name.length > PROFILE_NAME_MAX)
-    throw new Invalid({ message: `Display name must be 1 to ${PROFILE_NAME_MAX} characters`, field: 'name' })
+  const name = trimmedName(data.name)
+  if (name === null) throw new Invalid({ message: `Display name must be 1 to ${LIMITS.nameMax} characters`, field: 'name' })
   const [current] = await db
     .select({ verified: authSchema.user.emailVerified })
     .from(authSchema.user)
     .where(eq(authSchema.user.id, data.principal.userId))
-  if (!current) throw new NotFound({ entity: 'user', id: data.principal.userId })
+  if (!current) throw new NotFound({ entity: 'account', id: data.principal.userId })
   if (!current.verified) throw new Forbidden({ message: 'Verify your email before setting your display name.' })
   const [profile] = await db
     .update(authSchema.user)
@@ -74,7 +76,7 @@ export async function updateProfile(db: Db, data: { principal: Principal; name: 
       email: authSchema.user.email,
       emailVerified: authSchema.user.emailVerified,
     })
-  if (!profile) throw new NotFound({ entity: 'user', id: data.principal.userId })
+  if (!profile) throw new NotFound({ entity: 'account', id: data.principal.userId })
   return { profile }
 }
 
@@ -86,18 +88,6 @@ export async function revokeApiKey(db: Db, data: { principal: Principal; keyId: 
     .returning({ id: authSchema.apikey.id })
   if (deleted.length === 0) throw new NotFound({ entity: 'apiKey', id: data.keyId })
   return { revoked: true as const }
-}
-
-/** Keeps the grant tombstone, so old JWTs and racing refreshes never regain access. */
-export async function revokeOAuthConnection(db: Db, data: { userId: string; clientId: string }) {
-  await db.transaction(async (tx) => {
-    await tx
-      .update(oauthConnections)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(oauthConnections.userId, data.userId), eq(oauthConnections.clientId, data.clientId), isNull(oauthConnections.revokedAt)))
-    for (const table of [authSchema.oauthAccessToken, authSchema.oauthRefreshToken, authSchema.oauthConsent])
-      await tx.delete(table).where(and(eq(table.userId, data.userId), eq(table.clientId, data.clientId)))
-  })
 }
 
 export async function revokeConnection(db: Db, data: { principal: Principal; clientId: string }) {
@@ -113,37 +103,4 @@ export async function consentClient(db: Db, data: { clientId: string }) {
     .where(eq(authSchema.oauthClient.clientId, data.clientId))
   if (!client || client.disabled) return null
   return { clientId: client.clientId, name: client.name }
-}
-
-const BOOTSTRAP_ID = 'private-groups-v1'
-const BOOTSTRAP_LOCK = 170031011
-
-/**
- * The one-time cutover from the app before accounts: the configured owner,
- * once Google has verified their email, becomes admin of every group recorded
- * in legacy_group_claims. The auth_bootstrap row makes it run at most once,
- * also after memberships are removed later. Returns true when it ran.
- *
- * The current app also imported legacy MCP_ACCESS_GRANTS keys here. Production
- * ran that import already, and the importer copies the resulting key rows.
- */
-export async function bootstrapOwner(
-  db: Db,
-  data: { user: { id: string; email: string; emailVerified: boolean }; bootstrapEmail: string | undefined },
-): Promise<boolean> {
-  const owner = data.bootstrapEmail?.trim().toLowerCase()
-  if (!owner || !data.user.emailVerified || data.user.email.toLowerCase() !== owner) return false
-  const done = async (d: Db) => (await d.select({ id: authBootstrap.id }).from(authBootstrap).where(eq(authBootstrap.id, BOOTSTRAP_ID))).length > 0
-  if (await done(db)) return false
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${BOOTSTRAP_LOCK})`)
-    if (await done(tx)) return false
-    await tx.execute(sql`
-      INSERT INTO memberships (user_id, group_id, role, active)
-      SELECT ${data.user.id}, group_id, 'admin', true FROM legacy_group_claims
-      ON CONFLICT (user_id, group_id) DO UPDATE SET active = true, role = 'admin'
-    `)
-    await tx.insert(authBootstrap).values({ id: BOOTSTRAP_ID, userId: data.user.id })
-    return true
-  })
 }

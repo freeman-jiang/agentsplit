@@ -2,16 +2,16 @@
 // that validateExpense checks, the live share preview, and the auto-filled
 // amounts of an amount split. Ported from the current app's expense-form.tsx.
 import type { CurrencyCode } from '~/shared/currencies'
-import { validateExpense, type ExpenseDraft, type ExpenseIssue } from '~/shared/expense-rules'
-import type { DecimalString } from '~/shared/money'
-import { formatMinor, minor, minorOrNull, sumMinor } from '~/shared/minor'
-import { apportion, compareIds, MODE_NAMES, parseWeight, preferredPayer, type SplitMode } from '~/shared/split'
+import { checkMoney, validateExpense, type ExpenseDraft, type ExpenseIssue, type ResolvedExpense } from '~/shared/expense-rules'
+import { formatMinor, minor, minorOrNull, sumMinor, type Minor } from '~/shared/minor'
+import { compareIds } from '~/shared/ids'
+import { apportion, parseWeight, preferredPayer, weightText } from '~/shared/split'
+import { CATEGORY, SPLIT_MODE_NAMES, SPLIT_MODES, type ExpenseKind, type Recurrence, type SplitMode } from '~/shared/vocabulary'
+import { todayUtc } from '~/shared/dates'
 import type { FormDocument } from './expense-documents'
 
-export type Recurrence = ExpenseDraft['recurrence']
-
 export type FormState = {
-  readonly kind: 'expense' | 'payment'
+  readonly kind: ExpenseKind
   readonly title: string
   readonly vendor: string
   readonly notes: string
@@ -54,7 +54,7 @@ function preferredOf(state: FormState, order: readonly string[]): string | null 
 /**
  * In amount mode, every selected person who has not typed an amount shares
  * what is left evenly, in minor units, with the payer first (P-MONEY-83).
- * Returns null for a person when the total or a typed amount does not parse.
+ * The map is empty when the total or a typed amount does not parse.
  */
 export function autoAmounts(state: FormState, order: readonly string[]): ReadonlyMap<string, string> {
   const result = new Map<string, string>()
@@ -114,70 +114,38 @@ export function toDraft(state: FormState, order: readonly string[]): ExpenseDraf
   }
 }
 
-/**
- * The RPC payload for a draft that validateExpense accepted. Its amounts passed
- * the decimal check there, so they carry the DecimalString brand.
- */
-export function toInput(data: { draft: ExpenseDraft; documents: readonly FormDocument[] }) {
-  const { draft } = data
-  return {
-    ...draft,
-    amount: draft.amount as DecimalString,
-    payers: draft.payers.map((p) => ({ participantId: p.participantId, amount: p.amount as DecimalString })),
-    documents: data.documents.map((d) => ({ id: d.id, url: d.url, width: d.width, height: d.height })),
-  }
-}
+export type Check = { readonly draft: ExpenseDraft; readonly resolved: ResolvedExpense | null; readonly issues: readonly ExpenseIssue[]; readonly preview: ReadonlyMap<string, string> | null }
 
-/** The RPC payload that toInput builds. */
-export type ExpenseInputData = ReturnType<typeof toInput>
-
-/** Whether each person pays or shares: a private expense keeps all its people (P-UNGROUP-48). */
-export function involvesEveryone(state: FormState, order: readonly string[]) {
-  const payers = new Set(payersOf(state, order).map((p) => p.participantId))
-  return order.every((id) => state.selected[id] || payers.has(id))
-}
-
-export type Check = { readonly issues: ReadonlyArray<ExpenseIssue & { participantId?: string }>; readonly preview: ReadonlyMap<string, string> | null }
-
-/**
- * Validates the draft, and resolves the split for the preview. The preview
- * needs only the money fields, so it shows before the title is typed.
- */
+/** Validates the draft, and resolves the split for the preview, which shows before the title is typed. */
 export function check(state: FormState, order: readonly string[]): Check {
   const draft = toDraft(state, order)
   const participantIds = new Set(order)
   const result = validateExpense({ draft, participantIds })
-  const issues = !result.ok
-    ? result.issues.map((issue) => {
-        const [list, index] = issue.field.split('.')
-        const row = index === undefined ? undefined : list === 'shares' ? draft.shares[Number(index)] : list === 'payers' ? draft.payers[Number(index)] : undefined
-        return row ? { ...issue, participantId: row.participantId } : issue
-      })
-    : []
+  const issues = result.ok ? [] : result.issues
+  const resolved = result.ok ? result.value : null
   // While several payers do not add up yet, preview with the payer who would get the leftover unit.
   const preferred = preferredOf(state, order)
-  const payers = payerRemainder(state, order) === formatMinor({ amount: minor(0n), currency: state.currency }) || !preferred ? draft.payers : [{ participantId: preferred, amount: draft.amount }]
-  const money = validateExpense({ draft: { ...draft, payers, title: 'Preview', vendor: null, notes: '', expenseDate: '2000-01-01', categoryId: 0 }, participantIds })
+  const payers = payerRemainder(state, order) === 0n || !preferred ? draft.payers : [{ participantId: preferred, amount: draft.amount }]
+  const money = checkMoney({ money: { ...draft, payers }, participantIds })
   const preview = money.ok
     ? new Map(money.value.shares.map((s) => [s.participantId, formatMinor({ amount: s.amount, currency: state.currency })]))
     : null
-  return { issues, preview }
+  return { draft, resolved, issues, preview }
 }
 
 /** What is left to assign among several payers, when every amount parses. */
-export function payerRemainder(state: FormState, order: readonly string[]): string | null {
+export function payerRemainder(state: FormState, order: readonly string[]): Minor | null {
   const total = minorOrNull({ amount: state.amount.trim(), currency: state.currency })
   if (total === null) return null
   const amounts = payersOf(state, order).map((p) => minorOrNull({ amount: p.amount, currency: state.currency }))
   if (amounts.some((a) => a === null)) return null
-  const paid = sumMinor(amounts.flatMap((a) => (a === null ? [] : [a])))
-  return formatMinor({ amount: minor(total - paid), currency: state.currency })
+  return minor(total - sumMinor(amounts.flatMap((a) => (a === null ? [] : [a]))))
 }
 
 // ---------- saved splitting defaults ----------
 
 // The current app's localStorage format, so defaults saved there keep working (P-EXP-93).
-type Stored = { splitMode: (typeof MODE_NAMES)[SplitMode]; paidFor: { participant: string; shares: string }[] | null }
+type Stored = { splitMode: (typeof SPLIT_MODE_NAMES)[SplitMode]; paidFor: { participant: string; shares: string }[] | null }
 const storageKey = (groupId: string) => `${groupId}-defaultSplittingOptions-v2`
 
 type SplitDefaults = { splitMode: SplitMode; weights: Record<string, string>; selected: Record<string, boolean> }
@@ -198,9 +166,10 @@ export function loadSplitDefaults(data: { groupId: string; participants: readonl
     return evenly
   }
   if (!stored) return evenly
-  const mode = (Object.keys(MODE_NAMES) as SplitMode[]).find((m) => MODE_NAMES[m] === stored.splitMode)
+  const mode = SPLIT_MODES.find((m) => SPLIT_MODE_NAMES[m] === stored.splitMode)
   if (!mode) return evenly
   if (stored.paidFor === null) return { ...evenly, splitMode: mode }
+  if (!Array.isArray(stored.paidFor)) return evenly
   if (stored.paidFor.some((p) => !data.participants.includes(p.participant))) {
     localStorage.removeItem(storageKey(data.groupId))
     return evenly
@@ -217,7 +186,7 @@ export function saveSplitDefaults(data: { groupId: string; state: FormState; par
   const { state } = data
   const picked = data.participants.filter((id) => state.selected[id])
   const value: Stored = {
-    splitMode: MODE_NAMES[state.splitMode],
+    splitMode: SPLIT_MODE_NAMES[state.splitMode],
     paidFor:
       state.splitMode === 'amount'
         ? null
@@ -229,7 +198,7 @@ export function saveSplitDefaults(data: { groupId: string; state: FormState; par
 // ---------- initial state ----------
 
 type SavedExpense = {
-  readonly kind: 'expense' | 'payment'
+  readonly kind: ExpenseKind
   readonly title: string
   readonly vendor: string | null
   readonly notes: string
@@ -247,8 +216,7 @@ type SavedExpense = {
 export function stateFromExpense(data: { expense: SavedExpense; documents: readonly FormDocument[]; participants: readonly string[] }): FormState {
   const { expense } = data
   const shares = new Map(expense.shares.map((s) => [s.participantId, s.weight]))
-  // Amount splits store minor units; the form shows decimals.
-  const shown = (weight: string) => (expense.splitMode === 'amount' ? formatMinor({ amount: minor(BigInt(weight)), currency: expense.currency }) : weight)
+  const shown = (weight: string) => weightText({ splitMode: expense.splitMode, currency: expense.currency, weight })
   const [onlyPayer] = expense.payers
   return {
     kind: expense.kind,
@@ -281,12 +249,8 @@ export type Prefill = {
   readonly currencyCode?: CurrencyCode
 }
 
-/** Today as a UTC calendar date, as the current expense form defaults (P-EXP-68). */
-export const utcToday = () => new Date().toISOString().slice(0, 10)
-
 /**
  * A new expense: the saved split defaults, the viewer as payer, and any URL prefill (P-EXP-66, P-EXP-71, P-EXP-96).
- * A new private expense has no group (`groupId: null`), so it starts with everyone, evenly.
  */
 export function newExpenseState(data: { groupId: string | null; participants: readonly string[]; viewer: string | null; defaultCurrency: CurrencyCode; prefill: Prefill }): FormState {
   const defaults = data.groupId === null ? everyoneEvenly(data.participants) : loadSplitDefaults({ groupId: data.groupId, participants: data.participants })
@@ -296,8 +260,9 @@ export function newExpenseState(data: { groupId: string | null; participants: re
     title: prefill.title ?? '',
     vendor: prefill.vendor ?? '',
     notes: '',
-    categoryId: prefill.categoryId ?? 0,
-    expenseDate: prefill.date ?? utcToday(),
+    categoryId: prefill.categoryId ?? CATEGORY.general,
+    // Today as a UTC calendar date, as the current expense form defaults (P-EXP-68).
+    expenseDate: prefill.date ?? todayUtc(),
     currency: prefill.currencyCode ?? data.defaultCurrency,
     amount: prefill.amount ?? '',
     payerMode: 'one',

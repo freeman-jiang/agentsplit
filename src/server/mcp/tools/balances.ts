@@ -1,19 +1,20 @@
 // Balance and recurrence tools: get_balances, get_participant_balances and
 // process_recurring_expenses, with the current app's inputs and outputs
 // (src/trpc/routers/groups/balances/*, recurring.procedure.ts). Balances come
-// from src/server/expenses.ts, src/server/feed.ts and, as of a recorded
-// change, src/server/history.ts; recurrence from src/server/recurring.ts.
+// from src/server/balances.ts, recurrence from src/server/recurring.ts.
 import { Schema } from 'effect'
-import { computeBalances, suggestSettlements } from '../../../shared/balances'
+import { Id as IdInput, Invalid } from '../../../shared/api'
+import { todayUtc } from '../../../shared/dates'
+import { suggestSettlements, type Balance } from '../../../shared/balances'
 import type { CurrencyCode } from '../../../shared/currencies'
-import { savedEntry } from '../../../shared/history'
-import { formatMinor, minor, type Minor } from '../../../shared/money'
-import * as expenses from '../../expenses'
-import * as feed from '../../feed'
-import * as history from '../../history'
+import { LIMITS } from '../../../shared/limits'
+import { formatMinor, minor, type Minor } from '../../../shared/minor'
+import * as balances from '../../balances'
 import * as recurring from '../../recurring'
-import { defineTool, ToolError } from '../registry'
-import { CurrencyCodeInput, HistoryFields, Id, minorOf, Money, NullableString, RecordedTime, ShortId, symbolOf } from './shared'
+import { CurrencyCodeSchema } from '../../../shared/money'
+import { defineTool } from './registry'
+import { boundaryOf, HistoryFields } from './inputs'
+import { HistoryView, Id, Money, optional, symbolOf } from './wire'
 
 type Transfer = { from: string; to: string; amount: Minor }
 
@@ -37,14 +38,15 @@ function publicBalances(data: { transfers: readonly Transfer[]; currency: Curren
   return Object.fromEntries([...sums].map(([id, s]) => [id, { paid: text(s.paid), paidFor: text(s.paidFor), total: text(s.paid - s.paidFor) }]))
 }
 
-const bucket = (data: { currency: CurrencyCode; transfers: readonly Transfer[] }) => ({
-  currencyCode: data.currency,
-  balances: publicBalances(data),
-  reimbursements: data.transfers.map((t) => ({ from: t.from, to: t.to, amount: formatMinor({ amount: t.amount, currency: data.currency }) })),
-})
-
-const INCOMPLETE =
-  'Historical balances are unavailable because some expenses have no saved state at this point. Read list_expenses at the same boundary to inspect history coverage.'
+/** One currency bucket of get_balances, from the balances of that currency. */
+const bucket = ([currency, byPerson]: readonly [CurrencyCode, ReadonlyMap<string, Balance>]) => {
+  const transfers = suggestSettlements(byPerson)
+  return {
+    currencyCode: currency,
+    balances: publicBalances({ transfers, currency }),
+    reimbursements: transfers.map((t) => ({ from: t.from, to: t.to, amount: formatMinor({ amount: t.amount, currency }) })),
+  }
+}
 
 export const getBalances = defineTool({
   name: 'get_balances',
@@ -53,14 +55,12 @@ export const getBalances = defineTool({
     'Read balances and suggested repayments in separate currency buckets, optionally filtering currencyCode. Money is exact decimal text. Currency buckets must not be added or converted. Record suggestions through create_expense with isReimbursement=true: a repayment may involve several people and may be negative, as for a refund. Optional asOf timestamp or atActivityId calculates historical balances with the same splitter; missing legacy snapshots produce PRECONDITION_FAILED rather than an incomplete total.',
   input: Schema.Struct({
     ...HistoryFields,
-    groupId: Schema.String.check(Schema.isMinLength(1)),
-    currencyCode: Schema.optionalKey(CurrencyCodeInput),
+    groupId: IdInput,
+    currencyCode: optional(CurrencyCodeSchema),
   }),
   strict: [''],
   output: Schema.Struct({
-    history: Schema.optionalKey(
-      Schema.Struct({ asOf: RecordedTime, atActivityId: NullableString, complete: Schema.Boolean, unavailableExpenseIds: Schema.Array(Id) }),
-    ),
+    history: optional(HistoryView),
     currencies: Schema.Array(
       Schema.Struct({
         currencyCode: Schema.String,
@@ -70,27 +70,18 @@ export const getBalances = defineTool({
     ),
   }),
   run: async ({ db, principal }, input) => {
+    const scope = { principal, groupId: input.groupId, currency: input.currencyCode }
     if (input.asOf === undefined && input.atActivityId === undefined) {
-      const current = await expenses.listBalances(db, { principal, group: input.groupId, ...(input.currencyCode ? { currency: input.currencyCode } : {}) })
-      return {
-        currencies: current.currencies.map((c) =>
-          bucket({ currency: c.currency, transfers: c.settlements.map((s) => ({ ...s, amount: minorOf(s.amount, c.currency) })) }),
-        ),
-      }
+      const current = await balances.groupBalances(db, scope)
+      return { currencies: [...current.balances].map(bucket) }
     }
-    const ledger = await history.historicalLedger(db, {
-      principal,
-      group: input.groupId,
-      ...(input.asOf === undefined ? {} : { asOf: input.asOf }),
-      ...(input.atActivityId === undefined ? {} : { atActivityId: input.atActivityId }),
+    const saved = await balances.historicalBalances(db, { ...scope, ...boundaryOf(input) }).catch((error: unknown) => {
+      // The only precondition of historicalBalances is a history without saved states at the boundary.
+      throw error instanceof Invalid && error.reason === 'precondition'
+        ? new Invalid({ ...error, message: `${error.message} Read list_expenses at the same boundary to inspect history coverage.` })
+        : error
     })
-    if (!ledger.history.complete) throw new ToolError('PRECONDITION_FAILED', INCOMPLETE)
-    const saved = ledger.expenses.filter((e) => !input.currencyCode || e.currency === input.currencyCode)
-    const balances = computeBalances(saved.map(savedEntry))
-    return {
-      history: ledger.history,
-      currencies: [...balances].map(([currency, byPerson]) => bucket({ currency, transfers: suggestSettlements(byPerson) })),
-    }
+    return { history: saved.history, currencies: [...saved.balances].map(bucket) }
   },
 })
 
@@ -100,9 +91,9 @@ export const getParticipantBalances = defineTool({
   description:
     'Read exact per-currency net balances. Omit groups to include every accessible named group and private expense context, without a page-size cap; provide a unique groups list to restrict the scope. Omit participantId to use your fixed membership; supply it to inspect a particular participant. totals contains server-calculated net amounts per currency across the selected scope. These totals do not settle or merge debts. unboundGroupIds means the result is incomplete and must be described as partial. Do not combine different currencies. Dashboard totals are independent of expense-list filters. Discover participant IDs with get_group.',
   input: Schema.Struct({
-    groups: Schema.optionalKey(
-      Schema.Array(Schema.Struct({ groupId: ShortId, participantId: Schema.optionalKey(ShortId) }))
-        .check(Schema.isMaxLength(100))
+    groups: optional(
+      Schema.Array(Schema.Struct({ groupId: IdInput, participantId: optional(IdInput) }))
+        .check(Schema.isMaxLength(LIMITS.pageMax))
         .check(Schema.makeFilter((list) => new Set(list.map((g) => g.groupId)).size === list.length || 'Choose each group or private context only once.'))
         .annotate({
           description:
@@ -127,9 +118,9 @@ export const getParticipantBalances = defineTool({
     ),
   }),
   run: async ({ db, principal }, input) => {
-    const result = await feed.accountBalances(db, { principal, ...(input.groups ? { scope: input.groups } : {}) })
+    const result = await balances.accountBalances(db, { principal, ...(input.groups ? { scope: input.groups } : {}) })
     return {
-      totals: result.totals.map((t) => ({ currencyCode: t.currency, amount: t.amount })),
+      totals: result.totals.map((t) => ({ currencyCode: t.currency, amount: t.net })),
       unboundGroupIds: result.unboundGroupIds,
       balances: result.balances.map((b) => ({
         groupId: b.groupId,
@@ -151,12 +142,9 @@ export const processRecurringExpenses = defineTool({
   idempotent: true,
   description:
     'Explicitly materialize due recurring expenses only in the specified group, using the server clock. Returns created expense IDs. Reads never generate recurring entries; a scheduled job also creates them every hour, and repeated processing does not duplicate frames.',
-  input: Schema.Struct({ groupId: ShortId }),
+  input: Schema.Struct({ groupId: IdInput }),
   strict: [''],
   output: Schema.Struct({ createdExpenseIds: Schema.Array(Id) }),
-  run: ({ db, principal }, input) =>
-    // The tool already runs in one SERIALIZABLE transaction, so every occurrence commits with it.
-    recurring.processGroup(db, { principal, group: input.groupId, today: new Date().toISOString().slice(0, 10), transaction: (work) => work(db) }),
+  run: ({ db, principal }, input) => recurring.processGroup(db, { principal, groupId: input.groupId, today: todayUtc() }),
 })
 
-export const balanceTools = [getBalances, getParticipantBalances, processRecurringExpenses]

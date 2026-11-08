@@ -1,28 +1,23 @@
-import { requireSignedIn } from '~/client/queries/account'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate, useRouter } from '@tanstack/react-router'
 import { Calendar, Loader2, MoreHorizontal, Star, Users } from 'lucide-react'
 import { useSyncExternalStore } from 'react'
+import { requireSignedIn } from '~/client/queries/session'
 import { cn } from '~/client/cn'
-import { money } from '~/client/components/money'
+import { isZero } from '~/client/components/balance/net'
+import { TotalAmounts } from '~/client/components/balance/totals'
+import { formatMoment } from '~/client/dates'
 import { directoryQuery } from '~/client/queries/groups'
+import { oneOf, positiveIntegerParam, searchParams } from '~/client/search'
 import { Alert, AlertDescription } from '~/client/ui/alert'
 import { Button } from '~/client/ui/button'
 import { Card, CardDescription, CardTitle } from '~/client/ui/card'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/client/ui/dropdown-menu'
 import type { Directory } from '~/shared/api'
 import { groupRef } from '~/shared/groups'
+import { LIMITS } from '~/shared/limits'
 
-type Search = { access?: 'denied'; offset?: number }
-
-/** Route options stay in the main chunk, so this parses search params without a schema library. */
-const parseSearch = (raw: Record<string, unknown>): Search => {
-  const offset = typeof raw['offset'] === 'number' ? raw['offset'] : Number(raw['offset'])
-  return {
-    ...(raw['access'] === 'denied' ? { access: 'denied' as const } : {}),
-    ...(Number.isInteger(offset) && offset > 0 ? { offset } : {}),
-  }
-}
+const parseSearch = searchParams({ access: oneOf(['denied']), offset: positiveIntegerParam })
 
 export const Route = createFileRoute('/groups/')({
   validateSearch: parseSearch,
@@ -110,7 +105,7 @@ function GroupsPage({ children }: { children: React.ReactNode }) {
   return (
     <main className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 sm:space-y-6 sm:px-8 sm:py-8">
       <div className="flex items-start justify-between gap-2">
-        <h1 className="flex-1 font-display text-3xl tracking-tight">
+        <h1 className="flex-1 font-display text-3xl">
           <Link to="/groups">My groups</Link>
         </h1>
         <Button asChild>
@@ -170,7 +165,7 @@ function Groups() {
       {(offset > 0 || data.nextOffset !== null) && (
         <div className="flex gap-3">
           {offset > 0 && (
-            <Button variant="outline" onClick={() => navigate({ search: (s) => ({ ...s, offset: Math.max(0, offset - 100) }) })}>
+            <Button variant="outline" onClick={() => navigate({ search: (s) => ({ ...s, offset: Math.max(0, offset - LIMITS.directoryPage) }) })}>
               Previous groups
             </Button>
           )}
@@ -253,7 +248,7 @@ function GroupCard({ group, starred, archived, marks }: { group: Group; starred:
           </span>
           <span className="flex items-center">
             <Calendar className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />
-            {new Date(group.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+            {formatMoment.date(group.createdAt)}
           </span>
         </div>
       </div>
@@ -263,41 +258,25 @@ function GroupCard({ group, starred, archived, marks }: { group: Group; starred:
 
 /** The caller's balance across every membership, one amount per currency (P-BAL-102..105). */
 function TotalBalance({ directory }: { directory: typeof Directory.Type }) {
-  const now = directory
-  const outstanding = now.totals.filter((t) => !/^-?0(\.0+)?$/.test(t.net))
-  // The same left-aligned stack as the dashboard balance.
+  const outstanding = directory.totals.filter((t) => !isZero(t.net))
   return (
     <Card className="p-4 sm:px-6 sm:py-5">
       <div className="flex items-baseline justify-between gap-4">
         <CardTitle className="text-sm">Your balance in groups</CardTitle>
         <CardDescription className="hidden text-xs sm:block">Your combined balance across all your groups. Ungrouped expenses are on the dashboard.</CardDescription>
       </div>
-      {now.unboundGroupCount > 0 && (
+      {directory.unboundGroupCount > 0 && (
         <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-          Link your participant identity in {now.unboundGroupCount} {now.unboundGroupCount === 1 ? 'group' : 'groups'} to see a complete total. Only linked
+          Link your participant identity in {directory.unboundGroupCount} {directory.unboundGroupCount === 1 ? 'group' : 'groups'} to see a complete total. Only linked
           groups are included below.
         </p>
       )}
       {outstanding.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">
-          {now.unboundGroupCount ? 'No outstanding balance in linked groups.' : 'You are all settled up across your groups.'}
+          {directory.unboundGroupCount ? 'No outstanding balance in linked groups.' : 'You are all settled up across your groups.'}
         </p>
       ) : (
-        <ul className="mt-3 flex flex-wrap gap-x-12 gap-y-5 sm:mt-2">
-          {outstanding.map(({ currency, net }) => {
-            const owed = !net.startsWith('-')
-            return (
-              <li key={currency} className="max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-2 sm:space-y-1">
-                <span className="block text-xs text-muted-foreground max-sm:text-sm">
-                  {owed ? 'You are owed' : 'You owe'} · {currency}
-                </span>
-                <span className={cn('block text-3xl font-semibold tabular-nums sm:text-4xl', owed ? 'text-owed' : 'text-owe')}>
-                  {money(owed ? net : net.slice(1), currency)}
-                </span>
-              </li>
-            )
-          })}
-        </ul>
+        <TotalAmounts totals={outstanding} />
       )}
     </Card>
   )

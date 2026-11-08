@@ -3,14 +3,14 @@
 // authentication, the rate limit, the scope step-up, the protocol header, then
 // the JSON-RPC call.
 import { createMcpHandler, isLegacyRequest } from '@modelcontextprotocol/server'
-import type { Bucket } from '../bucket'
-import type { Db } from '../db'
-import { authenticate, type McpPrincipal } from './authenticate'
-import { jsonError, noStore } from '../security'
-import { challenge } from './challenge'
-import { OAUTH_WRITE_SCOPE } from './constants'
-import { takeMcpRequest } from './rate-limit'
-import { createServer, isWriteTool } from './server'
+import type { Db } from '../core/db'
+import { authenticate, type McpPrincipal } from '../auth/authenticate'
+import { jsonError, noStore } from '../core/errors'
+import { challenge } from '../auth/challenge'
+import { OAUTH_WRITE_SCOPE } from '../../shared/account'
+import { originAllowed } from '../auth/origin'
+import { takeMcpRequest } from '../rate-limit'
+import { createServer, isWriteTool, type McpSettings } from './server'
 
 /** The SDK's own default request limit, applied here because this module reads the body itself. */
 const MAX_BODY = 4 * 1024 * 1024
@@ -33,16 +33,15 @@ function needsStepUp(principal: McpPrincipal, body: unknown) {
   return principal.scopes !== null && !principal.scopes.includes(OAUTH_WRITE_SCOPE) && calledTools(body).some(isWriteTool)
 }
 
+/** The MCP spec's DNS-rebinding guard: the Host must be the app's, and an Origin, when sent, the app's origin. */
 function hostAllowed(request: Request, baseUrl: string) {
-  const expected = new URL(baseUrl)
   const host = request.headers.get('host') ?? new URL(request.url).host
-  const origin = request.headers.get('origin')
-  return host === expected.host && (!origin || origin === expected.origin)
+  return host === new URL(baseUrl).host && originAllowed({ request, baseUrl, cookieWrite: false })
 }
 
-export async function handleMcp(request: Request, data: { db: Db; baseUrl: string; bucket: Bucket; documentsEnabled: boolean }): Promise<Response> {
-  const { db, baseUrl } = data
-  if (!baseUrl) return jsonError({ status: 503, message: 'Authentication is not configured' })
+export async function handleMcp(request: Request, data: { db: Db; settings: McpSettings }): Promise<Response> {
+  const { db, settings } = data
+  const { baseUrl } = settings
   if (!hostAllowed(request, baseUrl)) return jsonError({ status: 403, message: 'Origin or host is not allowed' })
 
   const authentication = await authenticate(db, { request, baseUrl })
@@ -51,7 +50,7 @@ export async function handleMcp(request: Request, data: { db: Db; baseUrl: strin
 
   let retryAfter: number
   try {
-    retryAfter = await takeMcpRequest(db, principal.userId)
+    retryAfter = await takeMcpRequest(db, { userId: principal.userId })
   } catch (error) {
     console.error('MCP rate limit failed', error)
     return jsonError({ status: 503, message: 'MCP is temporarily unavailable' })
@@ -77,7 +76,7 @@ export async function handleMcp(request: Request, data: { db: Db; baseUrl: strin
     return Response.json({ jsonrpc: '2.0', id, error: { code: -32020, message: 'MCP-Protocol-Version is required' } }, { status: 400, headers: noStore })
   }
 
-  const handler = createMcpHandler(() => createServer({ db, principal, baseUrl, bucket: data.bucket, documentsEnabled: data.documentsEnabled }), { responseMode: 'json' })
+  const handler = createMcpHandler(() => createServer({ db, principal, settings }), { responseMode: 'json' })
   try {
     const forward = request.method === 'POST' ? new Request(request.url, { method: 'POST', headers: request.headers, body: text }) : request
     const response = await handler.fetch(forward, body === undefined ? {} : { parsedBody: body })

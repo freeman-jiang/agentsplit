@@ -1,130 +1,122 @@
-import type { Pool } from 'pg'
+// The ledger against a real database: create, retry, update, list and delete,
+// and the membership check. Each test that writes works in its own group.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { groups, memberships, participants } from '../../db/schema/app'
-import { user } from '../../db/schema/auth'
 import type { ExpenseDraft } from '~/shared/expense-rules'
-import { makeDb, type Db } from '~/server/db'
-import { listBalances } from '~/server/expenses'
-import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense, type Principal } from '~/server/ledger'
-import { resetTestDatabase, testUsers } from './setup'
+import { listBalances } from '~/server/balances'
+import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense } from '~/server/ledger'
+import { testDatabase, type TestDatabase } from '../kit/database'
+import { draft } from '../kit/drafts'
+import { counter } from '../kit/ids'
+import { principal } from '../kit/people'
+import { seedHousehold } from '../kit/seed'
 
-let pool: Pool
-const alice: Principal = { userId: 'u-alice', name: 'Alice', email: 'a@example.com', source: 'web', agentKeyId: null }
-const mallory: Principal = { userId: 'u-mallory', name: 'Mallory', email: 'm@example.com', source: 'web', agentKeyId: null }
+let database: TestDatabase
+const tx: TestDatabase['tx'] = (work) => database.tx(work)
+const alice = principal('u-alice', { name: 'Alice' })
+const mallory = principal('u-mallory', { name: 'Mallory' })
+const nextGroup = counter('lg')
+const key = counter('ledger-key')
 
-/** Runs `work` in a SERIALIZABLE transaction, as the server does. */
-async function tx<A>(work: (db: Db) => Promise<A>): Promise<A> {
-  const client = await pool.connect()
-  try {
-    return await makeDb(client).transaction(work, { isolationLevel: 'serializable' })
-  } finally {
-    client.release()
-  }
+/** A new group "Home" with Alice (its admin), Bob and Cara, and a Costco draft of 100.00 that Alice pays. */
+async function household() {
+  const groupId = nextGroup()
+  const slug = `${groupId}-home`
+  const [pa, pb, pc] = [`${groupId}-pa`, `${groupId}-pb`, `${groupId}-pc`]
+  await tx((db) => seedHousehold(db, { groupId, slug, name: 'Home', people: [{ id: pa, name: 'Alice', userId: alice.userId }, { id: pb, name: 'Bob' }, { id: pc, name: 'Cara' }] }))
+  const expense = (over: Partial<ExpenseDraft> = {}) => draft({ payer: pa, people: [pa, pb, pc], vendor: 'Costco', amount: '100.00', ...over })
+  const nets = async () => (await tx((db) => listBalances(db, { principal: alice, groupId }))).currencies.flatMap((c) => c.balances).map((b) => [b.participantId, b.net])
+  return { groupId, slug, pa, pb, pc, expense, nets }
 }
+let shared: Awaited<ReturnType<typeof household>>
 
 beforeAll(async () => {
-  pool = await resetTestDatabase()
-  await tx(async (db) => {
-    await db.insert(groups).values({ id: 'g1', kind: 'named', slug: 'home', name: 'Home', defaultCurrency: 'USD' })
-    await db.insert(participants).values([
-      { id: 'pa', groupId: 'g1', name: 'Alice' },
-      { id: 'pb', groupId: 'g1', name: 'Bob' },
-      { id: 'pc', groupId: 'g1', name: 'Cara' },
-    ])
-    await db.insert(user).values(testUsers([alice]))
-    await db.insert(memberships).values({ userId: alice.userId, groupId: 'g1', role: 'admin', participantId: 'pa' })
-  })
+  database = await testDatabase()
+  shared = await household()
 })
 afterAll(async () => {
-  await pool.end()
-})
-
-const draft = (over: Partial<ExpenseDraft> = {}): ExpenseDraft => ({
-  kind: 'expense',
-  title: 'Groceries',
-  vendor: 'Costco',
-  notes: '',
-  categoryId: 0,
-  expenseDate: '2026-11-01',
-  currency: 'USD',
-  amount: '100.00',
-  payers: [{ participantId: 'pa', amount: '100.00' }],
-  splitMode: 'evenly',
-  shares: [{ participantId: 'pa', weight: '1' }, { participantId: 'pb', weight: '1' }, { participantId: 'pc', weight: '1' }],
-  recurrence: 'none',
-  ...over,
+  await database.close()
 })
 
 describe('ledger', () => {
   it('creates an expense, splits it, and gives the payer the leftover cent', async () => {
-    const e = await tx((db) => createExpense(db, { principal: alice, group: 'home', expenseId: 'e1', idempotencyKey: 'key-e1-0001', expense: draft() }))
+    const h = await household()
+    const e = await tx((db) => createExpense(db, { principal: alice, groupId: h.slug, expenseId: `${h.groupId}-e`, idempotencyKey: key(), expense: h.expense() }))
     expect(e.revision).toBe(1)
-    expect(e.shares.map((s) => [s.participantId, s.amount])).toEqual([['pa', '33.34'], ['pb', '33.33'], ['pc', '33.33']])
-    const { currencies } = await tx((db) => listBalances(db, { principal: alice, group: 'g1' }))
-    expect(currencies.flatMap((c) => c.balances).find((b) => b.participantId === 'pa')?.net).toBe('66.66')
+    expect(e.shares.map((s) => [s.participantId, s.amount])).toEqual([[h.pa, '33.34'], [h.pb, '33.33'], [h.pc, '33.33']])
+    expect((await h.nets()).find(([id]) => id === h.pa)?.[1]).toBe('66.66')
   })
 
   it('returns the stored result when a write is retried with the same key', async () => {
-    const again = await tx((db) => createExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', idempotencyKey: 'key-e1-0001', expense: draft() }))
-    expect(again.id).toBe('e1')
+    const h = await household()
+    const k = key()
+    const first = await tx((db) => createExpense(db, { principal: alice, groupId: h.groupId, expenseId: `${h.groupId}-e`, idempotencyKey: k, expense: h.expense() }))
+    const again = await tx((db) => createExpense(db, { principal: alice, groupId: h.groupId, expenseId: `${h.groupId}-e`, idempotencyKey: k, expense: h.expense() }))
+    expect(again).toEqual(first)
     await expect(
-      tx((db) => createExpense(db, { principal: alice, group: 'g1', expenseId: 'e9', idempotencyKey: 'key-e1-0001', expense: draft() })),
+      tx((db) => createExpense(db, { principal: alice, groupId: h.groupId, expenseId: `${h.groupId}-other`, idempotencyKey: k, expense: h.expense() })),
     ).rejects.toMatchObject({ _tag: 'Invalid', field: 'idempotencyKey' })
   })
 
   it('refuses a stale revision and accepts the current one', async () => {
+    const h = await household()
+    const expenseId = `${h.groupId}-e`
+    await tx((db) => createExpense(db, { principal: alice, groupId: h.groupId, expenseId, idempotencyKey: key(), expense: h.expense() }))
     await expect(
-      tx((db) => updateExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', expectedRevision: 0, idempotencyKey: 'key-u-stale', expense: draft({ title: 'Stale' }) })),
+      tx((db) => updateExpense(db, { principal: alice, groupId: h.groupId, expenseId, expectedRevision: 0, idempotencyKey: key(), expense: h.expense({ title: 'Stale' }) })),
     ).rejects.toMatchObject({ _tag: 'Conflict', currentRevision: 1 })
-    const updated = await tx((db) =>
-      updateExpense(db, { principal: alice, group: 'g1', expenseId: 'e1', expectedRevision: 1, idempotencyKey: 'key-u-0001', expense: draft({ title: 'Weekly groceries' }) }),
-    )
+    const updated = await tx((db) => updateExpense(db, { principal: alice, groupId: h.groupId, expenseId, expectedRevision: 1, idempotencyKey: key(), expense: h.expense({ title: 'Weekly groceries' }) }))
     expect(updated.revision).toBe(2)
   })
 
   it('records several payers', async () => {
-    const e = await tx((db) =>
-      createExpense(db, {
-        principal: alice,
-        group: 'g1',
-        expenseId: 'e2',
-        idempotencyKey: 'key-e2-0001',
-        expense: draft({ expenseDate: '2026-10-01', amount: '90.00', payers: [{ participantId: 'pa', amount: '30.00' }, { participantId: 'pb', amount: '60.00' }] }),
-      }),
-    )
-    expect(e.payers).toEqual([{ participantId: 'pa', amount: '30.00' }, { participantId: 'pb', amount: '60.00' }])
+    const h = await household()
+    const payers = [{ participantId: h.pa, amount: '30.00' }, { participantId: h.pb, amount: '60.00' }]
+    const e = await tx((db) => createExpense(db, { principal: alice, groupId: h.groupId, expenseId: `${h.groupId}-e`, idempotencyKey: key(), expense: h.expense({ amount: '90.00', payers }) }))
+    expect(e.payers).toEqual(payers)
   })
 
   it('orders by expense date or by last change, and filters', async () => {
-    const byDate = await tx((db) => listExpenses(db, { principal: alice, group: 'g1', filter: {}, cursor: null, limit: 10 }))
-    expect(byDate.expenses.map((e) => e.id)).toEqual(['e1', 'e2'])
+    const h = await household()
+    const [newer, older] = [`${h.groupId}-newer`, `${h.groupId}-older`]
+    const olderDraft = (over: Partial<ExpenseDraft> = {}) =>
+      h.expense({ expenseDate: '2026-10-01', amount: '90.00', payers: [{ participantId: h.pa, amount: '30.00' }, { participantId: h.pb, amount: '60.00' }], ...over })
+    await tx((db) => createExpense(db, { principal: alice, groupId: h.groupId, expenseId: older, idempotencyKey: key(), expense: olderDraft() }))
+    await tx((db) => createExpense(db, { principal: alice, groupId: h.groupId, expenseId: newer, idempotencyKey: key(), expense: h.expense() }))
+    const list = async (filter: Parameters<typeof listExpenses>[1]['filter'], data: { cursor?: Parameters<typeof listExpenses>[1]['cursor']; limit?: number } = {}) =>
+      tx((db) => listExpenses(db, { principal: alice, groupId: h.groupId, filter, cursor: data.cursor ?? null, limit: data.limit ?? 10 }))
+    const ids = async (filter: Parameters<typeof listExpenses>[1]['filter']) => (await list(filter)).expenses.map((e) => e.id)
+    expect(await ids({})).toEqual([newer, older])
+    expect(await ids({ sort: 'updated' })).toEqual([newer, older])
     // Editing the older expense moves it to the top of "recently changed".
-    await tx((db) => updateExpense(db, { principal: alice, group: 'g1', expenseId: 'e2', expectedRevision: 1, idempotencyKey: 'key-u-e2-1', expense: draft({ expenseDate: '2026-10-01', amount: '90.00', payers: [{ participantId: 'pa', amount: '30.00' }, { participantId: 'pb', amount: '60.00' }], title: 'Edited' }) }))
-    const byUpdate = await tx((db) => listExpenses(db, { principal: alice, group: 'g1', filter: { sort: 'updated' }, cursor: null, limit: 10 }))
-    expect(byUpdate.expenses.map((e) => e.id)).toEqual(['e2', 'e1'])
-    const page = await tx((db) => listExpenses(db, { principal: alice, group: 'g1', filter: { sort: 'updated' }, cursor: null, limit: 1 }))
-    const next = await tx((db) => listExpenses(db, { principal: alice, group: 'g1', filter: { sort: 'updated' }, cursor: page.nextCursor, limit: 1 }))
-    expect([...page.expenses, ...next.expenses].map((e) => e.id)).toEqual(['e2', 'e1'])
-    const search = await tx((db) => listExpenses(db, { principal: alice, group: 'g1', filter: { search: 'cost' }, cursor: null, limit: 10 }))
-    expect(search.expenses).toHaveLength(2)
-    const payer = await tx((db) => listExpenses(db, { principal: alice, group: 'g1', filter: { payerId: 'pb' }, cursor: null, limit: 10 }))
-    expect(payer.expenses.map((e) => e.id)).toEqual(['e2'])
-    const range = await tx((db) => listExpenses(db, { principal: alice, group: 'g1', filter: { from: '2026-10-15' }, cursor: null, limit: 10 }))
-    expect(range.expenses.map((e) => e.id)).toEqual(['e1'])
+    await tx((db) => updateExpense(db, { principal: alice, groupId: h.groupId, expenseId: older, expectedRevision: 1, idempotencyKey: key(), expense: olderDraft({ title: 'Edited' }) }))
+    expect(await ids({ sort: 'updated' })).toEqual([older, newer])
+    const page = await list({ sort: 'updated' }, { limit: 1 })
+    const next = await list({ sort: 'updated' }, { cursor: page.nextCursor, limit: 1 })
+    expect([...page.expenses, ...next.expenses].map((e) => e.id)).toEqual([older, newer])
+    expect(await ids({ search: 'cost' })).toHaveLength(2)
+    expect(await ids({ payerId: h.pb })).toEqual([older])
+    expect(await ids({ from: '2026-10-15' })).toEqual([newer])
   })
 
   it('deletes by tombstone and keeps balances consistent', async () => {
-    await tx((db) => deleteExpense(db, { principal: alice, group: 'g1', expenseId: 'e2', expectedRevision: 2, idempotencyKey: 'key-d-e2-1' }))
-    const { currencies } = await tx((db) => listBalances(db, { principal: alice, group: 'g1' }))
-    expect(currencies.flatMap((c) => c.balances).reduce((sum, b) => sum + Math.round(Number(b.net) * 100), 0)).toBe(0)
+    const h = await household()
+    const [kept, removed] = [`${h.groupId}-kept`, `${h.groupId}-removed`]
+    await tx((db) => createExpense(db, { principal: alice, groupId: h.groupId, expenseId: kept, idempotencyKey: key(), expense: h.expense() }))
+    await tx((db) => createExpense(db, { principal: alice, groupId: h.groupId, expenseId: removed, idempotencyKey: key(), expense: h.expense({ amount: '90.00', payers: [{ participantId: h.pb, amount: '90.00' }] }) }))
+    await tx((db) => deleteExpense(db, { principal: alice, groupId: h.groupId, expenseId: removed, expectedRevision: 1, idempotencyKey: key() }))
+    const live = await tx((db) => listExpenses(db, { principal: alice, groupId: h.groupId, filter: {}, cursor: null, limit: 10 }))
+    expect(live.expenses.map((e) => e.id)).toEqual([kept])
+    // Only the live expense counts, and the balances sum to zero.
+    expect(await h.nets()).toEqual([[h.pa, '66.66'], [h.pb, '-33.33'], [h.pc, '-33.33']])
   })
 
   it('refuses non-members', async () => {
-    await expect(tx((db) => getGroup(db, { principal: mallory, group: 'g1' }))).rejects.toMatchObject({ _tag: 'Forbidden' })
-    await expect(tx((db) => listExpenses(db, { principal: mallory, group: 'g1', filter: {}, cursor: null, limit: 10 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
-    await expect(tx((db) => listExpenses(db, { principal: mallory, group: 'home', filter: { search: 'nothing matches this' }, cursor: null, limit: 10 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    const forbidden = { _tag: 'Forbidden' }
+    await expect(tx((db) => getGroup(db, { principal: mallory, groupId: shared.groupId }))).rejects.toMatchObject(forbidden)
+    await expect(tx((db) => listExpenses(db, { principal: mallory, groupId: shared.groupId, filter: {}, cursor: null, limit: 10 }))).rejects.toMatchObject(forbidden)
+    await expect(tx((db) => listExpenses(db, { principal: mallory, groupId: shared.slug, filter: { search: 'nothing matches this' }, cursor: null, limit: 10 }))).rejects.toMatchObject(forbidden)
     await expect(
-      tx((db) => createExpense(db, { principal: mallory, group: 'g1', expenseId: 'e3', idempotencyKey: 'key-m-0001', expense: draft() })),
-    ).rejects.toMatchObject({ _tag: 'Forbidden' })
+      tx((db) => createExpense(db, { principal: mallory, groupId: shared.groupId, expenseId: `${shared.groupId}-m`, idempotencyKey: key(), expense: shared.expense() })),
+    ).rejects.toMatchObject(forbidden)
   })
 })

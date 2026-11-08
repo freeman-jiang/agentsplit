@@ -1,31 +1,39 @@
-import { useState } from 'react'
+import { useState, type ReactElement } from 'react'
+import { describeError } from '~/client/errors'
 import { Button } from '~/client/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '~/client/ui/dialog'
-import { describeWriteError } from './write-error'
 
-/** A confirmation that stays open and says why when the delete fails (P-EXP-52). */
-/** `quiet` gives the trigger an outline, for a list with one per row; the confirm button stays destructive. */
-export function DeleteDialog(props: { label: string; title: string; description: string; onConfirm: () => Promise<void>; quiet?: boolean }) {
-  const [open, setOpen] = useState(false)
+/**
+ * The confirmation of a destructive action. It stays open and says why when
+ * the action fails (P-EXP-52). It opens from `trigger`, or, for a menu item,
+ * from the caller's `open` state. `pending` replaces "Deleting…" while it runs.
+ */
+export function DeleteDialog(
+  props: { title: string; description?: string; onConfirm: () => Promise<unknown>; pending?: string } & (
+    | { trigger: ReactElement; open?: undefined; onOpenChange?: undefined }
+    | { trigger?: undefined; open: boolean; onOpenChange: (open: boolean) => void }
+  ),
+) {
+  const [ownOpen, setOwnOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const open = props.open ?? ownOpen
+  const setOpen = (value: boolean) => {
+    setError(null)
+    if (props.onOpenChange) props.onOpenChange(value)
+    else setOwnOpen(value)
+  }
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(value) => {
-        setOpen(value)
-        setError(null)
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button type="button" variant={props.quiet ? 'outline' : 'destructive'} size={props.quiet ? 'sm' : 'default'}>
-          {props.label}
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
+    <Dialog open={open} onOpenChange={setOpen}>
+      {props.trigger && (
+        <DialogTrigger asChild type="button">
+          {props.trigger}
+        </DialogTrigger>
+      )}
+      <DialogContent {...(props.description ? {} : { 'aria-describedby': undefined })}>
         <DialogHeader>
           <DialogTitle>{props.title}</DialogTitle>
-          <DialogDescription>{props.description}</DialogDescription>
+          {props.description && <DialogDescription>{props.description}</DialogDescription>}
         </DialogHeader>
         {error && (
           <p role="alert" className="text-sm text-destructive">
@@ -44,13 +52,13 @@ export function DeleteDialog(props: { label: string; title: string; description:
                 await props.onConfirm()
                 setOpen(false)
               } catch (cause) {
-                setError(describeWriteError(cause).message)
+                setError(describeError(cause).message)
               } finally {
                 setBusy(false)
               }
             }}
           >
-            {busy ? 'Deleting…' : 'Yes'}
+            {busy ? (props.pending ?? 'Deleting…') : 'Yes'}
           </Button>
           <Button type="button" variant="outline" onClick={() => setOpen(false)}>
             Cancel

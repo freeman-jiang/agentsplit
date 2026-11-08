@@ -1,0 +1,24 @@
+// The CSV and JSON downloads at the current app's URLs:
+// /groups/<id>/expenses/export/<format> and /<slug>/expenses/export/<format>.
+// The web session, an API key or an OAuth access token with read scope may
+// download them (P-EXPORT-05, P-TOOL-EXPORT-06). The files are built in export.ts.
+import type { Reader } from './auth/authenticate'
+import type { Db } from './core/db'
+import type { FileExportFormat } from '../shared/paths'
+import { EXPORTS } from './export'
+import { domainErrorResponse } from './core/errors'
+import { contentDisposition } from './headers'
+
+export async function downloadExport(data: { db: Db; reader: Reader; group: string; format: FileExportFormat }): Promise<Response> {
+  const { reader } = data
+  if ('response' in reader) return reader.response
+  try {
+    const file = await EXPORTS[data.format](data.db, { principal: reader.principal, groupId: data.group })
+    return new Response(file.content, {
+      // Downloads stay out of shared caches, as in the current app.
+      headers: { 'Cache-Control': 'private, no-store', 'Content-Type': file.contentType, 'Content-Disposition': contentDisposition(file.filename) },
+    })
+  } catch (error) {
+    return domainErrorResponse(error)
+  }
+}

@@ -1,7 +1,7 @@
 # AgentSplit for Coolify: compose.coolify.yaml builds the repository root. The build stage installs the locked dependencies and
 # runs `bun run build`. The final image holds only Bun and dist/: the server
 # is one bundle, so it needs no node_modules.
-# Both images are multi-arch indexes, pinned by digest. Bun matches the dev shell.
+# Both images are multi-arch indexes, pinned by digest. Bun matches the dev shell (scripts/check-bun-version.ts).
 ARG BUN_IMAGE=oven/bun:1.3.13@sha256:87416c977a612a204eb54ab9f3927023c2a3c971f4f345a01da08ea6262ae30e
 ARG BUN_RUNTIME_IMAGE=oven/bun:1.3.13-distroless@sha256:fc372e3e810dff25356602172cc97423c6991a15bca22d191abc500d3f1a9eb8
 

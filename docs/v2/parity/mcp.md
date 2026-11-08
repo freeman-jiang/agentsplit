@@ -12,14 +12,14 @@ Status words:
 ## Design
 
 - `endpoint.ts` serves `/api/mcp` in this order: host and origin, authentication, the rate limit, the scope step-up, the protocol header, then the JSON-RPC call through `createMcpHandler` (stateless, `responseMode: 'json'`). It builds a new `McpServer` per request.
-- `registry.ts` has `defineTool`. Each area writes its tools in `tools/<area>.ts` and adds one line to `tools/index.ts`. Inputs and outputs are Effect schemas. The JSON Schemas come from them once per isolate. Writes run in one SERIALIZABLE transaction, which rechecks OAuth write access. Errors map to the current `{error: {code, message, outcomeUnknown, recovery}}` body.
+- `tools/registry.ts` has `defineTool`. Each area writes its tools in `tools/<area>.ts` and adds them to the one list in `tools/index.ts`. The arguments that several tools take are in `tools/inputs.ts`, built from the RPC contract and the limits; the shared output schemas and the one mapper from each service value to them are in `tools/wire.ts`. A tool file imports no other tool file. Inputs and outputs are Effect schemas. The JSON Schemas come from them once per isolate. Writes run in one SERIALIZABLE transaction, which rechecks OAuth write access. Errors map to the current `{error: {code, message, outcomeUnknown, recovery}}` body.
 - Receipt uploads (third pass). A Worker cannot presign S3 URLs for R2 without R2 S3 credentials, so an upload target is a Worker URL, `<BASE_URL>/api/receipt-uploads/<secret>`, with 256 random bits that work once. `create_expense` and `update_expense` write one `receipt_uploads` row per requested file in the write's transaction: the uploadId, the SHA-256 of the secret, the user, the group, the expense, the final R2 key `receipts/<id>.jpg|png`, the declared type and size, and an expiry 300 seconds later. The PUT claims the row (`pending` to `writing`) in one UPDATE, checks that `Content-Type` and `Content-Length` equal the target's headers, and streams the body into R2. R2 reports the stored size; a short body frees the target again. `update_expense` with `attachUploadIds` locks the rows, checks the owner, the group, the expense, the state and the 24 hours, reads the first 256 KiB from R2 (all of it only when the JPEG frame header comes later), registers the image in `receipts`, deletes the row and adds the document, in one audited revision. The hourly cron deletes rows older than 25 hours and their objects. No JavaScript reads or hashes the body on the PUT.
 - `GET /api/receipts` accepts the agent's API key or OAuth token (`X-API-Key` or `Authorization`), through the MCP `authenticate`, as in the current app. A bad agent credential answers 401 and does not fall back to the cookie.
-- The writes call `createExpense`, `updateExpense`, `deleteExpense` and `getExpense` in `src/server/ledger.ts`. The reads are one SQL statement each in `tools/`, because the current wire shapes (offset pages, names, categories, attribution) need columns that the RPC reads do not return. Each read checks membership in the same statement.
+- The expense tools call `listExpenses`, `getExpense`, `createExpense`, `patchExpense` and `deleteExpense` in `src/server/ledger.ts`. The services return the columns that the current wire shapes need (names, receipts and attribution events, through `ExpenseParts` in `expense-read.ts`), and `listExpenses` also pages by offset, as list_expenses does. list_groups calls `listGroupPage` and get_group calls `getGroupDetails` in `groups.ts`. No tool has its own SQL.
 - Second pass: every tool calls the service that the web RPC uses, and only maps names (`EVENLY`, `isReimbursement`, `currencyCode`) and shapes. The services are `feed.ts` (list_all_expenses, get_expense_options, get_participant_balances), `ungrouped.ts` (ungrouped create_expense, renew_invitation), `account.ts` (update_profile), `groups.ts` (create_group, update_group, manage_group_access), `expenses.ts` (get_balances, get_reference_data), `history.ts` (list_activity, the asOf forms of list_expenses, get_expense and get_balances), `stats.ts`, `export.ts` and `recurring.ts`. Writes go through the same SERIALIZABLE path with the OAuth write recheck.
-- Three tools need one more statement for columns that the service does not return: list_all_expenses (original amount, exchange rate, recurring link, category), list_activity (the live `expense` beside a current entry) and the historical get_expense (attribution up to that revision). Each reads only rows that the service has already checked.
+- list_activity reads the live `expense` beside a current entry with `loadExpenses`, a second statement over rows that the service has already checked. The historical get_expense reads the attribution up to that revision in the same statement as the revision (`getSavedExpense` with `attribution`).
 - Small additive changes to the services: `accountBalances` takes an optional scope (groups, and another participant per group), `statsOverview` takes an optional `participantId`, `listActivities` returns actor IDs only with `withActors` (the Log stays without user and key IDs), and `readSnapshot` keeps the group that a revision saved. The web RPC output is unchanged.
-- `tools/index.ts` lists the tools in the current app's order and fails at startup if a defined tool has no place in it.
+- `tools/index.ts` lists the tools in the current app's order. `test/docs.test.ts` checks MCP.md's tool table and error codes against the code.
 - API keys: `api-key.ts` ports Better Auth's `validateApiKey` for the plugin settings in `auth-options.ts`. A differential test runs both on identical rows (13 states: disabled, expired, rate limited, window reset, quota, refill and others). The test requires the same answer and the same row changes.
 - OAuth: `oauth.ts` runs Better Auth's own `verifyJwsAccessToken` and `enforceDpopBinding` (`better-auth/oauth2`). The key set comes from the `jwks` table, as `/api/auth/jwks` publishes it, because a Worker cannot fetch its own hostname. The DPoP replay store writes the same `verification` rows as Better Auth's `createDpopReplayStore`.
 - The protected-resource metadata comes from `challenge.ts`, routed in `worker.ts`. Better Auth's MCP plugin removes `offline_access` from that document, and the fix needs it there.
@@ -49,10 +49,10 @@ Status words:
 | P-MCP-24, 26, 27, 28 | covered | The same test. Conversion fields and `saveDefaultSplittingOptions` are not in the schema, and the closed object refuses them (tools "refuses invalid money…", `originalAmount`). |
 | P-MCP-25 | covered | `participantId` is not an input; a call with it fails validation (same test). |
 | — | changed | `expense.payers` and `changes.payers` are new: multiple payers. `paidBy` is no longer required in the schema, because `payers` can replace it. A call needs exactly one of the two. The test allows exactly these differences. |
-| — | changed | The create and update field descriptions carry the recording rules (tools "describes the recording rules"). |
+| — | changed | The create and update field descriptions carry the recording rules (`RECORDING_RULES` in src/server/mcp/tools/expenses.ts). No test copies the text. |
 | — | changed | `list_all_expenses.involvingMe` defaults to true, and its description says so (DECISIONS.md, P-FEED-19). The test does not compare defaults. |
 | — | changed | Tool descriptions: create_expense and get_balances state the payment rules; create_group and update_group say that currencyCode must be a supported code; manage_group_access says that `joined` is true only after a join; list_activity says that agentKeyId is shown only for your own changes; list_all_expenses states the involvingMe default. |
-| — | changed | Outputs: `payers` beside `paidBy` in list_all_expenses rows and in saved snapshots. In historical get_expense, `documents[].width` and `height` are optional, because a saved revision keeps only the receipt pointer. Snapshot unions are not compared by the test (it follows `properties` and `items` only). |
+| — | changed | Outputs: `payers` beside `paidBy` in list_all_expenses rows and in saved snapshots. In historical get_expense, `documents[].width` and `height` are optional, because a saved revision keeps only the receipt pointer. The test follows every alternative of a union (`anyOf`, `oneOf`), snapshots included; saved snapshots leave out the receipt sizes and the group revision (list_activity 06). |
 | — | changed | `get_balances.currencies[].balances` advertises its value schema (`additionalProperties`); `registry.ts` dropped it before. |
 
 ## Tool call results and errors
@@ -137,7 +137,7 @@ The Claude Code emulation (oauth "Claude Code flow emulation") follows the repro
 
 | Item | Status | Evidence or reason |
 | --- | --- | --- |
-| P-TOOL-LISTGROUPS-01 | changed | Maps to an MCP read in `tools/groups.ts`, not to `groups.list`. |
+| P-TOOL-LISTGROUPS-01 | changed | Maps to `groups.listGroupPage`, the directory's page of named groups (newest first) with offset pages, not to `groups.list`. |
 | 02 to 06, 08, 09 | covered | tools "lists named groups…", "fails the whole call…", "isolates two concurrent users". |
 | 07 | changed | Same shape. `currency` is the symbol from the currency registry, because v2 stores only the code. An empty description is `null`, as the current app stores it. |
 
@@ -155,7 +155,8 @@ The Claude Code emulation (oauth "Claude Code flow emulation") follows the repro
 
 | Item | Status | Evidence or reason |
 | --- | --- | --- |
-| 01 to 09, 12, 13, 17 | covered | tools "lists with filters before offset pagination…", "refuses bad list bounds…". `filter` matches title or vendor, not notes, as in the current app. |
+| 01 to 05, 07 to 09, 12, 13, 17 | covered | tools "lists with filters before offset pagination…", "refuses bad list bounds…". The arguments use the RPC contract's schemas, so `vendor` takes the contract's search text (at most 200 characters). |
+| 06 | changed | `filter` matches the title, the vendor or the notes, as the web list does (`ledger.listExpenses`, and `filterSaved` for historical reads). The current app matched the title and the vendor only. |
 | 10 | covered | `{expenses, hasMore, nextCursor}`. `history` comes with historical reads. |
 | 11 | changed | Same fields, plus `payers` (every payer and amount). `paidBy` is the payer who paid the most. Money uses the currency's full decimals ("30.00", not "30"). |
 | 14, 15 | covered | `history.listSavedExpenses` filters saved values, then pages (more "reads a saved revision and a historical list…"). Both selections at once answer BAD_REQUEST (tools "refuses bad list bounds…"); the message is the history area's "Choose asOf, atActivityId or revision, not more than one". |
@@ -334,7 +335,7 @@ The service that owns each behavior is named in the design section above. "code"
 | --- | --- | --- |
 | P-TOOL-REF-01, 02, 04 | covered | more "lists reference data in the current names". |
 | 03 | changed | The same 34 currencies, in code order instead of the current list order. |
-| 05 | covered | `attachments.enabled` is `ENABLE_EXPENSE_DOCUMENTS`, with `image/jpeg`, `image/png` and 5242880 bytes (uploads "reports attachments as enabled…"). |
+| 05 | changed | `attachments.enabled` is always true (receipts are always on), with `image/jpeg`, `image/png` and 5242880 bytes (uploads "reports attachments as enabled…"). |
 
 ### export_group (export.ts)
 
@@ -349,7 +350,7 @@ The service that owns each behavior is named in the design section above. "code"
 
 1. Resolved by the lead: state conflicts (P-TOOL-ACCESS-08, 10, 11, 15, 20, 26, P-TOOL-UPDATEGROUP-07, P-TOOL-DELETEEXP-07) answer CONFLICT again, through `Invalid.reason = 'state'`.
 2. `create_group` and `update_group` refuse a custom currency symbol. An agent that sends only `currency: "$"` gets BAD_REQUEST, because several currencies use that symbol.
-3. Resolved in the third pass: `get_reference_data.attachments.enabled` follows `ENABLE_EXPENSE_DOCUMENTS`, as the web does.
+3. Resolved in the third pass: `get_reference_data.attachments.enabled` follows the web. Since 2026-11-07 receipts are always on, so it is always true.
 
 ## Cost
 

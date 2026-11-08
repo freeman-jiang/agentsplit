@@ -1,41 +1,34 @@
 import { queryOptions, type QueryClient } from '@tanstack/react-query'
+import type { Group } from '../../shared/api'
 import { rpc } from '../rpc'
+import { isGroupSummaryKey, keys } from './keys'
+
+/** The group as every group page reads it: name, people, the caller's role and participant. */
+export const groupQuery = (groupId: string) =>
+  queryOptions({ queryKey: keys.groupSummary(groupId), queryFn: () => rpc((api) => api('groups.get', { groupId })) })
+
+export const groupDetailsQuery = (groupId: string) =>
+  queryOptions({ queryKey: keys.groupDetails(groupId), queryFn: () => rpc((api) => api('groups.details', { groupId })) })
 
 export const directoryQuery = (offset: number) =>
-  queryOptions({ queryKey: ['groups', 'directory', offset], queryFn: () => rpc((api) => api('groups.directory', { offset })) })
-
-export const groupDetailsQuery = (group: string) =>
-  queryOptions({ queryKey: ['group', group, 'details'], queryFn: () => rpc((api) => api('groups.details', { groupId: group })) })
+  queryOptions({ queryKey: keys.directory(offset), queryFn: () => rpc((api) => api('groups.directory', { offset })) })
 
 export const invitationQuery = (token: string) =>
-  queryOptions({ queryKey: ['invitation', token], queryFn: () => rpc((api) => api('invitations.preview', { token })) })
+  queryOptions({ queryKey: keys.invitation(token), queryFn: () => rpc((api) => api('invitations.preview', { token })) })
 
-/** A fresh key for one user action; a retry of the same request reuses it. */
-export const newIdempotencyKey = () => crypto.randomUUID()
-
-/** After a group write, every screen that shows groups reads again. */
-export const refreshGroups = (queryClient: QueryClient) =>
-  Promise.all([queryClient.invalidateQueries({ queryKey: ['groups'] }), queryClient.invalidateQueries({ queryKey: ['group'] })])
-
-const NOT_FOUND: Record<string, string> = {
-  invitation: 'Invitation not found or no longer valid',
-  member: 'Member not found',
-  group: 'Group not found.',
-}
-
-/** The message to show for a failed call. A revision conflict asks the user to look again. */
-export function errorMessage(error: unknown): string {
-  if (typeof error === 'object' && error !== null && '_tag' in error) {
-    const e = error as { _tag: string; message?: unknown; entity?: unknown }
-    switch (e._tag) {
-      case 'Conflict':
-        return 'Someone else changed this group while you were editing. The page now shows the latest version; check it and try again.'
-      case 'NotFound':
-        return NOT_FOUND[String(e.entity)] ?? 'Not found.'
-      case 'Unauthorized':
-        return 'Sign in required'
-    }
-    if (typeof e.message === 'string' && e.message) return e.message
-  }
-  return error instanceof Error && error.message ? error.message : 'Something went wrong. Try again.'
+/**
+ * The group a URL segment names: its ID, its slug, an old slug or another
+ * letter case. A group already in the cache under its ID or slug needs no
+ * request; otherwise the server resolves the segment, and the answer is
+ * cached under the group's ID.
+ */
+export async function resolveGroup(data: { queryClient: QueryClient; segment: string }): Promise<typeof Group.Type> {
+  const { queryClient, segment } = data
+  const cached = queryClient
+    .getQueriesData<typeof Group.Type>({ predicate: (query) => isGroupSummaryKey(query.queryKey) })
+    .find(([, group]) => group !== undefined && (group.id === segment || group.slug === segment))?.[1]
+  if (cached) return queryClient.ensureQueryData(groupQuery(cached.id))
+  const group = await rpc((api) => api('groups.get', { groupId: segment }))
+  queryClient.setQueryData(groupQuery(group.id).queryKey, group)
+  return group
 }

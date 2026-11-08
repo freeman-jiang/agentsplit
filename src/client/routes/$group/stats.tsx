@@ -1,25 +1,27 @@
 // The Stats tab, ported from the current app's stats/ components. One request
 // loads every card; the charts are plain elements, so the tab adds no chart
 // library to the bundle.
-import { keepPreviousData, useQuery, useSuspenseQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { Banknote, Bus, ChartBarStacked, ChartColumnStacked, ChevronRight, FerrisWheel, HandHelping, Home, PlugZap, Utensils } from 'lucide-react'
+import { ChartBarStacked, ChartColumnStacked, ChevronRight } from 'lucide-react'
 import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { cn } from '~/client/cn'
-import { localDate } from '~/client/components/local-date'
-import { money } from '~/client/components/money'
-import { groupQuery } from '~/client/queries'
+import { CategoryIcon } from '~/client/components/category-icon'
+import { magnitude } from '~/client/components/balance/net'
+import { money, unitsOf } from '~/client/components/money'
+import { formatDay, formatMonth, localDate } from '~/client/dates'
+import { describeError } from '~/client/errors'
 import { statsQuery, type StatsScope } from '~/client/queries/history'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/client/ui/card'
 import { Checkbox } from '~/client/ui/checkbox'
+import { ChoiceSelect } from '~/client/ui/choice-select'
 import { Input } from '~/client/ui/input'
 import { Label } from '~/client/ui/label'
-import { NativeSelect } from '~/client/ui/native-select'
+import { Segmented } from '~/client/ui/segmented'
 import { Skeleton } from '~/client/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/client/ui/table'
 import type { StatsOverview } from '~/shared/api'
 import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
-import { minorOrNull } from '~/shared/minor'
 import { divRound, regroupMonthly, type MonthlyCategory, type MonthlyGrouping, type MonthlyMonth, type MonthlySpending } from '~/shared/stats'
 
 type Overview = typeof StatsOverview.Type
@@ -27,13 +29,13 @@ type Overview = typeof StatsOverview.Type
 // ---------- periods (P-STATS-05 to P-STATS-10) ----------
 
 const PERIODS = [
-  ['all', 'All time'],
-  ['thisMonth', 'This month'],
-  ['last30', 'Last 30 days'],
-  ['thisYear', 'This year'],
-  ['custom', 'Custom range'],
+  { value: 'all', label: 'All time' },
+  { value: 'thisMonth', label: 'This month' },
+  { value: 'last30', label: 'Last 30 days' },
+  { value: 'thisYear', label: 'This year' },
+  { value: 'custom', label: 'Custom range' },
 ] as const
-type Period = (typeof PERIODS)[number][0]
+type Period = (typeof PERIODS)[number]['value']
 type Range = { from?: string; to?: string }
 
 /** A named period as an inclusive range of local calendar dates; a custom range with reversed bounds is swapped. */
@@ -63,44 +65,30 @@ const scopeOf = (data: { currency: CurrencyCode | undefined; range: Range }): St
 })
 
 export const Route = createFileRoute('/$group/stats')({
-  loader: ({ context, params }) => context.queryClient.ensureQueryData(statsQuery(params.group, { today: localDate() })),
+  loader: ({ context }) => context.queryClient.ensureQueryData(statsQuery(context.groupId, { today: localDate() })),
   component: StatsTab,
 })
 
 // ---------- formatting ----------
 
-const dayFormat = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' })
-const formatDay = (date: string) => dayFormat.format(new Date(`${date}T00:00:00Z`))
-const monthFormat = (options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-US', { ...options, timeZone: 'UTC' })
-const shortMonthYear = monthFormat({ month: 'short', year: 'numeric' })
-const formatMonth = (key: string, format: Intl.DateTimeFormat = shortMonthYear) => format.format(new Date(`${key}-01T00:00:00Z`))
-const toUnits = (amount: string, currency: CurrencyCode): bigint => {
-  return minorOrNull({ amount, currency }) ?? 0n
-}
 /** Chart amounts: whole units when "Round amounts" is on (P-STATS-40). */
 function chartMoney(data: { amount: string; currency: CurrencyCode; round: boolean }) {
   if (!data.round) return money(data.amount, data.currency)
-  const whole = divRound(toUnits(data.amount, data.currency), 10n ** BigInt(CURRENCIES[data.currency].decimals))
+  const whole = divRound(unitsOf(data.amount, data.currency), 10n ** BigInt(CURRENCIES[data.currency].decimals))
   return money(whole.toString(), data.currency)
 }
 const ratio = (part: string, whole: string, currency: CurrencyCode) => {
-  const w = toUnits(whole, currency)
-  return w <= 0n ? 0 : Number(toUnits(part, currency)) / Number(w)
+  const w = unitsOf(whole, currency)
+  return w <= 0n ? 0 : Number(unitsOf(part, currency)) / Number(w)
 }
 const isNegative = (amount: string) => amount.startsWith('-')
-const abs = (amount: string) => (isNegative(amount) ? amount.slice(1) : amount)
 const chartColor = (index: number) => `hsl(var(--chart-${(index % 5) + 1}))`
-
-function GroupIcon({ grouping, className }: { grouping: string; className?: string }) {
-  const Icon = { Entertainment: FerrisWheel, 'Food and Drink': Utensils, Home, Life: HandHelping, Transportation: Bus, Utilities: PlugZap }[grouping] ?? Banknote
-  return <Icon className={className} aria-hidden="true" />
-}
 
 // ---------- page ----------
 
 function StatsTab() {
   const { group } = Route.useParams()
-  const { data: g } = useSuspenseQuery(groupQuery(group))
+  const { groupId } = Route.useRouteContext()
   const [period, setPeriod] = useState<Period>('all')
   const [custom, setCustom] = useState<Range>({})
   const [currency, setCurrency] = useState<CurrencyCode | undefined>()
@@ -108,9 +96,9 @@ function StatsTab() {
   const range = resolveRange({ period, custom, now })
   const scope = scopeOf({ currency, range })
   // Each filter change is one new request (P-STATS-02); the previous figures stay until it answers.
-  const { data } = useQuery({ ...statsQuery(group, { ...scope, today: localDate(now) }), placeholderData: keepPreviousData })
+  const { data, error } = useQuery({ ...statsQuery(groupId, { ...scope, today: localDate(now) }), placeholderData: keepPreviousData })
   const c = data?.currency
-  const drill = { group, groupId: g.id, range }
+  const drill = { group, groupId, range }
   return (
     <section>
       <h2 className="sr-only">Totals</h2>
@@ -118,25 +106,13 @@ function StatsTab() {
         {data && data.currencies.length > 0 && (
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             Currency
-            <NativeSelect aria-label="Statistics currency" value={data.currency} onChange={(e) => setCurrency(e.target.value as CurrencyCode)} wrapperClassName="w-28">
-              {data.currencies.map((code) => (
-                <option key={code} value={code}>
-                  {code}
-                </option>
-              ))}
-            </NativeSelect>
+            <ChoiceSelect aria-label="Statistics currency" value={data.currency} options={data.currencies.map((code) => ({ value: code, label: code }))} onChange={setCurrency} wrapperClassName="w-28" />
           </label>
         )}
         <div className="flex max-w-full flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             Period
-            <NativeSelect aria-label="Period" data-testid="stats-period" value={period} onChange={(e) => setPeriod(e.target.value as Period)} wrapperClassName="w-44">
-              {PERIODS.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </NativeSelect>
+            <ChoiceSelect aria-label="Period" data-testid="stats-period" value={period} options={PERIODS} onChange={setPeriod} wrapperClassName="w-44" />
           </label>
           {period === 'custom' && (
             <div className="flex max-w-full flex-wrap items-center gap-3">
@@ -154,18 +130,23 @@ function StatsTab() {
         {/* The date range describes the selection, so it sits with the filters, not in a card. */}
         {data && data.summary.count > 0 && <span className="self-center text-sm tabular-nums text-muted-foreground sm:ml-auto">Active period · {activeSpan(data.summary)}</span>}
       </div>
-      {/* On wide screens Summary and Totals share a row; the wide cards span both columns. */}
-      <div className="grid gap-6 xl:grid-cols-2">
-        <SummaryCard data={data} />
-        <StatsCard title="Totals" description="Spending summary of the entire group.">
-          {!data || !c ? <Lines rows={3} /> : <Totals data={data} currency={c} />}
-        </StatsCard>
-        <OverTimeCard data={data} drill={drill} />
-        <MonthlyCard data={data} />
-        <ParticipantsCard data={data} />
-        <CategoriesCard data={data} drill={drill} />
-        <RecurringCard data={data} />
-      </div>
+      {error ? (
+        <p role="alert" className="text-sm">
+          {describeError(error).message}
+        </p>
+      ) : (
+        <div className="grid gap-6 xl:grid-cols-2">
+          <SummaryCard data={data} />
+          <StatsCard title="Totals" description="Spending summary of the entire group.">
+            {!data || !c ? <Lines rows={3} /> : <Totals data={data} currency={c} />}
+          </StatsCard>
+          <OverTimeCard data={data} drill={drill} />
+          <MonthlyCard data={data} />
+          <ParticipantsCard data={data} />
+          <CategoriesCard data={data} drill={drill} />
+          <RecurringCard data={data} />
+        </div>
+      )}
     </section>
   )
 }
@@ -174,7 +155,6 @@ function StatsCard({ title, description, children, actions, wide }: { title: str
   return (
     <Card className={cn('min-w-0', wide && 'xl:col-span-2')}>
       <CardHeader>
-        {/* A card's controls sit in their own row under the description. */}
         <div className="flex flex-col gap-4">
           <div>
             <CardTitle>{title}</CardTitle>
@@ -218,7 +198,6 @@ function SummaryCard({ data }: { data: Overview | undefined }) {
         <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 xl:grid-cols-2">
           <Metric label="Expenses">{s.count}</Metric>
           <Metric label="Average expense">{money(s.average, c)}</Metric>
-          {/* The largest expense's title wraps instead of being cut off. */}
           <div className="col-span-2 sm:col-span-1 xl:col-span-2">
             <Metric label="Largest expense">
               {s.largest ? money(s.largest.amount, c) : '—'}
@@ -248,12 +227,12 @@ function Totals({ data, currency }: { data: Overview; currency: CurrencyCode }) 
   const personal = (label: string, amount: string) => (
     // Negative personal amounts are earnings: green; spending is red (P-STATS-22).
     <Metric label={label} className={isNegative(amount) ? 'text-owed' : 'text-owe'}>
-      {money(abs(amount), currency)}
+      {money(magnitude(amount), currency)}
     </Metric>
   )
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 xl:grid-cols-2">
-      <Metric label={isNegative(data.total) ? 'Total group earnings' : 'Total group spendings'}>{money(abs(data.total), currency)}</Metric>
+      <Metric label={isNegative(data.total) ? 'Total group earnings' : 'Total group spendings'}>{money(magnitude(data.total), currency)}</Metric>
       {data.yourPaid !== null && personal(isNegative(data.yourPaid) ? 'Your total earnings' : 'Your total spendings', data.yourPaid)}
       {data.yourShare !== null && personal('Your total share', data.yourShare)}
     </div>
@@ -265,7 +244,7 @@ function Totals({ data, currency }: { data: Overview; currency: CurrencyCode }) 
 type Drill = { group: string; groupId: string; range: Range }
 
 // The drill-down dialog and its library load on the first click, not with the tab.
-const LazyDialog = lazy(() => import('~/client/components/history/stats-dialog'))
+const LazyDialog = lazy(() => import('./-stats-dialog'))
 function ExpensesDialog(props: Parameters<typeof LazyDialog>[0]) {
   return (
     <Suspense fallback={null}>
@@ -372,7 +351,7 @@ function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Dr
               key={x.categoryId}
               columns={BAR_COLUMNS}
               label={x.name}
-              icon={<GroupIcon grouping={x.grouping} className="h-4 w-4 shrink-0 text-muted-foreground" />}
+              icon={<CategoryIcon grouping={x.grouping} className="h-4 w-4 shrink-0 text-muted-foreground" />}
               aria={`Show expenses for ${x.name}`}
               value={Number(x.total)}
               max={max}
@@ -399,7 +378,16 @@ function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Dr
 
 // ---------- monthly spending (P-STATS-34 to P-STATS-40) ----------
 
-type ChartType = 'bars' | 'columns'
+const GROUPINGS = [
+  { value: 'categoryGroup', label: 'Categories' },
+  { value: 'category', label: 'Detailed' },
+] as const satisfies ReadonlyArray<{ value: MonthlyGrouping; label: string }>
+
+const CHART_TYPES = [
+  { value: 'bars', label: 'Stacked bars', icon: ChartBarStacked },
+  { value: 'columns', label: 'Stacked columns', icon: ChartColumnStacked },
+] as const
+type ChartType = (typeof CHART_TYPES)[number]['value']
 
 function MonthlyCard({ data }: { data: Overview | undefined }) {
   const [grouping, setGrouping] = useState<MonthlyGrouping>('categoryGroup')
@@ -408,7 +396,7 @@ function MonthlyCard({ data }: { data: Overview | undefined }) {
   const c = data?.currency
   // Regrouping uses the loaded data: no new request (P-STATS-35).
   const view = useMemo(() => (data && c ? regroupMonthly({ spending: data.monthly, grouping, currency: c }) : undefined), [data, c, grouping])
-  const visible = useMemo(() => view?.categories.filter((x) => toUnits(x.expense, c ?? 'USD') > 0n) ?? [], [view, c])
+  const visible = useMemo(() => (view && c ? view.categories.filter((x) => unitsOf(x.expense, c) > 0n) : []), [view, c])
   const colors = useMemo(() => new Map(visible.map((x, i) => [x.key, chartColor(i)])), [visible])
   const years = new Set(view?.months.map((m) => m.key.slice(0, 4)))
   const controls = (
@@ -419,34 +407,8 @@ function MonthlyCard({ data }: { data: Overview | undefined }) {
           Round amounts
         </Label>
       </div>
-      <NativeSelect aria-label="Category grouping" value={grouping} onChange={(e) => setGrouping(e.target.value as MonthlyGrouping)} wrapperClassName="w-36 sm:w-32" className="h-9 sm:text-sm">
-        <option value="categoryGroup">Categories</option>
-        <option value="category">Detailed</option>
-      </NativeSelect>
-      {/* The same segmented control as the expense list's sort. */}
-      <div role="group" aria-label="Chart type" className="inline-flex h-9 shrink-0 items-stretch rounded-xl border border-input p-1">
-        {(
-          [
-            ['bars', 'Stacked bars', ChartBarStacked],
-            ['columns', 'Stacked columns', ChartColumnStacked],
-          ] as const
-        ).map(([value, label, Icon]) => (
-          <button
-            key={value}
-            type="button"
-            title={label}
-            aria-label={label}
-            aria-pressed={chart === value}
-            onClick={() => setChart(value)}
-            className={cn(
-              'flex items-center rounded-[0.5rem] px-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              chart === value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <Icon className="h-4 w-4" aria-hidden="true" />
-          </button>
-        ))}
-      </div>
+      <ChoiceSelect aria-label="Category grouping" value={grouping} options={GROUPINGS} onChange={setGrouping} wrapperClassName="w-36 sm:w-32" className="h-9 sm:text-sm" />
+      <Segmented label="Chart type" value={chart} options={CHART_TYPES} onChange={setChart} className="h-9 shrink-0" />
     </div>
   )
   return (
@@ -478,30 +440,28 @@ function MonthlyCard({ data }: { data: Overview | undefined }) {
 
 type ChartProps = { view: MonthlySpending; visible: readonly MonthlyCategory[]; colors: Map<string, string>; currency: CurrencyCode; round: boolean; grouping: MonthlyGrouping; includeYear: boolean }
 
-const longMonth = monthFormat({ month: 'long', year: 'numeric' })
-const shortMonth = monthFormat({ month: 'short' })
 
 /** The month's segments in legend order, only those with spending. */
 function segments(month: MonthlyMonth, visible: readonly MonthlyCategory[], currency: CurrencyCode) {
   const byKey = new Map(month.categories.map((x) => [x.key, x]))
   return visible.flatMap((v) => {
     const x = byKey.get(v.key)
-    return x && toUnits(x.expense, currency) > 0n ? [x] : []
+    return x && unitsOf(x.expense, currency) > 0n ? [x] : []
   })
 }
 const hover = (data: { month: MonthlyMonth; category: MonthlyCategory; share: number; currency: CurrencyCode; round: boolean }) =>
-  `${formatMonth(data.month.key, longMonth)} - ${data.category.name}: ${chartMoney({ amount: data.category.expense, currency: data.currency, round: data.round })} (${Math.round(data.share * 100)}%)`
+  `${formatMonth(data.month.key, 'long')} - ${data.category.name}: ${chartMoney({ amount: data.category.expense, currency: data.currency, round: data.round })} (${Math.round(data.share * 100)}%)`
 
 function StackedBars({ view, visible, colors, currency, round, includeYear }: ChartProps) {
   return (
     <div className="flex max-h-[32rem] flex-col gap-0.5 overflow-y-auto">
       {view.months.map((month) => {
         const share = ratio(month.expense, view.maxExpense, currency)
-        const units = toUnits(month.expense, currency) > 0n ? Math.max(share, 0.03) : 0
+        const units = unitsOf(month.expense, currency) > 0n ? Math.max(share, 0.03) : 0
         return (
           // The same grammar as "Spending over time": label, a bar on a full-width track, then the amount in a fixed column.
           <div key={month.key} className={cn('grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] items-center gap-x-3 py-1.5 text-sm', BAR_COLUMNS)}>
-            <div>{formatMonth(month.key, includeYear ? shortMonthYear : shortMonth)}</div>
+            <div>{formatMonth(month.key, includeYear ? 'shortYear' : 'short')}</div>
             <div className="h-2 min-w-0 overflow-hidden rounded-full bg-muted">
               <div className="flex h-full overflow-hidden rounded-full" style={{ width: `${units * 100}%` }}>
                 {segments(month, visible, currency).map((x) => {
@@ -539,14 +499,14 @@ function StackedColumns({ view, visible, colors, currency, round, grouping, incl
             <div key={month.key} className="flex min-w-0 flex-col items-center gap-2">
               <div className="flex h-56 w-full flex-col items-center justify-end">
                 <div className="mb-1 max-w-full truncate px-0.5 text-center text-xs leading-none tabular-nums text-muted-foreground">{total}</div>
-                <div className="flex w-full max-w-14 items-end rounded-md bg-muted" style={{ height: percent > 0 ? `calc(12rem * ${percent / 100})` : '0px' }} title={`${formatMonth(month.key, longMonth)}: ${total}`}>
+                <div className="flex w-full max-w-14 items-end rounded-md bg-muted" style={{ height: percent > 0 ? `calc(12rem * ${percent / 100})` : '0px' }} title={`${formatMonth(month.key, 'long')}: ${total}`}>
                   <div className="flex h-full w-full flex-col-reverse overflow-hidden rounded-md">
                     {segments(month, visible, currency).map((x) => {
                       const part = ratio(x.expense, month.expense, currency)
                       const label = hover({ month, category: x, share: part, currency, round })
                       return (
                         <div key={x.key} aria-label={label} title={label} className="flex min-h-[3px] items-center justify-center overflow-hidden px-0.5" style={{ height: `${part * 100}%`, backgroundColor: colors.get(x.key), color: 'hsl(var(--background))' }}>
-                          {part >= 0.08 && <GroupIcon grouping={grouping === 'categoryGroup' ? x.key : x.grouping} className="h-3.5 w-3.5 shrink-0 opacity-80" />}
+                          {part >= 0.08 && <CategoryIcon grouping={grouping === 'categoryGroup' ? x.key : x.grouping} className="h-3.5 w-3.5 shrink-0 opacity-80" />}
                         </div>
                       )
                     })}
@@ -554,7 +514,7 @@ function StackedColumns({ view, visible, colors, currency, round, grouping, incl
                 </div>
               </div>
               <div className="w-full min-w-0 text-center text-xs leading-tight text-muted-foreground">
-                <div className="truncate">{formatMonth(month.key, shortMonth)}</div>
+                <div className="truncate">{formatMonth(month.key, 'short')}</div>
                 {includeYear && <div>{month.key.slice(0, 4)}</div>}
               </div>
             </div>

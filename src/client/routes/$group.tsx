@@ -1,37 +1,46 @@
-import { requireSignedIn } from '~/client/queries/account'
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, Outlet, redirect, useRouterState } from '@tanstack/react-router'
-import { ChevronDown, RefreshCw, Users } from 'lucide-react'
+import { RefreshCw, Users } from 'lucide-react'
+import { requireSignedIn } from '~/client/queries/session'
 import { cn } from '~/client/cn'
+import { isZero, magnitude, NET_CLASS, netLabel, netTone } from '~/client/components/balance/net'
+import { RailSettlements } from '~/client/components/balance/settlements'
 import { money } from '~/client/components/money'
-import { groupQuery } from '~/client/queries'
 import { balancesQuery } from '~/client/queries/expenses'
+import { groupQuery, resolveGroup } from '~/client/queries/groups'
+import { rpcError } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
+import { DisclosureSummary } from '~/client/ui/disclosure'
+import type { FileRoutesById } from '~/client/routeTree.gen'
 import { Skeleton } from '~/client/ui/skeleton'
-import type { CurrencyBalances } from '~/shared/api'
+import type { CurrencyBalances, Participant } from '~/shared/api'
 import { groupPath, groupRef } from '~/shared/groups'
 
 export const Route = createFileRoute('/$group')({
-  // A signed-out visitor returns here after sign-in (P-AUTH-49).
-  beforeLoad: ({ context, location }) => requireSignedIn({ queryClient: context.queryClient, location }),
-  loader: async ({ context, params, location }) => {
-    const g = await context.queryClient.ensureQueryData(groupQuery(params.group)).catch((error: unknown) => {
+  /** Every group page reads the group by its ID, from `groupId` in the route context. */
+  beforeLoad: async ({ context, params, location }) => {
+    const { queryClient } = context
+    // The group read starts beside the session read, so a first visit sends both in one request.
+    const group = resolveGroup({ queryClient, segment: params.group })
+    group.catch(() => undefined)
+    // A signed-out visitor returns here after sign-in (P-AUTH-49).
+    await requireSignedIn({ queryClient, location })
+    const g = await group.catch((error: unknown) => {
       // Not a member, or no such group: the directory explains (P-GROUP-21, P-GROUP-46).
-      if (typeof error === 'object' && error !== null && '_tag' in error && error._tag === 'Forbidden')
-        throw redirect({ to: '/groups', search: { access: 'denied' }, replace: true })
+      if (rpcError(error)._tag === 'Forbidden') throw redirect({ to: '/groups', search: { access: 'denied' }, replace: true })
       throw error
     })
     // A private context has no group pages: its expense page shows it (P-GROUP-47, P-UNGROUP-39).
     if (g.contextExpenseId) throw redirect({ to: '/expenses/$expenseId', params: { expenseId: g.contextExpenseId }, replace: true })
     // An ID, an old slug or another letter case moves to the group's current URL (P-GROUP-105, P-GROUP-106).
-    const canonical = groupRef(g)
-    if (params.group !== canonical) {
-      context.queryClient.setQueryData(groupQuery(canonical).queryKey, g)
+    if (params.group !== groupRef(g)) {
       const rest = location.pathname.split('/').slice(2).join('/')
       throw redirect({ href: `${groupPath(g)}${rest ? `/${rest}` : ''}${location.searchStr}${location.hash ? `#${location.hash}` : ''}`, replace: true })
     }
-    return g
+    return { groupId: g.id }
   },
+  // The page title reads the group's name from here (page-title.ts).
+  loader: ({ context }) => context.queryClient.ensureQueryData(groupQuery(context.groupId)),
   component: GroupLayout,
 })
 
@@ -53,7 +62,8 @@ const TABS = [
  */
 function GroupLayout() {
   const { group } = Route.useParams()
-  const { data: g } = useSuspenseQuery(groupQuery(group))
+  const { groupId } = Route.useRouteContext()
+  const { data: g } = useSuspenseQuery(groupQuery(groupId))
   // On a phone the expense and payment forms need the whole screen; the rail stays on the tabs.
   const onForm = useRouterState({ select: (s) => s.matches.some((m) => FORM_ROUTES.has(m.routeId)) })
   // The Balances tab shows every balance itself, so the rail keeps only the viewer's summary there.
@@ -93,7 +103,7 @@ function GroupLayout() {
         </nav>
       </div>
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_16rem]">
-        <BalanceRail group={group} hideOnMobile={onForm} summaryOnly={onBalances} />
+        <BalanceRail groupId={groupId} group={group} hideOnMobile={onForm} summaryOnly={onBalances} />
         <div className="min-w-0 md:col-start-1 md:row-start-1">
           <Outlet />
         </div>
@@ -102,36 +112,21 @@ function GroupLayout() {
   )
 }
 
-const FORM_ROUTES = new Set(['/$group/expenses/create', '/$group/expenses/$expenseId/edit', '/$group/payments/create', '/$group/payments/$expenseId/edit'])
+const FORM_ROUTES: ReadonlySet<string> = new Set<keyof FileRoutesById>(['/$group/expenses/create', '/$group/expenses/$expenseId/edit', '/$group/payments/create', '/$group/payments/$expenseId/edit'])
 
 type Entry = typeof CurrencyBalances.Type
-type Person = { readonly id: string; readonly name: string }
-
-const isZero = (amount: string) => !/[1-9]/.test(amount)
-const abs = (amount: string) => (amount.startsWith('-') ? amount.slice(1) : amount)
-
-function netLabel(amount: string, personal = false) {
-  if (isZero(amount)) return 'Settled up'
-  if (amount.startsWith('-')) return personal ? 'You owe' : 'owes'
-  return personal ? 'You are owed' : 'gets back'
-}
-
-function amountClass(amount: string) {
-  if (isZero(amount)) return 'text-muted-foreground'
-  return amount.startsWith('-') ? 'text-owe' : 'text-owed'
-}
 
 /**
  * The net balances of the whole group, ported from the current app's
  * group-balance-summary.tsx. It reads its own balances query, so a failed load
  * stays in the rail. On narrow screens each currency is a closed <details>.
  */
-function BalanceRail({ group, hideOnMobile, summaryOnly }: { group: string; hideOnMobile: boolean; summaryOnly: boolean }) {
-  const { data: g } = useSuspenseQuery(groupQuery(group))
+function BalanceRail({ groupId, group, hideOnMobile, summaryOnly }: { groupId: string; group: string; hideOnMobile: boolean; summaryOnly: boolean }) {
+  const { data: g } = useSuspenseQuery(groupQuery(groupId))
   // As in the current app: fresh balances on mount and on window focus (P-BAL-58).
-  // The data is stale after one second, so the rail does not fetch again right
-  // after a loader fetched the same balances.
-  const { data, isPending, isError, isFetching, refetch } = useQuery({ ...balancesQuery(group), staleTime: 1000 })
+  // The data is stale after one second, so a rail that mounts after the Balances
+  // or Payments loader read the same balances does not read them again.
+  const { data, isPending, isError, isFetching, refetch } = useQuery({ ...balancesQuery(groupId), staleTime: 1000 })
   const participantId = g.participantId
   return (
     <aside
@@ -165,11 +160,11 @@ function BalanceRail({ group, hideOnMobile, summaryOnly }: { group: string; hide
             const summary = (
               <div className="min-w-0 max-md:flex max-md:items-baseline max-md:gap-2">
                 <div className="text-xs text-muted-foreground">
-                  {ownTotal === null ? 'Group net balances' : netLabel(ownTotal, true)} · {entry.currency}
+                  {ownTotal === null ? 'Group net balances' : netLabel(ownTotal, 'you')} · {entry.currency}
                 </div>
                 {ownTotal !== null && (
-                  <div className={cn('mt-1 text-lg font-semibold tabular-nums max-md:mt-0 md:text-xl', amountClass(ownTotal))} data-testid="summary-personal-net">
-                    {money(abs(ownTotal), entry.currency)}
+                  <div className={cn('mt-1 text-lg font-semibold tabular-nums max-md:mt-0 md:text-xl', NET_CLASS[netTone(ownTotal)])} data-testid="summary-personal-net">
+                    {money(magnitude(ownTotal), entry.currency)}
                   </div>
                 )}
               </div>
@@ -177,14 +172,10 @@ function BalanceRail({ group, hideOnMobile, summaryOnly }: { group: string; hide
             const details = <BalanceDetails entry={entry} participants={g.participants} participantId={participantId} />
             return (
               <section key={entry.currency} aria-label={`${entry.currency} balances`}>
-                <details className="group pe-9 md:hidden">
-                  <summary className="flex min-h-7 cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                <details className="pe-9 md:hidden">
+                  <DisclosureSummary hint="Details" className="min-h-7 gap-3 font-normal">
                     {summary}
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                      Details
-                      <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden="true" />
-                    </span>
-                  </summary>
+                  </DisclosureSummary>
                   <div className="mt-4 max-h-[55dvh] overflow-y-auto">{details}</div>
                 </details>
                 <div className="hidden space-y-4 md:block">
@@ -205,11 +196,10 @@ function BalanceRail({ group, hideOnMobile, summaryOnly }: { group: string; hide
   )
 }
 
-function BalanceDetails(props: { entry: Entry; participants: ReadonlyArray<Person>; participantId: string | null }) {
+function BalanceDetails(props: { entry: Entry; participants: ReadonlyArray<typeof Participant.Type>; participantId: string | null }) {
   const { entry, participants, participantId } = props
   const currency = entry.currency
   const nets = new Map(entry.balances.map((b) => [b.participantId, b.net]))
-  const personName = (id: string) => (id === participantId ? 'You' : (participants.find((p) => p.id === id)?.name ?? 'Unknown participant'))
   return (
     <div className="space-y-4">
       <ul className="space-y-3" aria-label={`${currency} participant balances`}>
@@ -221,29 +211,15 @@ function BalanceDetails(props: { entry: Entry; participants: ReadonlyArray<Perso
                 {person.name}
                 {person.id === participantId && <span className="font-normal text-muted-foreground"> (you)</span>}
               </div>
-              <div className={cn('text-sm tabular-nums', amountClass(total))}>
-                {netLabel(total)}
-                {!isZero(total) && <> {money(abs(total), currency)}</>}
+              <div className={cn('text-sm tabular-nums', NET_CLASS[netTone(total)])} data-testid="summary-net">
+                {netLabel(total, 'them')}
+                {!isZero(total) && <> {money(magnitude(total), currency)}</>}
               </div>
             </li>
           )
         })}
       </ul>
-      {entry.settlements.length > 0 && (
-        <div className="border-t pt-4">
-          <h3 className="eyebrow">Suggested payments</h3>
-          <ul className="space-y-3 text-sm">
-            {entry.settlements.map((payment) => (
-              <li key={`${payment.from}-${payment.to}`} data-testid="summary-payment">
-                <span className="block break-words">
-                  {personName(payment.from)} → {personName(payment.to)}
-                </span>
-                <strong className="tabular-nums">{money(payment.amount, currency)}</strong>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <RailSettlements currency={currency} settlements={entry.settlements} names={new Map(participants.map((p) => [p.id, p.name]))} viewer={participantId} />
     </div>
   )
 }

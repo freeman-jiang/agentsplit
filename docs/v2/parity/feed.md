@@ -79,7 +79,7 @@ The MCP area maps the old tool names onto these fields.
 | P-FEED-36 | Done | ungrouped "contact lookup…" (unverified accounts excluded), feed (schema). It also returns `categories`. |
 | P-FEED-37 | Done | feed, browser |
 | P-FEED-38 | Done | feed "attributes from create and update events…" (not the payer, baselines ignored, "Automatic recurrence"). Unverified accounts never lend their current name. |
-| P-FEED-39 | Done | browser ("Added … by …" on `/expenses/<id>`). `lastEditedByYouAt` is in feed. |
+| P-FEED-39 | Done | browser ("Added … by …"). `EntryAttribution` (`src/client/components/attribution.tsx`) shows it above the expense and payment editors, on group pages and on `/expenses/<id>`, from the `attribution` of `expenses.detail`. `lastEditedByYouAt` is in feed. |
 | P-FEED-40 | Deferred | History area: names at a history boundary come from snapshot reads, which the feed does not do. Live reads use current names (feed). |
 
 ## Ungrouped expenses

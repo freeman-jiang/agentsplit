@@ -39,3 +39,10 @@ export const CURRENCIES = {
 } as const satisfies Record<string, { decimals: 0 | 2; symbol: string; name: string }>
 
 export type CurrencyCode = keyof typeof CURRENCIES
+
+export const CURRENCY_CODES = Object.keys(CURRENCIES) as [CurrencyCode, ...CurrencyCode[]]
+
+/** The starting currency of a new group or private expense, as in the current app. */
+export const DEFAULT_CURRENCY: CurrencyCode = 'USD'
+
+export const isCurrencyCode = (code: string): code is CurrencyCode => Object.hasOwn(CURRENCIES, code)

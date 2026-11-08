@@ -5,7 +5,7 @@ import { Toaster } from 'sonner'
 import { AccountMenu } from '~/client/components/account-menu'
 import { Brand } from '~/client/components/brand'
 import { useDocumentTitle } from '~/client/components/page-title'
-import { meQuery } from '~/client/queries'
+import { meQuery } from '~/client/queries/session'
 import { cn } from '~/client/cn'
 import { Button } from '~/client/ui/button'
 

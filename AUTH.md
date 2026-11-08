@@ -1,12 +1,12 @@
 # Accounts, API keys and OAuth
 
-AgentSplit v2 uses self-hosted Better Auth with Google as the only identity provider. PostgreSQL (`db2`) stores accounts, sessions, memberships, invitations, hashed API keys and OAuth data. No hosted auth vendor or email service is used. Better Auth telemetry is off. The code is in `v2/src/server/auth.ts`, `auth-options.ts`, `session.ts`, `account.ts` and `mcp/`.
+AgentSplit v2 uses self-hosted Better Auth with Google as the only identity provider. PostgreSQL (`db2`) stores accounts, sessions, memberships, invitations, hashed API keys and OAuth data. No hosted auth vendor or email service is used. Better Auth telemetry is off. The code is in `src/server/auth/` (sign-in, sessions, API keys, OAuth and agent connections) and `src/server/account.ts` (the Settings screens). The owner bootstrap is `src/server/auth/owner-bootstrap.ts`.
 
 ## Google sign-in
 
 - Google sign-in asks only for `openid`, `email` and `profile`. Account linking is off.
 - The Google client is a Google Auth Platform **Web application** client. Its redirect URI is `https://<app host>/api/auth/callback/google`. The domain did not change at the cutover, so the redirect URI did not change.
-- The server needs `BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `BETTER_AUTH_SECRET` (at least 32 characters). Without them, sign-in answers "Google sign-in is not configured". Set them only in Coolify (DEPLOYMENT.md).
+- The server needs `BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `BETTER_AUTH_SECRET` (at least 32 characters). Without them, the server does not start. Set them only in Coolify (DEPLOYMENT.md).
 - Only a verified Google email gives access. A session of an unverified account is refused.
 - The sign-in page keeps the requested page in `next`. The server accepts only same-origin callback paths, so a link such as `/\evil.example` is refused.
 - Better Auth rate-limits its own routes, with the counters in PostgreSQL.
@@ -15,8 +15,8 @@ AgentSplit v2 uses self-hosted Better Auth with Google as the only identity prov
 ## Sessions
 
 - A session lasts 7 days and is refreshed once a day. The cookie is `__Secure-better-auth.session_token` on HTTPS, signed with `BETTER_AUTH_SECRET`.
-- The RPC, export and receipt routes check the signed cookie and read the session in one query (`session.ts`). Better Auth refreshes the session through `/api/auth/get-session`, which the app calls once per load.
-- An RPC `POST` from another origin gets 403.
+- The RPC, export and receipt routes check the signed cookie and read the session in one query (`auth/session.ts`). Better Auth refreshes the session through `/api/auth/get-session`, which the app calls once per load.
+- An RPC `POST` or a receipt upload from another origin, or without an `Origin` header, gets 403 (`auth/origin.ts`). The session cookie alone never authorizes a write.
 - Sign-out deletes the session row.
 
 ## Owner bootstrap
@@ -38,7 +38,7 @@ Production ran the bootstrap in the old app. The import copied the `auth_bootstr
 - A signed-in user creates and revokes keys on `/settings` (Account & keys). The key starts with `agentsplit_`, has no expiry, and is shown once. The database stores only its hash.
 - A key acts as its owner, with the owner's current memberships and roles. Removing a membership affects every key at once.
 - A key cannot create another key and cannot open a browser session.
-- A key allows 120 requests in 60 seconds. MCP also applies a per-user limit (MCP.md).
+- A key allows 120 requests in 60 seconds. Over it, MCP, receipt downloads and exports answer 429 with `Retry-After`. MCP also applies a per-user limit (MCP.md).
 - A user can revoke only their own keys. A revoked key gets 401 at once.
 - An account can have at most 10 keys, a fair-use limit. Revoke one to create another.
 
@@ -47,10 +47,10 @@ Production ran the bootstrap in the old app. The import copied the `auth_bootstr
 Better Auth's OAuth provider issues tokens for the MCP endpoint (`/api/mcp`). The issuer is `<BASE_URL>/api/auth`.
 
 - **Discovery.** `/.well-known/oauth-protected-resource/api/mcp` gives the protected-resource metadata, with `scopes_supported` `agentsplit:read agentsplit:write offline_access`. Better Auth serves the authorization-server metadata.
-- **Client registration.** A client registers through its Client ID Metadata Document (CIMD), as Claude Code and ChatGPT do. The server fetches the document only from public addresses, refuses redirects, and limits it to 64 KiB and 5 seconds. Older clients can use dynamic client registration, without an account, at most 20 times per IP address per hour. Registration alone grants no access.
+- **Client registration.** A client registers through its Client ID Metadata Document (CIMD), as Claude Code and ChatGPT do. The server fetches the document only from public addresses, refuses redirects, and limits it to 5 KiB and 5 seconds (Better Auth's own limits). Older clients can use dynamic client registration, without an account, at most 20 times per IP address per hour. Registration alone grants no access.
 - **Authorization.** Authorization code with PKCE and refresh tokens. The consent page (`/settings/connections/consent`) shows the client and the scopes. Clearing **Allow changes** grants `agentsplit:read` only.
 - **Tokens.** Access tokens are signed JWTs that live 300 seconds. With `offline_access`, the client gets a refresh token that lives 30 days and rotates. The database stores every token as `base64url(sha256(token))`. A token can be bound to a DPoP key; a DPoP proof works once and must match the request URL.
-- **Connections.** Each authorization creates one connection, and each access token names it. Every request checks that the connection, the account, the client and the consent are still live.
+- **Connections.** Each authorization creates one connection, and each access token names it. Every request checks that the connection, the account, the client and the consent are still live. Every write checks the connection again inside its transaction. `auth/oauth-connections.ts` owns these rules.
 - **Revocation.** `/settings/connections` lists the connected apps. Revoking one marks its connections revoked and deletes its access tokens, refresh tokens and consent. Old access tokens and racing refreshes then fail, and the client must connect again. API keys are not affected.
 
 ## Tokens issued before the cutover

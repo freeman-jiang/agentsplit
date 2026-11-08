@@ -1,23 +1,34 @@
 // Minor-unit arithmetic without Effect, for the client and the server alike.
-// src/shared/money.ts adds the Effect Schema types and the Result-returning
-// parseMinor on top of this module; the client imports only this one.
+// src/shared/money.ts holds the Effect Schemas of money values.
+import type { Brand } from 'effect'
 import { CURRENCIES, type CurrencyCode } from './currencies'
-import type { DecimalString } from './money'
 
 /** An integer count of a currency's minor units (cents for USD, yen for JPY). */
 export type Minor = bigint & { readonly Minor: unique symbol }
 export const minor = (value: bigint): Minor => value as Minor
 
+/** An exact decimal amount as text, such as "12.30" or "-5". Never a float. The schema is DecimalString in money.ts. */
+export type DecimalString = Brand.Branded<string, 'DecimalString'>
+/** The form of a DecimalString. */
+export const DECIMAL = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/
+
 /** Minor units from a decimal string, or null if it is malformed or has more decimals than the currency allows. */
 export function minorOrNull(data: { amount: string; currency: CurrencyCode }): Minor | null {
   const { decimals } = CURRENCIES[data.currency]
-  const match = /^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?$/.exec(data.amount)
-  if (!match) return null
-  const [, sign, whole, rawFraction = ''] = match
+  if (!DECIMAL.test(data.amount)) return null
+  const negative = data.amount.startsWith('-')
+  const [whole = '0', rawFraction = ''] = (negative ? data.amount.slice(1) : data.amount).split('.')
   const fraction = rawFraction.replace(/0+$/, '')
   if (fraction.length > decimals) return null
-  const units = BigInt((whole ?? '0') + fraction.padEnd(decimals, '0'))
-  return minor(sign === '-' ? -units : units)
+  const units = BigInt(whole + fraction.padEnd(decimals, '0'))
+  return minor(negative ? -units : units)
+}
+
+/** Minor units of decimal text that the server formatted, so it always fits its currency; anything else is a bug. */
+export function minorOf(amount: string, currency: CurrencyCode): Minor {
+  const value = minorOrNull({ amount, currency })
+  if (value === null) throw new Error(`${amount} is not a ${currency} amount`)
+  return value
 }
 
 /** Formats minor units as an exact decimal string with the currency's full decimals ("12.30"). */
@@ -29,6 +40,9 @@ export function formatMinor(data: { amount: Minor; currency: CurrencyCode }): De
   const fraction = decimals === 0 ? '' : `.${digits.slice(digits.length - decimals)}`
   return `${negative ? '-' : ''}${whole}${fraction}` as DecimalString
 }
+
+/** The whole part of a decimal with a comma between each group of three digits: "1234567" is "1,234,567". */
+export const groupDigits = (whole: string) => whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
 export const sumMinor = (values: Iterable<Minor>): Minor => {
   let total = 0n
