@@ -31,7 +31,8 @@ export function authPlugins(config: {
 } = { baseUrl: 'http://localhost', fetchClientMetadataResource: unavailableFetch, extensions: [] }) {
   const resource = mcpResource(config.baseUrl)
   return [
-    jwt({ jwt: { issuer: oauthIssuer(config.baseUrl) } }),
+    // No set-auth-jwt header on get-session: no client reads it, and each one is about 700 bytes and a signature.
+    jwt({ jwt: { issuer: oauthIssuer(config.baseUrl) }, disableSettingJwtHeader: true }),
     mcp({
       resource,
       resources: [{ identifier: resource, name: 'AgentSplit', allowedScopes: [...OAUTH_SCOPES] }],
