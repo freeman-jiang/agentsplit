@@ -10,7 +10,7 @@ Run every command inside the dev shell, from the repository root: `direnv exec .
 | --- | --- |
 | Install the dependencies | `bun install --frozen-lockfile` |
 | Production build (client, server bundle, migrations) | `bun run build` |
-| Bundle budget (after the build) | `bun scripts/check-bundle.ts` |
+| Bundle budget and no Effect in the client (after the build) | `bun scripts/check-bundle.ts` |
 | Type check (after the build, which generates the route tree) | `bun run check-types` |
 | Unit and database tests | `TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:5437/agentsplit_test_<area> bun run test` |
 | End-to-end tests, built server | `./scripts/e2e.sh` |
@@ -117,7 +117,7 @@ The Workers Free CPU limit no longer applies (DECISIONS.md, "Hosting changes to 
 - Do not call Better Auth on the RPC path. The session is already resolved by the middleware.
 - Load large libraries only where they are needed, with a dynamic `import()`.
 - Keep the client fast: route-level code splitting (automatic), data preloaded on hover (`defaultPreload: 'intent'`), and no full page loads inside the app.
-- Never import `effect` at runtime in `src/client/`, directly or through `src/shared`: the modules the client imports (`vocabulary`, `limits`, `errors`, `dates`, `minor`, `split`, `expense-rules`, `history`, `stats`, `groups`, `account`, `ids`, `currencies`, `mcp`, `paths`) stay Effect-free, and the Schema parts live beside them (`money.ts`, `snapshots.ts`, `api/`). Use `import type` from the contract, and call the server through `rpc()` from `src/client/rpc.ts`. Route options (`validateSearch`, `beforeLoad`) stay in the main chunk, so keep them free of large libraries. Contract outputs must be JSON-identical (no `Date` or `bigint` transforms); `src/client/rpc.ts` checks this at compile time. CI fails when the up-front JavaScript exceeds 150 KB gzip (`scripts/check-bundle.ts`).
+- Never import `effect` at runtime in `src/client/`, directly or through `src/shared`: the modules the client imports (`vocabulary`, `limits`, `errors`, `dates`, `minor`, `split`, `expense-rules`, `history`, `stats`, `groups`, `account`, `ids`, `currencies`, `mcp`, `paths`) stay Effect-free, and the Schema parts live beside them (`money.ts`, `snapshots.ts`, `api/`). Use `import type` from the contract, and call the server through `rpc()` from `src/client/rpc.ts`. Route options (`validateSearch`, `beforeLoad`) stay in the main chunk, so keep them free of large libraries. Contract outputs must be JSON-identical (no `Date` or `bigint` transforms); `src/client/rpc.ts` checks this at compile time. CI fails when the up-front JavaScript exceeds 150 KB gzip, or when any client chunk, a lazy route's included, holds Effect's runtime (`scripts/check-bundle.ts`).
 
 ### Behavior
 

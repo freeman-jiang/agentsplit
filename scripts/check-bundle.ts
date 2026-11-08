@@ -1,7 +1,9 @@
 // Fails when the JavaScript that every page loads up front (the entry script and
-// the chunks index.html preloads) exceeds the budget in docs/v2/BASELINE.md.
+// the chunks index.html preloads) exceeds the budget in docs/v2/BASELINE.md, or
+// when any client chunk, a lazy route's included, holds Effect's runtime
+// (docs/v2/BUILDING.md: the client imports Effect for types only).
 //   bun scripts/check-bundle.ts   (after bun run build)
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
 
 const BUDGET = 150 * 1024
@@ -14,7 +16,16 @@ for (const file of new Set(files)) {
   console.log(`${(size / 1024).toFixed(1).padStart(7)} KB  ${file}`)
 }
 console.log(`${(total / 1024).toFixed(1).padStart(7)} KB  total up front (budget ${BUDGET / 1024} KB, gzip)`)
+
+// Every Effect module names its values with "~effect/<Module>" type IDs, which minification keeps.
+const withEffect = readdirSync('dist/client/assets').filter((file) => file.endsWith('.js') && readFileSync(`dist/client/assets/${file}`, 'utf8').includes('~effect/'))
+let failed = false
 if (total > BUDGET) {
   console.error('The up-front JavaScript exceeds the budget. Keep Effect off the client (type-only imports) and split large screens.')
-  process.exit(1)
+  failed = true
 }
+if (withEffect.length) {
+  console.error(`Effect's runtime is in the client bundle (${withEffect.join(', ')}). Import the contract with \`import type\`, and keep src/shared modules that the client imports free of Effect.`)
+  failed = true
+}
+if (failed) process.exit(1)
