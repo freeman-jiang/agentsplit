@@ -170,7 +170,7 @@ The secrets are root-only files in `/etc/agentsplit/`. They are never in the Nix
 
 On GCE, the first join takes its auth key from the instance metadata, not from a file ("First install").
 
-`agentsplit.env` holds `BASE_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_REGION`, `S3_UPLOAD_BUCKET`, `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET`, and the optional `AUTH_BOOTSTRAP_EMAIL`, `AGENTSPLIT_MAINTENANCE` and `SIGN_UP_DAILY_LIMIT` ("Environment variables" above). Do not set `DATABASE_URL`, `DATABASE_POOL_SIZE`, `HOST` or `PORT` in it: the module sets them, and the file would override them.
+`agentsplit.env` holds `BASE_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_REGION`, `S3_UPLOAD_BUCKET`, `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET`, `RECEIPT_DOWNLOADS=redirect`, and the optional `AUTH_BOOTSTRAP_EMAIL`, `AGENTSPLIT_MAINTENANCE` and `SIGN_UP_DAILY_LIMIT` ("Environment variables" above). Do not set `DATABASE_URL`, `DATABASE_POOL_SIZE`, `HOST` or `PORT` in it: the module sets them, and the file would override them.
 
 The source of each file is a sops file in the dots repository, which the dev box decrypts. The copy goes over Tailscale SSH, through stdin:
 
@@ -195,7 +195,7 @@ The dots side gives the VM its own VPC with no ingress rule. Egress is open only
 
 ### Receipts on R2
 
-On the NixOS host the receipts move from Garage to Cloudflare R2: off the VM, with 10 GB free. The server needs no change. Bun's S3 client signs with SigV4 and uses path-style URLs (`src/server/s3.ts`), which both Garage and R2 accept. Only the settings differ:
+On the NixOS host the receipts move from Garage to Cloudflare R2: off the VM, with 10 GB free and no charge for data out. Bun's S3 client signs with SigV4 and uses path-style URLs (`src/server/s3.ts`), which both Garage and R2 accept. Only the settings differ:
 
 | Setting | Garage (Coolify) | R2 (NixOS host) |
 | --- | --- | --- |
@@ -203,8 +203,9 @@ On the NixOS host the receipts move from Garage to Cloudflare R2: off the VM, wi
 | `S3_UPLOAD_REGION` | `garage` | `auto` |
 | `S3_UPLOAD_BUCKET` | `agentsplit-receipts` | `agentsplit-receipts` |
 | `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET` | The Garage key | An R2 API token with Object Read and Write on this bucket only |
+| `RECEIPT_DOWNLOADS` | empty (`stream`) | `redirect` |
 
-The bucket needs no public access and no CORS rule: the app streams every receipt itself. `scripts/copy-receipts.ts` copies the objects from Garage with their content types (below).
+With `redirect`, the app checks access and then sends the reader to a presigned R2 URL that works for 5 minutes, so the receipt bytes do not leave the VM, where data out over 1 GB a month is billed. The bucket needs no public access and no CORS rule: browsers load receipts only through `<img>` and links, which follow the redirect. The group ZIP download still streams through the server. `scripts/copy-receipts.ts` copies the objects from Garage with their content types (below).
 
 ### First install
 
