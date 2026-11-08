@@ -1,11 +1,10 @@
-import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useGroupTarget } from '~/client/components/entry-write'
+import { useGroupTarget, useOpenedEntry } from '~/client/components/entry-write'
 import { ExpenseLog } from '~/client/components/log/expense-log'
 import { isSimplePayment, PaymentForm } from '~/client/components/payment-form'
 import { balancesQuery, expenseDetailQuery } from '~/client/queries/expenses'
 import { groupQuery } from '~/client/queries/groups'
-import { reloadEntry } from '~/client/queries/keys'
 import { Button } from '~/client/ui/button'
 
 export const Route = createFileRoute('/$group/payments/$expenseId/edit')({
@@ -16,9 +15,10 @@ export const Route = createFileRoute('/$group/payments/$expenseId/edit')({
 function EditPayment() {
   const { group, expenseId } = Route.useParams()
   const { groupId } = Route.useRouteContext()
-  const queryClient = useQueryClient()
   const { data: g } = useSuspenseQuery(groupQuery(groupId))
-  const { data: detail } = useSuspenseQuery(expenseDetailQuery(groupId, expenseId))
+  const { data: saved } = useSuspenseQuery(expenseDetailQuery(groupId, expenseId))
+  const opened = useOpenedEntry({ groupId, detail: saved })
+  const { detail } = opened
   const target = useGroupTarget({ groupId, group, kind: 'payment' })
   // Any other shape keeps every detail in the expense editor (P-BAL-89).
   if (!isSimplePayment(detail))
@@ -35,12 +35,12 @@ function EditPayment() {
   return (
     <>
       <PaymentForm
-        key={detail.expense.revision}
+        key={opened.key}
         mode="edit"
         detail={detail}
         participants={g.participants}
         target={target}
-        onReload={() => void reloadEntry({ queryClient, groupId, expenseId })}
+        onReload={() => void opened.reload()}
       />
       <ExpenseLog groupId={groupId} expenseId={expenseId} />
     </>

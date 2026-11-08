@@ -2,7 +2,7 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { RepaymentSettlements } from '~/client/components/balance/settlements'
-import { usePageTarget } from '~/client/components/entry-write'
+import { useOpenedEntry, usePageTarget } from '~/client/components/entry-write'
 import { ExpenseForm } from '~/client/components/expense-form'
 import { stateFromExpense } from '~/client/components/expense-form-state'
 import { ExpenseLog } from '~/client/components/log/expense-log'
@@ -11,10 +11,10 @@ import { isSimplePayment, PaymentForm } from '~/client/components/payment-form'
 import { describeError } from '~/client/errors'
 import { expenseDetailQuery, paymentsQuery, referenceQuery } from '~/client/queries/expenses'
 import { expenseContextQuery } from '~/client/queries/feed'
-import { afterWrite, reloadEntry } from '~/client/queries/keys'
+import { afterWrite } from '~/client/queries/keys'
 import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
-import type { ExpenseContext } from '~/shared/api'
+import type { ExpenseContext, ExpenseDetail, Reference } from '~/shared/api'
 import { InvitationLink, PrivateContextHeader } from '../-private-context'
 
 export const Route = createFileRoute('/expenses/$expenseId/')({
@@ -36,7 +36,7 @@ function ExpensePage() {
   const context = useQuery(expenseContextQuery(expenseId))
   if (context.error) return <p role="alert">{describeError(context.error).message}</p>
   if (!context.data) return <p role="status">Loading expense…</p>
-  return <Workspace key={`${expenseId}-${context.data.expense.revision}`} data={context.data} />
+  return <Workspace key={expenseId} data={context.data} />
 }
 
 /** Where a saved or cancelled form returns: the original private expense, or the dashboard. */
@@ -44,13 +44,9 @@ const backTo = (data: Context) =>
   data.context && data.context.expenseId !== data.expense.id ? ({ to: '/expenses/$expenseId', params: { expenseId: data.context.expenseId } } as const) : ({ to: '/' } as const)
 
 function Workspace({ data }: { data: Context }) {
-  const queryClient = useQueryClient()
   const { expense, group } = data
   const detail = useQuery(expenseDetailQuery(group.id, expense.id))
   const reference = useQuery(referenceQuery)
-  // The current app's privateExpense options apply to ungrouped expenses only (P-UNGROUP-66, P-UNGROUP-67).
-  const target = usePageTarget({ groupId: group.id, privateExpense: data.context !== null, back: backTo(data) })
-  const onReload = () => void reloadEntry({ queryClient, groupId: group.id, expenseId: expense.id })
   const failure = detail.error ?? reference.error
   return (
     <div className="space-y-6">
@@ -59,26 +55,35 @@ function Workspace({ data }: { data: Context }) {
         <p role="alert">{describeError(failure).message}</p>
       ) : !detail.data || !reference.data ? (
         <p role="status">Loading expense…</p>
-      ) : isSimplePayment(detail.data) ? (
-        <PaymentForm key={detail.data.expense.revision} mode="edit" detail={detail.data} participants={data.participants} target={target} onReload={onReload} />
       ) : (
-        // An expense, or a payment of any other shape, uses the expense editor, which keeps every detail (P-BAL-89).
-        <ExpenseForm
-          // A new revision starts a fresh form, so a reload after a conflict shows the saved values.
-          key={detail.data.expense.revision}
-          mode="edit"
-          detail={detail.data}
-          participants={data.participants}
-          reference={reference.data}
-          target={target}
-          initial={stateFromExpense({ expense: detail.data.expense, documents: detail.data.documents, participants: data.participants.map((p) => p.id) })}
-          onReload={onReload}
-        />
+        <Editor data={data} saved={detail.data} reference={reference.data} />
       )}
       {/* The collapsed expense log under the editor, as in the current app (P-HIST-80). */}
       <ExpenseLog groupId={group.id} expenseId={expense.id} />
       {data.context && expense.id === data.context.expenseId && <PrivateRepayments data={data} />}
     </div>
+  )
+}
+
+function Editor({ data, saved, reference }: { data: Context; saved: typeof ExpenseDetail.Type; reference: typeof Reference.Type }) {
+  const opened = useOpenedEntry({ groupId: data.group.id, detail: saved })
+  const { detail } = opened
+  // The current app's privateExpense options apply to ungrouped expenses only (P-UNGROUP-66, P-UNGROUP-67).
+  const target = usePageTarget({ groupId: data.group.id, privateExpense: data.context !== null, back: backTo(data) })
+  const onReload = () => void opened.reload()
+  if (isSimplePayment(detail)) return <PaymentForm key={opened.key} mode="edit" detail={detail} participants={data.participants} target={target} onReload={onReload} />
+  // An expense, or a payment of any other shape, uses the expense editor, which keeps every detail (P-BAL-89).
+  return (
+    <ExpenseForm
+      key={opened.key}
+      mode="edit"
+      detail={detail}
+      participants={data.participants}
+      reference={reference}
+      target={target}
+      initial={stateFromExpense({ expense: detail.expense, documents: detail.documents, participants: data.participants.map((p) => p.id) })}
+      onReload={onReload}
+    />
   )
 }
 

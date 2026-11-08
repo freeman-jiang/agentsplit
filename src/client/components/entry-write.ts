@@ -7,8 +7,10 @@ import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { editorLink } from '~/client/editor-link'
 import { describeError, type Failure } from '~/client/errors'
-import { afterWrite } from '~/client/queries/keys'
+import { expenseDetailQuery } from '~/client/queries/expenses'
+import { afterWrite, reloadEntry } from '~/client/queries/keys'
 import { newIdempotencyKey, rpc } from '~/client/rpc'
+import type { ExpenseDetail } from '~/shared/api'
 import type { ExpenseDraft, ResolvedExpense } from '~/shared/expense-rules'
 import { formatMinor, type Minor } from '~/shared/minor'
 import type { ExpenseKind } from '~/shared/vocabulary'
@@ -156,4 +158,33 @@ export function useEntryWrite(data: { target: EntryTarget; entry: Entry; noun: '
   }
 
   return { busy, failure, submit, remove, clearFailure: () => setFailure(null) }
+}
+
+type Detail = typeof ExpenseDetail.Type
+
+/**
+ * The saved entry as its editor opened it. A later read, such as the refetch
+ * when the window gets focus again, does not replace it, so a draft is never
+ * discarded and its save still names the revision it started from: after
+ * someone else's save, it answers with the conflict text (P-EXP-53). `reload`
+ * opens the latest version; `key` changes only then, for the form's React key.
+ */
+export function useOpenedEntry(data: { groupId: string; detail: Detail }) {
+  const queryClient = useQueryClient()
+  const [opened, setOpened] = useState(data.detail)
+  // Another entry on the same route opens as it is now.
+  const current = opened.expense.id === data.detail.expense.id ? opened : data.detail
+  if (current !== opened) setOpened(current)
+  const reload = async () => {
+    const expenseId = current.expense.id
+    try {
+      const reloaded = reloadEntry({ queryClient, groupId: data.groupId, expenseId })
+      // The read that reloadEntry started, or a new one: it rejects when the read fails.
+      setOpened(await queryClient.fetchQuery(expenseDetailQuery(data.groupId, expenseId)))
+      await reloaded
+    } catch (cause) {
+      toast.error(describeError(cause).message)
+    }
+  }
+  return { detail: current, key: `${current.expense.id}:${current.expense.revision}`, reload }
 }
