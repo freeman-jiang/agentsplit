@@ -6,6 +6,7 @@
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { brotliCompressSync, gzipSync } from 'node:zlib'
 
 const TYPES: Readonly<Record<string, string>> = {
   html: 'text/html; charset=utf-8',
@@ -34,8 +35,21 @@ function files(dir: string): string[] {
   )
 }
 
-/** Reads every file of `dir` once, at startup. Returns null if there is no build. */
-export function loadAssets(dir: string): ReadonlyMap<string, Asset> | null {
+/**
+ * The SPA page with absolute share-preview URLs. Link previews (Open Graph,
+ * X cards) need absolute ones, and only the server knows its public origin.
+ */
+export function withShareUrls(data: { html: string; baseUrl: string }): string {
+  const origin = new URL(data.baseUrl).origin
+  return data.html.replace(
+    /(<meta (?:property|name)="(?:og:image|og:url|twitter:image)" content=")(\/[^"]*)"/g,
+    (_, start: string, path: string) => `${start}${origin}${path}"`,
+  )
+}
+
+/** Reads every file of `dir` once, at startup, with the SPA page's share-preview URLs on `baseUrl`. Returns null if there is no build. */
+export function loadAssets(data: { dir: string; baseUrl: string }): ReadonlyMap<string, Asset> | null {
+  const { dir } = data
   let all: string[]
   try {
     all = files(dir)
@@ -47,10 +61,16 @@ export function loadAssets(dir: string): ReadonlyMap<string, Asset> | null {
   for (const file of all) {
     const name = relative(dir, file).split('\\').join('/')
     if (/\.(br|gz)$/.test(name)) continue
-    const bytes = new Uint8Array(readFileSync(file))
     const variants: Variant[] = []
-    if (present.has(`${file}.br`)) variants.push({ bytes: new Uint8Array(readFileSync(`${file}.br`)), encoding: 'br' })
-    if (present.has(`${file}.gz`)) variants.push({ bytes: new Uint8Array(readFileSync(`${file}.gz`)), encoding: 'gzip' })
+    let bytes = new Uint8Array(readFileSync(file))
+    if (name === 'index.html') {
+      // The page changes here, so its build-time copies are stale: compress it again.
+      bytes = new TextEncoder().encode(withShareUrls({ html: new TextDecoder().decode(bytes), baseUrl: data.baseUrl }))
+      variants.push({ bytes: new Uint8Array(brotliCompressSync(bytes)), encoding: 'br' }, { bytes: new Uint8Array(gzipSync(bytes)), encoding: 'gzip' })
+    } else {
+      if (present.has(`${file}.br`)) variants.push({ bytes: new Uint8Array(readFileSync(`${file}.br`)), encoding: 'br' })
+      if (present.has(`${file}.gz`)) variants.push({ bytes: new Uint8Array(readFileSync(`${file}.gz`)), encoding: 'gzip' })
+    }
     variants.push({ bytes, encoding: null })
     assets.set(`/${name}`, {
       type: TYPES[extension(name)] ?? 'application/octet-stream',
@@ -80,6 +100,19 @@ function respond(request: Request, asset: Asset): Response {
   if (variant?.encoding) headers.set('Content-Encoding', variant.encoding)
   // For HEAD, Bun sends the headers and the length without the body.
   return new Response(variant?.bytes ?? null, { headers })
+}
+
+/**
+ * The static files of the build in `dir` (CLIENT_DIR). A `dir` that is set
+ * must hold a build, so a wrong setting stops the start. Without it, the
+ * server looks in dist/client and answers 404 when there is no build: the
+ * dev server's client comes from Vite.
+ */
+export function clientFiles(data: { dir: string | undefined; baseUrl: string }): (request: Request) => Promise<Response> {
+  const assets = loadAssets({ dir: data.dir ?? 'dist/client', baseUrl: data.baseUrl })
+  if (assets) return assetHandler(assets)
+  if (data.dir !== undefined) throw new Error(`Set CLIENT_DIR to the client build: ${data.dir} has none`)
+  return async () => new Response('No client build', { status: 404 })
 }
 
 /**

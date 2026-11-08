@@ -5,7 +5,7 @@
 import pg from 'pg'
 import { runMigrations } from '../../../db/migrate'
 import { createApp } from './app'
-import { assetHandler, loadAssets } from '../assets'
+import { clientFiles } from '../assets'
 import { readSettings } from '../core/config'
 import { jsonError } from '../core/errors'
 import { makeDb } from '../core/db'
@@ -16,6 +16,8 @@ import { s3Bucket } from '../s3'
 const settings = readSettings(process.env)
 const { app: config } = settings
 const publicOrigin = new URL(config.baseUrl).origin
+// Read before the migrations, so a missing client build stops the start before it changes the database.
+const staticFiles = clientFiles({ dir: settings.clientDir, baseUrl: config.baseUrl })
 
 // One pool for the process. RPC, MCP, receipt and export requests each take
 // one connection and return it when the response is complete. Better Auth
@@ -38,10 +40,6 @@ if (settings.migrationsDir) {
 }
 
 const bucket = s3Bucket(settings.s3)
-
-const assets = loadAssets(settings.clientDir)
-// The dev server has no client build: Vite serves the client and sends only API paths here.
-const staticFiles = assets ? assetHandler(assets) : async () => new Response('No client build', { status: 404 })
 
 const app = createApp({ config, connect: () => pool.connect(), pool: makeDb(pool), bucket, assets: staticFiles })
 

@@ -31,7 +31,8 @@ export type ServerSettings = {
   /** Set in the image, so each start applies new migrations before it takes requests. */
   readonly migrationsDir: string | undefined
   readonly s3: { readonly endpoint: string; readonly region: string; readonly bucket: string; readonly accessKeyId: string; readonly secretAccessKey: string }
-  readonly clientDir: string
+  /** CLIENT_DIR: the client build, which the image sets; unset on the dev server (assets.ts). */
+  readonly clientDir: string | undefined
   readonly host: string
   readonly port: number
 }
@@ -81,7 +82,7 @@ export function readSettings(env: Env): ServerSettings {
       accessKeyId: required('S3_UPLOAD_KEY'),
       secretAccessKey: required('S3_UPLOAD_SECRET'),
     },
-    clientDir: optional('CLIENT_DIR') ?? 'dist/client',
+    clientDir: optional('CLIENT_DIR'),
     host: optional('HOST') ?? '0.0.0.0',
     port: whole('PORT', 3000, 'the port'),
   }
