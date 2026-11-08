@@ -5,11 +5,11 @@
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { runWrite } from '~/server/calls'
-import { UNAVAILABLE } from '~/shared/errors'
+import { GROUP_DENIED, UNAVAILABLE } from '~/shared/errors'
 import { draft } from '../kit/drafts'
 import { counter, id21 } from '../kit/ids'
 import { principal } from '../kit/people'
-import { startHarness, webRpc, type Harness } from './harness'
+import { BASE, startHarness, webRpc, type Harness } from './harness'
 
 let h: Harness
 let cookie: string
@@ -97,5 +97,14 @@ describe('database failures over RPC', () => {
     } finally {
       await h.withDb((db) => db.execute(sql`ALTER TABLE expenses DROP CONSTRAINT refused_for_test; DROP TRIGGER fail_for_test ON expenses; DROP FUNCTION fail_for_test();`))
     }
+  })
+})
+
+describe('group references', () => {
+  it('denies a reference with a NUL byte, which PostgreSQL text cannot hold, on RPC and the export route', async () => {
+    const { exit } = await webRpc(h, { tag: 'groups.get', cookie, payload: { groupId: 'g1\u0000x' } })
+    expect(JSON.stringify(exit)).toContain(GROUP_DENIED)
+    const download = await h.fetch(new Request(`${BASE}/groups/g1%00x/expenses/export/json`, { headers: { cookie } }))
+    expect(download.status).toBe(403)
   })
 })

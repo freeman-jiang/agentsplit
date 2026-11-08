@@ -4,7 +4,7 @@
 // Rules from the current app: src/lib/receipt-storage.ts, src/app/api/receipts/route.ts.
 import { sql } from 'drizzle-orm'
 import { receipts } from '../../db/schema/app'
-import { groupAccessDenied, Invalid, NotFound, type DocumentInput } from '../shared/api'
+import { Invalid, NotFound, type DocumentInput } from '../shared/api'
 import { LIMITS, mebibytes } from '../shared/limits'
 import { RECEIPT_FORMATS, receiptTypeOf, type ReceiptFormat } from '../shared/vocabulary'
 import { randomId } from '../shared/ids'
@@ -70,12 +70,6 @@ export function receiptKey(url: string): string | null {
   return key
 }
 
-/** The caller's membership of the group. A NUL byte cannot name a group, and PostgreSQL text cannot hold it, so it is denied before the query. */
-function member(db: Db, data: { principal: Principal; groupId: string }) {
-  if (data.groupId.includes('\0')) throw groupAccessDenied()
-  return requireMember(db, data)
-}
-
 /**
  * Checks a member's access to a receipt: it must be registered to the group,
  * or attached to one of its expenses. A receipt deleted for good has its tombstone.
@@ -102,7 +96,7 @@ export async function readableReceipt(
   db: Db,
   data: { principal: Principal; groupId: string; url: string },
 ): Promise<{ readonly key: string } | { readonly deleted: Tombstone }> {
-  const { groupId } = await member(db, data)
+  const { groupId } = await requireMember(db, data)
   const key = receiptKey(data.url)
   const receipt = key ? await receiptInGroup(db, { groupId, url: data.url }) : null
   if (!key || !receipt?.found) throw new NotFound({ entity: 'receipt', id: data.url })
@@ -121,7 +115,7 @@ export const RECEIPT_REFUSED = `Could not upload receipt. Use a JPEG or PNG imag
  */
 /** The answer of POST /api/receipts is the stored receipt as an expense attaches it. */
 export async function storeReceipt(db: Db, data: { bucket: Bucket; principal: Principal; groupId: string; file: Blob }): Promise<typeof DocumentInput.Type> {
-  const { groupId } = await member(db, data)
+  const { groupId } = await requireMember(db, data)
   const bytes = new Uint8Array(await data.file.arrayBuffer())
   const info = bytes.length && bytes.length <= LIMITS.receiptBytes ? imageInfo(bytes) : null
   if (!info) throw new Invalid({ message: RECEIPT_REFUSED })

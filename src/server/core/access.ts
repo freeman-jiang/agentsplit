@@ -21,6 +21,15 @@ export type Membership = { groupId: string; role: Role; participantId: string | 
 /** The ID of the group that reference `ref` names, or NULL: its ID, its current slug in any case, or a slug it used before. */
 export const groupIdOf = (ref: SQL) => sql`agentsplit_group_id(${ref})`
 
+/** A group reference that the caller sent. PostgreSQL text cannot hold a NUL byte, so such a reference names no group and is denied before any query. */
+export function groupRef(ref: string): string {
+  if (ref.includes('\0')) throw groupAccessDenied()
+  return ref
+}
+
+/** groupIdOf for a reference that the caller sent. */
+export const groupIdOfInput = (ref: string) => groupIdOf(sql`${groupRef(ref)}`)
+
 /**
  * The caller's membership of group `group` as the CTE `g`: the group's columns
  * with the member's `role`, `participant_id` and `active`. No row, or an
@@ -30,7 +39,7 @@ export const groupIdOf = (ref: SQL) => sql`agentsplit_group_id(${ref})`
 export const memberCte = (data: { principal: Principal; groupId: string }) => sql`g AS (
   SELECT g.*, m.role, m.participant_id, m.active
   FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
-  WHERE g.id = ${groupIdOf(sql`${data.groupId}`)})`
+  WHERE g.id = ${groupIdOfInput(data.groupId)})`
 
 /**
  * The caller's active memberships, as the subquery `(group_id, participant_id,
