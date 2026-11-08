@@ -4,7 +4,7 @@
 // figures, the Log and the files come from src/server/stats.ts, history.ts
 // and export.ts; this file only maps names.
 import { Schema } from 'effect'
-import { Id as IdInput } from '../../../shared/api'
+import { FileExportFormatSchema, Id as IdInput } from '../../../shared/api'
 import { LIMITS } from '../../../shared/limits'
 import { ACTIVITY_TYPE_BY_NAME, ACTIVITY_TYPE_NAMES, RECURRENCE_NAMES, RECURRING_PERIODS } from '../../../shared/vocabulary'
 import { loadExpenses } from '../../expense-read'
@@ -233,7 +233,7 @@ export const exportGroup = defineTool({
   kind: 'read',
   description:
     'Export the authorized group as CSV or JSON. Returns filename, contentType and complete UTF-8 content. JSON includes preserved audit history; deleted expenses are excluded from current expense rows. This read does not process recurrence.',
-  input: Schema.Struct({ groupId: IdInput, format: optional(Schema.Literals(['json', 'csv']).annotate({ default: 'json' })) }),
+  input: Schema.Struct({ groupId: IdInput, format: optional(FileExportFormatSchema.annotate({ default: 'json' })) }),
   strict: [''],
   output: Schema.Struct({ filename: Schema.String, contentType: Schema.String, content: Schema.String }),
   run: ({ db, principal }, input) => exports.exportFile(db, { principal, groupId: input.groupId, format: input.format ?? 'json' }),

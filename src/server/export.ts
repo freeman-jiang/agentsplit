@@ -6,6 +6,7 @@
 import { sql } from 'drizzle-orm'
 import { CURRENCIES, type CurrencyCode } from '../shared/currencies'
 import { legacyDateTime, todayUtc } from '../shared/dates'
+import type { FileExportFormat } from '../shared/paths'
 import { formatMinor, minor, minorOf } from '../shared/minor'
 import { mainPayer, weightText } from '../shared/split'
 import { RECURRENCE_NAMES, SPLIT_MODE_LABELS, SPLIT_MODE_NAMES, type ActivityType } from '../shared/vocabulary'
@@ -68,7 +69,7 @@ async function load(db: Db, data: { principal: Principal; groupId: string; activ
 
 // ---------- file names ----------
 
-const exportFileName = (data: { group: string; format: 'csv' | 'json'; date: string }) => `AgentSplit Export - ${data.group} - ${data.date}.${data.format}`
+const exportFileName = (data: { group: string; format: FileExportFormat; date: string }) => `AgentSplit Export - ${data.group} - ${data.date}.${data.format}`
 
 // ---------- JSON ----------
 
@@ -178,7 +179,12 @@ export async function exportCsv(db: Db, data: { principal: Principal; groupId: s
  * The file of the export.group RPC and the export_group MCP tool. Its name and
  * content type are not the ones of the download routes (export-routes.ts).
  */
-export async function exportFile(db: Db, data: { principal: Principal; groupId: string; format: 'csv' | 'json' }) {
-  const file = await (data.format === 'json' ? exportJson : exportCsv)(db, { principal: data.principal, groupId: data.groupId })
-  return { filename: `agentsplit-${file.groupId}.${data.format}`, contentType: data.format === 'json' ? 'application/json' : 'text/csv', content: file.content }
+export async function exportFile(db: Db, data: { principal: Principal; groupId: string; format: FileExportFormat }) {
+  const file = await EXPORTS[data.format](db, { principal: data.principal, groupId: data.groupId })
+  return { filename: `agentsplit-${file.groupId}.${data.format}`, contentType: RPC_CONTENT_TYPES[data.format], content: file.content }
 }
+
+/** The download of each file format. */
+export const EXPORTS = { json: exportJson, csv: exportCsv } as const satisfies Record<FileExportFormat, typeof exportJson>
+
+const RPC_CONTENT_TYPES = { json: 'application/json', csv: 'text/csv' } as const satisfies Record<FileExportFormat, string>

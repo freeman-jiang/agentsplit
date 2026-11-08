@@ -3,6 +3,7 @@
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
 import { LIMITS } from '../limits'
+import { FILE_EXPORT_FORMATS } from '../paths'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
 import { ACTIVITY_TYPES, RECURRING_PERIODS } from '../vocabulary'
 import { Balance, CalendarDate, CalendarDateOutput, ExpenseFilter, ExpenseKindSchema, Id, Offset, PageLimit, Participant, ReadError, RecurrenceSchema, SplitModeSchema } from './core'
@@ -174,6 +175,9 @@ export const ActivityQuery = Schema.Struct({
   order: Schema.optionalKey(Schema.Literals(['asc', 'desc'])),
 })
 
+/** The format of a group export as one file. */
+export const FileExportFormatSchema = Schema.Literals(FILE_EXPORT_FORMATS)
+
 export class HistoryApi extends RpcGroup.make(
   Rpc.make('history.activities', {
     payload: { groupId: Id, ...ActivityQuery.fields },
@@ -216,7 +220,7 @@ export class HistoryApi extends RpcGroup.make(
     error: ReadError,
   }),
   Rpc.make('export.group', {
-    payload: { groupId: Id, format: Schema.Literals(['json', 'csv']) },
+    payload: { groupId: Id, format: FileExportFormatSchema },
     success: Schema.Struct({ filename: Schema.String, contentType: Schema.String, content: Schema.String }),
     error: ReadError,
   }),
