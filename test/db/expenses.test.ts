@@ -14,7 +14,7 @@ import type { StoredDocument } from '~/server/expense-read'
 import { locateExpense, getExpenseDetail, listCategories } from '~/server/expenses'
 import { getSavedExpense } from '~/server/history'
 import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense } from '~/server/ledger'
-import { listRecurring, materializeDue, occurrenceId, processGroup } from '~/server/recurring'
+import { listRecurring, materializeDue, processGroup } from '~/server/recurring'
 import { testDatabase, type TestDatabase } from '../kit/database'
 import { draft } from '../kit/drafts'
 import { counter, id21 } from '../kit/ids'
@@ -324,17 +324,26 @@ describe('recurring expenses', () => {
     const [broken, fine] = [nextExpense(), nextExpense()]
     await h.create({ expenseId: broken, expense: solo({ title: 'Broken', expenseDate: '2026-07-30' }) })
     await h.create({ expenseId: fine, expense: solo({ title: 'Fine', expenseDate: '2026-07-31' }) })
-    // The broken link is due first, and the ID of its next occurrence is taken, so its insert always fails.
+    // The broken link is due first, and a test trigger refuses every copy of it.
     const [link] = await tx((db) => db.select().from(recurringLinks).where(eq(recurringLinks.currentFrameExpenseId, broken)))
     if (!link) throw new Error('missing link')
-    await h.create({ expenseId: await occurrenceId(link.id), expense: solo({ title: 'Taken', recurrence: 'none' }) })
-    const failed: string[] = []
-    const created = await materializeDue(makeDb(database.pool), { today: '2026-08-01', groupId: h.groupId, onError: (_error, linkId) => failed.push(linkId) })
-    expect(failed).toEqual([link.id])
-    const fines = await h.search('Fine')
-    expect(fines.map((e) => e.expenseDate)).toEqual(['2026-08-01', '2026-07-31'])
-    expect(created).toEqual([fines[0]?.id])
-    // An explicit request still fails on the broken link: its occurrence ID is a duplicate key.
-    await expect(tx((db) => processGroup(db, { principal: alice, groupId: h.groupId, today: '2026-08-01' })).catch(sqlState)).resolves.toBe('23505')
+    await database.withDb((db) =>
+      db.execute(sql`
+        CREATE FUNCTION fail_broken_copy() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'broken copy' USING ERRCODE = 'P0001'; END $$;
+        CREATE TRIGGER fail_broken_copy BEFORE INSERT ON expenses FOR EACH ROW WHEN (NEW.title = 'Broken') EXECUTE FUNCTION fail_broken_copy();`),
+    )
+    try {
+      const failed: string[] = []
+      const created = await materializeDue(makeDb(database.pool), { today: '2026-08-01', groupId: h.groupId, onError: (_error, linkId) => failed.push(linkId) })
+      expect(failed).toEqual([link.id])
+      const fines = await h.search('Fine')
+      expect(fines.map((e) => e.expenseDate)).toEqual(['2026-08-01', '2026-07-31'])
+      expect(created).toEqual([fines[0]?.id])
+      // An explicit request still fails on the broken link.
+      await expect(tx((db) => processGroup(db, { principal: alice, groupId: h.groupId, today: '2026-08-01' })).catch(sqlState)).resolves.toBe('P0001')
+    } finally {
+      await database.withDb((db) => db.execute(sql`DROP TRIGGER fail_broken_copy ON expenses; DROP FUNCTION fail_broken_copy();`))
+    }
   })
 })

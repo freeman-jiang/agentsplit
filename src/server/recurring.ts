@@ -71,7 +71,7 @@ export async function stopRecurrence(tx: Db, data: { expenseId: string }) {
  * second run that somehow reaches the same link fails on the primary key
  * instead of creating a duplicate.
  */
-export async function occurrenceId(linkId: string) {
+async function occurrenceId(linkId: string) {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`agentsplit-recurrence:${linkId}`)))
   return idOfBytes(digest.slice(0, 21))
 }
