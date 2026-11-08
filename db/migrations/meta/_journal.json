@@ -141,6 +141,13 @@
       "when": 1794093367612,
       "tag": "0019_share_weight_sign",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794168463338,
+      "tag": "0020_running_balances",
+      "breakpoints": true
     }
   ]
 }

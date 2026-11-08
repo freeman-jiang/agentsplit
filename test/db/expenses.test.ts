@@ -163,9 +163,9 @@ describe('expense writes', () => {
     await tx(async (db) => {
       await db.execute(sql`INSERT INTO expenses (id, group_id, revision, kind, title, notes, category_id, expense_date, currency, amount, split_mode, original_amount, original_currency, conversion_rate)
         VALUES (${expenseId}, ${groupId}, 0, 'expense', 'Groceries', '', 9, '2026-11-01', 'USD', 9000, 'evenly', 12000, 'CAD', '0.75')`)
-      await db.execute(sql`INSERT INTO expense_payers (expense_id, group_id, participant_id, amount) VALUES (${expenseId}, ${groupId}, ${pa}, 9000)`)
+      await db.execute(sql`INSERT INTO expense_payers (expense_id, group_id, participant_id, amount, currency, live) VALUES (${expenseId}, ${groupId}, ${pa}, 9000, 'USD', true)`)
       await db.execute(
-        sql`INSERT INTO expense_shares (expense_id, group_id, participant_id, amount) VALUES (${expenseId}, ${groupId}, ${pa}, 3000), (${expenseId}, ${groupId}, ${pb}, 3000), (${expenseId}, ${groupId}, ${pc}, 3000)`,
+        sql`INSERT INTO expense_shares (expense_id, group_id, participant_id, amount, currency, live) VALUES (${expenseId}, ${groupId}, ${pa}, 3000, 'USD', true), (${expenseId}, ${groupId}, ${pb}, 3000, 'USD', true), (${expenseId}, ${groupId}, ${pc}, 3000, 'USD', true)`,
       )
     })
     const conversion = async () => (await tx((db) => db.select({ c: expenses.originalCurrency }).from(expenses).where(eq(expenses.id, expenseId))))[0]?.c

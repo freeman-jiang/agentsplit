@@ -123,8 +123,8 @@ export async function insertImportedExpense(
       actorName: r.actorName ?? null,
       actorUserId: r.actorUserId ?? null,
     })
-  await tx.insert(expensePayers).values(data.current.payers.map((p) => ({ expenseId: last.id, groupId: last.groupId, participantId: p.participantId, amount: minor(p.amount) })))
-  await tx.insert(expenseShares).values(data.current.shares.map((s) => ({ expenseId: last.id, groupId: last.groupId, participantId: s.participantId, amount: minor(s.amount), weight: s.weight })))
+  await tx.insert(expensePayers).values(data.current.payers.map((p) => ({ expenseId: last.id, groupId: last.groupId, participantId: p.participantId, amount: minor(p.amount), currency: supported(last.currencyCode), live: true })))
+  await tx.insert(expenseShares).values(data.current.shares.map((s) => ({ expenseId: last.id, groupId: last.groupId, participantId: s.participantId, amount: minor(s.amount), weight: s.weight, currency: supported(last.currencyCode), live: true })))
   const documents = last.documents ?? []
   if (documents.length) {
     // Receipts from before accounts have no known uploader.
