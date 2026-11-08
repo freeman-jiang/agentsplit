@@ -61,8 +61,10 @@ export const RECEIPT_FORMATS = {
   'image/png': { format: 'png', extension: 'png' },
 } as const satisfies Record<ReceiptContentType, { format: string; extension: string }>
 export type ReceiptFormat = (typeof RECEIPT_FORMATS)[ReceiptContentType]['format']
+// Object.fromEntries loses the keys' types; each entry is RECEIPT_FORMATS read backwards.
+const TYPE_OF_FORMAT = Object.fromEntries(RECEIPT_CONTENT_TYPES.map((type) => [RECEIPT_FORMATS[type].format, type])) as Record<ReceiptFormat, ReceiptContentType>
 /** The receipt type of an image format. */
-export const receiptTypeOf = (format: ReceiptFormat): ReceiptContentType => (format === RECEIPT_FORMATS['image/png'].format ? 'image/png' : 'image/jpeg')
+export const receiptTypeOf = (format: ReceiptFormat): ReceiptContentType => TYPE_OF_FORMAT[format]
 
 // ---------- the current app's names ----------
 // Its MCP tools, its exports, its history snapshots and its saved form defaults use them.
