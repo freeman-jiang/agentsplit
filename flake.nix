@@ -14,12 +14,22 @@
         "x86_64-linux"
       ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+
+      # services.agentsplit with this flake's build of the app.
+      agentsplitModule =
+        { lib, pkgs, ... }:
+        {
+          imports = [ ./nix/module.nix ];
+          services.agentsplit.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.agentsplit;
+        };
     in
     {
       packages = forAllSystems (pkgs: {
         agentsplit = pkgs.callPackage ./nix/package.nix { };
         default = self.packages.${pkgs.stdenv.hostPlatform.system}.agentsplit;
       });
+
+      nixosModules.default = agentsplitModule;
 
       devShells = forAllSystems (
         pkgs:
