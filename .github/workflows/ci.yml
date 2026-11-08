@@ -26,7 +26,7 @@ jobs:
       # The build also generates the route tree (src/client/routeTree.gen.ts) that the type check needs.
       - name: Production build
         run: nix develop --command bun run build
-      - name: Client bundle budget
+      - name: Client bundle budget, and no Effect in the client
         run: nix develop --command bun scripts/check-bundle.ts
       - name: Check types
         run: nix develop --command bun run check-types
