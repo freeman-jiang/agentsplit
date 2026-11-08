@@ -10,10 +10,10 @@ import { compareIds } from '../shared/ids'
 import { formatMinor, minor } from '../shared/minor'
 import { savedEntry } from '../shared/snapshots'
 import type { GroupKind } from '../shared/vocabulary'
-import { groupIdOf, groupRef, memberCte, myMemberships, requireMember, type Principal } from './core/access'
+import { groupIdOf, groupRef, memberCte, myMemberships, requireActive, type Principal } from './core/access'
 import type { Db } from './core/db'
 import { historicalLedger, type Boundary } from './history'
-import { participantName } from './people'
+import { displayNames, participantName } from './people'
 
 export type BalanceSum = { currency: CurrencyCode; participantId: string; paid: string; owed: string }
 
@@ -80,18 +80,17 @@ export const totalsJson = sql`coalesce((SELECT json_agg(json_build_object('curre
 
 // ---------- one group ----------
 
-/** Every participant of the group, by name, and the balances per currency, in one statement that also checks membership. */
+/** Every participant of the group, by display name, and the balances per currency, in one statement that also checks membership. */
 export async function groupBalances(db: Db, data: { principal: Principal; groupId: string; currency?: CurrencyCode | undefined }) {
   const result = await db.execute<{ active: boolean; participants: string[]; sums: BalanceSum[] }>(sql`
     WITH ${memberCte(data)}
     SELECT g.active,
-      coalesce((SELECT json_agg(p.id ORDER BY p.name, p.id) FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
+      coalesce((SELECT json_agg(p.id ORDER BY p.name, p.id) FROM (${displayNames(sql`g.id`)}) p), '[]') AS participants,
       ${balanceSums({ group: sql`g.id`, currency: data.currency })} AS sums
     FROM g
   `)
-  const [row] = result.rows
-  if (!row?.active) await requireMember(db, data)
-  return { participants: row?.participants ?? [], balances: balancesOf(row?.sums ?? []) }
+  const row = requireActive(result.rows[0])
+  return { participants: row.participants, balances: balancesOf(row.sums) }
 }
 
 /**
