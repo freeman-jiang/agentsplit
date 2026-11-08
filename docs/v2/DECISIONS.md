@@ -55,7 +55,7 @@ The plan's invariants require these changes. v2 already implements most of them.
 
 - Sign-in loses the requested page, including invitations (P-AUTH-49, P-ACCESS-33). A signed-in visit to `/sign-in` shows the login form (P-AUTH-58).
 - Access denied gives no message (P-GROUP-21). Non-admins see an edit button with no form (P-GROUP-58). Removing a participant who is in an expense gives a raw database error to API callers (P-GROUP-76).
-- `/Macademia` does not resolve, and an old slug breaks at once after a rename (P-GROUP-105, P-GROUP-106). v2 matches slugs case-insensitively and redirects old slugs.
+- `/Our-Flat` does not resolve, and an old slug breaks at once after a rename (P-GROUP-105, P-GROUP-106). v2 matches slugs case-insensitively and redirects old slugs.
 - A failed save or delete shows no message, and a revision conflict looks like any other failure (P-EXP-52, P-EXP-53). The delete dialog says "irreversible" for a soft delete (P-EXP-51).
 - The amount limit message says "lower than 10,000,000" but accepts 10,000,000 (P-EXP-61, P-MONEY-35): fix the message, keep the limit.
 - Lists without a defined order: categories and CSV export (P-EXP-102, P-EXPORT-29). An unknown category gives a 500 (P-EXP-103).
