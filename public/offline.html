@@ -2,12 +2,31 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141414" />
     <title>Offline · AgentSplit</title>
     <link rel="icon" href="/favicon.ico" />
     <style>
+      /* The app's monochrome tokens (src/client/styles.css), repeated here because
+         this page loads none of the app's files. */
       :root {
         color-scheme: light dark;
+        --background: #ffffff;
+        --foreground: #0d0d0d;
+        --muted-foreground: #666666;
+        --primary: #0d0d0d;
+        --primary-foreground: #ffffff;
+        -webkit-tap-highlight-color: transparent;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: #141414;
+          --foreground: #ededed;
+          --muted-foreground: #a3a3a3;
+          --primary: #fafafa;
+          --primary-foreground: #0d0d0d;
+        }
       }
       * {
         box-sizing: border-box;
@@ -20,52 +39,72 @@
         align-items: center;
         justify-content: center;
         gap: 1.25rem;
-        padding: 2rem;
+        padding: max(2rem, env(safe-area-inset-top)) max(2rem, env(safe-area-inset-right)) max(2rem, env(safe-area-inset-bottom))
+          max(2rem, env(safe-area-inset-left));
         text-align: center;
         font-family:
           ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
           Helvetica, Arial, sans-serif;
-        background: #f5f1e8;
-        color: #35392f;
+        -webkit-font-smoothing: antialiased;
+        background: var(--background);
+        color: var(--foreground);
       }
-      @media (prefers-color-scheme: dark) {
-        body {
-          background: #23231e;
-          color: #f5f1e8;
-        }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 1.5rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
       }
-      img {
-        width: 160px;
-        height: auto;
+      .brand span {
+        width: 2.5rem;
+        height: 2rem;
+        background: currentColor;
+        mask: url('/brand-mark.svg') center / contain no-repeat;
+        -webkit-mask: url('/brand-mark.svg') center / contain no-repeat;
       }
       h1 {
         font-size: 1.5rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
         margin: 0;
       }
       p {
         margin: 0;
         max-width: 28rem;
-        opacity: 0.8;
+        color: var(--muted-foreground);
         line-height: 1.5;
       }
       button {
         margin-top: 0.5rem;
-        padding: 0.625rem 1.25rem;
-        font-size: 0.95rem;
-        font-weight: 600;
-        color: #fff;
-        background: #526044;
+        min-height: 44px;
+        padding: 0 1.25rem;
+        font: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--primary-foreground);
+        background: var(--primary);
         border: none;
-        border-radius: 0;
+        border-radius: 9999px;
         cursor: pointer;
+        touch-action: manipulation;
+        -webkit-user-select: none;
+        user-select: none;
+        transition: scale 150ms cubic-bezier(0.23, 1, 0.32, 1);
       }
-      button:hover {
-        background: #434f37;
+      button:active {
+        scale: 0.97;
+      }
+      @media (hover: hover) {
+        button:hover {
+          opacity: 0.9;
+        }
       }
     </style>
   </head>
   <body>
-    <img src="/logo-with-text.png" alt="AgentSplit" />
+    <div class="brand" role="img" aria-label="AgentSplit"><span></span>AgentSplit</div>
     <h1>You're offline</h1>
     <p>
       This page isn't available without a connection. Pages and data you've
