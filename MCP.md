@@ -154,7 +154,7 @@ The server instructions and the `create_expense` and `update_expense` descriptio
 1. Record the full payment, including the payer's own share. `amount` is everything that was paid, never only what others owe.
 2. Include the payer in `paidFor` with their share, unless the payer paid only for other people.
 3. Put the full calculation in `notes`, so that a person can recalculate every number: each item, tax, tip, discount and each person's part. Keep the title short.
-4. Record a payment (a repayment or a reimbursement) with `create_expense` and `isReimbursement: true`. The people who sent money go in `paidBy` or `payers`; the people who received it go in `paidFor`. A payment may involve several people and may have a negative amount.
+4. Record a payment (a repayment or a reimbursement) with `create_expense` and `isReimbursement: true`. The people who sent money go in `paidBy` or `payers`; the people who received it go in `paidFor`. A payment may involve several people and may have a negative amount. Without `category`, a payment stores category 1 (Payment), as the web app's payment forms do; any other expense stores 0 (General).
 5. Record money that one person receives and the group shares, such as a refund, as an expense with a negative amount: the receiver in `paidBy`, everyone who shares it in `paidFor`.
 
 ## Receipt uploads

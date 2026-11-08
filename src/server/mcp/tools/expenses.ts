@@ -87,7 +87,9 @@ const ExpenseCreateInput = Schema.Struct({
   expenseDate: expenseFields.expenseDate,
   title: expenseFields.title,
   vendor: optional(expenseFields.vendor),
-  category: optional(expenseFields.category.annotate({ default: 0 })),
+  category: optional(
+    expenseFields.category.annotate({ description: `Category ID from get_reference_data. Default ${CATEGORY.general} (General), or ${CATEGORY.payment} (Payment) when isReimbursement is true.` }),
+  ),
   amount: expenseFields.amount,
   paidBy: optional(expenseFields.paidBy),
   payers: optional(expenseFields.payers),
@@ -283,7 +285,8 @@ function draftOf(input: ExpenseInputs): ExpenseDraft {
     title: input.title,
     vendor: input.vendor ?? null,
     notes: input.notes ?? '',
-    categoryId: input.category ?? CATEGORY.general,
+    // Payments store Payment on every path (DECISIONS.md, P-BAL-92).
+    categoryId: input.category ?? (input.isReimbursement ? CATEGORY.payment : CATEGORY.general),
     expenseDate: input.expenseDate,
     currency: input.currencyCode,
     amount: input.amount,
