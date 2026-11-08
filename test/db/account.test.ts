@@ -11,6 +11,7 @@ import { bootstrapOwner } from '~/server/auth/owner-bootstrap'
 import { createAuth } from '~/server/auth/auth'
 import type { Principal } from '~/server/core/access'
 import { makeDb, type Db } from '~/server/core/db'
+import { API_HEADERS, documentHeaders } from '~/server/headers'
 import { safeNextPath } from '~/shared/account'
 import { LIMITS } from '~/shared/limits'
 import { Forbidden, Invalid, NotFound } from '~/shared/api'
@@ -347,10 +348,40 @@ describe('security headers and readiness', () => {
   const app = (connect?: () => Promise<PoolClient>) => testApp({ pool, ...(connect ? { connect } : {}) })
 
   // An injected script tag or eval in user content must never run.
-  it('allows no inline or eval scripts on the SPA page and the API answers', async () => {
-    for (const path of ['/', '/settings', '/api/health/readiness']) {
+  it('allows no inline or eval scripts on the SPA page, and no content at all in an API answer', async () => {
+    for (const path of ['/', '/settings']) {
       const policy = (await app().fetch(new Request(`${BASE}${path}`))).headers.get('content-security-policy') ?? ''
       expect({ path, scripts: policy.split('; ').find((d) => d.startsWith('script-src')) }).toEqual({ path, scripts: "script-src 'self'" })
+    }
+    const api = await app().fetch(new Request(`${BASE}/api/health/readiness`))
+    expect(api.headers.get('content-security-policy')).toBe(API_HEADERS['Content-Security-Policy'])
+  })
+
+  // The document headers are half of each API answer's bytes, and bytes out of the VM are billed;
+  // a static file keeps them, because the service worker runs under the policy of its own response.
+  it('sends the document headers only with HTML and the static files, and the short API set with every other answer', async () => {
+    const assets = async (request: Request) =>
+      new URL(request.url).pathname === '/sw.js'
+        ? new Response('self.addEventListener', { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' } })
+        : new Response('SPA page', { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' } })
+    const site = testApp({ pool, assets })
+    const documents = documentHeaders({ receiptOrigin: undefined })
+    const securityOf = (response: Response) => Object.fromEntries(Object.keys(documents).flatMap((name) => (response.headers.has(name) ? [[name, response.headers.get(name)]] : [])))
+    for (const path of ['/', '/sw.js']) expect({ path, headers: securityOf(await site.fetch(new Request(`${BASE}${path}`))) }).toEqual({ path, headers: documents })
+    const answers = [
+      new Request(`${BASE}/api/rpc`, { method: 'POST', headers: { origin: BASE, 'content-type': 'application/json' }, body: '[]' }),
+      new Request(`${BASE}/api/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: '{}' }),
+      new Request(`${BASE}/api/auth/get-session`),
+      new Request(`${BASE}/api/health/readiness`),
+      new Request(`${BASE}/api/nothing-here`),
+    ]
+    for (const request of answers) {
+      const response = await site.fetch(request)
+      expect({ path: new URL(request.url).pathname, headers: securityOf(response), cache: response.headers.has('cache-control') }).toEqual({
+        path: new URL(request.url).pathname,
+        headers: API_HEADERS,
+        cache: true,
+      })
     }
   })
 
@@ -370,7 +401,7 @@ describe('security headers and readiness', () => {
     for (const path of ['/api/rpc', '/api/mcp', '/household/expenses/export/csv']) {
       const response = await failing.fetch(new Request(`${BASE}${path}`, path === '/api/rpc' ? { method: 'POST', headers: { origin: BASE }, body: '[]' } : {}))
       expect({ path, status: response.status, retry: response.headers.get('retry-after') }).toEqual({ path, status: 503, retry: '5' })
-      expect(response.headers.get('content-security-policy')).toContain("default-src 'self'")
+      expect(response.headers.get('content-security-policy')).toBe(API_HEADERS['Content-Security-Policy'])
       expect(await response.json()).toEqual({ error: 'AgentSplit is temporarily unavailable. Try again in a moment.' })
     }
     error.mockRestore()
