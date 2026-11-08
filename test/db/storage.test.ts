@@ -7,20 +7,20 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { receipts } from '../../db/schema/app'
 import { getExpenseDetail } from '~/server/expenses'
 import { getSavedExpense, listActivities } from '~/server/history'
-import { createExpense, updateExpense } from '~/server/ledger'
+import { createExpense, deleteExpense, updateExpense } from '~/server/ledger'
 import { receiptUsage } from '~/server/receipt-quota'
-import { downloadReceipt } from '~/server/receipt-routes'
-import { receiptKey, receiptUrl } from '~/server/receipts'
+import { RECEIPT_REFUSED, receiptKey, receiptUrl } from '~/server/receipts'
 import { deleteReceipts, purgeDeletedReceipts } from '~/server/storage'
 import { LIMITS, storageFullMessage } from '~/shared/limits'
-import { receiptDownloadPath } from '~/shared/paths'
+import { GROUP_DENIED } from '~/shared/errors'
+import { RECEIPTS_PATH } from '~/shared/paths'
 import { draft, mcpExpense } from '../kit/drafts'
 import { counter } from '../kit/ids'
 import { png } from '../kit/images'
 import { principal } from '../kit/people'
 import { receiptUpload } from '../kit/upload'
 import { waitFor } from '../kit/wait'
-import { BASE, failure, ok, startHarness, type Harness } from './harness'
+import { BASE, failure, ok, startHarness, testApp, type Harness } from './harness'
 
 let h: Harness
 const cookies = new Map<string, string>()
@@ -51,6 +51,13 @@ const fill = (data: { userId: string; groupId: string; bytes: number }) => {
   const id = fillers()
   return h.withDb((db) => db.insert(receipts).values({ id, groupId: data.groupId, url: receiptUrl(`receipts/${id}.jpg`), createdBy: data.userId, bytes: data.bytes }))
 }
+/** GET /api/receipts with the user's session, or with no credential when `userId` is null. */
+const download = (data: { userId: string | null; groupId: string; url?: string }) =>
+  h.fetch(
+    new Request(`${BASE}${RECEIPTS_PATH}?${new URLSearchParams({ groupId: data.groupId, ...(data.url === undefined ? {} : { url: data.url }) })}`, {
+      headers: data.userId ? { cookie: cookies.get(data.userId) ?? '' } : {},
+    }),
+  )
 const usage = (userId: string) => h.withDb((db) => receiptUsage(db, userId))
 const keyOf = (url: string) => receiptKey(url) ?? ''
 
@@ -161,11 +168,9 @@ describe('permanent receipt deletion', () => {
     const created = log.activities[0]?.snapshot
     expect(created?._tag === 'expense' ? created.expense.documents : null).toEqual([{ id: expect.any(String), url: uploaded.url, deleted: tombstone }])
 
-    const download = await h.withDb((db) =>
-      downloadReceipt({ db, bucket: h.storage.bucket, reader: { principal: alice }, url: new URL(`${BASE}/api/receipts?${new URLSearchParams({ groupId: g, url: uploaded.url })}`) }),
-    )
-    expect(download.status).toBe(410)
-    expect(((await download.json()) as { error: string }).error).toMatch(/^Receipt deleted by BOB on \d{4}-\d\d-\d\d$/)
+    const gone = await download({ userId: 'alice', groupId: g, url: uploaded.url })
+    expect(gone.status).toBe(410)
+    expect(((await gone.json()) as { error: string }).error).toMatch(/^Receipt deleted by BOB on \d{4}-\d\d-\d\d$/)
 
     // Agents see the tombstone instead of a download URL.
     const agent = await ok(h, { name: 'get_expense', args: { groupId: g, expenseId, revision: 1 }, headers: { 'x-api-key': await h.apiKey('alice') } })
@@ -210,13 +215,92 @@ describe('permanent receipt deletion', () => {
   })
 })
 
-describe('receipt downloads', () => {
+describe('receipt uploads and downloads', () => {
   it('refuses a download without a session or an API key before reading storage', async () => {
     const g = await groupOf('ursula')
     const uploaded = (await (await upload({ userId: 'ursula', groupId: g })).json()) as { url: string }
     const reads = h.storage.calls.length
-    const anonymous = await h.fetch(new Request(`${BASE}${receiptDownloadPath({ groupId: g, url: uploaded.url })}`))
+    const anonymous = await download({ userId: null, groupId: g, url: uploaded.url })
     expect(anonymous.status).toBe(401)
     expect(h.storage.calls.slice(reads)).toEqual([])
+  })
+
+  it('checks the reference and the membership before reading storage', async () => {
+    const g = await groupOf('vera')
+    const other = await groupOf('wanda')
+    const [registered, foreign] = [receiptUrl(`receipts/${fillers()}.jpg`), receiptUrl(`receipts/${fillers()}.jpg`)]
+    await h.withDb((db) =>
+      db.insert(receipts).values([
+        { id: fillers(), groupId: g, url: registered, createdBy: 'vera' },
+        { id: fillers(), groupId: other, url: foreign, createdBy: 'wanda' },
+      ]),
+    )
+    const reads = h.storage.calls.length
+    expect((await download({ userId: 'vera', groupId: g })).status).toBe(400)
+    const denied = await download({ userId: 'wanda', groupId: g, url: registered })
+    expect(denied.status).toBe(403)
+    expect(denied.headers.get('cache-control')).toBe('no-store')
+    expect(await denied.json()).toEqual({ error: GROUP_DENIED })
+    // PostgreSQL text cannot hold a NUL byte: such a reference is denied or not found, never a database error.
+    expect((await download({ userId: 'vera', groupId: `${g}\0`, url: registered })).status).toBe(403)
+    expect((await download({ userId: 'vera', groupId: g, url: `${registered}\0` })).status).toBe(404)
+    // Another group's receipt is not found through this group.
+    expect((await download({ userId: 'vera', groupId: g, url: foreign })).status).toBe(404)
+    expect(h.storage.calls.slice(reads)).toEqual([])
+    // Registered, but missing in storage.
+    expect((await download({ userId: 'vera', groupId: g, url: registered })).status).toBe(404)
+  })
+
+  it('uploads to the bucket for a member, and serves the image with safe headers', async () => {
+    const g = await groupOf('xena', 'yuri')
+    const other = await groupOf('zack')
+    const send = async (data: { groupId: string; file: Uint8Array<ArrayBuffer>; length?: number; userId?: string | null }) =>
+      h.fetch(await receiptUpload({ baseUrl: BASE, type: 'image/jpeg', groupId: data.groupId, file: data.file, ...(data.length === undefined ? {} : { length: data.length }), ...(data.userId === null ? {} : { cookie: cookies.get(data.userId ?? 'xena') ?? '' }) }))
+    const objects = h.storage.objects.size
+    const tiny = png({ width: 1, height: 1 })
+    expect((await send({ groupId: g, file: tiny, userId: null })).status).toBe(401)
+    expect((await send({ groupId: g, file: tiny, length: 2 * LIMITS.receiptBytes })).status).toBe(413)
+    expect((await send({ groupId: other, file: tiny })).status).toBe(403)
+    const bad = await send({ groupId: g, file: new TextEncoder().encode('not an image at all, really') })
+    expect(bad.status).toBe(400)
+    expect(await bad.json()).toEqual({ error: RECEIPT_REFUSED })
+    expect((await send({ groupId: g, file: png({ width: LIMITS.receiptPixelsMax + 1, height: 1 }) })).status).toBe(400)
+    expect(h.storage.objects.size).toBe(objects)
+
+    // A storage outage is an outage, not a refused image.
+    const down = testApp({ pool: h.pool, bucket: { ...h.storage.bucket, put: () => Promise.reject(new Error('storage is down')) } })
+    const outage = await down.fetch(await receiptUpload({ baseUrl: BASE, type: 'image/png', groupId: g, file: png({ width: 2, height: 2 }), cookie: cookies.get('xena') ?? '' }))
+    expect(outage.status).toBe(503)
+
+    const stored = await send({ groupId: g, file: png({ width: 64, height: 48 }) })
+    expect(stored.status).toBe(200)
+    const receipt = (await stored.json()) as { id: string; url: string; width: number; height: number }
+    expect(receipt).toMatchObject({ width: 64, height: 48 })
+    expect(receipt.url).toMatch(/^r2:\/\/agentsplit-receipts\/receipts\/[A-Za-z0-9_-]{21}\.png$/)
+    // The detected type wins over the declared image/jpeg.
+    expect(h.storage.objects.get(keyOf(receipt.url))?.contentType).toBe('image/png')
+
+    const image = await download({ userId: 'yuri', groupId: g, url: receipt.url })
+    expect(image.status).toBe(200)
+    expect(Object.fromEntries(image.headers)).toMatchObject({
+      'content-type': 'image/png',
+      'cache-control': 'private, no-store',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; sandbox",
+      'content-disposition': 'inline',
+    })
+    expect(new Uint8Array(await image.arrayBuffer())).toEqual(png({ width: 64, height: 48 }))
+  })
+
+  it('serves a receipt that only a deleted expense refers to', async () => {
+    const g = await groupOf('abel', 'bert')
+    const uploaded = (await (await upload({ userId: 'abel', groupId: g })).json()) as { id: string; url: string; width: number; height: number }
+    const expenseId = 'd0000000000000000000b'
+    const expense = draft({ payer: 'p-abel', people: ['p-abel', 'p-bert'], amount: '20.00' })
+    await h.tx((db) => createExpense(db, { principal: principal('abel'), groupId: g, expenseId, idempotencyKey: null, expense, documents: [{ id: 'kept', url: uploaded.url, width: uploaded.width, height: uploaded.height }] }))
+    await h.tx((db) => deleteExpense(db, { principal: principal('abel'), groupId: g, expenseId, expectedRevision: 1, idempotencyKey: null }))
+    const response = await download({ userId: 'bert', groupId: g, url: uploaded.url })
+    expect(response.status).toBe(200)
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(png({ width: 40, height: 30, bytes: 64 }))
   })
 })

@@ -6,8 +6,6 @@ import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { activities, expenses, receipts, recurringLinks } from '../../db/schema/app'
 import type { ExpenseDraft } from '~/shared/expense-rules'
-import { GROUP_DENIED } from '~/shared/errors'
-import { LIMITS } from '~/shared/limits'
 import { CATEGORY } from '~/shared/vocabulary'
 import { listBalances } from '~/server/balances'
 import { makeDb, sqlState } from '~/server/core/db'
@@ -16,18 +14,12 @@ import type { StoredDocument } from '~/server/expense-read'
 import { locateExpense, getExpenseDetail, listCategories } from '~/server/expenses'
 import { getSavedExpense } from '~/server/history'
 import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense } from '~/server/ledger'
-import { downloadReceipt, ENVELOPE_BYTES, uploadReceipt } from '~/server/receipt-routes'
-import { RECEIPT_REFUSED } from '~/server/receipts'
 import { listRecurring, materializeDue, occurrenceId, processGroup } from '~/server/recurring'
-import { BASE } from '../kit/config'
 import { testDatabase, type TestDatabase } from '../kit/database'
 import { draft } from '../kit/drafts'
 import { counter, id21 } from '../kit/ids'
-import { png } from '../kit/images'
 import { principal } from '../kit/people'
 import { seedHousehold } from '../kit/seed'
-import { receiptUpload } from '../kit/upload'
-import { fakeBucket } from './fake-bucket'
 
 let database: TestDatabase
 const tx: TestDatabase['tx'] = (work) => database.tx(work)
@@ -77,14 +69,12 @@ const doc1 = { id: 'd1', url: receiptUrl('aaaa'), width: 10, height: 20 }
 const doc2 = { id: 'd2', url: 'https://s3.example/bucket/receipts/bbbbbbbbbbbbbbbbbbbbb.png', width: 30, height: 40 }
 const foreignUrl = receiptUrl('cccc')
 let home: Household
-let otherGroupId: string
 
 beforeAll(async () => {
   database = await testDatabase()
   home = await household({ receipts: [doc1.url, doc2.url] })
   // Mallory's group, which Alice and Bob are not in.
   const groupId = nextGroup()
-  otherGroupId = groupId
   await tx(async (db) => {
     await seedHousehold(db, { groupId, slug: `${groupId}-other`, name: 'Other', people: [{ id: `${groupId}-pm`, name: 'Mallory', userId: mallory.userId }] })
     await db.insert(receipts).values({ id: `${groupId}-r`, groupId, url: foreignUrl, createdBy: mallory.userId })
@@ -346,85 +336,5 @@ describe('recurring expenses', () => {
     expect(created).toEqual([fines[0]?.id])
     // An explicit request still fails on the broken link: its occurrence ID is a duplicate key.
     await expect(tx((db) => processGroup(db, { principal: alice, groupId: h.groupId, today: '2026-08-01' })).catch(sqlState)).resolves.toBe('23505')
-  })
-})
-
-describe('receipt endpoints', () => {
-  const get = (params: Record<string, string>) => new URL(`${BASE}/api/receipts?${new URLSearchParams(params)}`)
-
-  it('checks the reference and the membership before reading storage', async () => {
-    const { bucket, calls } = fakeBucket()
-    await database.withDb(async (db) => {
-      const download = (reader: Principal, params: Record<string, string>) => downloadReceipt({ db, bucket, reader: { principal: reader }, url: get(params) })
-      expect((await download(alice, { groupId: home.groupId })).status).toBe(400)
-      const denied = await download(mallory, { groupId: home.groupId, url: doc1.url })
-      expect(denied.status).toBe(403)
-      expect(denied.headers.get('cache-control')).toBe('no-store')
-      expect(await denied.json()).toEqual({ error: GROUP_DENIED })
-      // PostgreSQL text cannot hold a NUL byte: such a reference is denied or not found, never a database error.
-      expect((await download(alice, { groupId: `${home.groupId}\0`, url: doc1.url })).status).toBe(403)
-      expect((await download(alice, { groupId: home.groupId, url: `${doc1.url}\0` })).status).toBe(404)
-      // Another group's receipt is not found through this group.
-      expect((await download(alice, { groupId: home.groupId, url: foreignUrl })).status).toBe(404)
-      expect(calls).toEqual([])
-      // Registered, but missing in storage.
-      expect((await download(alice, { groupId: home.slug, url: doc1.url })).status).toBe(404)
-    })
-  })
-
-  it('uploads to the bucket for a member, and serves the image with safe headers', async () => {
-    const { bucket, objects } = fakeBucket()
-    await database.withDb(async (db) => {
-      const upload = async (data: { groupId: string; file: Uint8Array<ArrayBuffer>; length?: number; by?: Principal | null }) => {
-        const { by, ...request } = data
-        return uploadReceipt({ db, bucket, principal: by === undefined ? alice : by, request: await receiptUpload({ baseUrl: BASE, type: 'image/jpeg', ...request }) })
-      }
-      const tiny = png({ width: 1, height: 1 })
-      expect((await upload({ groupId: home.groupId, file: tiny, by: null })).status).toBe(401)
-      expect((await upload({ groupId: home.groupId, file: tiny, length: LIMITS.receiptBytes + ENVELOPE_BYTES + 1 })).status).toBe(413)
-      expect((await upload({ groupId: otherGroupId, file: tiny })).status).toBe(403)
-      const bad = await upload({ groupId: home.groupId, file: new TextEncoder().encode('not an image at all, really') })
-      expect(bad.status).toBe(400)
-      expect(await bad.json()).toEqual({ error: RECEIPT_REFUSED })
-      expect((await upload({ groupId: home.groupId, file: png({ width: LIMITS.receiptPixelsMax + 1, height: 1 }) })).status).toBe(400)
-      expect(objects.size).toBe(0)
-
-      // A storage outage is an outage, not a refused image.
-      const down = { ...bucket, put: () => Promise.reject(new Error('storage is down')) }
-      const outage = await uploadReceipt({ db, bucket: down, principal: alice, request: await receiptUpload({ baseUrl: BASE, type: 'image/png', groupId: home.groupId, file: png({ width: 2, height: 2 }) }) })
-      expect(outage.status).toBe(503)
-
-      const ok = await upload({ groupId: home.slug, file: png({ width: 64, height: 48 }) })
-      expect(ok.status).toBe(200)
-      const stored = (await ok.json()) as { id: string; url: string; width: number; height: number }
-      expect(stored).toMatchObject({ width: 64, height: 48 })
-      expect(stored.url).toMatch(/^r2:\/\/agentsplit-receipts\/receipts\/[A-Za-z0-9_-]{21}\.png$/)
-      // The detected type wins over the declared image/jpeg.
-      expect([...objects.values()].map((o) => o.contentType)).toEqual(['image/png'])
-
-      const image = await downloadReceipt({ db, bucket, reader: { principal: bob }, url: get({ groupId: home.groupId, url: stored.url }) })
-      expect(image.status).toBe(200)
-      expect(Object.fromEntries(image.headers)).toMatchObject({
-        'content-type': 'image/png',
-        'cache-control': 'private, no-store',
-        'x-content-type-options': 'nosniff',
-        'content-security-policy': "default-src 'none'; sandbox",
-        'content-disposition': 'inline',
-      })
-      expect(new Uint8Array(await image.arrayBuffer())).toEqual(png({ width: 64, height: 48 }))
-    })
-  })
-
-  it('serves a receipt that only a deleted expense refers to', async () => {
-    const h = await household({ receipts: [receiptUrl('deleted')] })
-    const doc = { id: 'd-deleted', url: receiptUrl('deleted'), width: 1, height: 1 }
-    const expenseId = nextExpense()
-    await h.create({ expenseId, documents: [doc] })
-    await h.remove({ expenseId, expectedRevision: 1 })
-    const { bucket, objects } = fakeBucket()
-    objects.set(`receipts/${id21('deleted', 1)}.jpg`, { bytes: new Uint8Array([1]), contentType: 'image/jpeg' })
-    const response = await database.withDb((db) => downloadReceipt({ db, bucket, reader: { principal: bob }, url: get({ groupId: h.groupId, url: doc.url }) }))
-    expect(response.status).toBe(200)
-    expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1]))
   })
 })
