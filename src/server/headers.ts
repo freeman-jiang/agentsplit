@@ -4,39 +4,44 @@
 /**
  * No inline or eval scripts: the SPA is one module bundle, and the theme and
  * service-worker scripts are files. Inline styles stay allowed, because the
- * UI components set style attributes. Receipts are served from this origin.
+ * UI components set style attributes. Receipts load from this origin, and
+ * from `receiptOrigin` when /api/receipts redirects to storage.
  */
-const CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "font-src 'self' data:",
-  "connect-src 'self'",
-  "manifest-src 'self'",
-  "worker-src 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-].join('; ')
+const contentSecurityPolicy = (receiptOrigin: string | undefined) =>
+  [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    `img-src 'self' data: blob:${receiptOrigin ? ` ${receiptOrigin}` : ''}`,
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "manifest-src 'self'",
+    "worker-src 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; ')
 
-const SECURITY_HEADERS: Readonly<Record<string, string>> = {
-  'Content-Security-Policy': CONTENT_SECURITY_POLICY,
+export type SecurityHeaders = Readonly<Record<string, string>>
+
+/** The security headers of every response. `receiptOrigin` is storage's origin in redirect mode (RECEIPT_DOWNLOADS). */
+export const securityHeaders = (data: { receiptOrigin: string | undefined }): SecurityHeaders => ({
+  'Content-Security-Policy': contentSecurityPolicy(data.receiptOrigin),
   'X-Frame-Options': 'DENY',
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
-}
+})
 
 /**
- * A copy of `response` with the security headers; responses from fetch can
+ * A copy of `response` with the security `headers`; responses from fetch can
  * have immutable headers. A header the route set itself stays, such as the
  * sandbox policy of a receipt image.
  */
-export function secured(response: Response): Response {
-  const copy = new Response(response.body, response)
-  for (const [name, value] of Object.entries(SECURITY_HEADERS)) if (!copy.headers.has(name)) copy.headers.set(name, value)
+export function secured(data: { response: Response; headers: SecurityHeaders }): Response {
+  const copy = new Response(data.response.body, data.response)
+  for (const [name, value] of Object.entries(data.headers)) if (!copy.headers.has(name)) copy.headers.set(name, value)
   return copy
 }
 

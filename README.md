@@ -25,7 +25,7 @@ The app is a rewrite (v2) of the Next.js and Prisma app it replaced in productio
 - Effect RPC (`/api/rpc`) connects the client to the server, with Effect Schema as the shared contract.
 - TanStack Router and TanStack Query run the client, built with Vite and React.
 - Drizzle and PostgreSQL 18 store the ledger. Money is integer minor units. Database triggers check that shares and payers add up to the amount and that history stays append-only.
-- Garage stores the receipts. The app serves them only through `/api/receipts`.
+- Garage stores the receipts. The app serves them only through `/api/receipts`, which checks access on every request. With `RECEIPT_DOWNLOADS=redirect` it then redirects to a presigned storage URL (DEPLOYMENT.md).
 - Better Auth handles Google sign-in, API keys and the OAuth provider for agents.
 
 ## Develop

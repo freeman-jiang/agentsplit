@@ -29,4 +29,10 @@ export type Bucket = {
   /** Stores the bytes, or the stream to its end. Returns the stored size and ETag. */
   put(key: string, body: Uint8Array | ReadableStream<Uint8Array>, options: { readonly contentType: string }): Promise<{ size: number; etag: string }>
   delete(keys: string | readonly string[]): Promise<void>
+  /**
+   * A URL that reads the object with GET for `expiresIn` seconds, with no
+   * other credential. Storage answers it with these Content-Type and
+   * Content-Disposition headers, whatever the object holds.
+   */
+  presignGet(key: string, options: { readonly expiresIn: number; readonly contentType: string; readonly contentDisposition: string }): string
 }

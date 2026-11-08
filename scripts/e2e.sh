@@ -4,9 +4,11 @@
 # inside the dev shell, with the shared PostgreSQL running:
 #   direnv exec . ./scripts/e2e.sh [--compose] [playwright args...]
 # Default: the built server (bun dist/server/server.js) on the shared
-# PostgreSQL, with Garage from compose.coolify.yaml.
+# PostgreSQL, with Garage from compose.coolify.yaml on a loopback port. Receipt
+# downloads redirect to Garage (RECEIPT_DOWNLOADS=redirect), as on the NixOS host.
 # --compose: the image and the whole stack of compose.coolify.yaml (app,
 # db2 on PostgreSQL 18, Garage), as Coolify runs it, with scripts/compose.e2e.yaml.
+# Receipt downloads stream through the app, as on Coolify.
 # Env: E2E_PORT (default 5190; the database and Garage take the next two
 # ports), SKIP_BUILD=1 to reuse dist/ or the image.
 set -euo pipefail
@@ -62,7 +64,7 @@ else
   if [ "${SKIP_BUILD:-}" != "1" ]; then bun run build > "$work/build.log" 2>&1 || { cat "$work/build.log" >&2; exit 1; }; fi
   compose up -d --wait garage > "$work/up.log" 2>&1 || { cat "$work/up.log" >&2; exit 1; }
   DATABASE_URL="$E2E_DATABASE_URL" PORT="$port" HOST=127.0.0.1 \
-    S3_UPLOAD_ENDPOINT="http://127.0.0.1:${E2E_S3_PORT}" \
+    S3_UPLOAD_ENDPOINT="http://127.0.0.1:${E2E_S3_PORT}" RECEIPT_DOWNLOADS=redirect \
     bun dist/server/server.js > "$work/server.log" 2>&1 &
   server=$!
 fi
