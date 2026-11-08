@@ -137,6 +137,12 @@ in
       description = "The memory limit of the server. Above it, the kernel stops the server and systemd starts it again.";
     };
 
+    databasePoolSize = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 10;
+      description = "The size of the server's database pool (DATABASE_POOL_SIZE). It must fit in PostgreSQL's max_connections.";
+    };
+
     cpuQuota = lib.mkOption {
       type = lib.types.str;
       default = "150%";
@@ -186,6 +192,14 @@ in
   config = lib.mkIf cfg.enable (
     lib.mkMerge [
       {
+        assertions = [
+          {
+            # The pool, the dump, one admin session and the 3 superuser slots.
+            assertion = cfg.databasePoolSize + 5 <= config.services.postgresql.settings.max_connections or 100;
+            message = "services.agentsplit.databasePoolSize does not fit in services.postgresql.settings.max_connections.";
+          }
+        ];
+
         services.postgresql = {
           enable = true;
           # The major version fixes the data format; change it only with a dump and restore.
@@ -221,6 +235,7 @@ in
             DATABASE_URL = "postgresql://${cfg.database}@/${cfg.database}?host=/run/postgresql";
             HOST = "127.0.0.1";
             PORT = toString cfg.port;
+            DATABASE_POOL_SIZE = toString cfg.databasePoolSize;
             # Bun caches large transpiled files under the home folder; the bundle needs no cache.
             BUN_RUNTIME_TRANSPILER_CACHE_PATH = "0";
           };
@@ -244,9 +259,12 @@ in
             ];
             MemoryHigh = cfg.memoryHigh;
             MemoryMax = cfg.memoryMax;
-            MemorySwapMax = "256M";
+            MemorySwapMax = "128M";
             CPUQuota = cfg.cpuQuota;
-            TasksMax = 256;
+            TasksMax = 128;
+            # When memory runs out, the kernel stops the server before
+            # PostgreSQL, Tailscale or the journal, and systemd starts it again.
+            OOMScoreAdjust = 500;
           };
         };
       }
@@ -284,6 +302,7 @@ in
             RestrictAddressFamilies = [ "AF_UNIX" ];
             Nice = 10;
             IOSchedulingClass = "idle";
+            OOMScoreAdjust = 600;
           };
         };
         systemd.timers.agentsplit-db-dump = {
@@ -315,8 +334,10 @@ in
               "AF_INET6"
               "AF_NETLINK"
             ];
-            MemoryMax = "256M";
+            MemoryMax = "128M";
             TasksMax = 64;
+            # Second after the server: it restarts in seconds.
+            OOMScoreAdjust = 300;
           };
         };
       })
