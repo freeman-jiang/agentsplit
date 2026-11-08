@@ -56,7 +56,7 @@ export default function ExpensesDialog(props: Props) {
           ) : data.length === 0 ? (
             <p className="p-6 text-sm text-muted-foreground">{props.empty}</p>
           ) : (
-            <ul className="animate-fade-in divide-y">
+            <ul className="divide-y">
               {data.map((e) => (
                 <li key={e.id}>
                   <Link {...editorLink({ group: drill.group, expenseId: e.id, kind: e.kind })} className="flex items-center justify-between gap-2 px-6 py-3 text-sm hover:bg-accent">
