@@ -11,10 +11,11 @@ import { loadExpenses } from '../../expense-read'
 import * as exports from '../../export'
 import * as history from '../../history'
 import * as stats from '../../stats'
+import { formatMinor, minor } from '../../../shared/minor'
 import { CurrencyCodeSchema } from '../../../shared/money'
 import { defineTool } from './registry'
 import { CalendarDate, HistoryFields, PageLimit } from './inputs'
-import { ActivityTypeName, DateTime, expenseRow, ExpenseRow, Id, liveSource, money, Money, NonNegativeInt, NullableString, optional, RecordedTime, Snapshot, snapshotOf } from './wire'
+import { ActivityTypeName, DateTime, expenseRow, ExpenseRow, Id, liveSource, Money, NonNegativeInt, NullableString, optional, RecordedTime, Snapshot, snapshotOf } from './wire'
 
 // ---------- get_spending_stats ----------
 
@@ -92,12 +93,13 @@ export const getSpendingStats = defineTool({
       ...(input.to === undefined ? {} : { to: input.to }),
       ...(input.participantId === undefined ? {} : { participantId: input.participantId }),
     })
+    const zero = formatMinor({ amount: minor(0n), currency: s.currency })
     return {
       currencyCode: s.currency,
       availableCurrencyCodes: s.currencies,
       totalGroupSpendings: s.total,
       // Only for an explicit participant, as in the current app.
-      ...(input.participantId === undefined ? {} : { totalParticipantSpendings: s.yourPaid ?? money('0', s.currency), totalParticipantShare: s.yourShare ?? money('0', s.currency) }),
+      ...(input.participantId === undefined ? {} : { totalParticipantSpendings: s.yourPaid ?? zero, totalParticipantShare: s.yourShare ?? zero }),
       summary: {
         expenseCount: s.summary.count,
         totalSpending: s.total,
