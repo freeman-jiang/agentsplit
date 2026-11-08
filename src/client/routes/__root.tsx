@@ -20,7 +20,7 @@ function Root() {
   const inGroup = useRouterState({ select: (s) => s.matches.some((m) => m.routeId === '/$group') })
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-50 border-b bg-background/95 px-4 py-3 backdrop-blur-sm sm:px-8">
+      <header className="sticky top-0 z-50 border-b bg-background/95 safe-px-4 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] pb-3 backdrop-blur-sm sm:safe-px-8">
         {/* min-h-10 matches the avatar, so the header keeps its height after sign-in. */}
         <div className="grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
           <Link className="flex items-center gap-2" to="/">
@@ -52,10 +52,10 @@ function Root() {
           )}
         </div>
       </header>
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col safe-px-0">
         <Outlet />
       </div>
-      <footer className="mt-16 flex flex-col gap-2 px-4 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-8">
+      <footer className="mt-16 flex flex-col gap-2 safe-px-4 pt-8 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:safe-px-8">
         <p>
           <span className="font-medium text-foreground">AgentSplit</span> · A little less keeping track. ·{' '}
           <Link to="/privacy" className="underline underline-offset-4">
@@ -64,7 +64,8 @@ function Root() {
         </p>
         <p>Built on Spliit, by Sebastien Castiel and contributors.</p>
       </footer>
-      <Toaster position="bottom-center" />
+      {/* On phones the toasts sit above the home indicator. */}
+      <Toaster position="bottom-center" mobileOffset={{ bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))' }} />
     </div>
   )
 }
