@@ -19,6 +19,7 @@ export const SPLIT_MODE_LABELS = {
 
 /** The rules of a recurring expense. */
 export const RECURRING_PERIODS = ['daily', 'weekly', 'monthly'] as const
+export type RecurringPeriod = (typeof RECURRING_PERIODS)[number]
 export const RECURRENCES = ['none', ...RECURRING_PERIODS] as const
 export type Recurrence = (typeof RECURRENCES)[number]
 export const RECURRENCE_LABELS = { none: 'None', daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly' } as const satisfies Record<Recurrence, string>
