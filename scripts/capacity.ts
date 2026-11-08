@@ -268,6 +268,8 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const)
   })
 
 const log = (text: string) => console.error(`[capacity] ${text}`)
+/** The server's output, which the cleanup removes with the temporary directory: a failed run prints its end first. */
+let serverLog: string | null = null
 
 try {
   if (process.platform !== 'linux') throw new Error('The benchmark reads /proc: run it on Linux')
@@ -323,7 +325,7 @@ try {
   cleanups.push(() => edge.close())
 
   log('Starting the server (bun --no-install dist/server/server.js)')
-  const serverLog = join(work, 'server.log')
+  serverLog = join(work, 'server.log')
   const out = openSync(serverLog, 'w')
   const server = Bun.spawn(['bun', '--no-install', 'dist/server/server.js'], {
     env: {
@@ -353,7 +355,7 @@ try {
     await server.exited
   })
   for (let i = 0; ; i++) {
-    if (server.exitCode !== null) throw new Error(`The server exited (${server.exitCode}); see its log:\n${await Bun.file(serverLog).text()}`)
+    if (server.exitCode !== null) throw new Error(`The server exited (${server.exitCode})`)
     const ready = await fetch(`http://127.0.0.1:${serverPort}/api/health`).then(
       (r) => r.ok,
       () => false,
@@ -639,6 +641,14 @@ try {
   say(`Not counted: cloudflared's and Tailscale's CPU and keepalive traffic, the kernel, and journald.`)
   say(`Run time: ${fixed(measured.reduce((s, m) => s + m.wallSeconds, 0), 0)} s for ${all.length} requests.`)
   console.log(lines.join('\n'))
+} catch (error) {
+  if (serverLog) {
+    const text = await Bun.file(serverLog)
+      .text()
+      .catch(() => '')
+    console.error(`The end of the server's log:\n${text.split('\n').slice(-80).join('\n')}`)
+  }
+  throw error
 } finally {
   await cleanUp()
 }
