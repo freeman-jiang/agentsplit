@@ -39,11 +39,17 @@ type Key = keyof SearchParams
 export const Route = createFileRoute('/')({
   validateSearch: parseSearch,
   beforeLoad: ({ context }) => context.queryClient.ensureQueryData(meQuery),
-  loader: ({ context }) => {
+  loader: ({ context, location }) => {
     // Start the dashboard's reads together; the RPC client sends them in one request.
-    if (!context.queryClient.getQueryData(meQuery.queryKey)) return
-    void context.queryClient.prefetchQuery(accountBalancesQuery)
-    void context.queryClient.prefetchQuery(feedOptionsQuery)
+    const { queryClient } = context
+    if (!queryClient.getQueryData(meQuery.queryKey)) return
+    void queryClient.prefetchQuery(accountBalancesQuery)
+    void queryClient.prefetchQuery(feedOptionsQuery)
+    // The list joins them on the first visit. A search waits for its debounce in the page, so it is not read here.
+    const search = parseSearch(location.search)
+    const parsed = toFilter(search, '')
+    if (!text(search.q) && 'filter' in parsed && !queryClient.getQueryData(feedQuery(parsed.filter).queryKey))
+      void queryClient.prefetchInfiniteQuery(feedQuery(parsed.filter))
   },
   component: Home,
 })
