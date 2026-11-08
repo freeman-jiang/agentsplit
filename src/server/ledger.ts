@@ -4,7 +4,7 @@ import { and, eq, notInArray, sql, type SQL } from 'drizzle-orm'
 import { expenseDocuments, expensePayers, expenses, expenseShares } from '../../db/schema/app'
 import { Conflict, Invalid, NotFound } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
-import { validateExpense, type ExpenseDraft, type ResolvedExpense } from '../shared/expense-rules'
+import { UNKNOWN_CATEGORY, validateExpense, type ExpenseDraft, type ResolvedExpense } from '../shared/expense-rules'
 import { fieldProblemsText } from '../shared/errors'
 import { compareIds } from '../shared/ids'
 import { weightText } from '../shared/split'
@@ -276,7 +276,7 @@ async function replaceDocuments(tx: Db, data: { expenseId: string; documents: re
 }
 
 function requireCategory(context: WriteContext, categoryId: number) {
-  if (!context.categories.has(categoryId)) throw new Invalid({ message: 'categoryId: Unknown category', field: 'categoryId' })
+  if (!context.categories.has(categoryId)) throw new Invalid({ message: fieldProblemsText([{ field: 'categoryId', message: UNKNOWN_CATEGORY }]), field: 'categoryId' })
 }
 
 /**
