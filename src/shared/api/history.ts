@@ -2,6 +2,7 @@
 // the Stats tab and exports. Reads only: none of these procedures writes.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
+import { isRealDate } from '../dates'
 import { LIMITS } from '../limits'
 import { FILE_EXPORT_FORMATS } from '../paths'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
@@ -14,6 +15,7 @@ export const ActivityType = Schema.Literals(ACTIVITY_TYPES)
 /** A recorded-change time with a time zone and at most millisecond precision, such as 2026-10-01T15:00:00Z. Not an expense date. */
 export const RecordedTime = Schema.String.check(
   Schema.isPattern(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d{1,3})?)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/),
+  Schema.makeFilter((value: string) => isRealDate(value.slice(0, 10)) || 'Invalid date'),
 )
 
 /** Pick at most one: the history boundary to read at. Reuse a returned `atActivityId` for stable pages. */

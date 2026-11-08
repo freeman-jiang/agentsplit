@@ -5,6 +5,7 @@
 import { sql, type SQL } from 'drizzle-orm'
 import type { ExpenseFilter as Filter } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
+import { isCalendarDate, isUtcTime } from '../shared/dates'
 import type { SavedExpense } from '../shared/history'
 import { formatMinor, minor } from '../shared/minor'
 import type { ExpenseKind, Recurrence, SplitMode } from '../shared/vocabulary'
@@ -56,8 +57,14 @@ export const tombstonesJson = (group: SQL) => sql`(SELECT json_object_agg(r.url,
   WHERE r.group_id = ${group})`
 
 /** The exact keys of a row of an expense list, after its ID: the next page starts right after them. */
-export type OrderKeys = { readonly a: string; readonly b: string; readonly id: string }
-type ExpenseOrder = { readonly by: SQL; readonly keys: SQL; readonly after: (keys: OrderKeys) => SQL }
+type OrderKeys = { readonly a: string; readonly b: string; readonly id: string }
+type ExpenseOrder = {
+  readonly by: SQL
+  readonly keys: SQL
+  readonly after: (keys: OrderKeys) => SQL
+  /** Whether keys from a caller's cursor have the form that `keys` writes, so that `after` can cast them. */
+  readonly valid: (keys: OrderKeys) => boolean
+}
 
 /**
  * The orders of expense lists on row `e`, newest first. `keys` selects
@@ -69,11 +76,13 @@ export const EXPENSE_ORDERS: { readonly date: ExpenseOrder; readonly updated: Ex
     by: sql`e.expense_date DESC, e.created_at DESC, e.id DESC`,
     keys: sql`e.expense_date::text AS key_a, ${isoMicro(sql`e.created_at`)} AS key_b`,
     after: (k) => sql`(e.expense_date, e.created_at, e.id) < (${k.a}::date, ${k.b}::timestamptz, ${k.id})`,
+    valid: (k) => isCalendarDate(k.a) && isUtcTime(k.b),
   },
   updated: {
     by: sql`e.updated_at DESC, e.id DESC`,
     keys: sql`${isoMicro(sql`e.updated_at`)} AS key_a, '' AS key_b`,
     after: (k) => sql`(e.updated_at, e.id) < (${k.a}::timestamptz, ${k.id})`,
+    valid: (k) => isUtcTime(k.a) && k.b === '',
   },
 }
 export type OrderedRow = { key_a: string; key_b: string }

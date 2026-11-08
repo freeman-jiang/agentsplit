@@ -1,10 +1,11 @@
 // The call runner of RPC and MCP (src/server/calls.ts): work queued for after
-// a write's commit, and the answer a database failure gets on RPC. Both fail
-// silently: a purge that runs for a rolled-back write deletes a receipt that
-// stays, and a raw database error tells the client the schema.
+// a write's commit, the answer a database failure gets on RPC, and dates that
+// do not exist. Each fails silently: a purge that runs for a rolled-back write
+// deletes a receipt that stays, a raw database error tells the client the
+// schema, and a date answered as an outage tells an agent to retry it.
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { runWrite } from '~/server/calls'
+import { runRead, runWrite } from '~/server/calls'
 import { GROUP_DENIED, UNAVAILABLE } from '~/shared/errors'
 import { draft } from '../kit/drafts'
 import { counter, id21Counter } from '../kit/ids'
@@ -106,5 +107,50 @@ describe('group references', () => {
     expect(JSON.stringify(exit)).toContain(GROUP_DENIED)
     const download = await h.fetch(new Request(`${BASE}/groups/g1%00x/expenses/export/json`, { headers: { cookie } }))
     expect(download.status).toBe(403)
+  })
+})
+
+describe('dates and times that do not exist', () => {
+  // Bun's Date.parse rolls 2026-02-30 into March, but PostgreSQL refuses the cast.
+  const day = '2026-02-30'
+  const time = `${day}T12:00:00Z`
+  let key: Record<string, string>
+  beforeAll(async () => {
+    key = { 'x-api-key': await h.apiKey('alice') }
+  })
+
+  it('refuses them on RPC as a request problem', async () => {
+    const tampered = btoa(JSON.stringify({ k: day, c: '2026-01-01T00:00:00.000000Z', i: 'e1' }))
+    const calls = [
+      { tag: 'history.balances', payload: { groupId: 'g1', asOf: time } },
+      { tag: 'history.activities', payload: { groupId: 'g1', limit: 5, recordedFrom: time } },
+      { tag: 'feed.list', payload: { filter: {}, limit: 5, cursor: { date: '2026-01-01', createdAt: '2026-01-01T25:00:00Z', id: 'e1' } } },
+      { tag: 'feed.list', payload: { filter: {}, limit: 5, cursor: { date: '2026-01-01', createdAt: `${day}T00:00:00Z`, id: 'e1' } } },
+      { tag: 'expenses.list', payload: { groupId: 'g1', filter: {}, cursor: tampered, limit: 5 } },
+    ]
+    const outages = []
+    for (const c of calls) {
+      const { exit } = await webRpc(h, { ...c, cookie })
+      if (exit._tag !== 'Failure' || JSON.stringify(exit).includes('Unavailable')) outages.push(c)
+    }
+    expect(outages).toEqual([])
+  })
+
+  it('refuses them on MCP as a request problem', async () => {
+    const calls = [
+      { name: 'get_balances', args: { groupId: 'g1', asOf: time } },
+      { name: 'list_activity', args: { groupId: 'g1', recordedTo: time } },
+      { name: 'list_receipts', args: { olderThan: time } },
+      { name: 'list_all_expenses', args: { cursor: { date: day, createdAt: '2026-01-01T00:00:00.000000Z', id: 'e1' } } },
+      { name: 'list_all_expenses', args: { cursor: { date: `${day}T00:00:00.000Z`, createdAt: '2026-01-01T00:00:00.000000Z', id: 'e1' } } },
+    ]
+    const outages = []
+    for (const c of calls) if ((await h.mcp.failure({ ...c, headers: key })).code === 'INTERNAL_SERVER_ERROR') outages.push(c)
+    expect(outages).toEqual([])
+  })
+
+  it('answers a value that the database cannot read as Invalid, also on a read', async () => {
+    const read = h.withDb((db) => runRead({ db, call, work: (d) => d.execute(sql`SELECT ${day}::date`) }))
+    await expect(read).rejects.toMatchObject({ _tag: 'Invalid' })
   })
 })

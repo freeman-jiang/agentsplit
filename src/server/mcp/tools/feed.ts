@@ -5,7 +5,7 @@
 import { Schema } from 'effect'
 import { CategoryId, FeedScope, Id as IdInput, SearchText } from '../../../shared/api'
 import { FeedCursor } from '../../../shared/api/feed'
-import { legacyDateTime } from '../../../shared/dates'
+import { isCalendarDate, legacyDateTime } from '../../../shared/dates'
 import { LIMITS } from '../../../shared/limits'
 import * as feed from '../../feed'
 import { CurrencyCodeSchema } from '../../../shared/money'
@@ -16,7 +16,10 @@ import { DateTime, FeedRow, feedRow, Id, NullableString, optional } from './wire
 /** The last row of a page. createdAt keeps microseconds, so rows created in the same millisecond are not skipped. */
 const Cursor = Schema.Struct({
   // The current app's cursor gives the date as a UTC midnight timestamp, which nextCursor repeats.
-  date: Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z)?$/)).annotate({ format: 'date-time' }),
+  date: Schema.String.check(
+    Schema.isPattern(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z)?$/),
+    Schema.makeFilter((value: string) => isCalendarDate(value.slice(0, 10)) || 'Invalid calendar date'),
+  ).annotate({ format: 'date-time' }),
   createdAt: FeedCursor.fields.createdAt.annotate({ format: 'date-time' }),
   id: IdInput,
 })
