@@ -177,7 +177,7 @@ export async function accountBalances(db: Db, data: { principal: Principal; scop
 // ---------- as of a recorded change ----------
 
 /** The answer for a boundary with expenses that have no saved state there. MCP adds where an agent reads them. */
-export const INCOMPLETE_HISTORY = 'Historical balances are unavailable because some expenses have no saved state at this point.'
+const INCOMPLETE_HISTORY = 'Historical balances are unavailable because some expenses have no saved state at this point.'
 
 /**
  * Balances from the saved splits at a boundary, per currency and participant.
