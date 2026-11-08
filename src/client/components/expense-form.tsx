@@ -3,7 +3,7 @@
 // validateExpense checks the draft here and again on the server. The same form
 // edits ungrouped (private) expenses, with the current app's privateExpense options.
 import { Link } from '@tanstack/react-router'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { cn } from '~/client/cn'
 import { money } from '~/client/components/money'
 import { formatMoment } from '~/client/dates'
@@ -73,7 +73,9 @@ export function ExpenseForm(props: ExpenseFormProps) {
     noun: 'expense',
   })
   const [state, setState] = useState<FormState>(props.initial)
-  const [submitted, setSubmitted] = useState(false)
+  const [submits, setSubmits] = useState(0)
+  const submitted = submits > 0
+  const form = useRef<HTMLFormElement>(null)
   const [touched, setTouched] = useState<ReadonlySet<string>>(new Set())
   const order = useMemo(() => participants.map((p) => p.id), [participants])
   const names = useMemo(() => new Map(participants.map((p) => [p.id, p.name])), [participants])
@@ -99,14 +101,16 @@ export function ExpenseForm(props: ExpenseFormProps) {
   const setAmount = (amount: string) => set({ amount, edits: {}, ...(isIncome(amount) ? { kind: 'expense' as const } : {}) })
   const setMode = (splitMode: SplitMode) => set({ splitMode, edits: {} })
 
+  // After each submit renders its field errors, the first marked field takes the focus.
+  useEffect(() => {
+    if (submits > 0) form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+  }, [submits])
+
   const submit = async () => {
-    setSubmitted(true)
+    setSubmits((n) => n + 1)
     write.clearFailure()
     const { draft, resolved } = checked
-    if (issues.length || !resolved) {
-      document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
-      return
-    }
+    if (issues.length || !resolved) return
     const { groupId } = target
     await write.submit(toInput({ draft, resolved, documents: state.documents }), () => {
       if (state.saveDefault && groupId !== null) saveSplitDefaults({ groupId, state, participants: order })
@@ -120,6 +124,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
 
   return (
     <form
+      ref={form}
       noValidate
       onSubmit={(e) => {
         e.preventDefault()
