@@ -314,7 +314,7 @@ describe('owner bootstrap', () => {
 describe('sign-in destination', () => {
   it('keeps same-origin paths and refuses everything else', () => {
     expect(safeNextPath('/invite/abc?x=1#y')).toBe('/invite/abc?x=1#y')
-    expect(safeNextPath('/macademia/expenses')).toBe('/macademia/expenses')
+    expect(safeNextPath('/our-flat/expenses')).toBe('/our-flat/expenses')
     for (const bad of ['//evil.example', '/\\evil.example', '/\\/evil.example', 'https://evil.example', 'evil', '', '/\tx', '/sign-in?next=/x', null])
       expect(safeNextPath(bad)).toBeNull()
   })

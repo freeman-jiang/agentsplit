@@ -148,18 +148,18 @@ describe('slugs', () => {
   })
 
   it('resolves slugs case-insensitively, redirects old slugs and removes slugs (P-GROUP-97, -105, -106)', async () => {
-    const g = await create(alice, { slug: 'macademia-test' })
-    expect((await getGroupBy(alice, 'Macademia-Test')).id).toBe(g.id)
+    const g = await create(alice, { slug: 'our-flat-test' })
+    expect((await getGroupBy(alice, 'Our-Flat-Test')).id).toBe(g.id)
     const renamed = await update(alice, g.id, 1, { slug: 'new-home' })
     expect(renamed).toEqual({ id: g.id, slug: 'new-home', revision: 2 })
     // The old slug still opens the group, and the response names the current slug.
-    expect(await getGroupBy(alice, 'macademia-test')).toMatchObject({ id: g.id, slug: 'new-home' })
+    expect(await getGroupBy(alice, 'our-flat-test')).toMatchObject({ id: g.id, slug: 'new-home' })
     const removed = await update(alice, 'new-home', 2, { slug: '' })
     expect(removed.slug).toBeNull()
     expect((await getGroupBy(alice, 'new-home')).id).toBe(g.id)
     // A current slug wins over another group's old one.
-    const other = await create(alice, { slug: 'macademia-test' })
-    expect((await getGroupBy(alice, 'macademia-test')).id).toBe(other.id)
+    const other = await create(alice, { slug: 'our-flat-test' })
+    expect((await getGroupBy(alice, 'our-flat-test')).id).toBe(other.id)
   })
 
   it('resolves a retired, mixed-case slug the same way in every read', async () => {
