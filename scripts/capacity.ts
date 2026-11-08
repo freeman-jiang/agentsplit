@@ -21,6 +21,9 @@
 //   --egress-price, --peak-factor, --packet-overhead, --backup-pulls, --dumps-kept,
 //   --dumps-per-month     the target and the assumptions of the report
 //   --skip-build          reuse dist/ from an earlier `bun run build`
+//   --cpu-prof DIR        write the server's CPU profile (Bun's --cpu-prof, with its
+//                         Markdown summary) to DIR; the sampler costs CPU, so its
+//                         numbers are not the capacity
 // It creates the database agentsplit_capacity in its own PostgreSQL instance in a
 // temporary directory, and removes the instance, the server and the directory
 // at the end, also when it fails.
@@ -96,6 +99,7 @@ const parsed = parseArgs({
     profile: { type: 'string', default: 'heavy' },
     calibrate: { type: 'boolean', default: false },
     'skip-build': { type: 'boolean', default: false },
+    'cpu-prof': { type: 'string' },
     help: { type: 'boolean', default: false },
   },
   strict: true,
@@ -104,7 +108,7 @@ const parsed = parseArgs({
 if (parsed.values.help) {
   console.log(
     [
-      'bun scripts/capacity.ts [--calibrate] [--skip-build] [--profile heavy|typical]',
+      'bun scripts/capacity.ts [--calibrate] [--skip-build] [--profile heavy|typical] [--cpu-prof <dir>]',
       ...Object.keys(USAGE).map((name) => `  --${name} <number>  (heavy ${PROFILES.heavy[name as Usage]}, typical ${PROFILES.typical[name as Usage]})`),
       ...Object.entries(FLAGS).map(([name, f]) => `  --${name} <number>  (default ${f.default})`),
     ].join('\n'),
@@ -366,7 +370,9 @@ try {
   log('Starting the server (bun --no-install dist/server/server.js)')
   serverLog = join(work, 'server.log')
   const out = openSync(serverLog, 'w')
-  const server = Bun.spawn(['bun', '--no-install', 'dist/server/server.js'], {
+  const cpuProfDir = parsed.values['cpu-prof']
+  const profiler = cpuProfDir ? ['--cpu-prof', '--cpu-prof-md', `--cpu-prof-dir=${resolve(cpuProfDir)}`] : []
+  const server = Bun.spawn(['bun', '--no-install', ...profiler, 'dist/server/server.js'], {
     env: {
       PATH: process.env['PATH'],
       ...host.serverEnvironment,
