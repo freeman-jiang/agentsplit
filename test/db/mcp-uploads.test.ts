@@ -11,7 +11,7 @@ import { RECEIPT_CONTENT_TYPES } from '~/shared/vocabulary'
 import { mcpExpense } from '../kit/drafts'
 import { id21 as id } from '../kit/ids'
 import { JPEG as jpeg, png as pngOf } from '../kit/images'
-import { BASE, failure, ok, startHarness, type Harness } from './harness'
+import { BASE, startHarness, type Harness } from './harness'
 
 let h: Harness
 let alice: Record<string, string>
@@ -41,7 +41,7 @@ type Target = { uploadId: string; filename: string; method: string; url: string;
 
 /** Creates an expense in g1 and returns its upload targets. */
 async function create(n: number, uploads: { filename: string; contentType: string; bytes: number }[], headers = alice) {
-  const created = await ok(h, { name: 'create_expense', args: { groupId: 'g1', expenseId: id21(n), expense, uploads }, headers })
+  const created = await h.mcp.ok({ name: 'create_expense', args: { groupId: 'g1', expenseId: id21(n), expense, uploads }, headers })
   return created['uploads'] as Target[]
 }
 
@@ -49,13 +49,13 @@ async function create(n: number, uploads: { filename: string; contentType: strin
 const put = (target: Target, body: Uint8Array<ArrayBuffer>, headers = target.headers) => h.fetch(new Request(target.url, { method: 'PUT', headers, body }))
 
 const revisionOf = async (n: number) => {
-  const read = await ok(h, { name: 'get_expense', args: { groupId: 'g1', expenseId: id21(n) }, headers: alice })
+  const read = await h.mcp.ok({ name: 'get_expense', args: { groupId: 'g1', expenseId: id21(n) }, headers: alice })
   return (read['expense'] as { revision: number }).revision
 }
 
 describe('agent receipt uploads', () => {
   it('reports attachments as enabled with the limits the upload enforces', async () => {
-    const reference = await ok(h, { name: 'get_reference_data', args: {}, headers: alice })
+    const reference = await h.mcp.ok({ name: 'get_reference_data', args: {}, headers: alice })
     expect(reference['attachments']).toEqual({ enabled: true, contentTypes: [...RECEIPT_CONTENT_TYPES], maxBytes: LIMITS.receiptBytes })
   })
 
@@ -73,10 +73,10 @@ describe('agent receipt uploads', () => {
     expect(await revisionOf(1)).toBe(1)
 
     expect((await put(target, image)).status).toBe(200)
-    const attached = await ok(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(1), expectedRevision: 1, attachUploadIds: [target.uploadId] }, headers: alice })
+    const attached = await h.mcp.ok({ name: 'update_expense', args: { groupId: 'g1', expenseId: id21(1), expectedRevision: 1, attachUploadIds: [target.uploadId] }, headers: alice })
     expect(attached).toMatchObject({ revision: 2, uploads: [], uploadError: null })
 
-    const read = await ok(h, { name: 'get_expense', args: { groupId: 'g1', expenseId: id21(1) }, headers: alice })
+    const read = await h.mcp.ok({ name: 'get_expense', args: { groupId: 'g1', expenseId: id21(1) }, headers: alice })
     const [document] = (read['expense'] as { documents: { url: string; width: number; height: number; downloadUrl: string }[] }).documents
     expect(document).toMatchObject({ width: 640, height: 480 })
     expect(document?.url).toMatch(/^r2:\/\/agentsplit-receipts\/receipts\/[A-Za-z0-9_-]{21}\.png$/)
@@ -104,26 +104,26 @@ describe('agent receipt uploads', () => {
     const [target] = await create(8, [{ filename: 'keep.png', contentType: 'image/png', bytes: image.length }])
     if (!target) throw new Error('no target')
     expect((await put(target, image)).status).toBe(200)
-    await ok(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(8), expectedRevision: 1, attachUploadIds: [target.uploadId] }, headers: alice })
-    const read = await ok(h, { name: 'get_expense', args: { groupId: 'g1', expenseId: id21(8) }, headers: alice })
+    await h.mcp.ok({ name: 'update_expense', args: { groupId: 'g1', expenseId: id21(8), expectedRevision: 1, attachUploadIds: [target.uploadId] }, headers: alice })
+    const read = await h.mcp.ok({ name: 'get_expense', args: { groupId: 'g1', expenseId: id21(8) }, headers: alice })
     const [saved] = (read['expense'] as { documents: { id: string; url: string; width: number; height: number }[] }).documents
     if (!saved) throw new Error('no document')
     const kept = { id: saved.id, url: saved.url, width: saved.width, height: saved.height }
 
     const foreign = 'r2://agentsplit-receipts/receipts/ttttttttttttttttttttt.png'
     await h.withDb((db) => db.insert(receipts).values({ id: 'trip-receipt', groupId: 'g2', url: foreign, createdBy: 'alice' }))
-    const refused = await failure(h, {
+    const refused = await h.mcp.failure({
       name: 'update_expense',
       args: { groupId: 'g1', expenseId: id21(8), expectedRevision: 2, changes: { documents: [kept, { id: 'x', url: foreign, width: 1, height: 1 }] } },
       headers: alice,
     })
     expect(refused).toMatchObject({ code: 'BAD_REQUEST', message: 'Attach only receipts uploaded to this group' })
-    const removed = await ok(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(8), expectedRevision: 2, changes: { documents: [] } }, headers: alice })
+    const removed = await h.mcp.ok({ name: 'update_expense', args: { groupId: 'g1', expenseId: id21(8), expectedRevision: 2, changes: { documents: [] } }, headers: alice })
     expect(removed['revision']).toBe(3)
-    const after = await ok(h, { name: 'get_expense', args: { groupId: 'g1', expenseId: id21(8) }, headers: alice })
+    const after = await h.mcp.ok({ name: 'get_expense', args: { groupId: 'g1', expenseId: id21(8) }, headers: alice })
     expect((after['expense'] as { documents: unknown[] }).documents).toEqual([])
     // A group create may name a receipt of its own group again.
-    const created = await ok(h, { name: 'create_expense', args: { groupId: 'g1', expenseId: id21(9), expense: { ...expense, documents: [kept] } }, headers: alice })
+    const created = await h.mcp.ok({ name: 'create_expense', args: { groupId: 'g1', expenseId: id21(9), expense: { ...expense, documents: [kept] } }, headers: alice })
     expect(created['revision']).toBe(1)
   })
 
@@ -142,8 +142,8 @@ describe('agent receipt uploads', () => {
     await h.withDb((db) => db.update(receiptUploads).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(receiptUploads.id, second.uploadId)))
     expect((await put(second, image)).status).toBe(403)
 
-    await ok(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(2), expectedRevision: 1, attachUploadIds: [first.uploadId] }, headers: alice })
-    const again = await failure(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(2), expectedRevision: 2, attachUploadIds: [first.uploadId] }, headers: alice })
+    await h.mcp.ok({ name: 'update_expense', args: { groupId: 'g1', expenseId: id21(2), expectedRevision: 1, attachUploadIds: [first.uploadId] }, headers: alice })
+    const again = await h.mcp.failure({ name: 'update_expense', args: { groupId: 'g1', expenseId: id21(2), expectedRevision: 2, attachUploadIds: [first.uploadId] }, headers: alice })
     expect(again).toMatchObject({ code: 'BAD_REQUEST', message: 'Receipt upload could not be finalized. Upload the file first, then retry with its uploadId.' })
     expect(await revisionOf(2)).toBe(2)
   })
@@ -158,9 +158,9 @@ describe('agent receipt uploads', () => {
     expect((await put(old, image)).status).toBe(200)
     expect((await put(mislabeled, jpeg)).status).toBe(200)
     await h.withDb((db) => db.update(receiptUploads).set({ uploadedAt: sql`now() - make_interval(hours => ${LIMITS.uploadAttachHours + 1})` }).where(eq(receiptUploads.id, old.uploadId)))
-    const expired = await failure(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(3), expectedRevision: 1, attachUploadIds: [old.uploadId] }, headers: alice })
+    const expired = await h.mcp.failure({ name: 'update_expense', args: { groupId: 'g1', expenseId: id21(3), expectedRevision: 1, attachUploadIds: [old.uploadId] }, headers: alice })
     expect(expired).toMatchObject({ code: 'BAD_REQUEST', message: 'Upload is too large or expired' })
-    const wrong = await failure(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(3), expectedRevision: 1, attachUploadIds: [mislabeled.uploadId] }, headers: alice })
+    const wrong = await h.mcp.failure({ name: 'update_expense', args: { groupId: 'g1', expenseId: id21(3), expectedRevision: 1, attachUploadIds: [mislabeled.uploadId] }, headers: alice })
     expect(wrong).toMatchObject({ code: 'BAD_REQUEST', message: 'Receipts must be valid JPEG or PNG images' })
     expect(await revisionOf(3)).toBe(1)
   })
@@ -169,7 +169,7 @@ describe('agent receipt uploads', () => {
     const image = png(10, 10)
     await create(4, [])
     // Bob is a member of the same group, but his upload is bound to him.
-    const updated = await ok(h, {
+    const updated = await h.mcp.ok({
       name: 'update_expense',
       args: { groupId: 'g1', expenseId: id21(4), expectedRevision: 1, uploads: [{ filename: 'bob.png', contentType: 'image/png', bytes: image.length }] },
       headers: bob,
@@ -184,19 +184,19 @@ describe('agent receipt uploads', () => {
     const [unfinished] = await create(6, [{ filename: 'six.png', contentType: 'image/png', bytes: image.length }])
     if (!unfinished) throw new Error('no target')
 
-    const attach = (n: number, uploadId: string) => failure(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(n), expectedRevision: 1, attachUploadIds: [uploadId] }, headers: alice })
+    const attach = (n: number, uploadId: string) => h.mcp.failure({ name: 'update_expense', args: { groupId: 'g1', expenseId: id21(n), expectedRevision: 1, attachUploadIds: [uploadId] }, headers: alice })
     for (const uploadId of [bobs.uploadId, otherExpense.uploadId])
       expect(await attach(4, uploadId)).toMatchObject({ code: 'FORBIDDEN', message: 'This upload does not belong to this user and expense' })
     expect(await attach(6, unfinished.uploadId)).toMatchObject({ code: 'BAD_REQUEST' })
     expect(await attach(4, 'n0t-a-real-upload-id0')).toMatchObject({ code: 'BAD_REQUEST' })
     // A non-member cannot even reach the expense.
-    expect(await failure(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(4), expectedRevision: 1, attachUploadIds: [bobs.uploadId] }, headers: mallory })).toMatchObject({
+    expect(await h.mcp.failure({ name: 'update_expense', args: { groupId: 'g1', expenseId: id21(4), expectedRevision: 1, attachUploadIds: [bobs.uploadId] }, headers: mallory })).toMatchObject({
       code: 'FORBIDDEN',
     })
     expect(await revisionOf(4)).toBe(1)
     expect(await revisionOf(6)).toBe(1)
     // Bob attaches his own upload.
-    expect((await ok(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(4), expectedRevision: 1, attachUploadIds: [bobs.uploadId] }, headers: bob }))['revision']).toBe(2)
+    expect((await h.mcp.ok({ name: 'update_expense', args: { groupId: 'g1', expenseId: id21(4), expectedRevision: 1, attachUploadIds: [bobs.uploadId] }, headers: bob }))['revision']).toBe(2)
   })
 
   it('removes targets that can no longer be attached, with their objects', async () => {

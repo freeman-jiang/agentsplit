@@ -20,7 +20,7 @@ import { png } from '../kit/images'
 import { principal } from '../kit/people'
 import { receiptUpload } from '../kit/upload'
 import { waitFor } from '../kit/wait'
-import { BASE, failure, ok, startHarness, testApp, type Harness } from './harness'
+import { BASE, startHarness, testApp, type Harness } from './harness'
 
 let h: Harness
 const cookies = new Map<string, string>()
@@ -106,7 +106,7 @@ describe('receipt storage quota', () => {
     await fill({ userId: 'hank', groupId: g, bytes: LIMITS.receiptStorageBytes - 100 })
     const expense = mcpExpense({ paidBy: 'p-hank', people: ['p-hank'], title: 'Taxi', amount: '9' })
     const image = png({ width: 20, height: 20, bytes: 64 })
-    const created = await ok(h, {
+    const created = await h.mcp.ok({
       name: 'create_expense',
       args: { groupId: g, expenseId: 'q0000000000000000000a', expense, uploads: [{ filename: 'a.png', contentType: 'image/png', bytes: image.length }] },
       headers: hank,
@@ -114,7 +114,7 @@ describe('receipt storage quota', () => {
     const [target] = created['uploads'] as { uploadId: string; url: string; headers: Record<string, string> }[]
     if (!target) throw new Error('no target')
     // The outstanding target counts: a second request does not fit, but the expense is saved.
-    const second = await ok(h, {
+    const second = await h.mcp.ok({
       name: 'create_expense',
       args: { groupId: g, expenseId: 'q0000000000000000000b', expense, uploads: [{ filename: 'b.png', contentType: 'image/png', bytes: image.length }] },
       headers: hank,
@@ -125,7 +125,7 @@ describe('receipt storage quota', () => {
     const put = await h.fetch(new Request(target.url, { method: 'PUT', headers: target.headers, body: image }))
     expect(put.status).toBe(200)
     await fill({ userId: 'hank', groupId: g, bytes: 50 })
-    const refused = await failure(h, { name: 'update_expense', args: { groupId: g, expenseId: 'q0000000000000000000a', expectedRevision: 1, attachUploadIds: [target.uploadId] }, headers: hank })
+    const refused = await h.mcp.failure({ name: 'update_expense', args: { groupId: g, expenseId: 'q0000000000000000000a', expectedRevision: 1, attachUploadIds: [target.uploadId] }, headers: hank })
     expect(refused).toMatchObject({ code: 'PRECONDITION_FAILED', outcomeUnknown: false })
     expect(refused.message).toMatch(/^You're out of receipt space/)
   })
@@ -173,7 +173,7 @@ describe('permanent receipt deletion', () => {
     expect(((await gone.json()) as { error: string }).error).toMatch(/^Receipt deleted by BOB on \d{4}-\d\d-\d\d$/)
 
     // Agents see the tombstone instead of a download URL.
-    const agent = await ok(h, { name: 'get_expense', args: { groupId: g, expenseId, revision: 1 }, headers: { 'x-api-key': await h.apiKey('alice') } })
+    const agent = await h.mcp.ok({ name: 'get_expense', args: { groupId: g, expenseId, revision: 1 }, headers: { 'x-api-key': await h.apiKey('alice') } })
     const [agentDocument] = (agent['expense'] as { documents: Record<string, unknown>[] }).documents
     expect(agentDocument).toMatchObject({ url: uploaded.url, deleted: tombstone })
     expect(agentDocument).not.toHaveProperty('downloadUrl')
@@ -205,9 +205,9 @@ describe('permanent receipt deletion', () => {
     const g = await groupOf('rosa')
     const uploaded = (await (await upload({ userId: 'rosa', groupId: g })).json()) as { id: string; url: string }
     const key = { 'x-api-key': await h.apiKey('rosa') }
-    const listed = await ok(h, { name: 'list_receipts', args: { order: 'oldest' }, headers: key })
+    const listed = await h.mcp.ok({ name: 'list_receipts', args: { order: 'oldest' }, headers: key })
     expect((listed['receipts'] as { receiptId: string }[]).map((r) => r.receiptId)).toEqual([uploaded.id])
-    const deleted = await ok(h, { name: 'delete_receipts', args: { receiptIds: [uploaded.id] }, headers: key })
+    const deleted = await h.mcp.ok({ name: 'delete_receipts', args: { receiptIds: [uploaded.id] }, headers: key })
     expect(deleted).toEqual({ deleted: [{ receiptId: uploaded.id, bytes: 64 }], freedBytes: 64, usedBytes: 0 })
     expect(h.storage.objects.has(keyOf(uploaded.url))).toBe(false)
     const purged = await h.withDb(async (db) => (await db.execute<{ purged: boolean }>(sql`SELECT purged_at IS NOT NULL AS purged FROM deleted_receipts WHERE receipt_id = ${uploaded.id}`)).rows[0])

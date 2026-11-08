@@ -8,3 +8,9 @@ export function counter(prefix: string): () => string {
 
 /** A 21-character ID, the length of the app's IDs: `prefix` and `n` padded with zeros. */
 export const id21 = (prefix: string, n: number) => `${prefix}${String(n).padStart(21 - prefix.length, '0')}`
+
+/** A counter of 21-character IDs: id21(prefix, 1), id21(prefix, 2), … */
+export function id21Counter(prefix: string): () => string {
+  let n = 0
+  return () => id21(prefix, ++n)
+}

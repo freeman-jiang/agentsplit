@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { runWrite } from '~/server/calls'
 import { GROUP_DENIED, UNAVAILABLE } from '~/shared/errors'
 import { draft } from '../kit/drafts'
-import { counter, id21 } from '../kit/ids'
+import { counter, id21Counter } from '../kit/ids'
 import { principal } from '../kit/people'
 import { BASE, startHarness, webRpc, type Harness } from './harness'
 
@@ -62,14 +62,14 @@ describe('work after the commit', () => {
 })
 
 describe('database failures over RPC', () => {
-  let expenses = 0
+  const expenseId = id21Counter('c')
   const keys = counter('rpc-key')
   /** expenses.create over RPC with a draft titled `title`; returns the exit as JSON text. */
   const create = async (title: string) => {
     const { exit } = await webRpc(h, {
       tag: 'expenses.create',
       cookie,
-      payload: { groupId: 'g1', expenseId: id21('c', ++expenses), idempotencyKey: `${keys()}-0000`, expense: draft({ payer: 'pa', people: ['pa'], title }) },
+      payload: { groupId: 'g1', expenseId: expenseId(), idempotencyKey: `${keys()}-0000`, expense: draft({ payer: 'pa', people: ['pa'], title }) },
     })
     return { tag: exit._tag, text: JSON.stringify(exit) }
   }

@@ -13,6 +13,7 @@ import { sha256Base64url } from '~/server/core/ids'
 import { LIMITS } from '~/shared/limits'
 import { testSettings } from '../kit/config'
 import { counter } from '../kit/ids'
+import { OAUTH_SCOPES } from '../kit/mcp'
 import { BASE, startHarness, type Harness } from './harness'
 
 let h: Harness
@@ -71,7 +72,7 @@ describe('protected-resource metadata', () => {
       authorization_servers: [`${BASE}/api/auth`],
       bearer_methods_supported: ['header'],
       dpop_signing_alg_values_supported: ['EdDSA', 'ES256', 'ES512', 'PS256', 'RS256'],
-      scopes_supported: ['agentsplit:read', 'agentsplit:write', 'offline_access'],
+      scopes_supported: [...OAUTH_SCOPES],
     })
     const head = protectedResourceMetadata(new Request(`${BASE}/.well-known/oauth-protected-resource`, { method: 'HEAD' }), BASE)
     expect(head.status).toBe(200)

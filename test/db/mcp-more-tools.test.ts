@@ -9,15 +9,14 @@ import { exportCsv, exportJson } from '~/server/export'
 import { CURRENCY_CODES } from '~/shared/currencies'
 import { mcpExpense } from '../kit/drafts'
 import { principal } from '../kit/people'
-import { id21 } from '../kit/ids'
-import { checked as checkedCall, failure, type Harness, startHarness } from './harness'
+import { id21Counter } from '../kit/ids'
+import { checked as checkedCall, type Harness, startHarness } from './harness'
 
 let h: Harness
 let alice: Record<string, string>
 
-let expenseCount = 0
 /** A new 21-character expense ID. */
-const newExpenseId = () => id21('m', ++expenseCount)
+const newExpenseId = id21Counter('m')
 
 // The fixtures stay as beforeAll makes them: a test that writes works in a household of its own.
 beforeAll(async () => {
@@ -171,7 +170,7 @@ describe('feed and options', () => {
         { id: 'bob', name: 'Bob', email: 'bob@example.com' },
       ],
     })
-    expect((await failure(h, { name: 'get_expense_options', args: { userId: 'x' }, headers: alice })).code).toBe(SDK_INPUT_REFUSED)
+    expect((await h.mcp.failure({ name: 'get_expense_options', args: { userId: 'x' }, headers: alice })).code).toBe(SDK_INPUT_REFUSED)
   })
 })
 
@@ -189,7 +188,7 @@ describe('ungrouped expenses', () => {
     expect(ungrouped).toHaveLength(1)
     expect(ungrouped[0]).toMatchObject({ id: expenseId, group: null, contextExpenseId: expenseId, contextExpenseTitle: 'Concert tickets', notes: '2 tickets × 40.00 = 80.00; each person pays 40.00' })
     // A retry with the same ID never creates a second private expense.
-    const retry = await failure(h, {
+    const retry = await h.mcp.failure({
       name: 'create_expense',
       args: {
         expenseId,
@@ -208,14 +207,14 @@ describe('ungrouped expenses', () => {
     expect((await checked('get_group', { groupId: expenseId }, owner.headers))['context']).toEqual({ kind: 'ungrouped', expenseId })
     const repaid = await repay({ headers: owner.headers, context })
     expect(repaid.result).toMatchObject({ groupId: expenseId, revision: 1 })
-    const widened = await failure(h, {
+    const widened = await h.mcp.failure({
       name: 'update_expense',
       args: { groupId: expenseId, expenseId, expectedRevision: 1, changes: { paidFor: [{ participant: me, shares: '1' }] } },
       headers: owner.headers,
     })
     expect(widened).toMatchObject({ code: 'BAD_REQUEST', message: expect.stringContaining('cannot be changed') })
     // The original cannot go while its repayment is live.
-    const deleted = await failure(h, { name: 'delete_expense', args: { groupId: expenseId, expenseId, expectedRevision: 1 }, headers: owner.headers })
+    const deleted = await h.mcp.failure({ name: 'delete_expense', args: { groupId: expenseId, expenseId, expectedRevision: 1 }, headers: owner.headers })
     expect(deleted).toMatchObject({ code: 'CONFLICT', message: 'Remove this expense’s recorded repayments before deleting the expense.' })
   })
 })
@@ -233,8 +232,8 @@ describe('profile', () => {
     expect(row?.paidFor.map((p) => p.participant.name)).toEqual(['Alicia', 'Bob'])
     const log = (await checked('list_activity', { groupId: hh.groupId, expenseId: groceries }, headers))['activities'] as { actorName: string }[]
     expect(log[0]?.actorName).toBe('Alice')
-    expect((await failure(h, { name: 'update_profile', args: { name: ' ' }, headers })).code).toBe('BAD_REQUEST')
-    expect((await failure(h, { name: 'update_profile', args: { name: 'X', userId: hh.member.userId }, headers })).code).toBe(SDK_INPUT_REFUSED)
+    expect((await h.mcp.failure({ name: 'update_profile', args: { name: ' ' }, headers })).code).toBe('BAD_REQUEST')
+    expect((await h.mcp.failure({ name: 'update_profile', args: { name: 'X', userId: hh.member.userId }, headers })).code).toBe(SDK_INPUT_REFUSED)
   })
 })
 
@@ -245,10 +244,10 @@ describe('groups and access', () => {
     const created = await checked('create_group', { groupId, group: { name: 'Trip', currency: '€', currencyCode: 'EUR', participants: [{ name: 'Sam' }] } }, headers)
     expect(created).toMatchObject({ groupId, group: { id: groupId, name: 'Trip', revision: 1, currency: '€', currencyCode: 'EUR', information: null, slug: null } })
     expect((created['group'] as { participants: { name: string }[] }).participants.map((p) => p.name)).toEqual(['Alice', 'Sam'])
-    const again = await failure(h, { name: 'create_group', args: { groupId, group: { name: 'Trip', currency: '€', participants: [] } }, headers })
+    const again = await h.mcp.failure({ name: 'create_group', args: { groupId, group: { name: 'Trip', currency: '€', participants: [] } }, headers })
     expect(again).toMatchObject({ code: 'CONFLICT', message: 'Group ID is already in use; read it before retrying or choose a new ID' })
     // A custom symbol has no registered currency.
-    const custom = await failure(h, { name: 'create_group', args: { group: { name: 'Odd', currency: '¤', participants: [] } }, headers })
+    const custom = await h.mcp.failure({ name: 'create_group', args: { group: { name: 'Odd', currency: '¤', participants: [] } }, headers })
     expect(custom.code).toBe('BAD_REQUEST')
     const seen = (await checked('list_groups', {}, headers))['groups'] as { id: string }[]
     expect(seen.map((g) => g.id)).toEqual([groupId])
@@ -262,9 +261,9 @@ describe('groups and access', () => {
     const updated = await checked('update_group', { groupId: hh.groupId, expectedRevision: revision, changes: { name: 'Home sweet home', participants: [...people, { name: 'Dave' }] } }, hh.owner.headers)
     expect(updated).toMatchObject({ groupId: hh.groupId, group: { name: 'Home sweet home', revision: revision + 1 } })
     expect((updated['group'] as { participants: { name: string }[] }).participants.map((p) => p.name)).toEqual([...people.map((p) => p.name), 'Dave'])
-    const stale = await failure(h, { name: 'update_group', args: { groupId: hh.groupId, expectedRevision: revision, changes: { name: 'Lost' } }, headers: hh.owner.headers })
+    const stale = await h.mcp.failure({ name: 'update_group', args: { groupId: hh.groupId, expectedRevision: revision, changes: { name: 'Lost' } }, headers: hh.owner.headers })
     expect(stale).toMatchObject({ code: 'CONFLICT', recovery: 'read_current_revision' })
-    const member = await failure(h, { name: 'update_group', args: { groupId: hh.groupId, expectedRevision: revision + 1, changes: { name: 'Mine' } }, headers: hh.member.headers })
+    const member = await h.mcp.failure({ name: 'update_group', args: { groupId: hh.groupId, expectedRevision: revision + 1, changes: { name: 'Mine' } }, headers: hh.member.headers })
     expect(member).toMatchObject({ code: 'FORBIDDEN', message: 'Only group admins can edit group settings' })
   })
 
@@ -273,12 +272,12 @@ describe('groups and access', () => {
     const { groupId, pc } = hh
     const owner = hh.owner.headers
     const dave = await newAccount('invite-dave', { name: 'Dave' })
-    expect((await failure(h, { name: 'manage_group_access', args: { action: 'invite', groupId }, headers: owner })).message).toContain('email is required')
+    expect((await h.mcp.failure({ name: 'manage_group_access', args: { action: 'invite', groupId }, headers: owner })).message).toContain('email is required')
     const invited = await checked('manage_group_access', { action: 'invite', groupId, email: 'Invite-Dave@Example.com', participantId: pc }, owner)
     const invitation = invited['invitation'] as { url: string; email: string; participantId: string }
     expect(invited['joined']).toBe(false)
     expect(invitation).toMatchObject({ email: 'invite-dave@example.com', participantId: pc })
-    const groupUrl = await failure(h, { name: 'manage_group_access', args: { action: 'join', shareUrl: `http://localhost/groups/${groupId}` }, headers: dave.headers })
+    const groupUrl = await h.mcp.failure({ name: 'manage_group_access', args: { action: 'join', shareUrl: `http://localhost/groups/${groupId}` }, headers: dave.headers })
     expect(groupUrl.code).toBe('BAD_REQUEST')
     const joined = await checked('manage_group_access', { action: 'join', shareUrl: invitation.url }, dave.headers)
     expect(joined).toEqual({ groupId, joined: true })
@@ -286,13 +285,13 @@ describe('groups and access', () => {
     const left = await checked('manage_group_access', { action: 'leave', groupId }, dave.headers)
     expect(left).toEqual({ groupId, joined: false })
     // State conflicts answer CONFLICT, as in v1 (P-TOOL-ACCESS-10, P-TOOL-ACCESS-20).
-    const reused = await failure(h, { name: 'manage_group_access', args: { action: 'join', shareUrl: invitation.url }, headers: dave.headers })
+    const reused = await h.mcp.failure({ name: 'manage_group_access', args: { action: 'join', shareUrl: invitation.url }, headers: dave.headers })
     expect(reused).toEqual({ code: 'CONFLICT', message: 'Invitation already used', outcomeUnknown: false, recovery: 'read_current_revision' })
-    const lastAdmin = await failure(h, { name: 'manage_group_access', args: { action: 'leave', groupId }, headers: owner })
+    const lastAdmin = await h.mcp.failure({ name: 'manage_group_access', args: { action: 'leave', groupId }, headers: owner })
     expect(lastAdmin).toMatchObject({ code: 'CONFLICT', message: 'Choose another admin before removing or demoting the last admin' })
-    const gone = await failure(h, { name: 'manage_group_access', args: { action: 'remove_member', groupId, userId: dave.userId }, headers: owner })
+    const gone = await h.mcp.failure({ name: 'manage_group_access', args: { action: 'remove_member', groupId, userId: dave.userId }, headers: owner })
     expect(gone).toMatchObject({ code: 'NOT_FOUND', message: 'Member not found' })
-    const revoked = await failure(h, { name: 'manage_group_access', args: { action: 'revoke_invitation', groupId, invitationId: 'nope' }, headers: owner })
+    const revoked = await h.mcp.failure({ name: 'manage_group_access', args: { action: 'revoke_invitation', groupId, invitationId: 'nope' }, headers: owner })
     expect(revoked).toMatchObject({ code: 'NOT_FOUND', message: 'Pending invitation not found' })
   })
 
@@ -302,7 +301,7 @@ describe('groups and access', () => {
     const renewed = await checked('manage_group_access', { action: 'renew_invitation', groupId: expenseId, participantId: friend }, owner.headers)
     expect(renewed['invitation']).toMatchObject({ email, participantName: 'Erin', url: expect.stringContaining('/invite/') })
     // A named group has no original invitation to renew, even for its admin.
-    const named = await failure(h, { name: 'manage_group_access', args: { action: 'renew_invitation', groupId: 'g1', participantId: 'pc' }, headers: alice })
+    const named = await h.mcp.failure({ name: 'manage_group_access', args: { action: 'renew_invitation', groupId: 'g1', participantId: 'pc' }, headers: alice })
     expect(named).toMatchObject({ code: 'FORBIDDEN', message: 'Only the expense creator can reissue its original invitations.' })
   })
 })
@@ -345,9 +344,9 @@ describe('balances', () => {
     const past = await checked('get_balances', { groupId, currencyCode: 'USD', atActivityId: before[0]?.id ?? '' }, headers)
     expect(past['history']).toMatchObject({ atActivityId: before[0]?.id, complete: true, unavailableExpenseIds: [] })
     expect(((past['currencies'] as Bucket[])[0]?.reimbursements ?? []).length).toBe(2)
-    const precise = await failure(h, { name: 'get_balances', args: { groupId, asOf: '2026-11-01T00:00:00.0001Z' }, headers })
+    const precise = await h.mcp.failure({ name: 'get_balances', args: { groupId, asOf: '2026-11-01T00:00:00.0001Z' }, headers })
     expect(precise.code).toBe(SDK_INPUT_REFUSED)
-    const future = await failure(h, { name: 'get_balances', args: { groupId, asOf: '2999-01-01T00:00:00Z' }, headers })
+    const future = await h.mcp.failure({ name: 'get_balances', args: { groupId, asOf: '2999-01-01T00:00:00Z' }, headers })
     expect(future).toMatchObject({ code: 'BAD_REQUEST', message: 'asOf cannot be in the future' })
   })
 
@@ -372,11 +371,11 @@ describe('balances', () => {
       { currencyCode: 'JPY', amount: '1500' },
       { currencyCode: 'USD', amount: '0.00' },
     ])
-    const denied = await failure(h, { name: 'get_participant_balances', args: { groups: [{ groupId }, { groupId: 'g2' }] }, headers })
+    const denied = await h.mcp.failure({ name: 'get_participant_balances', args: { groups: [{ groupId }, { groupId: 'g2' }] }, headers })
     expect(denied.code).toBe('FORBIDDEN')
-    const foreign = await failure(h, { name: 'get_participant_balances', args: { groups: [{ groupId, participantId: 'qb' }] }, headers })
+    const foreign = await h.mcp.failure({ name: 'get_participant_balances', args: { groups: [{ groupId, participantId: 'qb' }] }, headers })
     expect(foreign).toMatchObject({ code: 'BAD_REQUEST', message: 'Participant does not belong to this group.' })
-    const twice = await failure(h, { name: 'get_participant_balances', args: { groups: [{ groupId }, { groupId }] }, headers })
+    const twice = await h.mcp.failure({ name: 'get_participant_balances', args: { groups: [{ groupId }, { groupId }] }, headers })
     expect(twice.message).toContain('Choose each group or private context only once.')
   })
 })
@@ -406,7 +405,7 @@ describe('history', () => {
     await create({ groupId, headers, expense: mcpExpense({ paidBy: pa, people: [pa], title: 'Late', amount: '1' }) })
     const again = await checked('list_activity', { groupId, limit: 2, atActivityId: boundary }, headers)
     expect(again['activities']).toEqual((first['activities'] as Record<string, unknown>[]).map(({ expense: _live, ...rest }) => rest))
-    const foreign = await failure(h, { name: 'list_activity', args: { groupId, atActivityId: 'no-such-event' }, headers })
+    const foreign = await h.mcp.failure({ name: 'list_activity', args: { groupId, atActivityId: 'no-such-event' }, headers })
     expect(foreign).toMatchObject({ code: 'NOT_FOUND', message: 'History boundary not found in this group' })
   })
 
@@ -450,7 +449,7 @@ describe('stats, export, reference data and recurrence', () => {
     const csv = await checked('export_group', { groupId: 'g1', format: 'csv' })
     expect(csv).toMatchObject({ filename: 'agentsplit-g1.csv', contentType: 'text/csv' })
     expect(csv['content']).toBe((await h.withDb((db) => exportCsv(db, web))).content)
-    expect((await failure(h, { name: 'export_group', args: { groupId: 'g2' }, headers: alice })).code).toBe('FORBIDDEN')
+    expect((await h.mcp.failure({ name: 'export_group', args: { groupId: 'g2' }, headers: alice })).code).toBe('FORBIDDEN')
   })
 
   it('lists reference data in the current names', async () => {
@@ -475,7 +474,7 @@ describe('stats, export, reference data and recurrence', () => {
     await coffee({ groupId, payer: pa })
     await coffee({ groupId: other, payer: `${other}-pa` })
     expect(await coffees(groupId)).toBe(1)
-    const denied = await failure(h, { name: 'process_recurring_expenses', args: { groupId: 'g2' }, headers })
+    const denied = await h.mcp.failure({ name: 'process_recurring_expenses', args: { groupId: 'g2' }, headers })
     expect(denied.code).toBe('FORBIDDEN')
     const processed = await checked('process_recurring_expenses', { groupId }, headers)
     expect(processed['createdExpenseIds']).toHaveLength(2)

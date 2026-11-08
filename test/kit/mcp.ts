@@ -7,6 +7,12 @@ export const LEGACY = '2025-06-18'
 /** The code failure() reports for the SDK's plain-text refusal, which is not one of the tools' own codes. */
 export const SDK_INPUT_REFUSED = 'SDK_INPUT_REFUSED'
 
+/** The OAuth scopes that the protected-resource metadata and every 401 challenge name, in order. */
+export const OAUTH_SCOPES = ['agentsplit:read', 'agentsplit:write', 'offline_access'] as const
+/** The WWW-Authenticate challenge of a 401 from the MCP endpoint at `baseUrl`. */
+export const mcpChallenge = (baseUrl: string) =>
+  `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource${MCP_PATH}", scope="${OAUTH_SCOPES.join(' ')}"`
+
 export type Reply = { status: number; headers: Headers; body: unknown }
 type ToolResult = { isError?: boolean; structuredContent?: Record<string, unknown>; content: { type: string; text: string }[] }
 export type ToolError = { code: string; message: string; outcomeUnknown: boolean; recovery: string }
