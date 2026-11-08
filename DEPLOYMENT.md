@@ -56,12 +56,13 @@ A push to `main` does not deploy by itself.
 
 1. Get Freeman's approval for the deploy.
 2. Take a verified backup (below).
-3. Push the change to `main`.
-4. Start a deploy of `6xpohwok1yiguyk3syzqgumj` in the Coolify dashboard, or through the Coolify API (`GET https://coolify.freemanjiang.com/api/v1/deploy?uuid=6xpohwok1yiguyk3syzqgumj`, with the Cloudflare Access headers and the API token), or with the `coolify_oracle` MCP server.
-5. Watch the deployment to its end.
-6. Check `https://agentsplit.freemanjiang.com/api/health` and the home page.
+3. If the deploy adds migrations, rehearse them on the backup: restore its dump into a throwaway PostgreSQL 18 database on the dev box, run `DATABASE_URL=<throwaway database> bun db/migrate.ts`, check that it ends with `Migrations applied`, and drop the database. This is the only use of a production backup outside a restore.
+4. Push the change to `main`.
+5. Start a deploy of `6xpohwok1yiguyk3syzqgumj` in the Coolify dashboard, or through the Coolify API (`GET https://coolify.freemanjiang.com/api/v1/deploy?uuid=6xpohwok1yiguyk3syzqgumj`, with the Cloudflare Access headers and the API token), or with the `coolify_oracle` MCP server.
+6. Watch the deployment to its end.
+7. Check `https://agentsplit.freemanjiang.com/api/health` and the home page.
 
-Coolify builds `Dockerfile`. At each start, the container applies the new SQL migrations from `MIGRATIONS_DIR` before it takes requests. A failed migration stops the start, and so does a migration that waits more than 5 seconds for a lock (`lock_timeout`): stop the query that holds it, then start again. Then the health check (`/api/health`, which runs `SELECT 1`) must pass. `/api/health/liveness` answers without the database.
+Coolify builds `Dockerfile`. At each start, the container applies the new SQL migrations from `MIGRATIONS_DIR` before it takes requests, all of them in one transaction: a deploy that adds several migrations applies all or none, and holds their table locks until the commit. A failed migration stops the start, and so does a migration that waits more than 5 seconds for a lock (`lock_timeout`): stop the query that holds it, then start again. Then the health check (`/api/health`, which runs `SELECT 1`) must pass. `/api/health/liveness` answers without the database.
 
 On SIGTERM, the server stops taking connections, lets running requests and the hourly job finish, and exits within 25 seconds. Compose gives it 30 seconds. The hourly job runs at minute 7 of each hour: it creates due recurring expenses, deletes stale receipt uploads, removes from Garage the receipts that were deleted for good when that failed at once, and deletes expired DPoP replay rows.
 
