@@ -54,7 +54,7 @@ export async function statsOverview(
 ) {
   const { head, expenses } = await load(db, data)
   const recurringAll = expenses.filter((e) => e.activeSeries)
-  const { list, preferred } = stats.statsCurrencies({ used: [...expenses, ...recurringAll].map((e) => e.currency), groupCurrency: head.default_currency })
+  const { list, preferred } = stats.statsCurrencies({ used: expenses.map((e) => e.currency), groupCurrency: head.default_currency })
   const currency = data.currency ?? preferred
   const range = normalRange({ from: data.from, to: data.to })
   const selected = stats.inRange(
