@@ -78,7 +78,10 @@ if [ "$(ssh_target 'readlink -f /run/current-system /nix/var/nix/profiles/system
 fi
 
 echo "deploy-host: copying $system to $target"
-nix copy --substitute-on-destination --to "ssh-ng://$target" "$system"
+# The host's Nix accepts only paths signed by cache.nixos.org. The paths built
+# here are unsigned, so the copy skips the signature check, which Nix allows
+# for root on the target: the dev box is the host's deploy authority anyway.
+nix copy --no-check-sigs --substitute-on-destination --to "ssh-ng://$target" "$system"
 
 # The activation runs in its own unit, as nixos-rebuild does it: a restart of
 # tailscaled ends this SSH session, but not the activation.
