@@ -217,7 +217,7 @@ export const listActivity = defineTool({
           source: a.source,
           actorName: a.actorName,
           actorUserId: a.actor?.userId ?? null,
-          // Key and connection IDs of other people stay private (DECISIONS.md group B, P-EXPORT-14).
+          // Key and connection IDs of other people stay private (docs/history/v2/DECISIONS.md group B, P-EXPORT-14).
           agentKeyId: a.actor && a.actor.userId === principal.userId ? a.actor.agentKeyId : null,
           ...(current ? { expense: current } : {}),
         }

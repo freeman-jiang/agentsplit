@@ -1,4 +1,4 @@
-// The owner's first sign-in after the cutover (docs/v2/CUTOVER.md). Better Auth
+// The owner's first sign-in after the cutover (docs/history/v2/CUTOVER.md). Better Auth
 // runs it once per sign-in (auth.ts); it is a no-op for everyone else.
 import { eq, sql } from 'drizzle-orm'
 import { authBootstrap } from '../../../db/schema/app'

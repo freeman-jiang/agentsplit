@@ -421,7 +421,7 @@ async function invitationOfLink(tx: Db, data: { shareUrl: string; baseUrl: strin
 /**
  * Every membership change: join, leave, invite, revoke, remove, set a role,
  * and bind an identity. Each writes its activity. Invitee emails stay out of
- * the log (DECISIONS.md, P-ACCESS-30). An invitation URL holds its secret, so
+ * the log (docs/history/v2/DECISIONS.md, P-ACCESS-30). An invitation URL holds its secret, so
  * it is returned once and never stored; a retried invite returns `url: null`.
  */
 export async function changeAccess(

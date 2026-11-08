@@ -1,4 +1,4 @@
-// The server and agent gaps of the parity audit (docs/v2/parity/AUDIT.md), and
+// The server and agent gaps of the parity audit (docs/history/v2/parity/AUDIT.md), and
 // Freeman's agent-output decision, against a real database: private-context
 // history and links, exports with agent credentials, one source name, one
 // group-denied message, baselines in attribution, historical names, and the

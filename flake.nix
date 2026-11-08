@@ -76,7 +76,7 @@
 
       nixosModules.default = agentsplitModule;
 
-      # The production host (DEPLOYMENT.md, "NixOS host"): an e2-micro on GCE.
+      # The production host (DEPLOYMENT.md, "The host"): an e2-micro on GCE.
       nixosConfigurations.agentsplit = mkHost {
         system = "x86_64-linux";
         profile = {
@@ -136,7 +136,7 @@
           };
 
           # Drops and recreates one database. It accepts only a disposable name and
-          # refuses the databases the lead uses (db/local-databases.json, which the
+          # refuses the databases the maintainer uses (db/local-databases.json, which the
           # test kit and scripts/seed-synthetic.ts also read).
           databases = builtins.fromJSON (builtins.readFile ./db/local-databases.json);
           db-reset = pkgs.writeShellApplication {
@@ -146,7 +146,7 @@
               name="''${1:?usage: db-reset <database>}"
               case "$name" in
                 ${pkgs.lib.concatMapStringsSep " | " pkgs.lib.escapeShellArg databases.protected})
-                  echo "db-reset: refusing to reset '$name': the lead uses it (docs/v2/BUILDING.md)" >&2
+                  echo "db-reset: refusing to reset '$name': the maintainer uses it (docs/BUILDING.md)" >&2
                   exit 1
                   ;;
                 ${pkgs.lib.concatMapStringsSep " | " (part: "*${part}*") databases.disposable}) ;;
@@ -161,7 +161,7 @@
           };
 
           # Builds the host on this machine and switches the host to it over
-          # Tailscale SSH (DEPLOYMENT.md, "NixOS host"). The new system first
+          # Tailscale SSH (DEPLOYMENT.md, "Deploy"). The new system first
           # runs without becoming the boot default; it becomes the default only
           # after the health check passes, so a reboot undoes a bad deploy.
           deploy-host = pkgs.writeShellApplication {

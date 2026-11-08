@@ -1,6 +1,6 @@
 // The MCP server instructions. This is the current app's text
 // (src/lib/mcp/server.ts) with the v2 rules for recording an expense and a
-// payment (docs/v2/PLAN.md, "New features"; DECISIONS.md, P-BAL-93) and
+// payment (docs/history/v2/PLAN.md, "New features"; docs/history/v2/DECISIONS.md, P-BAL-93) and
 // multiple payers added.
 
 /** How an agent records one expense. The create and update field descriptions repeat it. */

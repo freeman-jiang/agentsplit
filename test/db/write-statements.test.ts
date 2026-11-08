@@ -1,6 +1,6 @@
 // The SQL statements of one expense write. Each statement costs CPU in pg and
 // Drizzle, so a change that adds statements to a write makes it slower
-// (docs/v2/BASELINE.md, "Write CPU"). Raise a ceiling only on purpose.
+// (docs/history/v2/BASELINE.md, "Write CPU"). Raise a ceiling only on purpose.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { draft, mcpExpense } from '../kit/drafts'
 import { id21 } from '../kit/ids'

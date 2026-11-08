@@ -1,6 +1,6 @@
 // Recurring expenses. Each live expense of a series may hold one open link
 // with the date of its next occurrence. The hourly job (app.ts
-// `scheduled`) creates due occurrences; reads never write (DECISIONS.md,
+// `scheduled`) creates due occurrences; reads never write (docs/history/v2/DECISIONS.md,
 // P-BAL-30 and P-RECUR-08).
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { expenseDocuments, groups, recurringLinks } from '../../db/schema/app'

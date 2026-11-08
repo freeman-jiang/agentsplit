@@ -227,7 +227,7 @@ const allocation = (name: 'expense_payers' | 'expense_shares', weightRule: RegEx
   )
 
 export const expensePayers = allocation('expense_payers', WEIGHT)
-// A share's weight takes the sign of a negative amount split by amount, such as a refund (DECISIONS.md, P-BAL-93, P-MONEY-52).
+// A share's weight takes the sign of a negative amount split by amount, such as a refund (docs/history/v2/DECISIONS.md, P-BAL-93, P-MONEY-52).
 // The CHECK allows a sign in every split mode; the allocation trigger (0019) refuses it at commit in any other expense.
 export const expenseShares = allocation('expense_shares', DECIMAL)
 

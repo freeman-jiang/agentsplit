@@ -9,7 +9,7 @@ import { mcpResource, oauthIssuer } from './constants'
  * The scopes every challenge asks for. MCP clients take the scope from the
  * challenge first. The current app asked for read only and never for
  * offline_access, so Claude Code got a read-only token that died after five
- * minutes (docs/v2/OAUTH-CLAUDE-CODE.md). The consent page still lets the user
+ * minutes (docs/history/v2/OAUTH-CLAUDE-CODE.md). The consent page still lets the user
  * refuse write access.
  */
 const CHALLENGE_SCOPES = [OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE, 'offline_access'] as const
@@ -45,7 +45,7 @@ export function protectedResourceMetadata(request: Request, baseUrl: string): Re
 /**
  * The 401 challenge (no or bad credentials) and the 403 step-up challenge
  * (a valid token without a scope the call needs). Both name the metadata URL,
- * so every challenge has one format (DECISIONS.md, P-MCP-79).
+ * so every challenge has one format (docs/history/v2/DECISIONS.md, P-MCP-79).
  */
 export function challenge(data: { baseUrl: string; status?: 401 | 403; message?: string }): Response {
   const status = data.status ?? 401

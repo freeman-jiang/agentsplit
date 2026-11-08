@@ -1,6 +1,6 @@
 # AgentSplit privacy profile
 
-AgentSplit v2 runs a Bun server, PostgreSQL and Garage on the operator's Coolify host. Google is used only for account sign-in (`openid`, `email`, `profile`). It does not receive expense data through this integration.
+AgentSplit v2 runs a Bun server and PostgreSQL on the operator's own NixOS host, and keeps receipt images in Cloudflare R2. Google is used only for account sign-in (`openid`, `email`, `profile`). It does not receive expense data through this integration.
 
 ## What is stored
 
@@ -17,10 +17,11 @@ AgentSplit v2 runs a Bun server, PostgreSQL and Garage on the operator's Coolify
 
 ## Where
 
-- PostgreSQL 18 (`db2`) on the Oracle host holds everything except the receipt images.
-- Garage on the same host holds the receipt images, in the bucket `agentsplit-receipts`.
-- The old app's PostgreSQL (`db`) on the same host still holds the data as it was at the cutover on 2026-11-05, for a rollback.
-- The nightly backup copies a dump of `db2` and every receipt object to the dev box (`~/backups/agentsplit/`), where restic backs it up (DEPLOYMENT.md).
+- PostgreSQL 18 on the NixOS host (a GCE VM in us-west1) holds everything except the receipt images. The host keeps hourly dumps for 3 days.
+- Cloudflare R2 holds the receipt images, in the private bucket `agentsplit-receipts`.
+- Every request reaches the host through Cloudflare (a Cloudflare Tunnel). Cloudflare ends TLS at its edge, so requests and responses pass through Cloudflare in transit. The edge caches only the static files of the app, and Cloudflare adds no scripts to the pages.
+- The previous Coolify stack on the Oracle host still holds the data as it was at the move on 2026-11-08 (PostgreSQL `db2` and Garage), and the old app's PostgreSQL (`db`) holds the data as it was at the cutover on 2026-11-05, both for a rollback.
+- The nightly backup copies a database dump and every receipt object to the dev box (`~/backups/agentsplit/`), where restic backs it up (DEPLOYMENT.md).
 
 ## Who can see what
 
@@ -34,7 +35,7 @@ AgentSplit v2 runs a Bun server, PostgreSQL and Garage on the operator's Coolify
 
 ## Receipts
 
-- Garage is private. The anonymous website endpoint is not routed, and the old unauthenticated upload-signing endpoint (`/api/s3-upload`) answers 410.
+- The bucket is private: R2 has no public access, and the Garage of the previous stack routes no anonymous website endpoint. The old unauthenticated upload-signing endpoint (`/api/s3-upload`) answers 410.
 - Receipts are served only through the authenticated `/api/receipts`. It checks membership before it reads storage, on every request. It accepts a browser session, an API key or an OAuth token. Where storage is Cloudflare R2, it then redirects to a storage link for that one image, which works for 5 minutes.
 - Browsers upload through the authenticated app, from the app's own origin only.
 - Agents upload through a single-use target URL on the app that expires after 300 seconds. The server checks the real image format and size before it attaches the image. No URL can write over a stored receipt.

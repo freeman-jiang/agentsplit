@@ -6,18 +6,18 @@ AgentSplit is a fork of [Spliit](https://github.com/spliit-app/spliit). People s
 
 - [MCP.md](MCP.md): the agent API.
 - [AUTH.md](AUTH.md): sign-in, API keys and OAuth.
-- [DEPLOYMENT.md](DEPLOYMENT.md): production on Coolify, backups and rollback, and the NixOS host that replaces Coolify.
+- [DEPLOYMENT.md](DEPLOYMENT.md): production on the NixOS host, deploys, backups, and the Coolify stack kept for a rollback.
 - [PRIVACY.md](PRIVACY.md): what is stored, where, and who can see it.
 
 ## Repository layout
 
-The app is a rewrite (v2) of the Next.js and Prisma app it replaced in production on 2026-11-05 at 18:00:48 UTC ([docs/v2/CUTOVER.md](docs/v2/CUTOVER.md)). The old app is in the Git history before the move of v2 to the root.
+The app is a rewrite (v2) of the Next.js and Prisma app it replaced in production on 2026-11-05 at 18:00:48 UTC ([docs/history/v2/CUTOVER.md](docs/history/v2/CUTOVER.md)). The old app is in the Git history before the move of v2 to the root.
 
 - `src/shared/`: the value lists (`vocabulary.ts`), every limit (`limits.ts`), the Effect Schema contract (`api/`), and the pure money, split and balance rules.
 - `src/server/`: the server. `main/app.ts` routes every request; `main/server.ts` is the Bun process.
 - `src/client/`: the React single-page app.
 - `db/`: the Drizzle schema, the SQL migrations and the invariant triggers.
-- `docs/v2/`: the plan, design, decisions, parity records and the cutover record.
+- `docs/`: [BUILDING.md](docs/BUILDING.md), the guide to changing the app, and [history/](docs/history/README.md), the record of how v2 was planned and checked against the old app.
 
 ## Stack
 
@@ -25,7 +25,7 @@ The app is a rewrite (v2) of the Next.js and Prisma app it replaced in productio
 - Effect RPC (`/api/rpc`) connects the client to the server, with Effect Schema as the shared contract.
 - TanStack Router and TanStack Query run the client, built with Vite and React.
 - Drizzle and PostgreSQL 18 store the ledger. Money is integer minor units. Database triggers check that shares and payers add up to the amount and that history stays append-only.
-- Garage stores the receipts. The app serves them only through `/api/receipts`, which checks access on every request. With `RECEIPT_DOWNLOADS=redirect` it then redirects to a presigned storage URL (DEPLOYMENT.md).
+- An S3 bucket stores the receipts: Cloudflare R2 in production, Garage in the end-to-end tests. The app serves them only through `/api/receipts`, which checks access on every request. With `RECEIPT_DOWNLOADS=redirect` it then redirects to a presigned storage URL (DEPLOYMENT.md).
 - Better Auth handles Google sign-in, API keys and the OAuth provider for agents.
 
 ## Develop
@@ -45,7 +45,7 @@ bun run test                    # makes its own test database, agentsplit_test
 db-stop
 ```
 
-[docs/v2/BUILDING.md](docs/v2/BUILDING.md) holds the commands (install, build, type check, tests, end-to-end tests, image, migrations), the local database, the dev server with synthetic sign-in, and the rules for adding to the app. Every command runs inside the flake's dev shell (`nix develop`, or `direnv exec .`). Use synthetic data only. Never copy the production backups.
+[docs/BUILDING.md](docs/BUILDING.md) holds the commands (install, build, type check, tests, end-to-end tests, image, migrations), the local database, the dev server with synthetic sign-in, and the rules for adding to the app. Every command runs inside the flake's dev shell (`nix develop`, or `direnv exec .`). Use synthetic data only. Never copy the production backups.
 
 ## Security
 

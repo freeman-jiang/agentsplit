@@ -1,7 +1,7 @@
 // Fails when the JavaScript that every page loads up front (the entry script and
-// the chunks index.html preloads) exceeds the budget in docs/v2/BASELINE.md, or
+// the chunks index.html preloads) exceeds the budget in docs/history/v2/BASELINE.md, or
 // when any client chunk, a lazy route's included, holds Effect's runtime
-// (docs/v2/BUILDING.md: the client imports Effect for types only).
+// (docs/BUILDING.md: the client imports Effect for types only).
 //   bun scripts/check-bundle.ts   (after bun run build)
 import { readdirSync, readFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'

@@ -1231,7 +1231,7 @@
                 "maxLength": 50
               },
               "slug": {
-                "description": "Optional unique group URL slug, e.g. maple. Set null or empty string to remove it.",
+                "description": "Optional unique group URL slug, e.g. our-flat. Set null or empty string to remove it.",
                 "anyOf": [
                   {
                     "type": "string",
@@ -1443,7 +1443,7 @@
                 "maxLength": 50
               },
               "slug": {
-                "description": "Optional unique group URL slug, e.g. maple. Set null or empty string to remove it.",
+                "description": "Optional unique group URL slug, e.g. our-flat. Set null or empty string to remove it.",
                 "anyOf": [
                   {
                     "type": "string",

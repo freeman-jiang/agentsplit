@@ -1,6 +1,6 @@
-# AgentSplit on Coolify
+# Deploying AgentSplit
 
-AgentSplit v2 runs on Coolify on the Oracle host, at https://agentsplit.freemanjiang.com. It has served production since 2026-11-05 at 18:00:48 UTC. The cutover record and its checks are in [docs/v2/CUTOVER.md](docs/v2/CUTOVER.md).
+AgentSplit runs at https://agentsplit.freemanjiang.com on its own NixOS host: a GCE e2-micro in GCP's free tier, behind a Cloudflare Tunnel, with the receipts in Cloudflare R2. It has served production there since 2026-11-08. `deploy-host` deploys it, and the dev box pulls its backups. The previous Coolify stack on the Oracle host stays in maintenance mode, only for a rollback ("Previous hosting: Coolify (rollback only)" below). The v2 cutover of 2026-11-05 is recorded in [docs/history/v2/CUTOVER.md](docs/history/v2/CUTOVER.md).
 
 ## Production data preservation
 
@@ -8,120 +8,11 @@ AgentSplit holds real household data. Never reset, truncate, reseed, destructive
 
 Automated tests use disposable local databases and synthetic accounts. They never sign in with a real Google account.
 
-## The application
+## The host
 
-| Setting | Value |
-| --- | --- |
-| Coolify application | `AgentSplit`, `6xpohwok1yiguyk3syzqgumj` |
-| Repository and branch | `freeman-jiang/agentsplit`, `main` |
-| Build pack | Docker Compose |
-| Compose file | `/compose.coolify.yaml` |
-| Domain | `https://agentsplit.freemanjiang.com`, on the `app` service |
+The host is a GCE e2-micro (x86_64, 2 shared vCPUs at about a quarter of a core sustained, 1 GB of memory, a 30 GB pd-standard disk) in us-west1, in GCP's free tier, that runs NixOS from this flake. The VM runs only AgentSplit, so a compromised or overloaded AgentSplit touches no other app. The same flake builds the host for EC2 (`agentsplit-ec2`, a t4g.small) and installs on any cloud VM, so a move to another provider is a reinstall and a restore (below).
 
-The services of `compose.coolify.yaml`:
-
-- `app`: the server, built from `Dockerfile` at the repository root. Bun's distroless image runs the server bundle as user 65532 on port 3000. Coolify's Traefik ends TLS and routes the domain to it.
-- `db2`: PostgreSQL 18 with the volume `postgres18-data`. v2 stores everything here. Its network alias is `agentsplit-db2`.
-- `garage`: Garage v2.4.1 with the volumes `garage-meta` and `garage-data`, bucket `agentsplit-receipts`. It is unchanged from the old app, so v2 reads the old receipts in place. Its network alias is `agentsplit-garage`. Its Traefik labels still route the authenticated S3 API at `agentsplit-receipts.freemanjiang.com`; v2 does not use that route, because the app reaches Garage on the internal network.
-- `db`: the old app's PostgreSQL 17 with the volume `postgres-data`. v2 does not use it. Freeman approved the removal of the service for 2026-11-13, and the service stays until then. The volume `postgres-data` stays for a rollback.
-
-The app sits on the stack's internal `backend` network and on Coolify's shared `coolify` network. On the shared network a plain service name can resolve to another stack, so the app reaches `db2` and Garage only by the unique aliases. Coolify keeps `/etc/garage.toml` as a file storage of this resource; a new resource would get a directory there, and Garage would not start.
-
-All images are pinned by digest.
-
-## Environment variables
-
-Set these in the Coolify resource environment. Never commit, print or paste their values. `coolify.env.example` lists them with comments.
-
-| Variable | Purpose |
-| --- | --- |
-| `BASE_URL` | The public origin. OAuth issuers, cookies and upload targets use it. |
-| `DB2_PASSWORD` | The password of `db2`. The Compose file builds `DATABASE_URL` from it. |
-| `POSTGRES_PASSWORD` | The password of the old `db`. Keep it for a rollback. |
-| `BETTER_AUTH_SECRET` | Signs session cookies and decrypts the imported signing keys. It must stay the production value (AUTH.md). It must have at least 32 characters, or the server does not start. |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | The Google sign-in client. |
-| `AUTH_BOOTSTRAP_EMAIL` | The owner email for the one-time bootstrap (AUTH.md). |
-| `GARAGE_RPC_SECRET` | Garage's RPC secret. |
-| `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET` | The Garage access key and secret. The same values as the old app. |
-| `AGENTSPLIT_MAINTENANCE` | The maintenance switch (below): `1`, `true`, `yes` or `on` turns it on. Empty in normal operation. |
-| `SIGN_UP_DAILY_LIMIT` | Optional. New accounts per 24 hours, a whole number; empty means 200. Existing accounts always sign in (AUTH.md). |
-| `RECEIPT_DOWNLOADS` | Optional. `stream` (the default when empty) sends each receipt image through the app. `redirect` checks access the same way, then answers 307 to a presigned GET URL on storage that works for 5 minutes, so the image does not pass through the server. The page then allows images from the origin of `S3_UPLOAD_ENDPOINT`. Leave it empty on Coolify, because browsers cannot reach Garage there. The NixOS host on R2 sets `redirect`. |
-
-v2 does not read `STORAGE_HOST`, `MCP_ACCESS_GRANTS`, `AUTH_BOOTSTRAP_LEGACY_USER_ID` or `BETTER_AUTH_TELEMETRY`. Keep them, because the old Compose file needs them for a rollback.
-
-The Compose file and the image set the other settings: `DATABASE_URL`, `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_BUCKET`, `S3_UPLOAD_REGION`, `PORT`, `CLIENT_DIR` and `MIGRATIONS_DIR`. `DATABASE_POOL_SIZE` (default 10), `HOST` (default `0.0.0.0`) and `PERF_INSTRUMENTATION` are optional. `PERF_INSTRUMENTATION` (`1`, `true`, `yes` or `on`) adds the `x-perf-db-queries` and `server-timing` headers to every response (P-PWA-49); leave it empty in production. The server reads and checks every setting once at start (`src/server/core/config.ts`). A missing or malformed setting stops the start with its name, as does a `CLIENT_DIR` without a client build. At start the server also writes `BASE_URL`'s origin into the SPA page's `og:image`, `og:url` and `twitter:image`, which link previews need as absolute URLs.
-
-## Deploy
-
-A push to `main` does not deploy by itself.
-
-1. Get Freeman's approval for the deploy.
-2. Take a verified backup (below).
-3. If the deploy adds migrations, rehearse them on the backup: restore its dump into a throwaway PostgreSQL 18 database on the dev box, run `DATABASE_URL=<throwaway database> bun db/migrate.ts`, check that it ends with `Migrations applied`, and drop the database. This is the only use of a production backup outside a restore.
-4. Push the change to `main`.
-5. Start a deploy of `6xpohwok1yiguyk3syzqgumj` in the Coolify dashboard, or through the Coolify API (`GET https://coolify.freemanjiang.com/api/v1/deploy?uuid=6xpohwok1yiguyk3syzqgumj`, with the Cloudflare Access headers and the API token), or with the `coolify_oracle` MCP server.
-6. Watch the deployment to its end.
-7. Check `https://agentsplit.freemanjiang.com/api/health` and the home page.
-
-Coolify builds `Dockerfile`. At each start, the container applies the new SQL migrations from `MIGRATIONS_DIR` before it takes requests, all of them in one transaction: a deploy that adds several migrations applies all or none, and holds their table locks until the commit. A failed migration stops the start, and so does a migration that waits more than 5 seconds for a lock (`lock_timeout`): stop the query that holds it, then start again. Then the health check (`/api/health`, which runs `SELECT 1`) must pass. `/api/health/liveness` answers without the database.
-
-On SIGTERM, the server stops taking connections, lets running requests and the hourly job finish, and exits within 25 seconds. Compose gives it 30 seconds. The hourly job runs at minute 7 of each hour: it creates due recurring expenses, deletes stale receipt uploads, removes from Garage the receipts that were deleted for good when that failed at once, and deletes expired DPoP replay rows.
-
-Every limit, the fair-use limits included, is a constant in `src/shared/limits.ts`. Only the daily sign-up cap has a setting.
-
-Better Auth limits sign-in and client registration per IP address from `X-Forwarded-For`. It uses the address only when the header holds exactly one, as Traefik sends it when it does not trust incoming forwarding headers. With more than one address, Better Auth counts all such requests together, so the limits still hold, for everyone at once.
-
-### Receipt sizes before migration 0012
-
-Migration 0012 adds `receipts.bytes`. The receipts stored before it keep 0, so they count against no quota. They were 13 objects, about 10 MB, in November 2026. The receipts trigger refuses every change to a receipt row, so their sizes are not filled in later.
-
-## Maintenance switch
-
-With `AGENTSPLIT_MAINTENANCE=1`, the server answers 503 with `Retry-After: 300` to every request except the health checks (`/api/health`, `/api/health/readiness` and `/api/health/liveness`): a maintenance page for browsers, a JSON error for other clients. The hourly job pauses. The container still starts, migrates and passes its health check, so nothing writes to `db2`.
-
-1. Set `AGENTSPLIT_MAINTENANCE=1` on the application.
-2. Deploy.
-3. Do the work.
-4. Clear `AGENTSPLIT_MAINTENANCE`.
-5. Deploy again.
-
-The variable is read at start, so each change needs a deploy.
-
-## Backups
-
-The nightly job `agentsplit-backup` runs on the dev box from the dots flake (`devbox/bin/agentsplit-backup`, timer `agentsplit-backup.timer`). It writes a PostgreSQL dump and every receipt object to `~/backups/agentsplit/<UTC date>/`, restores the dump into a throwaway PostgreSQL to check it, and keeps 60 days. restic copies the home folder hourly. A failure writes an error to the log `agentsplit-backup`, and the alert "AgentSplit backup failed" watches it.
-
-Back up `postgres18-data`, `garage-meta` and `garage-data`. Single-node Garage has no replication, and a volume is not a backup. Back up Garage's metadata and data together.
-
-## Rollback
-
-The old app runs on `db`, which the import only read. A rollback loses every write made in v2 after the cutover, because those writes are only in `db2`.
-
-1. Get Freeman's approval.
-2. Export the `activities` rows of `db2` since 2026-11-05 18:00:48 UTC, so that the writes made in v2 can be entered again by hand. Decide with Freeman what to do with them.
-3. Keep the application's Compose file at `/compose.coolify.yaml`. At `bb26b78` that path holds the old app's stack, with `db` on the `postgres-data` volume.
-4. Set the application's commit to `bb26b78`, the `main` commit before the cutover merge. Coolify otherwise deploys the head of `main`.
-5. Set the post-deployment command back to the value below, with container `app`. The cutover cleared it, because it runs `node`, which the v2 image does not have.
-6. Deploy.
-7. Check the old app, its sign-in and the Maple group.
-
-The old post-deployment command (it opens Garage's bucket for receipt reads; it contains no secret values):
-
-```sh
-node -e 'const {S3Client,PutBucketWebsiteCommand}=require("@aws-sdk/client-s3");new S3Client({endpoint:"http://garage:3900",region:process.env.S3_UPLOAD_REGION,forcePathStyle:true,credentials:{accessKeyId:process.env.S3_UPLOAD_KEY,secretAccessKey:process.env.S3_UPLOAD_SECRET}}).send(new PutBucketWebsiteCommand({Bucket:process.env.S3_UPLOAD_BUCKET,WebsiteConfiguration:{IndexDocument:{Suffix:"index.html"}}})).then(()=>console.log("Receipt reads enabled")).catch(e=>{console.error(e.name);process.exit(1)})'
-```
-
-Keep the `postgres-data` volume until Freeman says otherwise. Never delete a volume.
-
-## Preview
-
-There is no preview deployment. Freeman approved removing the Coolify preview on 2026-11-07. Review changes on a local dev server with synthetic data ("Dev server" in [docs/v2/BUILDING.md](docs/v2/BUILDING.md)).
-
-## NixOS host
-
-Freeman approved a move of AgentSplit from Coolify on the shared Oracle host to its own VM. On 2026-11-08 he approved the target: a GCE e2-micro (x86_64, 2 shared vCPUs at about a quarter of a core sustained, 1 GB of memory, a 30 GB pd-standard disk) in us-west1, in GCP's free tier, that runs NixOS from this flake. The VM runs only AgentSplit, so a compromised or overloaded AgentSplit touches no other app. The same flake builds the host for EC2 (`agentsplit-ec2`, a t4g.small) and installs on any cloud VM, so a move to another provider is a reinstall and a restore (below).
-
-The host is not live yet. Production stays on Coolify until the cutover below. The dots repository creates the VM, its network, its tailnet access, the tunnel and the R2 bucket; this repository holds everything that runs on the host.
+The dots repository creates the VM, its network, its tailnet access, the tunnel and the R2 bucket; this repository holds everything that runs on the host.
 
 ### What runs on the host
 
@@ -129,7 +20,7 @@ The host has no open inbound port. Cloudflare Tunnel brings the public traffic i
 
 | Unit | What it does |
 | --- | --- |
-| `agentsplit.service` | The server (`nix/package.nix`, the same build as the Dockerfile) on `127.0.0.1:3000`. It applies new migrations at start and runs the hourly job in-process at minute 7, as on Coolify. A dynamic user `agentsplit`, a read-only file system, no capabilities, a pool of 5 database connections, 256 MB before reclaim, 320 MB at most, 1.5 CPUs, 128 tasks. It restarts on failure, at most 5 times in 10 minutes. |
+| `agentsplit.service` | The server (`nix/package.nix`, the same build as the Dockerfile) on `127.0.0.1:3000`. It applies new migrations at start and runs the hourly job in-process at minute 7. A dynamic user `agentsplit`, a read-only file system, no capabilities, a pool of 5 database connections, 256 MB before reclaim, 320 MB at most, 1.5 CPUs, 128 tasks. It restarts on failure, at most 5 times in 10 minutes. |
 | `postgresql.service` | PostgreSQL 18 from nixpkgs, on the Unix socket `/run/postgresql` only. The role `agentsplit` owns the database `agentsplit` and signs in by peer authentication. Tuned for 1 GB: 64 MB of shared buffers, 16 connections, no parallel queries; 256 MB at most. |
 | `agentsplit-db-dump.timer` | A `pg_dump` at minute 37 of each hour into `/var/backup/agentsplit/`, checked with `pg_restore --list`, kept 3 days. `latest.dump` links to the newest one. |
 | `agentsplit-tunnel.service` | `cloudflared` for a remotely managed tunnel. Cloudflare holds the tunnel's routes. 128 MB at most. |
@@ -163,14 +54,12 @@ The secrets are root-only files in `/etc/agentsplit/`. They are never in the Nix
 
 | File | Holds | Read by |
 | --- | --- | --- |
-| `agentsplit.env` | The server's settings (below) | `agentsplit.service` |
+| `agentsplit.env` | The server's settings ("Environment variables" below) | `agentsplit.service` |
 | `cloudflared.env` | `TUNNEL_TOKEN=<the tunnel token>` | `agentsplit-tunnel.service` |
 | `root-password-hash` | Optional. A `mkpasswd` hash for the provider's serial console, the way in when Tailscale fails | the root account |
 | `tailscale-auth-key` | Only for a nixos-anywhere install (not GCE). A one-time auth key | `tailscaled-autoconnect.service`, only when the node is not logged in |
 
 On GCE, the first join takes its auth key from the instance metadata, not from a file ("First install").
-
-`agentsplit.env` holds `BASE_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_REGION`, `S3_UPLOAD_BUCKET`, `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET`, `RECEIPT_DOWNLOADS=redirect`, and the optional `AUTH_BOOTSTRAP_EMAIL`, `AGENTSPLIT_MAINTENANCE` and `SIGN_UP_DAILY_LIMIT` ("Environment variables" above). Do not set `DATABASE_URL`, `DATABASE_POOL_SIZE`, `HOST` or `PORT` in it: the module sets them, and the file would override them.
 
 The source of each file is a sops file in the dots repository, which the dev box decrypts. The copy goes over Tailscale SSH, through stdin:
 
@@ -195,19 +84,119 @@ The dots side gives the VM its own VPC with no ingress rule. Egress is open only
 
 ### Receipts on R2
 
-On the NixOS host the receipts move from Garage to Cloudflare R2: off the VM, with 10 GB free and no charge for data out. Bun's S3 client signs with SigV4 and uses path-style URLs (`src/server/s3.ts`), which both Garage and R2 accept. Only the settings differ:
+The host keeps the receipts in Cloudflare R2: off the VM, with 10 GB free and no charge for data out. Bun's S3 client signs with SigV4 and uses path-style URLs (`src/server/s3.ts`), which both R2 and the Garage of the Coolify stack accept. Only the settings differ:
 
-| Setting | Garage (Coolify) | R2 (NixOS host) |
+| Setting | R2 (the host) | Garage (Coolify) |
 | --- | --- | --- |
-| `S3_UPLOAD_ENDPOINT` | `http://agentsplit-garage:3900` | `https://<account ID>.r2.cloudflarestorage.com` |
-| `S3_UPLOAD_REGION` | `garage` | `auto` |
+| `S3_UPLOAD_ENDPOINT` | `https://<account ID>.r2.cloudflarestorage.com` | `http://agentsplit-garage:3900` |
+| `S3_UPLOAD_REGION` | `auto` | `garage` |
 | `S3_UPLOAD_BUCKET` | `agentsplit-receipts` | `agentsplit-receipts` |
-| `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET` | The Garage key | An R2 API token with Object Read and Write on this bucket only |
-| `RECEIPT_DOWNLOADS` | empty (`stream`) | `redirect` |
+| `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET` | An R2 API token with Object Read and Write on this bucket only | The Garage key |
+| `RECEIPT_DOWNLOADS` | `redirect` | empty (`stream`) |
 
-With `redirect`, the app checks access and then sends the reader to a presigned R2 URL that works for 5 minutes, so the receipt bytes do not leave the VM, where data out over 1 GB a month is billed. The bucket needs no public access and no CORS rule: browsers load receipts only through `<img>` and links, which follow the redirect. The group ZIP download still streams through the server. `scripts/copy-receipts.ts` copies the objects from Garage with their content types (below).
+With `redirect`, the app checks access and then sends the reader to a presigned R2 URL that works for 5 minutes, so the receipt bytes do not leave the VM, where data out over 1 GB a month is billed. The bucket needs no public access and no CORS rule: browsers load receipts only through `<img>` and links, which follow the redirect. The group ZIP download still streams through the server. `scripts/copy-receipts.ts` copies the objects between two buckets with their content types ("Roll back to Coolify" below).
 
-### First install
+## Environment variables
+
+On the host, these settings are in `/etc/agentsplit/agentsplit.env` ("Secrets on the host"). Never commit, print or paste their values. `coolify.env.example` lists them with comments.
+
+| Variable | Purpose |
+| --- | --- |
+| `BASE_URL` | The public origin. OAuth issuers, cookies and upload targets use it. |
+| `BETTER_AUTH_SECRET` | Signs session cookies and decrypts the imported signing keys. It must stay the production value (AUTH.md). It must have at least 32 characters, or the server does not start. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | The Google sign-in client. |
+| `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_REGION`, `S3_UPLOAD_BUCKET` | The receipt bucket ("Receipts on R2"). |
+| `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET` | The bucket's access key and secret. |
+| `AUTH_BOOTSTRAP_EMAIL` | Optional. The owner email for the one-time bootstrap (AUTH.md). |
+| `AGENTSPLIT_MAINTENANCE` | Optional. The maintenance switch (below): `1`, `true`, `yes` or `on` turns it on. Empty in normal operation. |
+| `SIGN_UP_DAILY_LIMIT` | Optional. New accounts per 24 hours, a whole number; empty means 200. Existing accounts always sign in (AUTH.md). |
+| `RECEIPT_DOWNLOADS` | Optional. `stream` (the default when empty) sends each receipt image through the app. `redirect` checks access the same way, then answers 307 to a presigned GET URL on storage that works for 5 minutes, so the image does not pass through the server. The page then allows images from the origin of `S3_UPLOAD_ENDPOINT`. The host sets `redirect`. |
+
+Do not set `DATABASE_URL`, `DATABASE_POOL_SIZE`, `HOST` or `PORT` in `agentsplit.env`: `nix/module.nix` sets them, and the file would override them. The package sets `CLIENT_DIR` and `MIGRATIONS_DIR`. `PERF_INSTRUMENTATION` is optional: `1`, `true`, `yes` or `on` adds the `x-perf-db-queries` and `server-timing` headers to every response (P-PWA-49); leave it empty in production. Outside the module, `DATABASE_POOL_SIZE` defaults to 10 and `HOST` to `0.0.0.0`. The server reads and checks every setting once at start (`src/server/core/config.ts`). A missing or malformed setting stops the start with its name, as does a `CLIENT_DIR` without a client build. At start the server also writes `BASE_URL`'s origin into the SPA page's `og:image`, `og:url` and `twitter:image`, which link previews need as absolute URLs.
+
+## Deploy
+
+1. Get Freeman's approval for the deploy.
+2. Take a verified backup ("Backups" below).
+3. If the deploy adds migrations, rehearse them on the backup: restore its dump into a throwaway PostgreSQL 18 database on the dev box, run `DATABASE_URL=<throwaway database> bun db/migrate.ts`, check that it ends with `Migrations applied`, and drop the database. This is the only use of a production backup outside a restore.
+4. Merge the change into `main` and push it.
+5. In a clean checkout of `main` on the dev box, run `direnv exec . deploy-host`.
+
+`deploy-host` refuses a tree with uncommitted changes and a commit that is not on GitHub: the host records the deployed commit, and the weekly update rebuilds it. It builds the host on the dev box with `nixpkgs-host` at the head of `nixos-26.05`, copies it over Tailscale SSH, and activates it without making it the boot default. The host fetches what it can from the NixOS binary cache. When `agentsplit.service` runs and `/api/health` answers, it makes the new system the boot default. If the health check fails, a reboot or this command returns to the previous system:
+
+```sh
+ssh root@agentsplit /nix/var/nix/profiles/system/bin/switch-to-configuration switch
+```
+
+To go back after a completed deploy, use `nix-env --profile /nix/var/nix/profiles/system --rollback`, then the same command. A rollback does not undo migrations.
+
+The GCE host is x86_64 and the dev box is aarch64. Nix builds the host under emulation (`boot.binfmt.emulatedSystems` in dots), and most paths come from the binary cache; the app's build is the slow part. Without emulation, `deploy-host` stops at once with the message `this machine cannot build x86_64-linux`. A new kernel takes effect at the next boot; `deploy-host` says so, and the weekly update reboots for it.
+
+At each start, the server applies the new SQL migrations from `MIGRATIONS_DIR` before it takes requests, all of them in one transaction: a deploy that adds several migrations applies all or none, and holds their table locks until the commit. A failed migration stops the start, and so does a migration that waits more than 5 seconds for a lock (`lock_timeout`): stop the query that holds it, then start again. Then the health check (`/api/health`, which runs `SELECT 1`) must pass. `/api/health/liveness` answers without the database.
+
+On SIGTERM, the server stops taking connections, lets running requests and the hourly job finish, and exits within 25 seconds. The hourly job runs at minute 7 of each hour: it creates due recurring expenses, deletes stale receipt uploads, removes from storage the receipts that were deleted for good when that failed at once, and deletes expired DPoP replay rows.
+
+Every limit, the fair-use limits included, is a constant in `src/shared/limits.ts`. Only the daily sign-up cap has a setting.
+
+Better Auth limits sign-in and client registration per IP address from `X-Forwarded-For`. It uses the address only when the header holds exactly one, as a proxy sends it when it does not trust incoming forwarding headers. With more than one address, Better Auth counts all such requests together, so the limits still hold, for everyone at once.
+
+### Receipt sizes before migration 0012
+
+Migration 0012 adds `receipts.bytes`. The receipts stored before it keep 0, so they count against no quota. The receipts trigger refuses every change to a receipt row, so their sizes are not filled in later.
+
+## Maintenance switch
+
+With `AGENTSPLIT_MAINTENANCE=1`, the server answers 503 with `Retry-After: 300` to every request except the health checks (`/api/health`, `/api/health/readiness` and `/api/health/liveness`): a maintenance page for browsers, a JSON error for other clients. The hourly job pauses. The server still starts, migrates and passes its health check, so nothing writes to the database.
+
+1. Set `AGENTSPLIT_MAINTENANCE=1` in the host's `agentsplit.env` ("Secrets on the host").
+2. Run `ssh root@agentsplit systemctl restart agentsplit`. The tunnel and the health checks stay up.
+3. Do the work.
+4. Clear `AGENTSPLIT_MAINTENANCE`, and restart the server again.
+
+The variable is read at start, so each change needs a restart.
+
+## Weekly update
+
+The host's operating system follows `nixos-26.05`, a release branch that gets only backports and security fixes. The dev box updates it once a week:
+
+```sh
+direnv exec . deploy-host --update
+```
+
+`--update` reads the commit that the host runs (`nixos-version --configuration-revision`), and builds that commit with `nixpkgs-host` at the head of `nixos-26.05`. The app, its Bun and its dependencies come from the locked `nixpkgs` input, so they stay as deployed, and a commit on `main` that is not deployed does not go live. The update needs no approval, because it changes no app code. It activates the new system and checks the health as a deploy does. If the kernel changed, it reboots the host and waits up to 5 minutes for `/api/health`. If nothing changed, it stops.
+
+The dots side runs it from a systemd timer on the dev box, once a week at a quiet time (for example Tuesday 09:20 UTC), in `~/projects/agentsplit`, and reports a failure. The checkout's own state does not matter: `--update` builds from Git.
+
+NixOS 26.05 ends its support at the end of December 2026. Before then, move `hostNixpkgs` in `flake.nix` and the `nixpkgs-host` input to the next release, run the VM test, and deploy.
+
+## Backups
+
+The host dumps the database every hour into `/var/backup/agentsplit/` and keeps 3 days. The user `agentsplit-backup` can read the dumps and nothing else: it has no database role. It pulls the newest dump this way:
+
+```sh
+ssh agentsplit-backup@agentsplit agentsplit-latest-dump > agentsplit.dump
+```
+
+`agentsplit-latest-dump` fails when the newest dump is older than 150 minutes, so a stopped timer fails the pull.
+
+The nightly job `agentsplit-backup nixos` runs on the dev box from the dots flake (`devbox/bin/agentsplit-backup`, timer `agentsplit-backup.timer`). It pulls the newest dump from the host as `agentsplit-backup`, reads every receipt object from R2 with its own read-only R2 token, and writes both to `~/backups/agentsplit/<UTC date>/`. It restores the dump into a throwaway PostgreSQL to check it, and keeps 60 days. restic copies the home folder hourly. A failure writes an error to the log `agentsplit-backup`, and the alert "AgentSplit backup failed" watches it. A failed unit on the host writes a warning to the same log.
+
+### Restore a dump on the host
+
+1. Turn on the maintenance switch on the host.
+2. Stop the server: `ssh root@agentsplit systemctl stop agentsplit`.
+3. Make an empty database: `ssh root@agentsplit 'sudo -u postgres dropdb agentsplit && sudo -u postgres createdb --owner=agentsplit agentsplit'`. This deletes the host's data, so do it only with Freeman's approval and a verified backup.
+4. Restore the dump into it as the server's role:
+
+   ```sh
+   ssh root@agentsplit 'sudo -u postgres pg_restore --no-owner --no-acl --role=agentsplit --exit-on-error --dbname=agentsplit' < ~/backups/agentsplit/<UTC date>/agentsplit.dump
+   ```
+
+5. Compare the counts of `groups`, `expenses`, `activities` and `expense_payers` on the host with the backup's log line.
+6. Clear the maintenance switch, and start the server: `ssh root@agentsplit systemctl start agentsplit`.
+7. Check `/api/health`, the home page, a sign-in, an old receipt, and an MCP write in the group **AgentSplit test**.
+
+## First install
 
 On GCE, the VM boots the host directly from an image of this flake, so nothing installs on the 1 GB machine. The image mounts the file systems by the labels `nixos` and `ESP`, as `nix/host/default.nix` does, and grows the root to the size of the boot disk at its first boot.
 
@@ -224,8 +213,8 @@ On GCE, the VM boots the host directly from an image of this flake, so nothing i
 5. Under Tailnet Lock, sign the new node key on the dev box: `sudo tailscale lock sign nodekey:<key>`.
 6. The dots side removes the `tailscale-auth-key` attribute. If the key expired before the join, set a new one; the unit still polls.
 7. Check the access and record the host key once: `ssh -o StrictHostKeyChecking=accept-new root@agentsplit true`. Tailscale has already authenticated the machine, so the first key is safe to accept.
-8. Copy `agentsplit.env`, `cloudflared.env` and `root-password-hash` (above). Set `AGENTSPLIT_MAINTENANCE=1` until the cutover. Then run `ssh root@agentsplit systemctl reset-failed agentsplit` and `ssh root@agentsplit systemctl restart agentsplit agentsplit-tunnel`. Without the files, the server failed five times at boot and hit its start limit (ten starts in ten minutes). The limit stays on purpose: it stops a crash loop on a quarter of a core and leaves a failed unit for the backup's check to report.
-9. Run `direnv exec . deploy-host` (below). It moves the host to the newest `nixos-26.05` and makes the commit the boot default.
+8. Copy `agentsplit.env`, `cloudflared.env` and `root-password-hash` ("Secrets on the host"). Set `AGENTSPLIT_MAINTENANCE=1` until the data is in. Then run `ssh root@agentsplit systemctl reset-failed agentsplit` and `ssh root@agentsplit systemctl restart agentsplit agentsplit-tunnel`. Without the files, the server failed five times at boot and hit its start limit (ten starts in ten minutes). The limit stays on purpose: it stops a crash loop on a quarter of a core and leaves a failed unit for the backup's check to report.
+9. Run `direnv exec . deploy-host` ("Deploy"). It moves the host to the newest `nixos-26.05` and makes the commit the boot default.
 10. Check that no unit failed: `ssh root@agentsplit systemctl --failed`.
 
 If the join fails, read the boot on the serial port (`gcloud compute instances get-serial-port-output`). Before step 8 root has no password, so the interactive serial console does not log in; delete the VM and create it again from the image, because it holds no data yet. After step 8, the way in when Tailscale fails is the serial console, as root with the password in `secrets/agentsplit-host.yaml`.
@@ -246,107 +235,53 @@ On another provider:
 6. Close the temporary SSH access, and delete `/etc/agentsplit/tailscale-auth-key` on the host.
 7. Check that the modes of the files in `/etc/agentsplit/` are `0400`.
 
-### Deploy
+## Move to another cloud
 
-1. Get Freeman's approval for the deploy.
-2. Take a verified backup (below).
-3. Rehearse new migrations on the backup, as in "Deploy" above.
-4. Merge the change into `main` and push it.
-5. In a clean checkout of `main` on the dev box, run `direnv exec . deploy-host`.
+R2 holds the receipts, and the tunnel does not depend on an address, so a move copies only the database. It takes about an hour. EC2 is the documented alternative (`agentsplit-ec2`, "First install"). Keep `BASE_URL` at `https://agentsplit.freemanjiang.com`: the OAuth issuer, every agent's tokens, the session cookies and the Google redirect URI depend on it. A change of domain is a separate step with its own plan, because every agent must connect again and every person must sign in again.
 
-`deploy-host` refuses a tree with uncommitted changes and a commit that is not on GitHub: the host records the deployed commit, and the weekly update rebuilds it. It builds the host on the dev box with `nixpkgs-host` at the head of `nixos-26.05`, copies it over Tailscale SSH, and activates it without making it the boot default. The host fetches what it can from the NixOS binary cache. When `agentsplit.service` runs and `/api/health` answers, it makes the new system the boot default. If the health check fails, a reboot or this command returns to the previous system:
+1. Install the new VM as in "First install", with `AGENTSPLIT_MAINTENANCE=1`. Tailscale names it `agentsplit-1` while the old host exists, so give that name to each command, for example `HOST_CONFIG=agentsplit-ec2 deploy-host root@agentsplit-1`.
+2. Get Freeman's approval, and turn on the maintenance switch on the old host.
+3. Run `systemctl start agentsplit-db-dump` on the old host, and pull the dump.
+4. Restore it on the new host, as in steps 2 to 5 of "Restore a dump on the host".
+5. Stop the tunnel on the old host: `systemctl stop agentsplit-tunnel`. Two connectors of one tunnel share the traffic, so both hosts must never serve at the same time.
+6. Clear the maintenance switch on the new host, and start its server.
+7. Check the app as in step 7 of "Restore a dump on the host".
+8. Delete the old VM after Freeman's approval, and rename the new node to `agentsplit` in Tailscale.
 
-```sh
-ssh root@agentsplit /nix/var/nix/profiles/system/bin/switch-to-configuration switch
-```
+## Preview
 
-To go back after a completed deploy, use `nix-env --profile /nix/var/nix/profiles/system --rollback`, then the same command. A rollback does not undo migrations.
+There is no preview deployment. Freeman approved removing the Coolify preview on 2026-11-07. Review changes on a local dev server with synthetic data ("Dev server" in [docs/BUILDING.md](docs/BUILDING.md)).
 
-The GCE host is x86_64 and the dev box is aarch64. Nix builds the host under emulation (`boot.binfmt.emulatedSystems` in dots), and most paths come from the binary cache; the app's build is the slow part. Without emulation, `deploy-host` stops at once with the message `this machine cannot build x86_64-linux`. A new kernel takes effect at the next boot; `deploy-host` says so, and the weekly update reboots for it.
+## Previous hosting: Coolify (rollback only)
 
-The maintenance switch on the host: set `AGENTSPLIT_MAINTENANCE=1` in `agentsplit.env` and run `systemctl restart agentsplit`. The tunnel and the health checks stay up.
+From 2026-11-05 to 2026-11-08, production ran on Coolify on the shared Oracle host, built from `compose.coolify.yaml` with the Docker Compose build pack. The stack stays in maintenance mode with its volumes until Freeman says otherwise, only for a rollback. Never delete a volume. The Coolify application ID and API address are in the maintainer's private infrastructure repository. Deploy it from the Coolify dashboard or the `coolify_oracle` MCP server.
 
-### Weekly update
+The services of `compose.coolify.yaml`:
 
-The host's operating system follows `nixos-26.05`, a release branch that gets only backports and security fixes. The dev box updates it once a week:
+- `app`: the server, built from `Dockerfile`. Bun's distroless image runs the server bundle as user 65532 on port 3000. Coolify's Traefik ends TLS and routes the domain to it.
+- `db2`: PostgreSQL 18 with the volume `postgres18-data`, network alias `agentsplit-db2`.
+- `garage`: Garage v2.4.1 with the volumes `garage-meta` and `garage-data`, bucket `agentsplit-receipts`, network alias `agentsplit-garage`. Its Traefik labels route the authenticated S3 API at `agentsplit-receipts.freemanjiang.com`, which `scripts/copy-receipts.ts` uses.
+- `db`: the PostgreSQL 17 of the app before v2, with the volume `postgres-data`. Freeman approved the removal of the service for 2026-11-13. The volume stays.
 
-```sh
-direnv exec . deploy-host --update
-```
+The app reaches `db2` and Garage only by the unique aliases, because on Coolify's shared `coolify` network a plain service name can resolve to another stack. Coolify keeps `/etc/garage.toml` as a file storage of this resource; a new resource would get a directory there, and Garage would not start. All images are pinned by digest.
 
-`--update` reads the commit that the host runs (`nixos-version --configuration-revision`), and builds that commit with `nixpkgs-host` at the head of `nixos-26.05`. The app, its Bun and its dependencies come from the locked `nixpkgs` input, so they stay as deployed, and a commit on `main` that is not deployed does not go live. The update needs no approval, because it changes no app code. It activates the new system and checks the health as a deploy does. If the kernel changed, it reboots the host and waits up to 5 minutes for `/api/health`. If nothing changed, it stops.
-
-The dots side runs it from a systemd timer on the dev box, once a week at a quiet time (for example Tuesday 09:20 UTC), in `~/projects/agentsplit`, and reports a failure. The checkout's own state does not matter: `--update` builds from Git.
-
-NixOS 26.05 ends its support at the end of December 2026. Before then, move `hostNixpkgs` in `flake.nix` and the `nixpkgs-host` input to the next release, run the VM test, and deploy.
-
-### Backups of the host
-
-The host dumps the database every hour into `/var/backup/agentsplit/` and keeps 3 days. The user `agentsplit-backup` can read the dumps and nothing else: it has no database role. The dev box pulls the newest dump as that user:
-
-```sh
-ssh agentsplit-backup@agentsplit agentsplit-latest-dump > agentsplit.dump
-```
-
-`agentsplit-latest-dump` fails when the newest dump is older than 150 minutes, so a stopped timer fails the pull. The receipts are in R2; the dev box reads them with its own read-only R2 token. The test restore stays on the dev box, as in "Backups" above.
-
-### Move the data from Oracle
-
-Keep `BASE_URL` at `https://agentsplit.freemanjiang.com` for the move. The OAuth issuer, every agent's tokens, the session cookies and the Google redirect URI depend on it. A change of domain (for example to `agentsplit.net`) is a separate step with its own plan: every agent must connect again, and every person must sign in again.
-
-Before the window:
-
-1. Install and deploy the host with `AGENTSPLIT_MAINTENANCE=1` and the R2 settings.
-2. Copy the receipts once while Coolify serves (the first copy takes the longest). Run it on the dev box. Give it the Garage key from Coolify and the R2 key as the environment variables `SOURCE_S3_KEY`, `SOURCE_S3_SECRET`, `TARGET_S3_KEY` and `TARGET_S3_SECRET`, for example with `sops exec-env`. Never type them on a command line.
-
-   ```sh
-   SOURCE_S3_ENDPOINT=https://agentsplit-receipts.freemanjiang.com SOURCE_S3_REGION=garage SOURCE_S3_BUCKET=agentsplit-receipts \
-   TARGET_S3_ENDPOINT=https://<account ID>.r2.cloudflarestorage.com TARGET_S3_REGION=auto TARGET_S3_BUCKET=agentsplit-receipts \
-   bun scripts/copy-receipts.ts
-   ```
-
-3. Route a test hostname through the tunnel, and check `/api/health` on it.
-
-In the window:
-
-1. Get Freeman's approval.
-2. Turn on the maintenance switch on Coolify ("Maintenance switch" above). Nothing writes from now on.
-3. Run the dev box backup (`systemctl --user start agentsplit-backup.service`) and check that it passed.
-4. Run `scripts/copy-receipts.ts` again, then with `--check`. It must report every object.
-5. Stop the server on the host: `ssh root@agentsplit systemctl stop agentsplit`.
-6. Make an empty database on the host. It holds no production data yet: `ssh root@agentsplit 'sudo -u postgres dropdb agentsplit && sudo -u postgres createdb --owner=agentsplit agentsplit'`.
-7. Restore the backup's dump into it as the server's role:
-
-   ```sh
-   ssh root@agentsplit 'sudo -u postgres pg_restore --no-owner --no-acl --role=agentsplit --exit-on-error --dbname=agentsplit' < ~/backups/agentsplit/<UTC date>/agentsplit.dump
-   ```
-
-8. Compare the counts of `groups`, `expenses`, `activities` and `expense_payers` on the host with the backup's log line.
-9. Clear `AGENTSPLIT_MAINTENANCE` in the host's `agentsplit.env`, and start the server: `ssh root@agentsplit systemctl start agentsplit`.
-10. Point the production hostname at the tunnel (the dots side: a proxied CNAME to `<tunnel ID>.cfargotunnel.com` and the tunnel's route to `http://127.0.0.1:3000`).
-11. Check `/api/health`, the home page, a sign-in, an old receipt, and an MCP write in the group **AgentSplit test**.
-12. Move the dev box backup to the host (the dots side).
-
-Keep the Coolify stack in maintenance and keep its volumes until Freeman says otherwise.
+On Coolify, the Compose file builds `DATABASE_URL` from `DB2_PASSWORD`, and sets the receipt bucket to Garage ("Receipts on R2" above). Leave `RECEIPT_DOWNLOADS` empty there, because browsers cannot reach Garage. `POSTGRES_PASSWORD`, `GARAGE_RPC_SECRET`, `STORAGE_HOST`, `MCP_ACCESS_GRANTS`, `AUTH_BOOTSTRAP_LEGACY_USER_ID` and `BETTER_AUTH_TELEMETRY` stay in the Coolify resource for the stack and for older rollbacks; the app does not read the last four.
 
 ### Roll back to Coolify
 
 1. Get Freeman's approval.
 2. Turn on the maintenance switch on the host.
-3. If the host took writes, carry them back: run `systemctl start agentsplit-db-dump` on the host, pull `agentsplit-latest-dump`, restore it into `db2` on Coolify with `pg_restore --clean --if-exists --no-owner --no-acl`, and run `scripts/copy-receipts.ts` from R2 to Garage (SOURCE and TARGET swapped).
-4. Point the production hostname back at Oracle.
-5. Turn off the maintenance switch on Coolify and deploy.
-6. Check the app as in "Deploy" above.
+3. If the host took writes, carry them back: run `systemctl start agentsplit-db-dump` on the host, pull `agentsplit-latest-dump`, restore it into `db2` on Coolify with `pg_restore --clean --if-exists --no-owner --no-acl`, and run `scripts/copy-receipts.ts` from R2 to Garage. Give it the keys as the environment variables `SOURCE_S3_KEY`, `SOURCE_S3_SECRET`, `TARGET_S3_KEY` and `TARGET_S3_SECRET`, for example with `sops exec-env`. Never type them on a command line.
 
-### Move to another cloud
+   ```sh
+   SOURCE_S3_ENDPOINT=https://<account ID>.r2.cloudflarestorage.com SOURCE_S3_REGION=auto SOURCE_S3_BUCKET=agentsplit-receipts \
+   TARGET_S3_ENDPOINT=https://agentsplit-receipts.freemanjiang.com TARGET_S3_REGION=garage TARGET_S3_BUCKET=agentsplit-receipts \
+   bun scripts/copy-receipts.ts
+   ```
 
-R2 holds the receipts, and the tunnel does not depend on an address, so a move copies only the database. It takes about an hour. EC2 is the documented alternative (`agentsplit-ec2`, "First install").
+   Then run it again with `--check`. It must report every object.
+4. Point the production hostname back at Oracle (the dots side).
+5. Clear `AGENTSPLIT_MAINTENANCE` on the Coolify application, and deploy.
+6. Check `/api/health`, the home page, a sign-in, an old receipt, and an MCP write in the group **AgentSplit test**.
 
-1. Install the new VM as in "First install", with `AGENTSPLIT_MAINTENANCE=1`. Tailscale names it `agentsplit-1` while the old host exists, so give that name to each command, for example `HOST_CONFIG=agentsplit-ec2 deploy-host root@agentsplit-1`.
-2. Get Freeman's approval, and turn on the maintenance switch on the old host.
-3. Run `systemctl start agentsplit-db-dump` on the old host, and pull the dump.
-4. Restore it on the new host, as in steps 5 to 8 of the window above.
-5. Stop the tunnel on the old host: `systemctl stop agentsplit-tunnel`. Two connectors of one tunnel share the traffic, so both hosts must never serve at the same time.
-6. Clear the maintenance switch on the new host, and start its server.
-7. Check the app as in step 11 of the window above.
-8. Delete the old VM after Freeman's approval, and rename the new node to `agentsplit` in Tailscale.
+A rollback past v2, to the app before 2026-11-05, is in the Git history of this file (before the move to the NixOS host).

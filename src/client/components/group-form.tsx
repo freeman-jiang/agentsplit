@@ -125,7 +125,7 @@ export function GroupForm(props: {
             <Input
               id="group-slug"
               className="h-11"
-              placeholder="maple"
+              placeholder="our-flat"
               autoCapitalize="none"
               autoCorrect="off"
               maxLength={LIMITS.slugMax}

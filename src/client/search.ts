@@ -1,5 +1,5 @@
 // Search-param parsing for route options. Route options stay in the main chunk,
-// so they must not pull in a schema library (BUILDING.md, client bundle budget).
+// so they must not pull in a schema library (docs/BUILDING.md, client bundle budget).
 import { isCurrencyCode, type CurrencyCode } from '~/shared/currencies'
 
 /** Reads one search param; undefined drops it. */

@@ -1,11 +1,11 @@
 // What each declared error means to a caller, for both transports. The error
 // classes are in src/shared/api/core.ts; this module holds no Effect, so the
-// client can read the same texts (BUILDING.md).
+// client can read the same texts (docs/BUILDING.md).
 
 /**
  * The one answer for a group that does not exist or that the caller is not a
  * member of, on RPC, MCP and the HTTP routes. It does not say which, so a group
- * ID reveals nothing (DECISIONS.md, parity audit: agent output).
+ * ID reveals nothing (docs/history/v2/DECISIONS.md, parity audit: agent output).
  */
 export const GROUP_DENIED = 'Group not found, or you are not a member'
 
