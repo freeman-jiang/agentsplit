@@ -7,7 +7,7 @@ import { LIMITS } from '../limits'
 import { FILE_EXPORT_FORMATS } from '../paths'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
 import { ACTIVITY_TYPES, RECURRING_PERIODS } from '../vocabulary'
-import { Balance, CalendarDate, CalendarDateOutput, ExpenseFilter, ExpenseKindSchema, Id, Offset, PageLimit, Participant, ReadError, RecurrenceSchema, SplitModeSchema } from './core'
+import { Balance, CalendarDate, CalendarDateOutput, CategoryId, ExpenseFilter, ExpenseKindSchema, Id, Offset, PageLimit, Participant, ReadError, RecurrenceSchema, SplitModeSchema } from './core'
 import { ReceiptTombstone } from './storage'
 
 export const ActivityType = Schema.Literals(ACTIVITY_TYPES)
@@ -216,7 +216,7 @@ export class HistoryApi extends RpcGroup.make(
       ...StatsScope,
       currency: CurrencyCodeSchema,
       month: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^\d{4}-(0[1-9]|1[0-2])$/))),
-      categoryId: Schema.optionalKey(Schema.Int),
+      categoryId: Schema.optionalKey(CategoryId),
     },
     success: Schema.Array(StatsRow),
     error: ReadError,
