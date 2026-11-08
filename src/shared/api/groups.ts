@@ -9,9 +9,13 @@ import { LIMITS } from '../limits'
 import { CurrencyCodeSchema } from '../money'
 import { CallerTotals, EmailInput, GroupKindSchema, Id, IdempotencyKey, Offset, ReadError, Timestamp, RoleSchema, WriteError } from './core'
 
-export const GroupName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(LIMITS.groupNameMin, LIMITS.nameMax))
+/** The lengths of a group name and a person's name, which MCP also checks before it trims (mcp/tools/groups.ts). */
+export const GROUP_NAME_LENGTH = { min: LIMITS.groupNameMin, max: LIMITS.nameMax } as const
+export const PERSON_NAME_LENGTH = { min: 1, max: LIMITS.nameMax } as const
+
+export const GroupName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(GROUP_NAME_LENGTH.min, GROUP_NAME_LENGTH.max))
 export const Information = Schema.String.check(Schema.isMaxLength(LIMITS.informationMax))
-export const PersonName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(1, LIMITS.nameMax))
+export const PersonName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(PERSON_NAME_LENGTH.min, PERSON_NAME_LENGTH.max))
 /** A slug as typed; the server normalizes and checks it. Empty or null removes it. */
 export const SlugInput = Schema.NullOr(Schema.String.check(Schema.isMaxLength(LIMITS.slugMax)))
 export const Email = EmailInput.check(Schema.isPattern(EMAIL))
