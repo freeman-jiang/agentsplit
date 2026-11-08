@@ -3,6 +3,7 @@
 // are in receipts.ts, receipt-uploads.ts and storage.ts; this module reads the
 // request and writes the response. Rules from the current app:
 // src/app/api/receipts/route.ts.
+import { NotFound } from '../shared/api'
 import { LIMITS, mebibytes } from '../shared/limits'
 import { todayUtc } from '../shared/dates'
 import { RECEIPT_CONTENT_TYPES } from '../shared/vocabulary'
@@ -37,14 +38,15 @@ export async function downloadReceipt(data: { db: Db; bucket: Bucket; url: URL; 
   } catch (error) {
     return domainErrorResponse(error)
   }
-  if ('deleted' in receipt) return jsonError({ status: 410, message: `Receipt deleted by ${receipt.deleted.by} on ${receipt.deleted.at}` })
+  // The current app's 410 names the UTC day of the deletion.
+  if ('deleted' in receipt) return jsonError({ status: 410, message: `Receipt deleted by ${receipt.deleted.by} on ${receipt.deleted.at.slice(0, 10)}` })
   let object: StoredObject | null
   try {
     object = await data.bucket.get(receipt.key)
   } catch (error) {
     return domainErrorResponse(storageUnavailable({ what: 'Reading a receipt', error }))
   }
-  if (!object) return jsonError({ status: 404, message: 'Receipt not found' })
+  if (!object) return domainErrorResponse(new NotFound({ entity: 'receipt', id: url }))
   return new Response(object.stream(), {
     headers: {
       // Only a receipt type is ever served, whatever the stored object claims.
