@@ -1,9 +1,9 @@
-// The app's routing that fails silently: the server's half of the current
-// app's group URLs (src/proxy.ts at bb26b78), the request ID of RPC responses,
-// the origin rule and the maintenance switch. A wrong redirect breaks old links,
+// The app's routing that fails silently: the server's half of v1's
+// group URLs (src/proxy.ts at bb26b78), the request ID of RPC responses,
+// the origin rule, the hourly job and the maintenance switch. A wrong redirect breaks old links,
 // a missing ID leaves a quoted error reference without a log line, and a broken
 // switch lets writes in during a cutover.
-import { count } from 'drizzle-orm'
+import { count, eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { expenses, groups } from '../../db/schema/app'
 import { createExpense } from '~/server/ledger'
@@ -104,6 +104,27 @@ describe('origins', () => {
   })
 })
 
+/** A daily series in a new group of `app`, due since 2026-11-01. Returns a count of the group's expenses. */
+async function dailySeries(app: Harness, tag: string) {
+  const [owner, groupId, pa] = [`${tag}-owner`, `g-${tag}`, `${tag}-pa`]
+  await app.account(owner)
+  await app.group({ id: groupId, people: [pa], members: [[owner, pa, 'admin']] })
+  await app.tx((tx) =>
+    createExpense(tx, { principal: principal(owner), groupId, expenseId: `${tag}-daily`, idempotencyKey: null, expense: draft({ payer: pa, people: [pa], recurrence: 'daily' }) }),
+  )
+  return async () => (await app.withDb((db) => db.select({ n: count() }).from(expenses).where(eq(expenses.groupId, groupId))))[0]?.n ?? 0
+}
+/** The hourly job's minute on 2026-12-01. */
+const DECEMBER = new Date('2026-12-01T00:07:00Z')
+
+describe('the hourly job', () => {
+  it('creates the due occurrences of a recurring expense when the app is not paused', async () => {
+    const expenseCount = await dailySeries(h, 'running')
+    await h.app.scheduled(DECEMBER)
+    expect(await expenseCount()).toBeGreaterThan(1)
+  })
+})
+
 describe('maintenance', () => {
   // The cutover relies on this: users and agents get 503, Coolify's health check passes, and nothing writes.
   it('answers 503 to pages, RPC, MCP and uploads, lets the health checks through, and pauses the hourly job', async () => {
@@ -119,14 +140,9 @@ describe('maintenance', () => {
         expect({ path, status: response.status, retryAfter: response.headers.get('retry-after') }).toEqual({ path, status: 503, retryAfter: '300' })
       }
       // A daily expense due since November: the paused job creates none of its occurrences.
-      await paused.account('owner')
-      await paused.group({ id: 'g-paused', people: ['pa'], members: [['owner', 'pa', 'admin']] })
-      await paused.tx((tx) =>
-        createExpense(tx, { principal: principal('owner'), groupId: 'g-paused', expenseId: 'daily', idempotencyKey: null, expense: draft({ payer: 'pa', people: ['pa'], recurrence: 'daily' }) }),
-      )
-      const before = await paused.withDb(async (db) => (await db.select({ n: count() }).from(expenses))[0]?.n)
-      await paused.app.scheduled(new Date('2026-12-01T00:07:00Z'))
-      expect(await paused.withDb(async (db) => (await db.select({ n: count() }).from(expenses))[0]?.n)).toBe(before)
+      const expenseCount = await dailySeries(paused, 'paused')
+      await paused.app.scheduled(DECEMBER)
+      expect(await expenseCount()).toBe(1)
     } finally {
       await paused.close()
     }
