@@ -8,7 +8,7 @@ import { createAuth } from '~/server/auth/auth'
 import { takeWrite } from '~/server/rate-limit'
 import { apiKeyLimitMessage, LIMITS, SIGN_UP_LIMIT_CODE, tooManyWritesMessage } from '~/shared/limits'
 import { testSettings } from '../kit/config'
-import { BASE, failure, startHarness, type Harness } from './harness'
+import { BASE, startHarness, type Harness } from './harness'
 
 let h: Harness
 
@@ -38,7 +38,7 @@ describe('other limits', () => {
     // Spent a minute ahead of the database clock, so the request below sees no refill.
     const ahead = new Date(Date.now() + 60_000)
     for (let i = 0; i < LIMITS.writesPerMinute; i++) await h.withDb((db) => takeWrite(db, { userId: 'ines', at: ahead }))
-    const refused = await failure(h, { name: 'update_profile', args: { name: 'Too fast' }, headers: key })
+    const refused = await h.mcp.failure({ name: 'update_profile', args: { name: 'Too fast' }, headers: key })
     expect(refused).toMatchObject({ code: 'TOO_MANY_REQUESTS', outcomeUnknown: false, recovery: 'retry_later' })
     expect(refused.message.startsWith(tooManyWritesMessage(1))).toBe(true)
     const [row] = await h.withDb((db) => db.select({ name: user.name }).from(user).where(eq(user.id, 'ines')))

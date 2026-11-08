@@ -17,7 +17,7 @@ import { minor } from '~/shared/minor'
 import { mcpExpense } from '../kit/drafts'
 import { id21 } from '../kit/ids'
 import { principal } from '../kit/people'
-import { BASE, failure, ok, startHarness, type Harness } from './harness'
+import { BASE, startHarness, type Harness } from './harness'
 
 let h: Harness
 let alice: Record<string, string>
@@ -38,14 +38,14 @@ afterAll(() => h.close())
 
 /** Alice's expense of 30 in g1 between her and Bob. */
 const create = (data: { id: number; title?: string; vendor?: string }) =>
-  ok(h, {
+  h.mcp.ok({
     name: 'create_expense',
     args: { groupId: 'g1', expenseId: id21('a', data.id), expense: mcpExpense({ paidBy: 'pa', people: ['pa', 'pb'], title: data.title ?? 'Dinner', ...(data.vendor ? { vendor: data.vendor } : {}) }) },
     headers: alice,
   })
 
 type Activity = { id: string; activityType: string; data: string | null; source: string; expenseRevision: number | null; snapshot: Record<string, unknown> | null }
-const log = async (args: Record<string, unknown>) => (await ok(h, { name: 'list_activity', args: { order: 'asc', limit: 100, ...args }, headers: alice }))['activities'] as Activity[]
+const log = async (args: Record<string, unknown>) => (await h.mcp.ok({ name: 'list_activity', args: { order: 'asc', limit: 100, ...args }, headers: alice }))['activities'] as Activity[]
 const download = (path: string, headers: Record<string, string> = {}) => h.fetch(new Request(`${BASE}${path}`, { headers }))
 
 describe('private contexts', () => {
@@ -84,7 +84,7 @@ describe('private contexts', () => {
   it('tells the client the expense of a private context, and get_group links to the expense page (P-GROUP-47, P-UNGROUP-39)', async () => {
     expect(await h.withDb((db) => getGroup(db, { principal: principal('alice'), groupId: 'private-dinner' }))).toMatchObject({ contextExpenseId: 'private-dinner' })
     expect(await h.withDb((db) => getGroup(db, { principal: principal('alice'), groupId: 'g1' }))).toMatchObject({ contextExpenseId: null })
-    const context = await ok(h, { name: 'get_group', args: { groupId: 'private-dinner' }, headers: alice })
+    const context = await h.mcp.ok({ name: 'get_group', args: { groupId: 'private-dinner' }, headers: alice })
     expect(context['links']).toEqual({
       share: `${BASE}/expenses/private-dinner`,
       csv: `${BASE}/groups/private-dinner/expenses/export/csv`,
@@ -120,7 +120,7 @@ describe('exports', () => {
     }
     expect((await download('/groups/g3/expenses/export/json', { cookie: bobCookie })).status).toBe(200)
     for (const groupId of ['g3', 'missing-group']) {
-      const denied = await failure(h, { name: 'export_group', args: { groupId }, headers: alice })
+      const denied = await h.mcp.failure({ name: 'export_group', args: { groupId }, headers: alice })
       expect(denied).toMatchObject({ code: 'FORBIDDEN', message: GROUP_DENIED, outcomeUnknown: false })
     }
   })
@@ -137,9 +137,9 @@ describe('agent writes and their history', () => {
     )
     const events = await log({ groupId: 'g1', expenseId: id21('a', 1) })
     expect(events.map((a) => a.source)).toEqual(['agent', 'agent'])
-    const expense = (await ok(h, { name: 'get_expense', args: { groupId: 'g1', expenseId: id21('a', 1) }, headers: alice }))['expense'] as { attribution: Record<string, { source: string } | null> }
+    const expense = (await h.mcp.ok({ name: 'get_expense', args: { groupId: 'g1', expenseId: id21('a', 1) }, headers: alice }))['expense'] as { attribution: Record<string, { source: string } | null> }
     expect(expense.attribution['updatedBy']).toEqual({ userId: 'bob', name: 'Bob', source: 'agent' })
-    const feed = (await ok(h, { name: 'list_all_expenses', args: { involvingMe: false }, headers: alice }))['expenses'] as { id: string; attribution: Record<string, { source: string } | null> }[]
+    const feed = (await h.mcp.ok({ name: 'list_all_expenses', args: { involvingMe: false }, headers: alice }))['expenses'] as { id: string; attribution: Record<string, { source: string } | null> }[]
     expect(feed.find((e) => e.id === id21('a', 1))?.attribution['updatedBy']?.source).toBe('agent')
     const exported = (await (await download('/groups/g1/expenses/export/json', alice)).json()) as { activities: { expenseId: string | null; source: string; data: string | null }[] }
     expect(exported.activities.filter((a) => a.expenseId === id21('a', 1))).toEqual([
@@ -151,8 +151,8 @@ describe('agent writes and their history', () => {
 
   it('stores "<vendor> — <title>" on every expense event, as v1 did (P-EXP-107)', async () => {
     const created = await create({ id: 2, title: 'Pizza' })
-    await ok(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21('a', 2), expectedRevision: created['revision'], changes: { vendor: 'Luigi' } }, headers: alice })
-    await ok(h, { name: 'delete_expense', args: { groupId: 'g1', expenseId: id21('a', 2), expectedRevision: 2 }, headers: alice })
+    await h.mcp.ok({ name: 'update_expense', args: { groupId: 'g1', expenseId: id21('a', 2), expectedRevision: created['revision'], changes: { vendor: 'Luigi' } }, headers: alice })
+    await h.mcp.ok({ name: 'delete_expense', args: { groupId: 'g1', expenseId: id21('a', 2), expectedRevision: 2 }, headers: alice })
     const events = await log({ groupId: 'g1', expenseId: id21('a', 2) })
     expect(events.map((a) => [a.activityType, a.data])).toEqual([
       ['CREATE_EXPENSE', 'Pizza'],
@@ -173,13 +173,13 @@ describe('agent writes and their history', () => {
         await tx.insert(expenseShares).values({ expenseId: id, groupId: 'g1', participantId: 'pa', amount: minor(1000n), weight: '1' })
       }),
     )
-    await ok(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id, expectedRevision: 0, changes: { title: 'Legacy, edited' } }, headers: alice })
+    await h.mcp.ok({ name: 'update_expense', args: { groupId: 'g1', expenseId: id, expectedRevision: 0, changes: { title: 'Legacy, edited' } }, headers: alice })
     const [baseline, edit] = await log({ groupId: 'g1', expenseId: id })
     expect(baseline).toMatchObject({ activityType: 'UPDATE_EXPENSE', expenseRevision: 0, data: 'Legacy' })
     expect(edit).toMatchObject({ expenseRevision: 1, data: 'Legacy, edited' })
-    const atBaseline = (await ok(h, { name: 'get_expense', args: { groupId: 'g1', expenseId: id, atActivityId: baseline?.id }, headers: alice }))['expense'] as { attribution: Record<string, unknown> }
+    const atBaseline = (await h.mcp.ok({ name: 'get_expense', args: { groupId: 'g1', expenseId: id, atActivityId: baseline?.id }, headers: alice }))['expense'] as { attribution: Record<string, unknown> }
     expect(atBaseline.attribution).toMatchObject({ createdBy: null, updatedBy: null })
-    const live = (await ok(h, { name: 'get_expense', args: { groupId: 'g1', expenseId: id }, headers: alice }))['expense'] as { attribution: Record<string, unknown> }
+    const live = (await h.mcp.ok({ name: 'get_expense', args: { groupId: 'g1', expenseId: id }, headers: alice }))['expense'] as { attribution: Record<string, unknown> }
     expect(live.attribution).toMatchObject({ createdBy: null, updatedBy: { userId: 'alice', name: 'Alice', source: 'agent' } })
   })
 
@@ -189,11 +189,11 @@ describe('agent writes and their history', () => {
     await h.group({ id: 'g-rename', people: ['ra'], members: [['renamer', 'ra', 'admin']] })
     const headers = { 'x-api-key': await h.apiKey('renamer') }
     const id = id21('a', 4)
-    await ok(h, { name: 'create_expense', args: { groupId: 'g-rename', expenseId: id, expense: mcpExpense({ paidBy: 'ra', people: ['ra'], title: 'Tea' }) }, headers })
+    await h.mcp.ok({ name: 'create_expense', args: { groupId: 'g-rename', expenseId: id, expense: mcpExpense({ paidBy: 'ra', people: ['ra'], title: 'Tea' }) }, headers })
     await h.withDb((db) => db.update(user).set({ name: 'Alice Renamed' }).where(eq(user.id, 'renamer')))
-    const live = (await ok(h, { name: 'get_expense', args: { groupId: 'g-rename', expenseId: id }, headers }))['expense'] as { attribution: { createdBy: { name: string } } }
+    const live = (await h.mcp.ok({ name: 'get_expense', args: { groupId: 'g-rename', expenseId: id }, headers }))['expense'] as { attribution: { createdBy: { name: string } } }
     expect(live.attribution.createdBy.name).toBe('Alice Renamed')
-    const saved = (await ok(h, { name: 'get_expense', args: { groupId: 'g-rename', expenseId: id, revision: 1 }, headers }))['expense'] as { attribution: { createdBy: { name: string } } }
+    const saved = (await h.mcp.ok({ name: 'get_expense', args: { groupId: 'g-rename', expenseId: id, revision: 1 }, headers }))['expense'] as { attribution: { createdBy: { name: string } } }
     expect(saved.attribution.createdBy.name).toBe('Alice')
   })
 })

@@ -9,19 +9,18 @@ import { MCP_TOOLS } from '~/server/mcp/tools'
 import { takeMcpRequest } from '~/server/rate-limit'
 import { LIMITS } from '~/shared/limits'
 import { mcpExpense, type McpExpenseChanges } from '../kit/drafts'
-import { SDK_INPUT_REFUSED } from '../kit/mcp'
-import { id21 } from '../kit/ids'
+import { mcpChallenge, SDK_INPUT_REFUSED } from '../kit/mcp'
+import { id21, id21Counter } from '../kit/ids'
 import current from './fixtures/current-mcp-tools.json'
-import { BASE, callTool, checked as checkedCall, failure, type Harness, MCP_URL, rpc, startHarness } from './harness'
+import { BASE, checked as checkedCall, type Harness, MCP_URL, startHarness } from './harness'
 
 let h: Harness
 let alice: Record<string, string>
 let aliceKeyId: string
 let bob: Record<string, string>
 
-let expenseCount = 0
 /** A new 21-character expense ID. */
-const newExpenseId = () => id21('e', ++expenseCount)
+const newExpenseId = id21Counter('e')
 
 beforeAll(async () => {
   h = await startHarness()
@@ -63,7 +62,7 @@ async function household(tag: string, data: { slug?: string } = {}) {
 describe('protocol', () => {
   it('initializes legacy 2025 clients with the instructions and server info', async () => {
     for (const protocolVersion of ['2025-03-26', '2025-06-18']) {
-      const r = await rpc(h, { method: 'initialize', params: { protocolVersion, capabilities: {}, clientInfo: { name: 'codex', version: '1' } }, headers: alice })
+      const r = await h.mcp.rpc({ method: 'initialize', params: { protocolVersion, capabilities: {}, clientInfo: { name: 'codex', version: '1' } }, headers: alice })
       expect(r.status).toBe(200)
       const result = (r.body as { result: { protocolVersion: string; serverInfo: unknown; instructions: string } }).result
       expect(result.protocolVersion).toBe(protocolVersion)
@@ -142,7 +141,7 @@ describe('protocol', () => {
   })
 
   it('isolates two concurrent users with identical JSON-RPC IDs', async () => {
-    const [a, b] = await Promise.all([callTool(h, { name: 'list_groups', headers: alice }), callTool(h, { name: 'list_groups', headers: bob })])
+    const [a, b] = await Promise.all([h.mcp.callTool({ name: 'list_groups', headers: alice }), h.mcp.callTool({ name: 'list_groups', headers: bob })])
     const ids = (r: typeof a) => (r.result?.structuredContent?.['groups'] as { id: string }[]).map((g) => g.id).sort()
     expect(ids(a)).toEqual(['g1', 'g2'])
     expect(ids(b)).toEqual(['g1', 'g3'])
@@ -150,7 +149,7 @@ describe('protocol', () => {
 
   it('rejects an unknown tool and the removed month tool without running anything', async () => {
     for (const name of ['list_month_expenses', 'no_such_tool']) {
-      const r = await callTool(h, { name, headers: alice })
+      const r = await h.mcp.callTool({ name, headers: alice })
       expect(r.status).toBe(200)
       expect(r.body).toMatchObject({ error: { code: -32602, message: `Tool ${name} not found` } })
     }
@@ -162,7 +161,7 @@ describe('tool advertisement', () => {
   type JsonNode = { type?: string; properties?: Record<string, JsonNode>; required?: string[]; additionalProperties?: boolean; items?: JsonNode; enum?: string[] }
 
   it('advertises the current names, annotations, scopes and input fields', async () => {
-    const r = await rpc(h, { method: 'tools/list', headers: alice })
+    const r = await h.mcp.rpc({ method: 'tools/list', headers: alice })
     const tools = (r.body as { result: { tools: Advertised[] } }).result.tools
     // v2 adds the storage tools at the end; every current tool keeps its place.
     expect(tools.map((t) => t.name)).toEqual([...current.tools.map((t) => t.name), 'get_storage_usage', 'list_receipts', 'delete_receipts'])
@@ -228,7 +227,7 @@ describe('list_groups and get_group', () => {
 
   it('fails the whole call when one requested group is not the caller’s', async () => {
     expect((await checked('list_groups', { groupIds: ['g1'] }))['groups']).toHaveLength(1)
-    const denied = await failure(h, { name: 'list_groups', args: { groupIds: ['g1', 'g3'] }, headers: alice })
+    const denied = await h.mcp.failure({ name: 'list_groups', args: { groupIds: ['g1', 'g3'] }, headers: alice })
     // The agent-facing text, worded as in v1; the other tests compare with GROUP_DENIED.
     expect(denied).toEqual({ code: 'FORBIDDEN', message: 'Group not found, or you are not a member', outcomeUnknown: false, recovery: 'correct_arguments' })
   })
@@ -252,7 +251,7 @@ describe('list_groups and get_group', () => {
 
   it('denies a group of someone else with a certain outcome', async () => {
     for (const groupId of ['g3', 'missing-group']) {
-      const denied = await failure(h, { name: 'get_group', args: { groupId }, headers: alice })
+      const denied = await h.mcp.failure({ name: 'get_group', args: { groupId }, headers: alice })
       expect(denied).toMatchObject({ code: 'FORBIDDEN', message: GROUP_DENIED, outcomeUnknown: false })
     }
   })
@@ -264,7 +263,7 @@ describe('expense writes and reads', () => {
     const created = await checked('create_expense', { groupId: 'g1', expenseId: id, expense: expense({ vendor: 'Nopa', notes: '3 x 10 = 30' }) })
     expect(created).toEqual({ groupId: 'g1', expenseId: id, revision: 1, amount: '30.00', currencyCode: 'USD', uploads: [], uploadError: null })
     for (const [groupId, payer] of [['g1', 'pa'], ['g2', 'qa']] as const) {
-      const again = await failure(h, { name: 'create_expense', args: { groupId, expenseId: id, expense: mcpExpense({ paidBy: payer, people: [payer] }) }, headers: alice })
+      const again = await h.mcp.failure({ name: 'create_expense', args: { groupId, expenseId: id, expense: mcpExpense({ paidBy: payer, people: [payer] }) }, headers: alice })
       expect(again).toEqual({ code: 'CONFLICT', message: 'Expense ID already exists. Read it before retrying; use a new ID only for a distinct expense.', outcomeUnknown: false, recovery: 'read_current_revision' })
     }
     const count = await h.withDb((db) => db.select().from(expenses).where(eq(expenses.id, id)))
@@ -299,7 +298,7 @@ describe('expense writes and reads', () => {
       { paidBy: null },
       { paidBy: null, payers: [{ participant: 'pa', amount: '10' }] },
     ]) {
-      const refused = await failure(h, { name: 'create_expense', args: { groupId: 'g1', expense: expense(bad) }, headers: alice })
+      const refused = await h.mcp.failure({ name: 'create_expense', args: { groupId: 'g1', expense: expense(bad) }, headers: alice })
       expect(refused.code).toBe('BAD_REQUEST')
     }
   })
@@ -328,24 +327,24 @@ describe('expense writes and reads', () => {
       [draft({ documents: [{ id: 'd', url: 'https://x.example/r.png', width: 1, height: 1 }] }), 'BAD_REQUEST', 'Attach only receipts uploaded to this group'],
     ]
     for (const [expense, code, message] of cases) {
-      const refused = await failure(h, { name: 'create_expense', args: { groupId, expense }, headers })
+      const refused = await h.mcp.failure({ name: 'create_expense', args: { groupId, expense }, headers })
       expect({ code: refused.code, message: refused.message.includes(message), outcomeUnknown: refused.outcomeUnknown }, JSON.stringify(expense)).toEqual({
         code,
         message: true,
         outcomeUnknown: false,
       })
     }
-    const extra = await failure(h, { name: 'create_expense', args: { groupId, expense: draft(), participantId: a }, headers })
+    const extra = await h.mcp.failure({ name: 'create_expense', args: { groupId, expense: draft(), participantId: a }, headers })
     expect(extra.code).toBe(SDK_INPUT_REFUSED)
     expect(await written()).toBe(0)
   })
 
   it('refuses a group outside the caller’s memberships as Forbidden, with a certain outcome', async () => {
-    const denied = await failure(h, { name: 'create_expense', args: { groupId: 'g3', expense: mcpExpense({ paidBy: 'rb', people: ['rb'] }) }, headers: alice })
+    const denied = await h.mcp.failure({ name: 'create_expense', args: { groupId: 'g3', expense: mcpExpense({ paidBy: 'rb', people: ['rb'] }) }, headers: alice })
     expect(denied).toEqual({ code: 'FORBIDDEN', message: GROUP_DENIED, outcomeUnknown: false, recovery: 'correct_arguments' })
-    const people = await failure(h, { name: 'create_expense', args: { groupId: 'g1', people: [], expense: expense() }, headers: alice })
+    const people = await h.mcp.failure({ name: 'create_expense', args: { groupId: 'g1', people: [], expense: expense() }, headers: alice })
     expect(people.code).toBe(SDK_INPUT_REFUSED)
-    const none = await failure(h, { name: 'create_expense', args: { expense: expense() }, headers: alice })
+    const none = await h.mcp.failure({ name: 'create_expense', args: { expense: expense() }, headers: alice })
     expect(none.message).toBe('Supply groupId for a group expense, or people for an ungrouped expense.')
   })
 
@@ -357,11 +356,11 @@ describe('expense writes and reads', () => {
     const read = (await checked('get_expense', { groupId: 'g1', expenseId: id }))['expense'] as Record<string, unknown>
     expect(read).toMatchObject({ title: 'Dinner', vendor: 'Nopa', notes: 'Includes tip', amount: '45.00', revision: 2, paidById: 'pa', splitMode: 'EVENLY' })
     expect(read['attribution']).toMatchObject({ updatedBy: { userId: 'alice', source: 'agent' } })
-    const stale = await failure(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id, expectedRevision: 1, changes: { title: 'Lunch' } }, headers: alice })
+    const stale = await h.mcp.failure({ name: 'update_expense', args: { groupId: 'g1', expenseId: id, expectedRevision: 1, changes: { title: 'Lunch' } }, headers: alice })
     expect(stale).toMatchObject({ code: 'CONFLICT', recovery: 'read_current_revision', outcomeUnknown: false })
     const noop = await checked('update_expense', { groupId: 'g1', expenseId: id, expectedRevision: 2 })
     expect(noop['revision']).toBe(2)
-    const missing = await failure(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id, changes: {} }, headers: alice })
+    const missing = await h.mcp.failure({ name: 'update_expense', args: { groupId: 'g1', expenseId: id, changes: {} }, headers: alice })
     expect(missing.code).toBe(SDK_INPUT_REFUSED)
     const cleared = await checked('update_expense', { groupId: 'g1', expenseId: id, expectedRevision: 2, changes: { vendor: null } })
     expect(cleared['revision']).toBe(3)
@@ -380,7 +379,7 @@ describe('expense writes and reads', () => {
     ])
     const shared = newExpenseId()
     await checked('create_expense', { groupId, expenseId: shared, expense: draft({ paidBy: null, payers: [{ participant: a, amount: '10' }, { participant: b, amount: '20' }] }) }, headers)
-    const multi = await failure(h, { name: 'update_expense', args: { groupId, expenseId: shared, expectedRevision: 1, changes: { amount: '40' } }, headers })
+    const multi = await h.mcp.failure({ name: 'update_expense', args: { groupId, expenseId: shared, expectedRevision: 1, changes: { amount: '40' } }, headers })
     expect(multi.code).toBe('BAD_REQUEST')
     const fixed = await checked('update_expense', { groupId, expenseId: shared, expectedRevision: 1, changes: { amount: '40', payers: [{ participant: a, amount: '15' }, { participant: b, amount: '25' }] } }, headers)
     expect(fixed['revision']).toBe(2)
@@ -417,29 +416,29 @@ describe('expense writes and reads', () => {
 
   it('refuses bad list bounds and history selections before reading', async () => {
     for (const args of [{ limit: 0 }, { from: '2026-09-31' }, { from: '2026-02-29' }, { to: '2026-11-01T00:00:00Z' }, { from: '2026-11-02', to: '2026-11-01' }]) {
-      const refused = await failure(h, { name: 'list_expenses', args: { groupId: 'g1', ...args }, headers: alice })
+      const refused = await h.mcp.failure({ name: 'list_expenses', args: { groupId: 'g1', ...args }, headers: alice })
       expect(refused.code).toBe(SDK_INPUT_REFUSED)
     }
-    const history = await failure(h, { name: 'list_expenses', args: { groupId: 'g1', asOf: '2026-11-01T00:00:00Z', atActivityId: 'a1' }, headers: alice })
+    const history = await h.mcp.failure({ name: 'list_expenses', args: { groupId: 'g1', asOf: '2026-11-01T00:00:00Z', atActivityId: 'a1' }, headers: alice })
     expect(history.code).toBe('BAD_REQUEST')
-    const denied = await failure(h, { name: 'list_expenses', args: { groupId: 'g3' }, headers: alice })
+    const denied = await h.mcp.failure({ name: 'list_expenses', args: { groupId: 'g3' }, headers: alice })
     expect(denied.code).toBe('FORBIDDEN')
     // A wrong group never shows another group’s expense.
     const id = newExpenseId()
     await checked('create_expense', { groupId: 'g1', expenseId: id, expense: expense() })
-    const other = await failure(h, { name: 'get_expense', args: { groupId: 'g2', expenseId: id }, headers: alice })
+    const other = await h.mcp.failure({ name: 'get_expense', args: { groupId: 'g2', expenseId: id }, headers: alice })
     expect(other).toMatchObject({ code: 'NOT_FOUND', message: 'Expense not found' })
   })
 
   it('soft-deletes with the current revision and keeps the history', async () => {
     const id = newExpenseId()
     await checked('create_expense', { groupId: 'g1', expenseId: id, expense: expense({ title: 'Taxi' }) })
-    const stale = await failure(h, { name: 'delete_expense', args: { groupId: 'g1', expenseId: id, expectedRevision: 0 }, headers: alice })
+    const stale = await h.mcp.failure({ name: 'delete_expense', args: { groupId: 'g1', expenseId: id, expectedRevision: 0 }, headers: alice })
     expect(stale.code).toBe('CONFLICT')
     const deleted = await checked('delete_expense', { groupId: 'g1', expenseId: id, expectedRevision: 1 })
     expect(deleted).toEqual({ expenseId: id, revision: 2, deleted: true })
-    expect((await failure(h, { name: 'get_expense', args: { groupId: 'g1', expenseId: id }, headers: alice })).code).toBe('NOT_FOUND')
-    expect((await failure(h, { name: 'delete_expense', args: { groupId: 'g1', expenseId: id, expectedRevision: 2 }, headers: alice })).code).toBe('NOT_FOUND')
+    expect((await h.mcp.failure({ name: 'get_expense', args: { groupId: 'g1', expenseId: id }, headers: alice })).code).toBe('NOT_FOUND')
+    expect((await h.mcp.failure({ name: 'delete_expense', args: { groupId: 'g1', expenseId: id, expectedRevision: 2 }, headers: alice })).code).toBe('NOT_FOUND')
     const listed = (await checked('list_expenses', { groupId: 'g1', limit: 100 }))['expenses'] as { id: string }[]
     expect(listed.map((e) => e.id)).not.toContain(id)
     const events = await h.withDb((db) => db.select({ revision: activities.expenseRevision }).from(activities).where(eq(activities.expenseId, id)))
@@ -464,7 +463,7 @@ describe('expense writes and reads', () => {
     const second = { authorization: `Bearer ${await h.apiKey(owner)}` }
     for (const key of [headers, second]) expect(((await checked('get_group', { groupId }, key))['group'] as { id: string }).id).toBe(groupId)
     await h.withDb((db) => db.update(memberships).set({ active: false }).where(eq(memberships.userId, owner)))
-    for (const key of [headers, second]) expect((await failure(h, { name: 'get_group', args: { groupId }, headers: key })).code).toBe('FORBIDDEN')
+    for (const key of [headers, second]) expect((await h.mcp.failure({ name: 'get_group', args: { groupId }, headers: key })).code).toBe('FORBIDDEN')
   })
 
   it('retries a write after a serialization failure, as the RPC path does', async () => {
@@ -509,7 +508,7 @@ describe('expense writes and reads', () => {
   it('answers a write that a database CHECK refuses as BAD_REQUEST, without database detail', async () => {
     await h.withDb((db) => db.execute(sql`ALTER TABLE expenses ADD CONSTRAINT refused_for_test CHECK (title <> 'Refused by the database') NOT VALID`))
     try {
-      const refused = await failure(h, { name: 'create_expense', args: { groupId: 'g1', expense: expense({ title: 'Refused by the database' }) }, headers: alice })
+      const refused = await h.mcp.failure({ name: 'create_expense', args: { groupId: 'g1', expense: expense({ title: 'Refused by the database' }) }, headers: alice })
       expect(refused).toEqual({
         code: 'BAD_REQUEST',
         message: 'The change breaks a rule of the ledger. Check the amounts, the splits and the other fields.',
@@ -558,7 +557,7 @@ describe('API keys on the endpoint', () => {
       const r = await list(headers)
       expect(r.status).toBe(401)
       expect(r.headers.get('www-authenticate')).toBe(
-        `Bearer resource_metadata="${BASE}/.well-known/oauth-protected-resource/api/mcp", scope="agentsplit:read agentsplit:write offline_access"`,
+        mcpChallenge(BASE),
       )
       expect(await r.json()).toEqual({ error: 'Authentication required' })
       expect(r.headers.get('cache-control')).toBe('no-store')
@@ -583,25 +582,25 @@ describe('rate limit', () => {
     await h.account('dave')
     const daveKey = { 'x-api-key': await h.apiKey('dave') }
     const otherKey = { 'x-api-key': await h.apiKey('dave') }
-    for (const headers of [daveKey, otherKey]) expect((await rpc(h, { method: 'tools/list', headers })).status).toBe(200)
+    for (const headers of [daveKey, otherKey]) expect((await h.mcp.rpc({ method: 'tools/list', headers })).status).toBe(200)
     // The user's whole budget, spent a minute ahead of the database clock, so the requests below see no refill.
     const ahead = new Date(Date.now() + 60_000)
     for (let i = 0; i < LIMITS.mcpRequestsPerMinute; i++) await h.withDb((db) => takeMcpRequest(db, { userId: 'dave', at: ahead }))
     for (const headers of [daveKey, otherKey]) {
-      const limited = await rpc(h, { method: 'tools/call', params: { name: 'list_groups', arguments: {} }, headers })
+      const limited = await h.mcp.rpc({ method: 'tools/call', params: { name: 'list_groups', arguments: {} }, headers })
       expect(limited.status).toBe(429)
       expect(limited.body).toEqual({ error: 'MCP request rate exceeded' })
       expect(limited.headers.get('retry-after')).toBe('1')
       expect(limited.headers.get('cache-control')).toBe('no-store')
     }
     // Another user is not affected.
-    expect((await rpc(h, { method: 'tools/list', headers: alice })).status).toBe(200)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers: alice })).status).toBe(200)
   })
 
   it('does not spend a bucket on unauthenticated requests', async () => {
     const buckets = () => h.withDb(async (db) => (await db.select().from(mcpRateLimits)).length)
     const before = await buckets()
-    expect((await rpc(h, { method: 'tools/list' })).status).toBe(401)
+    expect((await h.mcp.rpc({ method: 'tools/list' })).status).toBe(401)
     expect(await buckets()).toBe(before)
   })
 })

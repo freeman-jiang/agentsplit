@@ -20,10 +20,11 @@ import { createPrivateContext, seedGroup } from '../kit/seed'
 import { signIn } from '../kit/session'
 import { fakeBucket } from './fake-bucket'
 import type { CurrencyCode } from '~/shared/currencies'
+import { MCP_PATH } from '~/shared/mcp'
 import type { Role } from '~/shared/vocabulary'
 
 export { BASE, SECRET }
-export const MCP_URL = `${BASE}/api/mcp`
+export const MCP_URL = `${BASE}${MCP_PATH}`
 
 export type Harness = Awaited<ReturnType<typeof startHarness>>
 
@@ -99,15 +100,6 @@ export async function startHarness(options: { perf?: boolean; maintenance?: bool
 
   return { ...database, storage, app, fetch, mcp, authApi, betterAuth, account, apiKey, apiKeyWithId, group, privateContext }
 }
-
-/** One JSON-RPC request through the app. */
-export const rpc = (h: Harness, call: Parameters<Harness['mcp']['rpc']>[0]) => h.mcp.rpc(call)
-/** Calls a tool and returns its result, or the HTTP answer when the call never ran. */
-export const callTool = (h: Harness, call: Call) => h.mcp.callTool(call)
-/** The structured result of a successful call; fails the test with the answer otherwise. */
-export const ok = (h: Harness, call: Call) => h.mcp.ok(call)
-/** The `{error}` body of a failed call. */
-export const failure = (h: Harness, call: Call) => h.mcp.failure(call)
 
 /** One message of the RPC answer: the call's exit, in Effect RPC's JSON form. */
 export type RpcExit = { _tag: 'Exit'; requestId: string; exit: { _tag: 'Success'; value: unknown } | { _tag: 'Failure'; cause: unknown } }

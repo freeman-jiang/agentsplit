@@ -13,8 +13,9 @@ import { assertOAuthWrite, revokeOAuthConnection } from '~/server/auth/oauth-con
 import { removeExpiredDpopProofs } from '~/server/auth/oauth'
 import { mcpExpense } from '../kit/drafts'
 import { counter } from '../kit/ids'
+import { mcpChallenge, OAUTH_SCOPES } from '../kit/mcp'
 import { principal } from '../kit/people'
-import { BASE, callTool, failure, MCP_URL, ok, rpc, startHarness, type Harness } from './harness'
+import { BASE, MCP_URL, startHarness, type Harness } from './harness'
 
 /** Claude Code's published Client ID Metadata Document, as served on 2026-11-05. */
 const CLAUDE_CODE = 'https://claude.ai/oauth/claude-code-client-metadata'
@@ -28,8 +29,8 @@ const CLAUDE_CODE_METADATA = {
   token_endpoint_auth_method: 'none',
 }
 const RESOURCE_METADATA = `${BASE}/.well-known/oauth-protected-resource/api/mcp`
-const CHALLENGE = `Bearer resource_metadata="${RESOURCE_METADATA}", scope="agentsplit:read agentsplit:write offline_access"`
-const ALL = 'agentsplit:read agentsplit:write offline_access'
+const CHALLENGE = mcpChallenge(BASE)
+const ALL = OAUTH_SCOPES.join(' ')
 /** A group of another account, which no test's account can read. */
 const FOREIGN_GROUP = 'g-foreign'
 
@@ -156,7 +157,7 @@ describe('Claude Code flow emulation', () => {
     const initialize = { method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'claude-code', version: '2.1.314' } } }
 
     // 1. An unauthenticated call gets the 401 challenge for read, write and offline_access.
-    const unauthenticated = await rpc(h, initialize)
+    const unauthenticated = await h.mcp.rpc(initialize)
     expect(unauthenticated.status).toBe(401)
     expect(unauthenticated.headers.get('www-authenticate')).toBe(CHALLENGE)
 
@@ -164,7 +165,7 @@ describe('Claude Code flow emulation', () => {
     const resource = await h.fetch(new Request(RESOURCE_METADATA))
     expect(resource.status).toBe(200)
     const meta = (await resource.json()) as { scopes_supported: string[]; authorization_servers: string[] }
-    expect(meta.scopes_supported).toEqual(['agentsplit:read', 'agentsplit:write', 'offline_access'])
+    expect(meta.scopes_supported).toEqual([...OAUTH_SCOPES])
     expect(meta.authorization_servers).toEqual([`${BASE}/api/auth`])
     const issuer = new URL(meta.authorization_servers[0] ?? '')
     const server = await h.fetch(new Request(new URL(`/.well-known/oauth-authorization-server${issuer.pathname}`, issuer)))
@@ -183,16 +184,16 @@ describe('Claude Code flow emulation', () => {
 
     // 3. Authorize, consent and token with the challenge’s scope give a write token with a refresh token.
     const tokens = await connect({ user, scope: ALL })
-    expect(tokens.scope.split(' ').sort()).toEqual(['agentsplit:read', 'agentsplit:write', 'offline_access'])
+    expect(tokens.scope.split(' ').sort()).toEqual([...OAUTH_SCOPES])
     expect(tokens.refresh_token).toBeTruthy()
     expect(tokens.expires_in).toBe(300)
     expect(tokens).not.toHaveProperty('id_token')
 
     // 4. Reads and writes work.
-    expect((await rpc(h, { ...initialize, headers: bearer(tokens) })).status).toBe(200)
-    const groups = await ok(h, { name: 'list_groups', headers: bearer(tokens) })
+    expect((await h.mcp.rpc({ ...initialize, headers: bearer(tokens) })).status).toBe(200)
+    const groups = await h.mcp.ok({ name: 'list_groups', headers: bearer(tokens) })
     expect((groups['groups'] as { id: string }[]).map((g) => g.id)).toEqual([user.groupId])
-    const created = await ok(h, { name: 'create_expense', args: expense(user, 'OAuth dinner'), headers: bearer(tokens) })
+    const created = await h.mcp.ok({ name: 'create_expense', args: expense(user, 'OAuth dinner'), headers: bearer(tokens) })
     expect(created['revision']).toBe(1)
     // The audit row names the OAuth connection.
     const [row] = await h.withDb((db) => db.execute<{ agent_key_id: string; actor_user_id: string }>(sql`SELECT agent_key_id, actor_user_id FROM activities WHERE expense_id = ${created['expenseId'] as string}`)).then((r) => r.rows)
@@ -202,20 +203,20 @@ describe('Claude Code flow emulation', () => {
     // 5. A read-only grant gets an HTTP 403 step-up challenge before the write runs, then re-authorizes.
     const readOnly = await connect({ user, scope: ALL, consentScope: 'agentsplit:read offline_access', prompt: 'consent' })
     expect(readOnly.scope.split(' ')).not.toContain('agentsplit:write')
-    expect((await callTool(h, { name: 'list_groups', headers: bearer(readOnly) })).status).toBe(200)
+    expect((await h.mcp.callTool({ name: 'list_groups', headers: bearer(readOnly) })).status).toBe(200)
     const before = await countExpenses(user.groupId)
-    const blocked = await callTool(h, { name: 'create_expense', args: expense(user, 'Blocked'), headers: bearer(readOnly) })
+    const blocked = await h.mcp.callTool({ name: 'create_expense', args: expense(user, 'Blocked'), headers: bearer(readOnly) })
     expect(blocked.status).toBe(403)
     expect(blocked.headers.get('www-authenticate')).toBe(`${CHALLENGE}, error="insufficient_scope"`)
     expect(await countExpenses(user.groupId)).toBe(before)
     // The client asks again; this time the user allows changes.
     const upgraded = await connect({ user, scope: ALL })
-    expect((await ok(h, { name: 'create_expense', args: expense(user, 'After step-up'), headers: bearer(upgraded) }))['revision']).toBe(1)
+    expect((await h.mcp.ok({ name: 'create_expense', args: expense(user, 'After step-up'), headers: bearer(upgraded) }))['revision']).toBe(1)
 
     // 6. After the access token of step 3 expires, a refresh keeps the connection working.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(Date.now() + 301_000)
-    const expired = await rpc(h, { method: 'tools/list', headers: bearer(tokens) })
+    const expired = await h.mcp.rpc({ method: 'tools/list', headers: bearer(tokens) })
     expect(expired.status).toBe(401)
     expect(expired.headers.get('www-authenticate')).toBe(CHALLENGE)
     const r = await token({ grant_type: 'refresh_token', client_id: CLAUDE_CODE, refresh_token: tokens.refresh_token ?? '' })
@@ -223,7 +224,7 @@ describe('Claude Code flow emulation', () => {
     const refreshed = (await r.json()) as Tokens
     expect(refreshed.refresh_token).toBeTruthy()
     expect(refreshed.refresh_token).not.toBe(tokens.refresh_token)
-    expect((await ok(h, { name: 'create_expense', args: expense(user, 'After refresh'), headers: bearer(refreshed) }))['revision']).toBe(1)
+    expect((await h.mcp.ok({ name: 'create_expense', args: expense(user, 'After refresh'), headers: bearer(refreshed) }))['revision']).toBe(1)
   })
 })
 
@@ -237,7 +238,7 @@ describe('OAuth discovery', () => {
     expect(await response.json()).toMatchObject({
       resource: MCP_URL,
       authorization_servers: [`${BASE}/api/auth`],
-      scopes_supported: ['agentsplit:read', 'agentsplit:write', 'offline_access'],
+      scopes_supported: [...OAUTH_SCOPES],
     })
     expect((await h.fetch(new Request(`${BASE}${path}`, { method: 'HEAD' }))).status).toBe(200)
   })
@@ -252,7 +253,7 @@ describe('access tokens', () => {
     const flipped = `${head}.${body}.${signature?.startsWith('A') ? 'B' : 'A'}${signature?.slice(1)}`
     const forged = `${b64url(new TextEncoder().encode(JSON.stringify({ alg: 'ES256', kid: 'nope' })))}.${body}.${random(64)}`
     for (const headers of [bearer(flipped), bearer(forged), { authorization: `Token ${t.access_token}` }, { authorization: 'Bearer ' }]) {
-      const r = await rpc(h, { method: 'tools/list', headers })
+      const r = await h.mcp.rpc({ method: 'tools/list', headers })
       expect(r.status).toBe(401)
       expect(r.headers.get('www-authenticate')).toBe(CHALLENGE)
     }
@@ -262,28 +263,28 @@ describe('access tokens', () => {
     const user = await member()
     const t = await connect({ user })
     const key = await h.apiKey(user.id)
-    expect((await rpc(h, { method: 'tools/list', headers: bearer(t) })).status).toBe(200)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers: bearer(t) })).status).toBe(200)
     await h.withDb((db) => revokeOAuthConnection(db, { userId: user.id, clientId: CLAUDE_CODE }))
-    expect((await rpc(h, { method: 'tools/list', headers: bearer(t) })).status).toBe(401)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers: bearer(t) })).status).toBe(401)
     expect(await refusedRefresh(t)).toMatchObject({ status: 400, body: { error: 'invalid_grant' } })
-    expect((await rpc(h, { method: 'tools/list', headers: { 'x-api-key': key } })).status).toBe(200)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers: { 'x-api-key': key } })).status).toBe(200)
     // Reconnecting never revives the old token.
     const again = await connect({ user })
-    expect((await rpc(h, { method: 'tools/list', headers: bearer(again) })).status).toBe(200)
-    expect((await rpc(h, { method: 'tools/list', headers: bearer(t) })).status).toBe(401)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers: bearer(again) })).status).toBe(200)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers: bearer(t) })).status).toBe(401)
   })
 
   it('follow the current consent: write removed means step-up, read removed means 403', async () => {
     const user = await member()
     const t = await connect({ user })
-    expect((await ok(h, { name: 'create_expense', args: expense(user, 'Before reduce'), headers: bearer(t) }))['revision']).toBe(1)
+    expect((await h.mcp.ok({ name: 'create_expense', args: expense(user, 'Before reduce'), headers: bearer(t) }))['revision']).toBe(1)
     await setConsent(user, ['agentsplit:read', 'offline_access'])
-    const write = await callTool(h, { name: 'create_expense', args: expense(user, 'After reduce'), headers: bearer(t) })
+    const write = await h.mcp.callTool({ name: 'create_expense', args: expense(user, 'After reduce'), headers: bearer(t) })
     expect(write.status).toBe(403)
     expect(write.headers.get('www-authenticate')).toContain('error="insufficient_scope"')
-    expect((await callTool(h, { name: 'list_groups', headers: bearer(t) })).status).toBe(200)
+    expect((await h.mcp.callTool({ name: 'list_groups', headers: bearer(t) })).status).toBe(200)
     await setConsent(user, ['offline_access'])
-    const read = await rpc(h, { method: 'tools/list', headers: bearer(t) })
+    const read = await h.mcp.rpc({ method: 'tools/list', headers: bearer(t) })
     expect(read.status).toBe(403)
     expect(read.body).toEqual({ error: 'Read permission is no longer granted' })
     expect(read.headers.get('www-authenticate')).toBe(`${CHALLENGE}, error="insufficient_scope"`)
@@ -292,10 +293,10 @@ describe('access tokens', () => {
   it('see membership changes at once', async () => {
     const user = await member()
     const t = await connect({ user })
-    expect((await ok(h, { name: 'get_group', args: { groupId: user.groupId }, headers: bearer(t) }))['group']).toMatchObject({ id: user.groupId })
-    expect((await failure(h, { name: 'get_group', args: { groupId: FOREIGN_GROUP }, headers: bearer(t) })).code).toBe('FORBIDDEN')
+    expect((await h.mcp.ok({ name: 'get_group', args: { groupId: user.groupId }, headers: bearer(t) }))['group']).toMatchObject({ id: user.groupId })
+    expect((await h.mcp.failure({ name: 'get_group', args: { groupId: FOREIGN_GROUP }, headers: bearer(t) })).code).toBe('FORBIDDEN')
     await h.withDb((db) => db.update(memberships).set({ active: false }).where(eq(memberships.userId, user.id)))
-    expect((await failure(h, { name: 'get_group', args: { groupId: user.groupId }, headers: bearer(t) })).code).toBe('FORBIDDEN')
+    expect((await h.mcp.failure({ name: 'get_group', args: { groupId: user.groupId }, headers: bearer(t) })).code).toBe('FORBIDDEN')
   })
 
   it('refuse a denied consent without tokens', async () => {
@@ -337,14 +338,14 @@ describe('DPoP-bound tokens', () => {
     expect(r.status, await r.clone().text()).toBe(200)
     const issued = (await r.json()) as Tokens
     expect(issued.token_type.toLowerCase()).toBe('dpop')
-    expect((await rpc(h, { method: 'tools/list', headers: bearer(issued) })).status).toBe(401)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers: bearer(issued) })).status).toBe(401)
     const headers = { authorization: `DPoP ${issued.access_token}`, DPoP: await proof({ url: MCP_URL, accessToken: issued.access_token }) }
-    expect((await rpc(h, { method: 'tools/list', headers })).status).toBe(200)
-    expect((await rpc(h, { method: 'tools/list', headers })).status).toBe(401)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers })).status).toBe(200)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers })).status).toBe(401)
     const fresh = { authorization: `DPoP ${issued.access_token}`, DPoP: await proof({ url: MCP_URL, accessToken: issued.access_token }) }
-    expect((await rpc(h, { method: 'tools/list', headers: fresh })).status).toBe(200)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers: fresh })).status).toBe(200)
     const wrongUrl = { authorization: `DPoP ${issued.access_token}`, DPoP: await proof({ url: `${BASE}/elsewhere`, accessToken: issued.access_token }) }
-    expect((await rpc(h, { method: 'tools/list', headers: wrongUrl })).status).toBe(401)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers: wrongUrl })).status).toBe(401)
   })
 
   it('lose their replay rows an hour after the proof expires; other verification rows stay', async () => {
@@ -385,7 +386,7 @@ describe('dynamic client registration', () => {
     expect(client.client_secret).toBeUndefined()
     const user = await member()
     const t = await connect({ user, clientId: client.client_id, redirectUri: 'http://127.0.0.1:51234/callback' })
-    expect(((await ok(h, { name: 'list_groups', headers: bearer(t) }))['groups'] as { id: string }[]).map((g) => g.id)).toEqual([user.groupId])
+    expect(((await h.mcp.ok({ name: 'list_groups', headers: bearer(t) }))['groups'] as { id: string }[]).map((g) => g.id)).toEqual([user.groupId])
   })
 })
 
@@ -427,14 +428,14 @@ describe('OAuth routes', () => {
     const user = await member()
     const t = await connect({ user })
     const other = await connect({ user })
-    expect((await rpc(h, { method: 'tools/list', headers: bearer(t) })).status).toBe(200)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers: bearer(t) })).status).toBe(200)
     const r = await revoke(t)
     expect(r.status, await r.clone().text()).toBe(200)
-    const after = await rpc(h, { method: 'tools/list', headers: bearer(t) })
+    const after = await h.mcp.rpc({ method: 'tools/list', headers: bearer(t) })
     expect(after.status).toBe(401)
     expect(after.headers.get('www-authenticate')).toBe(CHALLENGE)
     // Only that grant ends; another connection of the same client keeps working.
-    expect((await rpc(h, { method: 'tools/list', headers: bearer(other) })).status).toBe(200)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers: bearer(other) })).status).toBe(200)
   })
 
   it('deleting the consent revokes the connections and refresh tokens of that client (P-MCP-138)', async () => {
@@ -442,7 +443,7 @@ describe('OAuth routes', () => {
     const t = await connect({ user })
     const r = await deleteConsent({ id: await consentId(user), cookie: user.cookie })
     expect(r.status, await r.clone().text()).toBe(200)
-    expect((await rpc(h, { method: 'tools/list', headers: bearer(t) })).status).toBe(401)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers: bearer(t) })).status).toBe(401)
     expect(await refusedRefresh(t)).toMatchObject({ status: 400, body: { error: 'invalid_grant' } })
     const open = await h.withDb((db) => db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM oauth_connections WHERE user_id = ${user.id} AND client_id = ${CLAUDE_CODE} AND revoked_at IS NULL`))
     expect(open.rows[0]?.n).toBe(0)
@@ -458,7 +459,7 @@ describe('OAuth routes', () => {
     expect(((await session.json()) as { user: { id: string } }).user.id).toBe(intruder.id)
     expect((await deleteConsent({ id, cookie: intruder.cookie })).status).toBe(401)
     expect(await consentId(user)).toBe(id)
-    expect((await rpc(h, { method: 'tools/list', headers: bearer(t) })).status).toBe(200)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers: bearer(t) })).status).toBe(200)
   })
 
   it('UserInfo applies the MCP checks: a revoked connection gets the 401 challenge (P-MCP-139)', async () => {
