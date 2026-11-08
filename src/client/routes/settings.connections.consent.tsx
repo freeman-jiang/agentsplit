@@ -1,58 +1,54 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
-import { authClient } from '~/client/auth-client'
-import { consentClientQuery, errorMessage } from '~/client/queries/account'
-import { meQuery } from '~/client/queries'
+import { authCall, authClient } from '~/client/auth-client'
+import { consentClientQuery } from '~/client/queries/account'
+import { meQuery } from '~/client/queries/session'
 import { Button } from '~/client/ui/button'
-import { OAUTH_READ_SCOPE, OAUTH_SCOPES, OAUTH_WRITE_SCOPE } from '~/shared/account'
+import { OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE, type OAuthScope } from '~/shared/account'
 
 export const Route = createFileRoute('/settings/connections/consent')({
   component: Consent,
 })
 
+const UNAUTHORIZED = 'Unable to authorize this connection'
+
 type Request = { clientId: string; redirectHost: string; scopes: string[]; claims: string[] }
 
-const CLAIM_SECTIONS = ['userinfo', 'id_token']
+/** What each scope lets the app do, in the order the screen lists them. The write scope is the "Allow changes" checkbox. */
+const SCOPE_TEXT = {
+  [OAUTH_READ_SCOPE]: 'Read your groups, people, expenses, payments, balances, receipts, exports and full revision history.',
+  profile: 'Read your account name and profile information.',
+  email: 'Read your email address.',
+  openid: 'Identify your AgentSplit account.',
+  offline_access: 'Stay connected using renewable tokens until you revoke access or the connection expires.',
+} as const satisfies Record<Exclude<OAuthScope, typeof OAUTH_WRITE_SCOPE>, string>
 
-/** The OIDC claims request: an object with optional userinfo and id_token objects of short claim names. */
-function requestedClaims(raw: string | null): string[] | null {
-  if (raw === null) return []
-  if (raw.length > 8192) return null
-  let parsed: unknown
+/** The claim names of the OIDC claims request, to list them; Better Auth checks the request itself. */
+function requestedClaims(raw: string | null): string[] {
   try {
-    parsed = JSON.parse(raw)
+    const parsed: unknown = JSON.parse(raw ?? '{}')
+    if (typeof parsed !== 'object' || parsed === null) return []
+    const sections = Object.entries(parsed).filter(([section]) => section === 'userinfo' || section === 'id_token')
+    return [...new Set(sections.flatMap(([, value]) => (typeof value === 'object' && value !== null ? Object.keys(value) : [])))]
   } catch {
-    return null
+    return []
   }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null
-  const names = new Set<string>()
-  for (const [section, value] of Object.entries(parsed)) {
-    // Other members are ignored, as the current app's schema does.
-    if (!CLAIM_SECTIONS.includes(section)) continue
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
-    for (const name of Object.keys(value)) {
-      if (name.length > 80) return null
-      names.add(name)
-    }
-  }
-  return [...names]
 }
 
-/** Reads the signed authorization query that Better Auth sent here, or null when it is unusable. */
+/**
+ * What the screen shows of the signed authorization query that Better Auth
+ * sent here. Better Auth verifies the query when the user answers, so this
+ * only reads it; without a client or scopes there is nothing to show.
+ */
 function parseRequest(search: string): Request | null {
   const query = new URLSearchParams(search)
   const clientId = query.get('client_id') ?? ''
   const scopes = (query.get('scope') ?? '').split(' ').filter(Boolean)
-  const claims = requestedClaims(query.get('claims'))
-  let redirect: URL
-  try {
-    redirect = new URL(query.get('redirect_uri') ?? '')
-  } catch {
-    return null
-  }
-  if (!clientId || !query.get('sig') || claims === null || !scopes.length || scopes.some((s) => !OAUTH_SCOPES.includes(s))) return null
-  return { clientId, redirectHost: redirect.host || redirect.href, scopes, claims }
+  if (!clientId || !scopes.length) return null
+  const redirect = query.get('redirect_uri') ?? ''
+  const redirectHost = URL.canParse(redirect) ? new URL(redirect).host || redirect : redirect
+  return { clientId, redirectHost, scopes, claims: requestedClaims(query.get('claims')) }
 }
 
 function Consent() {
@@ -81,19 +77,23 @@ function ConsentScreen(props: { request: Request; clientName: string | null }) {
   async function respond(accept: boolean) {
     setPending(true)
     setError('')
-    try {
-      // The OAuth provider client plugin adds this page's signed query as oauth_query.
-      const result = await authClient.$fetch<{ redirect: boolean; url: string }>('/oauth2/consent', {
-        method: 'POST',
-        body: { accept, scope: scopes.filter((s) => allowWrite || s !== OAUTH_WRITE_SCOPE).join(' ') },
-      })
-      if (result.error || !result.data?.url) throw new Error(errorMessage(result.error, 'Unable to authorize this connection'))
+    // The OAuth provider client plugin adds this page's signed query as oauth_query.
+    const result = await authCall({
+      run: () =>
+        authClient.$fetch<{ redirect: boolean; url: string }>('/oauth2/consent', {
+          method: 'POST',
+          body: { accept, scope: scopes.filter((s) => allowWrite || s !== OAUTH_WRITE_SCOPE).join(' ') },
+        }),
+      refused: UNAUTHORIZED,
+      failed: UNAUTHORIZED,
+    })
+    if ('data' in result && result.data.url) {
       // Better Auth's client already follows redirect=true responses. Avoid a second navigation.
       if (!result.data.redirect) window.location.assign(result.data.url)
-    } catch (cause) {
-      setError(errorMessage(cause, 'Unable to authorize this connection'))
-      setPending(false)
+      return
     }
+    setError('error' in result ? result.error : UNAUTHORIZED)
+    setPending(false)
   }
   return (
     <main className="mx-auto max-w-lg space-y-6 px-4 py-12">
@@ -109,15 +109,7 @@ function ConsentScreen(props: { request: Request; clientName: string | null }) {
         <div className="space-y-4 rounded-2xl border bg-card p-5">
           <h2 className="font-medium">Requested access</h2>
           <ul className="list-disc space-y-3 ps-5 text-sm">
-            {scopes.includes(OAUTH_READ_SCOPE) && (
-              <li>Read your groups, people, expenses, payments, balances, receipts, exports and full revision history.</li>
-            )}
-            {scopes.includes('profile') && <li>Read your account name and profile information.</li>}
-            {scopes.includes('email') && <li>Read your email address.</li>}
-            {scopes.includes('openid') && <li>Identify your AgentSplit account.</li>}
-            {scopes.includes('offline_access') && (
-              <li>Stay connected using renewable tokens until you revoke access or the connection expires.</li>
-            )}
+            {Object.entries(SCOPE_TEXT).map(([scope, text]) => scopes.includes(scope) && <li key={scope}>{text}</li>)}
           </ul>
           {claims.length > 0 && <p className="break-words text-sm">Additional requested profile fields: {claims.join(', ')}.</p>}
           {scopes.includes(OAUTH_WRITE_SCOPE) && (

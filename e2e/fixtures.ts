@@ -3,15 +3,16 @@
 // disposable loopback database that scripts/e2e.sh creates.
 import { randomBytes } from 'node:crypto'
 import type { BrowserContext } from '@playwright/test'
-import { serializeSignedCookie } from 'better-call'
 import pg from 'pg'
-import { groups, memberships, participants } from '../db/schema/app'
-import { session, user } from '../db/schema/auth'
 import type { ExpenseDraft } from '../src/shared/expense-rules'
 import { randomId } from '../src/shared/ids'
-import { createAuth } from '../src/server/auth'
-import { makeDb, type Db } from '../src/server/db'
-import { createExpense, updateExpense, type Principal } from '../src/server/ledger'
+import { createAuth } from '../src/server/auth/auth'
+import { makeDb, serializable, type Db } from '../src/server/core/db'
+import { createExpense, updateExpense } from '../src/server/ledger'
+import { draft as evenDraft } from '../test/kit/drafts'
+import { testSettings } from '../test/kit/config'
+import { seedGroup, seedHousehold as seedHouseholdRows, type Household } from '../test/kit/seed'
+import { signIn } from '../test/kit/session'
 
 const url = new URL(process.env['E2E_DATABASE_URL'] ?? '')
 if (!['127.0.0.1', 'localhost'].includes(url.hostname) || !/e2e/.test(url.pathname)) throw new Error('E2E needs the disposable loopback database from scripts/e2e.sh')
@@ -28,71 +29,65 @@ export async function withDb<A>(work: (db: Db) => Promise<A>): Promise<A> {
   }
 }
 
-const tx = <A>(work: (db: Db) => Promise<A>) => withDb((db) => db.transaction(work, { isolationLevel: 'serializable' }))
+const tx = <A>(work: (db: Db) => Promise<A>) => withDb((db) => serializable(db, work))
 
-export type Household = { slug: string; groupId: string; owner: Principal; people: { id: string; name: string }[] }
+/** The Google client that scripts/e2e.sh gives the server. */
+export const E2E_GOOGLE_CLIENT_ID = 'e2e-client'
+const e2eSettings = (baseUrl: string) => testSettings({ baseUrl, secret, googleClientId: E2E_GOOGLE_CLIENT_ID, googleClientSecret: 'e2e-secret' })
 
-/** A group with three people; the first is the signed-in owner. */
+export type { Household }
+
+/** A group with three people; the first is the signed-in owner, the others have no account. */
 export async function seedHousehold(context: BrowserContext, baseURL: string): Promise<Household> {
   const suffix = randomBytes(5).toString('hex')
-  const people = ['Alice', 'Bob', 'Cara'].map((name) => ({ id: `${name.toLowerCase()}-${suffix}`, name: `${name} Example` }))
-  const owner: Principal = { userId: `u-${people[0]?.id}`, name: people[0]?.name ?? '', email: `alice-${suffix}@example.com`, source: 'web', agentKeyId: null }
-  const groupId = `g-${suffix}`
-  const slug = `home-${suffix}`
-  const token = randomBytes(32).toString('hex')
-  await withDb(async (db) => {
-    const now = new Date()
-    await db.insert(user).values({ id: owner.userId, name: owner.name, email: owner.email, emailVerified: true, createdAt: now, updatedAt: now })
-    await db.insert(groups).values({ id: groupId, kind: 'named', slug, name: `Household ${suffix}`, defaultCurrency: 'USD' })
-    await db.insert(participants).values(people.map((p) => ({ id: p.id, groupId, name: p.name })))
-    await db.insert(memberships).values({ userId: owner.userId, groupId, role: 'admin', participantId: people[0]?.id ?? null })
-    await db.insert(session).values({ id: `s-${suffix}`, token, userId: owner.userId, expiresAt: new Date(Date.now() + 3_600_000), createdAt: now, updatedAt: now })
+  const [alice, bob, cara] = ['Alice', 'Bob', 'Cara'].map((name) => ({ id: `${name.toLowerCase()}-${suffix}`, name: `${name} Example` }))
+  if (!alice || !bob || !cara) throw new Error('three people')
+  const { household, cookie } = await withDb(async (db) => {
+    const household = await seedHouseholdRows(db, { groupId: `g-${suffix}`, slug: `home-${suffix}`, name: `Household ${suffix}`, people: [{ ...alice, userId: `u-${alice.id}` }, bob, cara] })
+    return { household, cookie: await signIn(db, { userId: household.owner.userId, secret, baseUrl: baseURL }) }
   })
-  const signed = (await serializeSignedCookie('better-auth.session_token', token, secret)).split(';')[0] ?? ''
-  await context.addCookies([{ name: 'better-auth.session_token', value: signed.slice('better-auth.session_token='.length), url: baseURL, httpOnly: true, sameSite: 'Lax' }])
-  return { slug, groupId, owner, people }
+  await context.addCookies([{ name: cookie.name, value: cookie.value, url: baseURL, httpOnly: true, sameSite: 'Lax' }])
+  return household
 }
 
 /** A second group of the household's owner, without a slug, with an ID as the app makes them. Returns its ID. */
 export async function seedUnsluggedGroup(household: Household): Promise<string> {
   const groupId = randomId()
   const participantId = randomId()
-  await withDb(async (db) => {
-    await db.insert(groups).values({ id: groupId, kind: 'named', slug: null, name: `Trip ${groupId}`, defaultCurrency: 'USD' })
-    await db.insert(participants).values({ id: participantId, groupId, name: household.owner.name })
-    await db.insert(memberships).values({ userId: household.owner.userId, groupId, role: 'admin', participantId })
-  })
+  await tx((db) =>
+    seedGroup(db, {
+      groupId,
+      slug: null,
+      name: `Trip ${groupId}`,
+      people: [{ id: participantId, name: household.owner.name }],
+      creator: household.owner,
+      members: [{ userId: household.owner.userId, participantId, role: 'admin' }],
+    }),
+  )
   return groupId
 }
 
-/** An even split of `amount` among everyone, paid by `payer`. */
+/** An even split of `amount` among everyone, paid by person `payer` (the owner by default). */
 export function draft(household: Household, data: { title: string; amount: string; date: string; payer?: number; vendor?: string }): ExpenseDraft {
-  const payer = household.people[data.payer ?? 0]?.id ?? ''
-  return {
-    kind: 'expense',
+  return evenDraft({
+    payer: household.people[data.payer ?? 0]?.id ?? '',
+    people: household.people.map((p) => p.id),
     title: data.title,
     vendor: data.vendor ?? null,
-    notes: '',
-    categoryId: 0,
-    expenseDate: data.date,
-    currency: 'USD',
     amount: data.amount,
-    payers: [{ participantId: payer, amount: data.amount }],
-    splitMode: 'evenly',
-    shares: household.people.map((p) => ({ participantId: p.id, weight: '1' })),
-    recurrence: 'none',
-  }
+    expenseDate: data.date,
+  })
 }
 
 export const addExpense = (household: Household, expenseId: string, expense: ExpenseDraft) =>
-  tx((db) => createExpense(db, { principal: household.owner, group: household.groupId, expenseId, idempotencyKey: `e2e-${expenseId}`, expense }))
+  tx((db) => createExpense(db, { principal: household.owner, groupId: household.groupId, expenseId, idempotencyKey: `e2e-${expenseId}`, expense }))
 
 export const editExpense = (household: Household, expenseId: string, expectedRevision: number, expense: ExpenseDraft) =>
-  tx((db) => updateExpense(db, { principal: household.owner, group: household.groupId, expenseId, expectedRevision, idempotencyKey: `e2e-edit-${expenseId}-${expectedRevision}`, expense }))
+  tx((db) => updateExpense(db, { principal: household.owner, groupId: household.groupId, expenseId, expectedRevision, idempotencyKey: `e2e-edit-${expenseId}-${expectedRevision}`, expense }))
 
 /** A raw agent API key for a seeded account, from Better Auth's own createApiKey, as Settings creates it. */
 export const agentKey = (userId: string, baseURL: string) =>
   withDb(async (db) => {
-    const auth = createAuth({ db, baseUrl: baseURL, secret, googleClientId: 'e2e-client', googleClientSecret: 'e2e-secret' })
+    const auth = createAuth({ ...e2eSettings(baseURL), db })
     return (await auth.api.createApiKey({ body: { userId } })).key
   })

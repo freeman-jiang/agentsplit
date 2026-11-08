@@ -1,21 +1,20 @@
 // The MCP path verifies credentials without building Better Auth. These tests
 // hold it to Better Auth's own answers on the same rows.
-import { DPOP_SIGNING_ALGORITHMS } from 'better-auth/oauth2'
+import { createDpopReplayStore, DPOP_SIGNING_ALGORITHMS } from 'better-auth/oauth2'
 import { eq } from 'drizzle-orm'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { apikey } from '../../db/schema/auth'
-import * as authOptions from '~/server/auth-options'
-import { hashApiKey, verifyApiKey } from '~/server/mcp/api-key'
-import { readApiKey } from '~/server/mcp/authenticate'
-import { CHALLENGE_SCOPES, DPOP_ALGORITHMS, protectedResourceMetadata } from '~/server/mcp/challenge'
-import * as constants from '~/server/mcp/constants'
-import { BASE, startHarness, type Harness } from './mcp-harness'
-
-// These tests create many API keys for one account; the fair-use cap has its own test (test/db/limits.test.ts).
-vi.mock('~/shared/limits', async (original) => {
-  const limits = await original<typeof import('~/shared/limits')>()
-  return { ...limits, LIMITS: { ...limits.LIMITS, apiKeys: 1000 } }
-})
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { apikey, jwks } from '../../db/schema/auth'
+import { verifyApiKey } from '~/server/auth/api-key'
+import { readApiKey } from '~/server/auth/authenticate'
+import { DPOP_ALGORITHMS, protectedResourceMetadata } from '~/server/auth/challenge'
+import { createAuth } from '~/server/auth/auth'
+import { loadJwks, replayStore } from '~/server/auth/oauth'
+import { sha256Base64url } from '~/server/core/ids'
+import { LIMITS } from '~/shared/limits'
+import { testSettings } from '../kit/config'
+import { counter } from '../kit/ids'
+import { OAUTH_SCOPES } from '../kit/mcp'
+import { BASE, startHarness, type Harness } from './harness'
 
 let h: Harness
 beforeAll(async () => {
@@ -24,16 +23,43 @@ beforeAll(async () => {
 })
 afterAll(() => h.close())
 
-describe('copied constants', () => {
-  it('equal the values Better Auth uses', () => {
-    expect(constants.OAUTH_READ_SCOPE).toBe(authOptions.OAUTH_READ_SCOPE)
-    expect(constants.OAUTH_WRITE_SCOPE).toBe(authOptions.OAUTH_WRITE_SCOPE)
-    expect(constants.OAUTH_CONNECTION_CLAIM).toBe(authOptions.OAUTH_CONNECTION_CLAIM)
-    expect(constants.mcpResource(BASE)).toBe(authOptions.mcpResource(BASE))
-    expect(constants.oauthIssuer(BASE)).toBe(authOptions.oauthIssuer(BASE))
+describe('copied Better Auth values', () => {
+  it('lists the DPoP algorithms Better Auth accepts', () => {
     expect([...DPOP_ALGORITHMS]).toEqual([...DPOP_SIGNING_ALGORITHMS])
-    // Every challenge scope is one the provider grants.
-    for (const scope of CHALLENGE_SCOPES) expect(authOptions.OAUTH_SCOPES).toContain(scope)
+  })
+
+  it('reads the same JWKS that Better Auth publishes, rotated keys within the grace period included', async () => {
+    const day = 24 * 60 * 60 * 1000
+    const key = (id: string, x: string, data: { expiresAt: Date | null; alg: string | null; crv: string | null }) => ({
+      id,
+      publicKey: JSON.stringify({ kty: 'OKP', crv: 'Ed25519', x }),
+      privateKey: 'unused',
+      createdAt: new Date(Date.now() - 60 * day),
+      ...data,
+    })
+    await h.withDb((db) =>
+      db.insert(jwks).values([
+        key('jwk-current', 'a'.repeat(43), { expiresAt: null, alg: null, crv: null }),
+        key('jwk-rotated', 'b'.repeat(43), { expiresAt: new Date(Date.now() - 10 * day), alg: 'EdDSA', crv: 'Ed25519' }),
+        key('jwk-retired', 'c'.repeat(43), { expiresAt: new Date(Date.now() - 31 * day), alg: 'EdDSA', crv: null }),
+      ]),
+    )
+    const published = (await (await h.betterAuth(new Request(`${BASE}/api/auth/jwks`))).json()) as { keys: { kid: string }[] }
+    const ours = await h.withDb((db) => loadJwks(db))
+    const byKid = (keys: readonly { kid: string }[]) => [...keys].sort((a, b) => a.kid.localeCompare(b.kid))
+    expect(byKid(ours.keys)).toEqual(byKid(published.keys))
+    expect(ours.keys.map((k) => k.kid)).not.toContain('jwk-retired')
+  })
+
+  it('reserves a DPoP proof in the same row as Better Auth, so each refuses a proof that the other saw', async () => {
+    const theirs = await h.withDb(async (db) => createDpopReplayStore((await createAuth({ ...testSettings(), db }).$context).internalAdapter))
+    const now = new Date()
+    const proof = (key: string) => ({ key, now, expiresAt: new Date(now.getTime() + 60_000) })
+    const ours = (key: string) => h.withDb(async (db) => replayStore(db).reserve(proof(key)))
+    expect(await ours('proof-ours-first')).toBe(true)
+    expect(await theirs.reserve(proof('proof-ours-first'))).toBe(false)
+    expect(await theirs.reserve(proof('proof-theirs-first'))).toBe(true)
+    expect(await ours('proof-theirs-first')).toBe(false)
   })
 })
 
@@ -46,7 +72,7 @@ describe('protected-resource metadata', () => {
       authorization_servers: [`${BASE}/api/auth`],
       bearer_methods_supported: ['header'],
       dpop_signing_alg_values_supported: ['EdDSA', 'ES256', 'ES512', 'PS256', 'RS256'],
-      scopes_supported: ['agentsplit:read', 'agentsplit:write', 'offline_access'],
+      scopes_supported: [...OAUTH_SCOPES],
     })
     const head = protectedResourceMetadata(new Request(`${BASE}/.well-known/oauth-protected-resource`, { method: 'HEAD' }), BASE)
     expect(head.status).toBe(200)
@@ -55,7 +81,7 @@ describe('protected-resource metadata', () => {
   })
 
   it('differs from Better Auth’s own document only by offline_access', async () => {
-    const theirs = await h.auth(new Request(`${BASE}/.well-known/oauth-protected-resource/api/mcp`))
+    const theirs = await h.betterAuth(new Request(`${BASE}/.well-known/oauth-protected-resource/api/mcp`))
     expect(theirs.status).toBe(200)
     const body = (await theirs.json()) as { scopes_supported: string[] }
     const ours = (await protectedResourceMetadata(new Request(`${BASE}/.well-known/oauth-protected-resource/api/mcp`), BASE).json()) as Record<string, unknown>
@@ -83,9 +109,11 @@ describe('API key headers', () => {
 })
 
 describe('API key verification', () => {
-  /** Two keys with the same row state: Better Auth verifies one, the MCP path the other. */
+  const owners = counter('key-owner')
+  /** Two keys with the same row state, of a new account so the key cap never applies: Better Auth verifies one, the MCP path the other. */
   async function twins(state: Partial<typeof apikey.$inferInsert>) {
-    const created = await h.authApi(async (api) => [await api.createApiKey({ body: { userId: 'alice' } }), await api.createApiKey({ body: { userId: 'alice' } })])
+    const { id: userId } = await h.account(owners())
+    const created = await h.authApi(async (api) => [await api.createApiKey({ body: { userId } }), await api.createApiKey({ body: { userId } })])
     if (Object.keys(state).length) for (const k of created) await h.withDb((db) => db.update(apikey).set(state).where(eq(apikey.id, k.id)))
     return { theirs: created[0]!, ours: created[1]! }
   }
@@ -102,15 +130,17 @@ describe('API key verification', () => {
 
   const now = () => new Date()
   const ago = (ms: number) => new Date(Date.now() - ms)
+  /** The window of LIMITS.apiKeyRequestsPerMinute. */
+  const MINUTE = 60_000
   const cases: [string, Partial<typeof apikey.$inferInsert>][] = [
     ['a new key', {}],
     ['a disabled key', { enabled: false }],
     ['an expired key', { expiresAt: ago(1000) }],
     ['a key that expires later', { expiresAt: new Date(Date.now() + 3_600_000) }],
     ['a key inside its window', { lastRequest: ago(5_000), requestCount: 7 }],
-    ['a key at its limit', { lastRequest: ago(5_000), requestCount: 120 }],
-    ['a key whose window has passed', { lastRequest: ago(61_000), requestCount: 120 }],
-    ['a key without rate limiting', { rateLimitEnabled: false, lastRequest: ago(5_000), requestCount: 500 }],
+    ['a key at its limit', { lastRequest: ago(5_000), requestCount: LIMITS.apiKeyRequestsPerMinute }],
+    ['a key whose window has passed', { lastRequest: ago(MINUTE + 1_000), requestCount: LIMITS.apiKeyRequestsPerMinute }],
+    ['a key without rate limiting', { rateLimitEnabled: false, lastRequest: ago(5_000), requestCount: 2 * LIMITS.apiKeyRequestsPerMinute }],
     ['a key without a limit window', { rateLimitTimeWindow: null }],
     ['a key with quota left', { remaining: 2 }],
     ['a key with no quota and no refill', { remaining: 0 }],
@@ -135,15 +165,15 @@ describe('API key verification', () => {
   it('refuses an unknown key and stores the same hash Better Auth stores', async () => {
     expect(await h.withDb((db) => verifyApiKey(db, `agentsplit_${'z'.repeat(40)}`))).toEqual({ valid: false, code: 'INVALID_API_KEY' })
     const created = await h.authApi((api) => api.createApiKey({ body: { userId: 'alice' } }))
-    expect((await row(created.id))?.key).toBe(await hashApiKey(created.key))
+    expect((await row(created.id))?.key).toBe(sha256Base64url(created.key))
     expect(created.key.startsWith('agentsplit_')).toBe(true)
     expect((await row(created.id))?.expiresAt).toBeNull()
   })
 
   it('says how long a rate-limited key waits', async () => {
-    const { ours } = await twins({ lastRequest: ago(20_000), requestCount: 120 })
+    const { ours } = await twins({ lastRequest: ago(20_000), requestCount: LIMITS.apiKeyRequestsPerMinute })
     const result = await h.withDb((db) => verifyApiKey(db, ours.key))
     expect(result).toMatchObject({ valid: false, code: 'RATE_LIMITED' })
-    if (!result.valid && result.code === 'RATE_LIMITED') expect(result.tryAgainInMs).toBeGreaterThan(39_000)
+    if (!result.valid && result.code === 'RATE_LIMITED') expect(result.tryAgainInMs).toBeGreaterThan(MINUTE - 21_000)
   })
 })

@@ -3,26 +3,51 @@
 // ungrouped form of create_expense call the same services.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
+import { isUtcTime, UTC_TIME } from '../dates'
+import { LIMITS } from '../limits'
+import { Category } from './expenses'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
-import { GROUP_ID } from '../ids'
-import { CalendarDate, Expense, ExpenseInput, Id, IdempotencyKey, Participant, ReadError, WriteError } from './core'
+import {
+  Attribution,
+  CalendarDate,
+  CallerTotals,
+  CategoryId,
+  EmailInput,
+  Expense,
+  ExpenseInput,
+  ExpenseKindSchema,
+  GroupKindSchema,
+  Id,
+  IdempotencyKey,
+  NameInput,
+  NewId,
+  PageLimit,
+  Participant,
+  ReadError,
+  RoleSchema,
+  Transfer,
+  SearchText,
+  WriteError,
+} from './core'
 
 // ---------- feed ----------
 
 /** The last row of a page: its expense date, its exact creation time (microseconds) and its ID. */
 export const FeedCursor = Schema.Struct({
   date: CalendarDate,
-  createdAt: Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$/)),
+  createdAt: Schema.String.check(Schema.isPattern(UTC_TIME), Schema.makeFilter((value: string) => isUtcTime(value) || 'Invalid time')),
   id: Id,
 })
 
+/** 'grouped' keeps named groups only; 'ungrouped' keeps private expenses only. Default 'all'. */
+export const FeedScope = Schema.Literals(['all', 'grouped', 'ungrouped'])
+
 export const FeedFilter = Schema.Struct({
-  /** 'grouped' keeps named groups only; 'ungrouped' keeps private expenses only. Default 'all'. */
-  scope: Schema.optionalKey(Schema.Literals(['all', 'grouped', 'ungrouped'])),
+  scope: Schema.optionalKey(FeedScope),
   /** One named group or one private context. */
   groupId: Schema.optionalKey(Id),
   /** Case-insensitive substring of the title or the vendor. */
-  search: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+  search: Schema.optionalKey(SearchText),
   /** Keep expenses that the caller pays for or shares. Default true, in the UI and for agents. */
   involvingMe: Schema.optionalKey(Schema.Boolean),
   /** An account (user) ID: keep expenses that this account pays for or shares. */
@@ -30,22 +55,11 @@ export const FeedFilter = Schema.Struct({
   /** An account (user) ID: keep expenses that this account paid. */
   payerUserId: Schema.optionalKey(Id),
   currency: Schema.optionalKey(CurrencyCodeSchema),
-  categoryId: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
-  kind: Schema.optionalKey(Schema.Literals(['expense', 'payment'])),
+  categoryId: Schema.optionalKey(CategoryId),
+  kind: Schema.optionalKey(ExpenseKindSchema),
   /** Inclusive bounds on the expense date. */
   from: Schema.optionalKey(CalendarDate),
   to: Schema.optionalKey(CalendarDate),
-})
-
-const Actor = Schema.Struct({ userId: Schema.NullOr(Schema.String), name: Schema.String, source: Schema.String })
-
-/** Who added and last edited an expense, from its history. Never inferred from the payer. */
-export const Attribution = Schema.Struct({
-  createdAt: Schema.NullOr(Schema.String),
-  updatedAt: Schema.NullOr(Schema.String),
-  lastEditedByYouAt: Schema.NullOr(Schema.String),
-  createdBy: Schema.NullOr(Actor),
-  updatedBy: Schema.NullOr(Actor),
 })
 
 export const GroupRef = Schema.Struct({ id: Schema.String, name: Schema.String, slug: Schema.NullOr(Schema.String) })
@@ -72,7 +86,7 @@ export const AccountBalances = Schema.Struct({
     Schema.Struct({
       groupId: Schema.String,
       groupName: Schema.String,
-      kind: Schema.Literals(['named', 'private']),
+      kind: GroupKindSchema,
       currency: CurrencyCodeSchema,
       participantId: Schema.String,
       participantName: Schema.String,
@@ -80,8 +94,8 @@ export const AccountBalances = Schema.Struct({
       amount: DecimalOutput,
     }),
   ),
-  /** The rows summed per currency, sorted by code. Currencies are never added together. */
-  totals: Schema.Array(Schema.Struct({ currency: CurrencyCodeSchema, amount: DecimalOutput })),
+  /** The rows summed per currency. */
+  totals: CallerTotals,
   /** Groups where the caller has no linked participant; the totals leave them out. */
   unboundGroupIds: Schema.Array(Schema.String),
 })
@@ -92,12 +106,10 @@ export const FeedOptions = Schema.Struct({
   groups: Schema.Array(GroupRef),
   /** The caller and the verified accounts that share an active group with a linked participant, by name. */
   people: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, email: Schema.String })),
-  categories: Schema.Array(Schema.Struct({ id: Schema.Number, grouping: Schema.String, name: Schema.String })),
+  categories: Schema.Array(Category),
 })
 
 // ---------- expense page and private contexts ----------
-
-export const Transfer = Schema.Struct({ from: Schema.String, to: Schema.String, amount: DecimalOutput })
 
 export const PendingInvitation = Schema.Struct({
   id: Schema.String,
@@ -110,9 +122,8 @@ export const PendingInvitation = Schema.Struct({
 /** Everything the expense page needs, for any expense the caller can see. */
 export const ExpenseContext = Schema.Struct({
   expense: Expense,
-  attribution: Attribution,
-  group: Schema.Struct({ ...GroupRef.fields, kind: Schema.Literals(['named', 'private']) }),
-  role: Schema.Literals(['admin', 'member']),
+  group: Schema.Struct({ ...GroupRef.fields, kind: GroupKindSchema }),
+  role: RoleSchema,
   participantId: Schema.NullOr(Schema.String),
   /** Every participant of the group or context, with current display names. */
   participants: Schema.Array(Participant),
@@ -130,21 +141,23 @@ export const ExpenseContext = Schema.Struct({
 })
 
 /** A person of a new ungrouped expense, named by a local ID that the expense's payers and shares use. */
+const LocalId = Schema.String.check(Schema.isBetweenLength(1, LIMITS.localIdMax))
 export const PrivatePerson = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal('account'),
-    id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(42)),
-    userId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+    id: LocalId,
+    userId: Schema.String.check(Schema.isBetweenLength(1, LIMITS.userIdMax)),
   }),
   Schema.Struct({
     kind: Schema.Literal('email'),
-    id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(42)),
-    /** Trimmed by the server; 1 to 50 characters. */
-    name: Schema.String.check(Schema.isMaxLength(200)),
-    /** Trimmed and lowercased by the server. */
-    email: Schema.String.check(Schema.isMaxLength(320)),
+    id: LocalId,
+    name: NameInput,
+    email: EmailInput.annotate({ format: 'email' }),
   }),
 ])
+
+/** The people of a new ungrouped expense, the caller included. */
+export const PrivatePeople = Schema.Array(PrivatePerson).check(Schema.isBetweenLength(2, LIMITS.participantsPerGroup))
 
 export const UngroupedResult = Schema.Struct({
   expenseId: Schema.String,
@@ -164,7 +177,7 @@ export class FeedApi extends RpcGroup.make(
     payload: {
       filter: FeedFilter,
       cursor: Schema.NullOr(FeedCursor),
-      limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 })),
+      limit: PageLimit,
     },
     success: FeedPage,
     error: ReadError,
@@ -174,9 +187,9 @@ export class FeedApi extends RpcGroup.make(
   Rpc.make('expenses.context', { payload: { expenseId: Id }, success: ExpenseContext, error: ReadError }),
   Rpc.make('expenses.createUngrouped', {
     payload: {
-      expenseId: Schema.String.check(Schema.isPattern(GROUP_ID)),
+      expenseId: NewId,
       idempotencyKey: IdempotencyKey,
-      people: Schema.Array(PrivatePerson).check(Schema.isMinLength(2), Schema.isMaxLength(100)),
+      people: PrivatePeople,
       /** Payers and shares name people by their local IDs. */
       expense: ExpenseInput,
     },
@@ -184,7 +197,8 @@ export class FeedApi extends RpcGroup.make(
     error: WriteError,
   }),
   Rpc.make('expenses.renewInvitation', {
-    payload: { groupId: Id, participantId: Id, idempotencyKey: IdempotencyKey },
+    // No idempotency key: the answer holds a new secret link, which is never stored, so a retry issues another link and revokes this one.
+    payload: { groupId: Id, participantId: Id },
     success: RenewedInvitation,
     error: WriteError,
   }),

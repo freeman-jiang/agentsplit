@@ -1,24 +1,29 @@
 import { useState, type ReactNode } from 'react'
+import { describeError, type Failure } from '~/client/errors'
 import { Alert, AlertDescription } from '~/client/ui/alert'
 import { Button } from '~/client/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/client/ui/card'
 import { Input } from '~/client/ui/input'
 import { Label } from '~/client/ui/label'
-import { NativeSelect } from '~/client/ui/native-select'
+import { CurrencySelect } from '~/client/ui/currency-select'
 import { Textarea } from '~/client/ui/textarea'
+import type { CurrencyCode } from '~/shared/currencies'
 import { normalizeSlug, slugProblem } from '~/shared/groups'
-import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
+import { LIMITS } from '~/shared/limits'
 
-export type GroupFormValues = { name: string; slug: string; information: string; defaultCurrency: CurrencyCode }
-
-const CODES = Object.keys(CURRENCIES).sort() as CurrencyCode[]
+type GroupFormValues = { name: string; slug: string; information: string; defaultCurrency: CurrencyCode }
 
 /** The problem with each field, checked as the server checks it, so the form can say so before saving. */
 function problems(values: GroupFormValues) {
   const name = values.name.trim()
   const slug = normalizeSlug(values.slug)
   return {
-    name: name.length < 2 ? 'Enter at least 2 characters.' : name.length > 50 ? 'Enter at most 50 characters.' : null,
+    name:
+      name.length < LIMITS.groupNameMin
+        ? `Enter at least ${LIMITS.groupNameMin} characters.`
+        : name.length > LIMITS.nameMax
+          ? `Enter at most ${LIMITS.nameMax} characters.`
+          : null,
     slug: slug ? slugProblem(slug) : null,
   }
 }
@@ -36,10 +41,12 @@ export function GroupForm(props: {
   children?: ReactNode
   cancel?: ReactNode
   onSubmit: (values: GroupFormValues) => Promise<void>
+  /** Opens the latest saved settings, offered after a revision conflict. */
+  onReload?: () => void
 }) {
   const [values, setValues] = useState(props.initial)
   const [touched, setTouched] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [failure, setFailure] = useState<Failure | null>(null)
   const [saving, setSaving] = useState(false)
   const issues = problems(values)
   const set = <K extends keyof GroupFormValues>(key: K, value: GroupFormValues[K]) => setValues((v) => ({ ...v, [key]: value }))
@@ -50,9 +57,18 @@ export function GroupForm(props: {
       </p>
     ) : null
 
-  const alert = error && (
+  const alert = failure && (
     <Alert variant="destructive">
-      <AlertDescription>{error}</AlertDescription>
+      <AlertDescription>
+        {failure.message}
+        {failure.kind === 'conflict' && props.onReload && (
+          <div className="mt-2">
+            <Button type="button" variant="outline" size="sm" onClick={props.onReload}>
+              Load the latest version
+            </Button>
+          </div>
+        )}
+      </AlertDescription>
     </Alert>
   )
   const actions = (
@@ -72,11 +88,11 @@ export function GroupForm(props: {
         setTouched(true)
         if (issues.name || issues.slug) return
         setSaving(true)
-        setError(null)
+        setFailure(null)
         try {
           await props.onSubmit({ ...values, name: values.name.trim() })
         } catch (e) {
-          setError(e instanceof Error ? e.message : String(e))
+          setFailure(describeError(e))
         } finally {
           setSaving(false)
         }
@@ -93,7 +109,7 @@ export function GroupForm(props: {
               id="group-name"
               className="h-11"
               placeholder="Summer vacations"
-              maxLength={50}
+              maxLength={LIMITS.nameMax}
               value={values.name}
               aria-invalid={touched && !!issues.name}
               aria-describedby="group-name-help"
@@ -112,7 +128,7 @@ export function GroupForm(props: {
               placeholder="maple"
               autoCapitalize="none"
               autoCorrect="off"
-              maxLength={63}
+              maxLength={LIMITS.slugMax}
               value={values.slug}
               aria-invalid={touched && !!issues.slug}
               aria-describedby="group-slug-help"
@@ -125,19 +141,13 @@ export function GroupForm(props: {
           </div>
           <div className="space-y-2">
             <Label htmlFor="group-currency">Default currency</Label>
-            <NativeSelect
+            <CurrencySelect
               id="group-currency"
               className="h-11"
               value={values.defaultCurrency}
               aria-describedby="group-currency-help"
-              onChange={(e) => set('defaultCurrency', e.target.value as CurrencyCode)}
-            >
-              {CODES.map((code) => (
-                <option key={code} value={code}>
-                  {code} · {CURRENCIES[code].name}
-                </option>
-              ))}
-            </NativeSelect>
+              onChange={(currency) => set('defaultCurrency', currency)}
+            />
             <p id="group-currency-help" className="text-xs text-muted-foreground">
               {props.mode === 'edit'
                 ? 'Changes the default for new expenses only. Existing amounts, currencies and balances stay unchanged.'
@@ -149,7 +159,7 @@ export function GroupForm(props: {
             <Textarea
               id="group-information"
               rows={2}
-              maxLength={10_000}
+              maxLength={LIMITS.informationMax}
               placeholder="What information is relevant to group participants?"
               value={values.information}
               onChange={(e) => set('information', e.target.value)}

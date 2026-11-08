@@ -2,79 +2,47 @@
 // Reads only: unlike the current app, loading stats never creates due
 // recurring expenses (DECISIONS.md, P-STATS-44).
 import { sql } from 'drizzle-orm'
-import { groupAccessDenied } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
-import { formatMinor, minor, type Minor } from '../shared/money'
+import { todayUtc } from '../shared/dates'
+import { formatMinor, minor, minorOf, type Minor } from '../shared/minor'
 import * as stats from '../shared/stats'
-import type { Db } from './db'
-import type { Principal } from './ledger'
-
-type Row = {
-  id: string
-  kind: 'expense' | 'payment'
-  title: string
-  vendor: string | null
-  expenseDate: string
-  createdAt: string
-  currency: CurrencyCode
-  amount: string
-  categoryId: number
-  grouping: string
-  name: string
-  recurrence: 'none' | 'daily' | 'weekly' | 'monthly'
-  /** Recurring and still the current frame of its series. */
-  activeRecurring: boolean
-  payers: { participantId: string; amount: string }[]
-  shares: { participantId: string; amount: string }[]
-}
+import { memberCte, requireActive, type Principal } from './core/access'
+import type { Db } from './core/db'
+import { participantsJson } from './people'
+import { expenseColumns, isActiveSeries, toExpense, type ExpenseRow } from './expense-read'
 
 type Head = {
   active: boolean | null
   participant_id: string | null
   default_currency: CurrencyCode
   participants: { id: string; name: string }[]
-  expenses: Row[]
+  expenses: ExpenseRow[]
 }
 
-/**
- * The group's live expenses, newest first (expense date, then creation), with
- * their resolved parts. Minor units travel as text.
- */
-async function load(db: Db, data: { principal: Principal; group: string }) {
+/** The group's live expenses, newest first (expense date, then creation), in the units the figures use. */
+async function load(db: Db, data: { principal: Principal; groupId: string }) {
   const result = await db.execute<Head>(sql`
-    WITH g AS (
-      SELECT g.id, g.default_currency, m.active, m.participant_id
-      FROM groups g JOIN memberships m ON m.group_id = g.id AND m.user_id = ${data.principal.userId}
-      WHERE g.id = ${data.group} OR g.slug = ${data.group}
-      LIMIT 1
-    )
+    WITH ${memberCte(data)}
     SELECT g.active, g.participant_id, g.default_currency,
-      coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name, p.id) FROM participants p WHERE p.group_id = g.id), '[]') AS participants,
-      coalesce((SELECT json_agg(json_build_object(
-          'id', e.id, 'kind', e.kind, 'title', e.title, 'vendor', e.vendor, 'expenseDate', e.expense_date::text,
-          'createdAt', e.created_at, 'currency', e.currency, 'amount', e.amount::text, 'categoryId', e.category_id,
-          'grouping', c.grouping, 'name', c.name, 'recurrence', e.recurrence,
-          'activeRecurring', e.recurrence <> 'none' AND EXISTS (SELECT 1 FROM recurring_links r WHERE r.current_frame_expense_id = e.id AND r.next_expense_created_at IS NULL),
-          'payers', (SELECT json_agg(json_build_object('participantId', x.participant_id, 'amount', x.amount::text) ORDER BY x.participant_id) FROM expense_payers x WHERE x.expense_id = e.id),
-          'shares', (SELECT json_agg(json_build_object('participantId', x.participant_id, 'amount', x.amount::text) ORDER BY x.participant_id) FROM expense_shares x WHERE x.expense_id = e.id)
-        ) ORDER BY e.expense_date DESC, e.created_at DESC, e.id DESC)
-        FROM expenses e JOIN categories c ON c.id = e.category_id
-        WHERE e.group_id = g.id AND e.deleted_at IS NULL), '[]') AS expenses
+      ${participantsJson(sql`g.id`)} AS participants,
+      coalesce((SELECT json_agg(x ORDER BY x.expense_date DESC, x.created_key DESC, x.id DESC) FROM (
+          SELECT ${expenseColumns()}, e.created_at AS created_key FROM expenses e WHERE e.group_id = g.id AND e.deleted_at IS NULL) x), '[]') AS expenses
     FROM g
   `)
-  const head = result.rows[0]
-  if (!head?.active) throw groupAccessDenied()
-  const expenses = head.expenses.map((e) => ({
-    ...e,
-    amount: minor(BigInt(e.amount)),
-    category: { grouping: e.grouping, name: e.name },
-    payers: (e.payers ?? []).map((p) => ({ participantId: p.participantId, amount: minor(BigInt(p.amount)) })),
-    shares: (e.shares ?? []).map((s) => ({ participantId: s.participantId, amount: minor(BigInt(s.amount)) })),
-  }))
+  const head = requireActive(result.rows[0])
+  const expenses = head.expenses.map((row) => {
+    const e = toExpense(row)
+    return {
+      ...e,
+      amount: minorOf(e.amount, e.currency),
+      activeSeries: isActiveSeries(e),
+      payers: e.payers.map((p) => ({ participantId: p.participantId, amount: minorOf(p.amount, e.currency) })),
+      shares: e.shares.map((s) => ({ participantId: s.participantId, amount: minorOf(s.amount, e.currency) })),
+    }
+  })
   return { head, expenses }
 }
 
-const todayUtc = () => new Date().toISOString().slice(0, 10)
 
 /** The range as given, with reversed bounds swapped. */
 const normalRange = (range: stats.DateRange): stats.DateRange =>
@@ -82,11 +50,11 @@ const normalRange = (range: stats.DateRange): stats.DateRange =>
 
 export async function statsOverview(
   db: Db,
-  data: { principal: Principal; group: string; currency?: CurrencyCode; from?: string; to?: string; today?: string; participantId?: string },
+  data: { principal: Principal; groupId: string; currency?: CurrencyCode; from?: string; to?: string; today?: string; participantId?: string },
 ) {
   const { head, expenses } = await load(db, data)
-  const recurringAll = expenses.filter((e) => e.activeRecurring && e.kind === 'expense')
-  const { list, preferred } = stats.statsCurrencies({ used: [...expenses, ...recurringAll].map((e) => e.currency), groupCurrency: head.default_currency })
+  const recurringAll = expenses.filter((e) => e.activeSeries)
+  const { list, preferred } = stats.statsCurrencies({ used: expenses.map((e) => e.currency), groupCurrency: head.default_currency })
   const currency = data.currency ?? preferred
   const range = normalRange({ from: data.from, to: data.to })
   const selected = stats.inRange(
@@ -135,7 +103,7 @@ export async function statsOverview(
 /** The expenses behind one month bar or one category row, newest first. Payments are left out, as in the figures. */
 export async function statsExpenses(
   db: Db,
-  data: { principal: Principal; group: string; currency: CurrencyCode; from?: string; to?: string; month?: string; categoryId?: number },
+  data: { principal: Principal; groupId: string; currency: CurrencyCode; from?: string; to?: string; month?: string; categoryId?: number },
 ) {
   const { expenses } = await load(db, data)
   return stats

@@ -1,20 +1,26 @@
-// The MCP endpoint and its first seven tools, over HTTP in process, against a
-// real database. Parity items are named in docs/v2/parity/mcp.md.
-import { Schema } from 'effect'
-import { sql } from 'drizzle-orm'
+// The MCP endpoint, the tool advertisement, and the group and expense tools,
+// over HTTP in process, against a real database. Parity items are named in
+// docs/v2/parity/mcp.md.
+import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { activities, expenses, memberships } from '../../db/schema/app'
-import { eq } from 'drizzle-orm'
+import { GROUP_DENIED, REVISION_CONFLICT } from '~/shared/errors'
+import { activities, expenses, mcpRateLimits, memberships } from '../../db/schema/app'
 import { MCP_TOOLS } from '~/server/mcp/tools'
-import { takeMcpRequest } from '~/server/mcp/rate-limit'
+import { takeMcpRequest } from '~/server/rate-limit'
+import { LIMITS } from '~/shared/limits'
+import { mcpExpense, type McpExpenseChanges } from '../kit/drafts'
+import { mcpChallenge, SDK_INPUT_REFUSED } from '../kit/mcp'
+import { id21, id21Counter } from '../kit/ids'
 import current from './fixtures/current-mcp-tools.json'
-import { BASE, callTool, failure, MCP_URL, ok, rpc, startHarness, type Harness } from './mcp-harness'
+import { BASE, checked as checkedCall, type Harness, MCP_URL, startHarness } from './harness'
 
 let h: Harness
 let alice: Record<string, string>
+let aliceKeyId: string
 let bob: Record<string, string>
 
-const id21 = (n: number) => `e${String(n).padStart(20, '0')}`
+/** A new 21-character expense ID. */
+const newExpenseId = id21Counter('e')
 
 beforeAll(async () => {
   h = await startHarness()
@@ -25,54 +31,46 @@ beforeAll(async () => {
   await h.group({ id: 'g2', name: 'Trip', people: ['qa'], members: [['alice', 'qa', 'admin']] })
   await h.group({ id: 'g3', name: 'Bob only', people: ['rb'], members: [['bob', 'rb', 'admin']] })
   await h.privateContext({ owner: 'alice', expenseId: 'private-dinner' })
-  alice = { 'x-api-key': await h.apiKey('alice') }
+  const aliceKey = await h.apiKeyWithId('alice')
+  alice = { 'x-api-key': aliceKey.key }
+  aliceKeyId = aliceKey.id
   bob = { authorization: `Bearer ${await h.apiKey('bob')}` }
 })
 afterAll(() => h.close())
 
-const tool = (name: string) => {
-  const found = MCP_TOOLS.find((t) => t.name === name)
-  if (!found) throw new Error(name)
-  return found
-}
-/** Every result must decode with the tool's advertised output schema. */
-const checked = async (name: string, args: object, headers = alice) => {
-  const result = await ok(h, { name, args, headers })
-  Schema.decodeUnknownSync(tool(name).output as Schema.Codec<unknown>)(result)
-  return result
-}
+/** A successful call whose result decodes with the tool's advertised output schema. */
+const checked = (name: string, args: object, headers = alice) => checkedCall(h, { name, args, headers })
 
-const expense = (over: Record<string, unknown> = {}) => ({
-  title: 'Dinner',
-  expenseDate: '2026-11-01',
-  amount: '30',
-  currencyCode: 'USD',
-  paidBy: 'pa',
-  paidFor: [
-    { participant: 'pa', shares: '1' },
-    { participant: 'pb', shares: '1' },
-    { participant: 'pc', shares: '1' },
-  ],
-  isReimbursement: false,
-  ...over,
-})
+/** The create_expense argument in g1: 30 paid by Alice, one share each for Alice, Bob and pc. */
+const expense = (over: McpExpenseChanges = {}) => mcpExpense({ paidBy: 'pa', people: ['pa', 'pb', 'pc'], ...over })
+
+/**
+ * A new account (named Lena) with an API key, admin of a new group of three
+ * people. A test that reads a whole group, or changes memberships, works here,
+ * so the fixtures of the other tests stay as beforeAll made them.
+ */
+async function household(tag: string, data: { slug?: string } = {}) {
+  const owner = `${tag}-owner`
+  await h.account(owner, { name: 'Lena' })
+  const groupId = `g-${tag}`
+  const [a, b, c] = [`${tag}-a`, `${tag}-b`, `${tag}-c`]
+  await h.group({ id: groupId, ...(data.slug ? { slug: data.slug } : {}), people: [a, b, c], members: [[owner, a, 'admin']] })
+  const headers = { 'x-api-key': await h.apiKey(owner) }
+  return { owner, groupId, a, b, c, headers, expense: (over: McpExpenseChanges = {}) => mcpExpense({ paidBy: a, people: [a, b, c], ...over }) }
+}
 
 describe('protocol', () => {
   it('initializes legacy 2025 clients with the instructions and server info', async () => {
     for (const protocolVersion of ['2025-03-26', '2025-06-18']) {
-      const r = await rpc(h, { method: 'initialize', params: { protocolVersion, capabilities: {}, clientInfo: { name: 'codex', version: '1' } }, headers: alice })
+      const r = await h.mcp.rpc({ method: 'initialize', params: { protocolVersion, capabilities: {}, clientInfo: { name: 'codex', version: '1' } }, headers: alice })
       expect(r.status).toBe(200)
-      const result = (r.body as { result: { serverInfo: unknown; instructions: string; capabilities: { tools?: unknown } } }).result
+      const result = (r.body as { result: { protocolVersion: string; serverInfo: unknown; instructions: string } }).result
+      expect(result.protocolVersion).toBe(protocolVersion)
       expect(result.serverInfo).toEqual({ name: 'agentsplit', version: '0.4.0' })
-      expect(result.capabilities.tools).toBeDefined()
+      // v1's money and naming rules stay in the text (P-MCP-06).
       expect(result.instructions).toContain('decimal strings')
       expect(result.instructions).toContain('global')
       expect(result.instructions).not.toContain('minor units')
-      // The v2 recording rules (docs/v2/PLAN.md).
-      expect(result.instructions).toContain('including the payer’s own share')
-      expect(result.instructions).toContain('Include the payer in paidFor with their share, unless the payer paid only for other people')
-      expect(result.instructions).toContain('Put the full calculation in notes')
-      expect(result.instructions).toContain('Keep the title short')
       expect(r.headers.get('cache-control')).toBe('no-store')
     }
   })
@@ -101,19 +99,19 @@ describe('protocol', () => {
       ...(name ? { 'Mcp-Name': name } : {}),
     }
     const body = JSON.stringify(modern(method, name))
-    const r = await h.mcp(new Request(MCP_URL, { method: 'POST', headers, body }))
+    const r = await h.fetch(new Request(MCP_URL, { method: 'POST', headers, body }))
     expect(r.status).toBe(200)
-    const reply = (await r.json()) as { result: { tools?: unknown[]; isError?: boolean } }
-    if (name) expect(reply.result.isError).not.toBe(true)
+    const reply = (await r.json()) as { result: { tools?: unknown[]; isError?: boolean; structuredContent?: unknown } }
+    if (name) expect(reply.result).toMatchObject({ structuredContent: { group: { id: 'g1' } } })
     else expect(reply.result.tools).toHaveLength(MCP_TOOLS.length)
-    const mismatch = await h.mcp(new Request(MCP_URL, { method: 'POST', headers: { ...headers, 'Mcp-Method': 'wrong-method' }, body }))
+    const mismatch = await h.fetch(new Request(MCP_URL, { method: 'POST', headers: { ...headers, 'Mcp-Method': 'wrong-method' }, body }))
     expect(mismatch.status).toBe(400)
     expect(((await mismatch.json()) as { error: { code: number } }).error.code).toBe(-32020)
   })
 
   it('requires MCP-Protocol-Version on modern requests, with the request ID', async () => {
     const body = { ...modern('tools/list'), id: 'modern-check' }
-    const r = await h.mcp(
+    const r = await h.fetch(
       new Request(MCP_URL, { method: 'POST', headers: { ...alice, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'Mcp-Method': 'tools/list' }, body: JSON.stringify(body) }),
     )
     expect(r.status).toBe(400)
@@ -125,25 +123,25 @@ describe('protocol', () => {
     const headers = { ...alice, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' }
     const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
     for (const extra of [{ origin: 'https://evil.example' }, { host: 'evil.example' }]) {
-      const r = await h.mcp(new Request(MCP_URL, { method: 'POST', headers: { ...headers, ...extra }, body }))
+      const r = await h.fetch(new Request(MCP_URL, { method: 'POST', headers: { ...headers, ...extra }, body }))
       expect(r.status).toBe(403)
       expect(await r.json()).toEqual({ error: 'Origin or host is not allowed' })
       expect(r.headers.get('cache-control')).toBe('no-store')
     }
-    const same = await h.mcp(new Request(MCP_URL, { method: 'POST', headers: { ...headers, origin: BASE }, body }))
+    const same = await h.fetch(new Request(MCP_URL, { method: 'POST', headers: { ...headers, origin: BASE }, body }))
     expect(same.status).toBe(200)
   })
 
   it('answers GET and DELETE with the SDK’s stateless 405', async () => {
     for (const method of ['GET', 'DELETE']) {
-      const r = await h.mcp(new Request(MCP_URL, { method, headers: alice }))
+      const r = await h.fetch(new Request(MCP_URL, { method, headers: alice }))
       expect(r.status).toBe(405)
       expect(r.headers.get('cache-control')).toBe('no-store')
     }
   })
 
   it('isolates two concurrent users with identical JSON-RPC IDs', async () => {
-    const [a, b] = await Promise.all([callTool(h, { name: 'list_groups', headers: alice }), callTool(h, { name: 'list_groups', headers: bob })])
+    const [a, b] = await Promise.all([h.mcp.callTool({ name: 'list_groups', headers: alice }), h.mcp.callTool({ name: 'list_groups', headers: bob })])
     const ids = (r: typeof a) => (r.result?.structuredContent?.['groups'] as { id: string }[]).map((g) => g.id).sort()
     expect(ids(a)).toEqual(['g1', 'g2'])
     expect(ids(b)).toEqual(['g1', 'g3'])
@@ -151,19 +149,63 @@ describe('protocol', () => {
 
   it('rejects an unknown tool and the removed month tool without running anything', async () => {
     for (const name of ['list_month_expenses', 'no_such_tool']) {
-      const r = await callTool(h, { name, headers: alice })
-      const failed = r.result?.isError === true || (r.body as { error?: unknown }).error !== undefined
-      expect(failed).toBe(true)
+      const r = await h.mcp.callTool({ name, headers: alice })
+      expect(r.status).toBe(200)
+      expect(r.body).toMatchObject({ error: { code: -32602, message: `Tool ${name} not found` } })
     }
   })
 })
 
 describe('tool advertisement', () => {
   type Advertised = { name: string; annotations: unknown; securitySchemes: unknown; _meta: unknown; inputSchema: JsonNode; outputSchema: JsonNode }
-  type JsonNode = { type?: string; properties?: Record<string, JsonNode>; required?: string[]; additionalProperties?: boolean; items?: JsonNode; enum?: string[] }
+  type JsonNode = {
+    type?: string | string[]
+    properties?: Record<string, JsonNode>
+    required?: string[]
+    additionalProperties?: boolean
+    items?: JsonNode
+    enum?: (string | number)[]
+    const?: string | number
+    anyOf?: JsonNode[]
+    oneOf?: JsonNode[]
+  }
+  /** The alternatives of a node: the branches of its anyOf or oneOf, flattened, or the node itself. */
+  const alternatives = (node: JsonNode): JsonNode[] => {
+    const union = node.anyOf ?? node.oneOf
+    return union ? union.flatMap(alternatives) : [node]
+  }
+  /** The constant fields of an alternative, such as `kind`, which tell the alternatives of a union apart. */
+  const constants = (node: JsonNode) => Object.entries(node.properties ?? {}).flatMap(([key, field]) => (field.const === undefined ? [] : [{ key, value: field.const }]))
+  /** Whether `now` is the alternative `old` became: the same type, and each constant field of `old` still takes its value. */
+  const sameVariant = (now: JsonNode, old: JsonNode) =>
+    JSON.stringify(now.type) === JSON.stringify(old.type) &&
+    constants(old).every(({ key, value }) => {
+      const field = now.properties?.[key]
+      return field?.const === value || field?.enum?.includes(value) === true
+    })
+  const variant = (node: JsonNode) => JSON.stringify([node.type ?? null, constants(node)])
+  /**
+   * Runs `check` on each alternative of `before` that has fields, items or an
+   * enum, with the alternative of `now` of the same variant; fails when `now` has none.
+   */
+  const eachVariant = (now: JsonNode | undefined, before: JsonNode, path: string, check: (now: JsonNode, before: JsonNode) => void) => {
+    expect({ path, present: now !== undefined }).toEqual({ path, present: true })
+    for (const old of alternatives(before)) {
+      if (!old.properties && !old.items && !old.enum && old.type !== 'object') continue
+      const match = alternatives(now ?? {}).find((node) => sameVariant(node, old))
+      expect({ path, variant: match ? variant(old) : null }).toEqual({ path, variant: variant(old) })
+      if (match) check(match, old)
+    }
+  }
+
+  /**
+   * The output fields of v1's schema that v2 leaves out on purpose: a saved
+   * revision keeps no receipt size and no group revision (docs/v2/parity/mcp.md, list_activity 06).
+   */
+  const leftOut = (path: string) => (/napshot\.expense\.documents\[\]$/.test(path) ? ['width', 'height'] : /napshot\.group$/.test(path) ? ['revision'] : [])
 
   it('advertises the current names, annotations, scopes and input fields', async () => {
-    const r = await rpc(h, { method: 'tools/list', headers: alice })
+    const r = await h.mcp.rpc({ method: 'tools/list', headers: alice })
     const tools = (r.body as { result: { tools: Advertised[] } }).result.tools
     // v2 adds the storage tools at the end; every current tool keeps its place.
     expect(tools.map((t) => t.name)).toEqual([...current.tools.map((t) => t.name), 'get_storage_usage', 'list_receipts', 'delete_receipts'])
@@ -177,44 +219,34 @@ describe('tool advertisement', () => {
         _meta: before._meta,
       })
       expect(now.inputSchema['$schema' as keyof JsonNode]).toBe('https://json-schema.org/draft/2020-12/schema')
-      // The same strict objects, fields, required fields and enums, recursively.
-      const compare = (a: JsonNode | undefined, b: JsonNode | undefined, path: string) => {
-        if (!a || !b) return
-        expect({ path, closed: a.additionalProperties === false }).toEqual({ path, closed: b.additionalProperties === false })
-        if (b.enum) expect({ path, enum: [...(a.enum ?? [])].sort() }).toEqual({ path, enum: [...b.enum].sort() })
-        if (b.properties) {
-          // v2 adds `payers` beside paidBy; every current field stays.
-          const added = Object.keys(a.properties ?? {}).filter((k) => !(k in (b.properties ?? {})))
-          expect({ path, missing: Object.keys(b.properties).filter((k) => !(k in (a.properties ?? {}))) }).toEqual({ path, missing: [] })
-          expect({ path, added }).toEqual({ path, added: path === 'create_expense.expense' || path === 'update_expense.changes' ? ['payers'] : [] })
-          // paidBy became optional because payers can replace it; nothing else changed.
-          const required = (b.required ?? []).filter((k) => k !== 'paidBy')
-          expect({ path, required: [...(a.required ?? [])].sort() }).toEqual({ path, required: required.sort() })
-          for (const key of Object.keys(b.properties)) compare(a.properties?.[key], b.properties[key], `${path}.${key}`)
-        }
-        compare(a.items, b.items, `${path}[]`)
-      }
+      // The same strict objects, fields, required fields and enums, recursively, in every alternative of a union.
+      const compare = (now: JsonNode | undefined, before: JsonNode, path: string) =>
+        eachVariant(now, before, path, (a, b) => {
+          expect({ path, closed: a.additionalProperties === false }).toEqual({ path, closed: b.additionalProperties === false })
+          if (b.enum) expect({ path, enum: [...(a.enum ?? [])].sort() }).toEqual({ path, enum: [...b.enum].sort() })
+          if (b.properties) {
+            // v2 adds `payers` beside paidBy; every current field stays.
+            const added = Object.keys(a.properties ?? {}).filter((k) => !(k in (b.properties ?? {})))
+            expect({ path, missing: Object.keys(b.properties).filter((k) => !(k in (a.properties ?? {}))) }).toEqual({ path, missing: [] })
+            expect({ path, added }).toEqual({ path, added: path === 'create_expense.expense' || path === 'update_expense.changes' ? ['payers'] : [] })
+            // paidBy became optional because payers can replace it; nothing else changed.
+            const required = (b.required ?? []).filter((k) => k !== 'paidBy')
+            expect({ path, required: [...(a.required ?? [])].sort() }).toEqual({ path, required: required.sort() })
+            for (const [key, field] of Object.entries(b.properties)) compare(a.properties?.[key], field, `${path}.${key}`)
+          }
+          if (b.items) compare(a.items, b.items, `${path}[]`)
+        })
       compare(now.inputSchema, before.inputSchema, now.name)
       expect(now.outputSchema.type).toBe('object')
-      // Every current output field is still there.
-      const outputs = (a: JsonNode | undefined, b: JsonNode | undefined, path: string) => {
-        if (!a || !b?.properties) return
-        const missing = Object.keys(b.properties).filter((k) => !(k in (a.properties ?? {})))
-        expect({ path, missing }).toEqual({ path, missing: [] })
-        for (const key of Object.keys(b.properties)) outputs(a.properties?.[key], b.properties[key], `${path}.${key}`)
-        outputs(a.items, b.items, `${path}[]`)
-      }
+      // Every current output field is still there, in every alternative of a union.
+      const outputs = (now: JsonNode | undefined, before: JsonNode, path: string) =>
+        eachVariant(now, before, path, (a, b) => {
+          const kept = Object.entries(b.properties ?? {}).filter(([key]) => !leftOut(path).includes(key))
+          expect({ path, missing: kept.map(([key]) => key).filter((key) => !(key in (a.properties ?? {}))) }).toEqual({ path, missing: [] })
+          for (const [key, field] of kept) outputs(a.properties?.[key], field, `${path}.${key}`)
+          if (b.items) outputs(a.items, b.items, `${path}[]`)
+        })
       outputs(now.outputSchema, before.outputSchema, now.name)
-    }
-  })
-
-  it('describes the recording rules on create and update', () => {
-    for (const name of ['create_expense', 'update_expense']) {
-      const schema = JSON.stringify(tool(name).inputSchema)
-      expect(schema).toContain('including the payer’s own share')
-      expect(schema).toContain('Include the payer with their share, unless the payer paid only for other people')
-      expect(schema).toContain('so that a person can recalculate every number')
-      expect(tool(name).description).toContain('Keep the title short')
     }
   })
 })
@@ -232,14 +264,15 @@ describe('list_groups and get_group', () => {
       slug: 'home',
       currency: '$',
       currencyCode: 'USD',
-      revision: 0,
+      revision: 1,
       _count: { participants: 3 },
     })
   })
 
   it('fails the whole call when one requested group is not the caller’s', async () => {
     expect((await checked('list_groups', { groupIds: ['g1'] }))['groups']).toHaveLength(1)
-    const denied = await failure(h, { name: 'list_groups', args: { groupIds: ['g1', 'g3'] }, headers: alice })
+    const denied = await h.mcp.failure({ name: 'list_groups', args: { groupIds: ['g1', 'g3'] }, headers: alice })
+    // The agent-facing text, worded as in v1; the other tests compare with GROUP_DENIED.
     expect(denied).toEqual({ code: 'FORBIDDEN', message: 'Group not found, or you are not a member', outcomeUnknown: false, recovery: 'correct_arguments' })
   })
 
@@ -262,41 +295,43 @@ describe('list_groups and get_group', () => {
 
   it('denies a group of someone else with a certain outcome', async () => {
     for (const groupId of ['g3', 'missing-group']) {
-      const denied = await failure(h, { name: 'get_group', args: { groupId }, headers: alice })
-      expect(denied).toMatchObject({ code: 'FORBIDDEN', message: 'Group not found, or you are not a member', outcomeUnknown: false })
+      const denied = await h.mcp.failure({ name: 'get_group', args: { groupId }, headers: alice })
+      expect(denied).toMatchObject({ code: 'FORBIDDEN', message: GROUP_DENIED, outcomeUnknown: false })
     }
   })
 })
 
 describe('expense writes and reads', () => {
   it('creates with a stable ID, and a reused ID is a Conflict in any group', async () => {
-    const created = await checked('create_expense', { groupId: 'g1', expenseId: id21(1), expense: expense({ vendor: 'Nopa', notes: '3 x 10 = 30' }) })
-    expect(created).toEqual({ groupId: 'g1', expenseId: id21(1), revision: 1, amount: '30.00', currencyCode: 'USD', uploads: [], uploadError: null })
-    for (const groupId of ['g1', 'g2']) {
-      const again = await failure(h, { name: 'create_expense', args: { groupId, expenseId: id21(1), expense: expense({ paidBy: groupId === 'g2' ? 'qa' : 'pa', paidFor: [{ participant: groupId === 'g2' ? 'qa' : 'pa', shares: '1' }] }) }, headers: alice })
+    const id = newExpenseId()
+    const created = await checked('create_expense', { groupId: 'g1', expenseId: id, expense: expense({ vendor: 'Nopa', notes: '3 x 10 = 30' }) })
+    expect(created).toEqual({ groupId: 'g1', expenseId: id, revision: 1, amount: '30.00', currencyCode: 'USD', uploads: [], uploadError: null })
+    for (const [groupId, payer] of [['g1', 'pa'], ['g2', 'qa']] as const) {
+      const again = await h.mcp.failure({ name: 'create_expense', args: { groupId, expenseId: id, expense: mcpExpense({ paidBy: payer, people: [payer] }) }, headers: alice })
       expect(again).toEqual({ code: 'CONFLICT', message: 'Expense ID already exists. Read it before retrying; use a new ID only for a distinct expense.', outcomeUnknown: false, recovery: 'read_current_revision' })
     }
-    const count = await h.withDb((db) => db.select().from(expenses).where(eq(expenses.id, id21(1))))
+    const count = await h.withDb((db) => db.select().from(expenses).where(eq(expenses.id, id)))
     expect(count).toHaveLength(1)
   })
 
   it('records the authenticated actor and key, whoever paid', async () => {
-    await checked('create_expense', { groupId: 'g1', expenseId: id21(2), expense: expense({ paidBy: 'pb', title: 'Taxi' }) })
-    const [event] = await h.withDb((db) => db.select().from(activities).where(eq(activities.expenseId, id21(2))))
-    expect(event).toMatchObject({ type: 'create_expense', actorUserId: 'alice', actorName: 'Alice', source: 'agent', participantId: null })
-    expect(event?.agentKeyId).toBeTruthy()
-    const read = await checked('get_expense', { groupId: 'g1', expenseId: id21(2) })
+    const id = newExpenseId()
+    await checked('create_expense', { groupId: 'g1', expenseId: id, expense: expense({ paidBy: 'pb', title: 'Taxi' }) })
+    const [event] = await h.withDb((db) => db.select().from(activities).where(eq(activities.expenseId, id)))
+    expect(event).toMatchObject({ type: 'create_expense', actorUserId: 'alice', actorName: 'Alice', source: 'agent', participantId: null, agentKeyId: aliceKeyId })
+    const read = await checked('get_expense', { groupId: 'g1', expenseId: id })
     expect((read['expense'] as { attribution: unknown }).attribution).toMatchObject({ createdBy: { userId: 'alice', name: 'Alice', source: 'agent' }, updatedBy: null })
     expect((read['expense'] as { paidBy: unknown }).paidBy).toEqual({ id: 'pb', name: 'Bob', groupId: 'g1' })
   })
 
   it('accepts several payers, with paidBy as the largest payer', async () => {
+    const id = newExpenseId()
     await checked('create_expense', {
       groupId: 'g1',
-      expenseId: id21(3),
-      expense: expense({ paidBy: undefined, payers: [{ participant: 'pa', amount: '10' }, { participant: 'pb', amount: '20' }], title: 'Groceries' }),
+      expenseId: id,
+      expense: expense({ paidBy: null, payers: [{ participant: 'pa', amount: '10' }, { participant: 'pb', amount: '20' }], title: 'Groceries' }),
     })
-    const read = (await checked('get_expense', { groupId: 'g1', expenseId: id21(3) }))['expense'] as { paidById: string; payers: unknown }
+    const read = (await checked('get_expense', { groupId: 'g1', expenseId: id }))['expense'] as { paidById: string; payers: unknown }
     expect(read.paidById).toBe('pb')
     expect(read.payers).toEqual([
       { participantId: 'pa', name: 'Alice', amount: '10.00' },
@@ -304,168 +339,180 @@ describe('expense writes and reads', () => {
     ])
     for (const bad of [
       { paidBy: 'pa', payers: [{ participant: 'pa', amount: '30' }] },
-      { paidBy: undefined },
-      { paidBy: undefined, payers: [{ participant: 'pa', amount: '10' }] },
+      { paidBy: null },
+      { paidBy: null, payers: [{ participant: 'pa', amount: '10' }] },
     ]) {
-      const refused = await failure(h, { name: 'create_expense', args: { groupId: 'g1', expense: expense(bad) }, headers: alice })
+      const refused = await h.mcp.failure({ name: 'create_expense', args: { groupId: 'g1', expense: expense(bad) }, headers: alice })
       expect(refused.code).toBe('BAD_REQUEST')
     }
   })
 
   it('refuses invalid money, dates, splits, people and unknown keys without writing', async () => {
-    const before = (await h.withDb((db) => db.select().from(expenses))).length
-    for (const bad of [
-      expense({ amount: 10 }),
-      expense({ amount: '12.345' }),
-      expense({ amount: ' 1' }),
-      expense({ amount: '1e3' }),
-      expense({ amount: '0' }),
-      expense({ amount: '10000000.01' }),
-      expense({ currencyCode: 'JPY', amount: '10.1' }),
-      expense({ expenseDate: 'not-a-date' }),
-      expense({ expenseDate: '2026-02-29' }),
-      expense({ title: 'x' }),
-      expense({ splitMode: 'BY_PERCENTAGE', paidFor: [{ participant: 'pa', shares: '50' }] }),
-      expense({ splitMode: 'BY_AMOUNT', paidFor: [{ participant: 'pa', shares: '10' }] }),
-      expense({ paidFor: [{ participant: 'pa', shares: '1' }, { participant: 'pa', shares: '1' }] }),
-      expense({ paidBy: 'qa' }),
-      expense({ originalAmount: '5' }),
-      expense({ documents: [{ id: 'd', url: 'https://x.example/r.png', width: 1, height: 1 }] }),
-    ]) {
-      const refused = await failure(h, { name: 'create_expense', args: { groupId: 'g1', expense: bad }, headers: alice })
-      expect(['BAD_REQUEST', 'VALIDATION']).toContain(refused.code)
-      expect(refused.outcomeUnknown).toBe(false)
+    const { groupId, a, headers, expense: draft } = await household('invalid')
+    const written = async () => (await h.withDb((db) => db.select().from(expenses).where(eq(expenses.groupId, groupId)))).length
+    // The input schema refuses malformed values before the tool runs; the ledger rules refuse the rest as BAD_REQUEST.
+    const cases: [expense: object, code: string, message: string][] = [
+      [{ ...draft(), amount: 10 }, SDK_INPUT_REFUSED, 'Expected string'],
+      [draft({ amount: '12.345' }), 'BAD_REQUEST', 'USD amounts allow at most 2 decimal places'],
+      [draft({ amount: ' 1' }), SDK_INPUT_REFUSED, 'Expected a string matching'],
+      [draft({ amount: '1e3' }), SDK_INPUT_REFUSED, 'Expected a string matching'],
+      [draft({ amount: '0' }), 'BAD_REQUEST', 'The amount must not be zero.'],
+      [draft({ amount: '10000000.01' }), 'BAD_REQUEST', 'The amount must be at most 10,000,000.'],
+      [draft({ currencyCode: 'JPY', amount: '10.1' }), 'BAD_REQUEST', 'JPY amounts allow at most 0 decimal places'],
+      [draft({ expenseDate: 'not-a-date' }), SDK_INPUT_REFUSED, 'Expected a string matching'],
+      [draft({ expenseDate: '2026-02-29' }), SDK_INPUT_REFUSED, 'Invalid calendar date'],
+      [draft({ title: 'x' }), SDK_INPUT_REFUSED, 'Expected a value with a length between'],
+      [draft({ splitMode: 'BY_PERCENTAGE', paidFor: [{ participant: a, shares: '50' }] }), 'BAD_REQUEST', 'The percentages add up to 50%'],
+      [draft({ splitMode: 'BY_AMOUNT', paidFor: [{ participant: a, shares: '10' }] }), 'BAD_REQUEST', 'The amounts add up to 10.00'],
+      [draft({ paidFor: [{ participant: a, shares: '1' }, { participant: a, shares: '1' }] }), 'BAD_REQUEST', 'Duplicate beneficiary'],
+      // A participant of another group.
+      [draft({ paidBy: 'qa' }), 'BAD_REQUEST', 'The payer is not in this group'],
+      [{ ...draft(), originalAmount: '5' }, SDK_INPUT_REFUSED, 'Unrecognized key "originalAmount"'],
+      [draft({ documents: [{ id: 'd', url: 'https://x.example/r.png', width: 1, height: 1 }] }), 'BAD_REQUEST', 'Attach only receipts uploaded to this group'],
+    ]
+    for (const [expense, code, message] of cases) {
+      const refused = await h.mcp.failure({ name: 'create_expense', args: { groupId, expense }, headers })
+      expect({ code: refused.code, message: refused.message.includes(message), outcomeUnknown: refused.outcomeUnknown }, JSON.stringify(expense)).toEqual({
+        code,
+        message: true,
+        outcomeUnknown: false,
+      })
     }
-    const extra = await failure(h, { name: 'create_expense', args: { groupId: 'g1', expense: expense(), participantId: 'pa' }, headers: alice })
-    expect(extra.code).toBe('VALIDATION')
-    expect((await h.withDb((db) => db.select().from(expenses))).length).toBe(before)
+    const extra = await h.mcp.failure({ name: 'create_expense', args: { groupId, expense: draft(), participantId: a }, headers })
+    expect(extra.code).toBe(SDK_INPUT_REFUSED)
+    expect(await written()).toBe(0)
   })
 
   it('refuses a group outside the caller’s memberships as Forbidden, with a certain outcome', async () => {
-    const denied = await failure(h, { name: 'create_expense', args: { groupId: 'g3', expense: expense({ paidBy: 'rb', paidFor: [{ participant: 'rb', shares: '1' }] }) }, headers: alice })
-    expect(denied).toEqual({ code: 'FORBIDDEN', message: 'Group not found, or you are not a member', outcomeUnknown: false, recovery: 'correct_arguments' })
-    const people = await failure(h, { name: 'create_expense', args: { groupId: 'g1', people: [], expense: expense() }, headers: alice })
-    expect(people.code).toBe('VALIDATION')
-    const none = await failure(h, { name: 'create_expense', args: { expense: expense() }, headers: alice })
+    const denied = await h.mcp.failure({ name: 'create_expense', args: { groupId: 'g3', expense: mcpExpense({ paidBy: 'rb', people: ['rb'] }) }, headers: alice })
+    expect(denied).toEqual({ code: 'FORBIDDEN', message: GROUP_DENIED, outcomeUnknown: false, recovery: 'correct_arguments' })
+    const people = await h.mcp.failure({ name: 'create_expense', args: { groupId: 'g1', people: [], expense: expense() }, headers: alice })
+    expect(people.code).toBe(SDK_INPUT_REFUSED)
+    const none = await h.mcp.failure({ name: 'create_expense', args: { expense: expense() }, headers: alice })
     expect(none.message).toBe('Supply groupId for a group expense, or people for an ungrouped expense.')
   })
 
-  it('returns an upload error, not targets, while receipts are off, and keeps the expense', async () => {
-    h.documents.enabled = false
-    try {
-      const created = await checked('create_expense', { groupId: 'g1', expenseId: id21(4), uploads: [{ filename: 'r.png', contentType: 'image/png', bytes: 10 }], expense: expense({ title: 'Cafe' }) })
-      expect(created['revision']).toBe(1)
-      expect(created['uploads']).toEqual([])
-      expect(created['uploadError']).toBe('Expense saved, but upload targets could not be prepared. Retry update_expense with the current revision and upload requests.')
-    } finally {
-      h.documents.enabled = true
-    }
-  })
-
   it('edits only the given fields, checks the revision, and skips no-op revisions', async () => {
-    const changed = await checked('update_expense', { groupId: 'g1', expenseId: id21(1), expectedRevision: 1, changes: { amount: '45', notes: 'Includes tip' } })
-    expect(changed).toEqual({ expenseId: id21(1), revision: 2, amount: '45.00', currencyCode: 'USD', uploads: [], uploadError: null })
-    const read = (await checked('get_expense', { groupId: 'g1', expenseId: id21(1) }))['expense'] as Record<string, unknown>
+    const id = newExpenseId()
+    await checked('create_expense', { groupId: 'g1', expenseId: id, expense: expense({ vendor: 'Nopa', notes: '3 x 10 = 30' }) })
+    const changed = await checked('update_expense', { groupId: 'g1', expenseId: id, expectedRevision: 1, changes: { amount: '45', notes: 'Includes tip' } })
+    expect(changed).toEqual({ expenseId: id, revision: 2, amount: '45.00', currencyCode: 'USD', uploads: [], uploadError: null })
+    const read = (await checked('get_expense', { groupId: 'g1', expenseId: id }))['expense'] as Record<string, unknown>
     expect(read).toMatchObject({ title: 'Dinner', vendor: 'Nopa', notes: 'Includes tip', amount: '45.00', revision: 2, paidById: 'pa', splitMode: 'EVENLY' })
     expect(read['attribution']).toMatchObject({ updatedBy: { userId: 'alice', source: 'agent' } })
-    const stale = await failure(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(1), expectedRevision: 1, changes: { title: 'Lunch' } }, headers: alice })
-    expect(stale).toMatchObject({ code: 'CONFLICT', recovery: 'read_current_revision', outcomeUnknown: false })
-    const noop = await checked('update_expense', { groupId: 'g1', expenseId: id21(1), expectedRevision: 2 })
+    const stale = await h.mcp.failure({ name: 'update_expense', args: { groupId: 'g1', expenseId: id, expectedRevision: 1, changes: { title: 'Lunch' } }, headers: alice })
+    expect(stale).toMatchObject({ code: 'CONFLICT', message: REVISION_CONFLICT, recovery: 'read_current_revision', outcomeUnknown: false })
+    const noop = await checked('update_expense', { groupId: 'g1', expenseId: id, expectedRevision: 2 })
     expect(noop['revision']).toBe(2)
-    const missing = await failure(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(1), changes: {} }, headers: alice })
-    expect(missing.code).toBe('VALIDATION')
-    const cleared = await checked('update_expense', { groupId: 'g1', expenseId: id21(1), expectedRevision: 2, changes: { vendor: null } })
+    const missing = await h.mcp.failure({ name: 'update_expense', args: { groupId: 'g1', expenseId: id, changes: {} }, headers: alice })
+    expect(missing.code).toBe(SDK_INPUT_REFUSED)
+    const cleared = await checked('update_expense', { groupId: 'g1', expenseId: id, expectedRevision: 2, changes: { vendor: null } })
     expect(cleared['revision']).toBe(3)
-    expect(((await checked('get_expense', { groupId: 'g1', expenseId: id21(1) }))['expense'] as { vendor: unknown }).vendor).toBeNull()
+    expect(((await checked('get_expense', { groupId: 'g1', expenseId: id }))['expense'] as { vendor: unknown }).vendor).toBeNull()
   })
 
   it('keeps exact BY_AMOUNT shares through a partial edit, and needs payers again for a multi-payer amount change', async () => {
-    await checked('create_expense', {
-      groupId: 'g1',
-      expenseId: id21(5),
-      expense: expense({ splitMode: 'BY_AMOUNT', amount: '10.50', paidFor: [{ participant: 'pa', shares: '4.25' }, { participant: 'pb', shares: '6.25' }] }),
-    })
-    await checked('update_expense', { groupId: 'g1', expenseId: id21(5), expectedRevision: 1, changes: { title: 'Snacks' } })
-    const read = (await checked('get_expense', { groupId: 'g1', expenseId: id21(5) }))['expense'] as { paidFor: unknown }
+    const { groupId, a, b, headers, expense: draft } = await household('byamount')
+    const exact = newExpenseId()
+    await checked('create_expense', { groupId, expenseId: exact, expense: draft({ splitMode: 'BY_AMOUNT', amount: '10.50', paidFor: [{ participant: a, shares: '4.25' }, { participant: b, shares: '6.25' }] }) }, headers)
+    await checked('update_expense', { groupId, expenseId: exact, expectedRevision: 1, changes: { title: 'Snacks' } }, headers)
+    const read = (await checked('get_expense', { groupId, expenseId: exact }, headers))['expense'] as { paidFor: unknown }
     expect(read.paidFor).toEqual([
-      { expenseId: id21(5), participantId: 'pa', shares: '4.25' },
-      { expenseId: id21(5), participantId: 'pb', shares: '6.25' },
+      { expenseId: exact, participantId: a, shares: '4.25' },
+      { expenseId: exact, participantId: b, shares: '6.25' },
     ])
-    const multi = await failure(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(3), expectedRevision: 1, changes: { amount: '40' } }, headers: alice })
+    const shared = newExpenseId()
+    await checked('create_expense', { groupId, expenseId: shared, expense: draft({ paidBy: null, payers: [{ participant: a, amount: '10' }, { participant: b, amount: '20' }] }) }, headers)
+    const multi = await h.mcp.failure({ name: 'update_expense', args: { groupId, expenseId: shared, expectedRevision: 1, changes: { amount: '40' } }, headers })
     expect(multi.code).toBe('BAD_REQUEST')
-    const fixed = await checked('update_expense', {
-      groupId: 'g1',
-      expenseId: id21(3),
-      expectedRevision: 1,
-      changes: { amount: '40', payers: [{ participant: 'pa', amount: '15' }, { participant: 'pb', amount: '25' }] },
-    })
+    const fixed = await checked('update_expense', { groupId, expenseId: shared, expectedRevision: 1, changes: { amount: '40', payers: [{ participant: a, amount: '15' }, { participant: b, amount: '25' }] } }, headers)
     expect(fixed['revision']).toBe(2)
   })
 
   it('lists with filters before offset pagination, newest expense date first', async () => {
-    await checked('create_expense', { groupId: 'g1', expenseId: id21(6), expense: expense({ title: 'Rent', expenseDate: '2026-10-01', vendor: 'Landlord', category: 18 }) })
-    await checked('create_expense', { groupId: 'g1', expenseId: id21(7), expense: expense({ title: 'Payback', expenseDate: '2026-11-03', isReimbursement: true, paidBy: 'pb', paidFor: [{ participant: 'pa', shares: '1' }] }) })
-    const all = await checked('list_expenses', { groupId: 'g1', limit: 100 })
-    const dates = (all['expenses'] as { expenseDate: string }[]).map((e) => e.expenseDate)
-    expect(dates).toEqual([...dates].sort().reverse())
-    expect(dates[0]).toBe('2026-11-03T00:00:00.000Z')
-    const page = await checked('list_expenses', { groupId: 'g1', limit: 2 })
+    const { groupId, a, b, c, headers, expense: draft } = await household('filters', { slug: 'lists' })
+    const [dinner, rent, payback] = [newExpenseId(), newExpenseId(), newExpenseId()]
+    await checked('create_expense', { groupId, expenseId: dinner, expense: draft() }, headers)
+    await checked('create_expense', { groupId, expenseId: rent, expense: draft({ title: 'Rent', expenseDate: '2026-10-01', vendor: 'Landlord', category: 18 }) }, headers)
+    await checked('create_expense', { groupId, expenseId: payback, expense: draft({ title: 'Payback', expenseDate: '2026-11-03', isReimbursement: true, paidBy: b, paidFor: [{ participant: a, shares: '1' }] }) }, headers)
+    const all = await checked('list_expenses', { groupId, limit: 100 }, headers)
+    expect((all['expenses'] as { id: string }[]).map((e) => e.id)).toEqual([payback, dinner, rent])
+    expect((all['expenses'] as { expenseDate: string }[])[0]?.expenseDate).toBe('2026-11-03T00:00:00.000Z')
+    const page = await checked('list_expenses', { groupId, limit: 2 }, headers)
     expect(page).toMatchObject({ hasMore: true, nextCursor: 2 })
-    const filtered = async (args: object) => ((await checked('list_expenses', { groupId: 'g1', limit: 100, ...args }))['expenses'] as { id: string }[]).map((e) => e.id)
-    expect(await filtered({ isReimbursement: true })).toEqual([id21(7)])
-    expect(await filtered({ vendor: ' landlord ' })).toEqual([id21(6)])
-    expect(await filtered({ filter: 'LANDLORD' })).toEqual([id21(6)])
-    expect(await filtered({ filter: 'ent' })).toEqual([id21(6)])
-    expect(await filtered({ categoryId: 18 })).toEqual([id21(6)])
-    expect(await filtered({ from: '2026-10-01', to: '2026-10-01' })).toEqual([id21(6)])
-    expect(await filtered({ paidById: 'pb', from: '2026-11-02' })).toEqual([id21(7)])
-    expect((await filtered({ participantId: 'pc' })).includes(id21(7))).toBe(false)
+    const filtered = async (args: object) => ((await checked('list_expenses', { groupId, limit: 100, ...args }, headers))['expenses'] as { id: string }[]).map((e) => e.id)
+    expect(await filtered({ isReimbursement: true })).toEqual([payback])
+    expect(await filtered({ vendor: ' landlord ' })).toEqual([rent])
+    expect(await filtered({ filter: 'LANDLORD' })).toEqual([rent])
+    expect(await filtered({ filter: 'ent' })).toEqual([rent])
+    expect(await filtered({ categoryId: 18 })).toEqual([rent])
+    expect(await filtered({ from: '2026-10-01', to: '2026-10-01' })).toEqual([rent])
+    expect(await filtered({ paidById: b, from: '2026-11-02' })).toEqual([payback])
+    expect(await filtered({ participantId: c })).toEqual([dinner, rent])
     expect(await filtered({ currencyCode: 'JPY' })).toEqual([])
-    const reimbursement = (await checked('list_expenses', { groupId: 'g1', filter: 'Payback' }))['expenses'] as Record<string, unknown>[]
-    expect(reimbursement[0]).toMatchObject({ isReimbursement: true, paidBy: { id: 'pb', name: 'Bob' }, paidFor: [{ participant: { id: 'pa', name: 'Alice' }, shares: '1' }], category: { id: 0 } })
+    // A slug in any case names the group, and the answers carry its ID.
+    expect(await filtered({ groupId: 'LISTS', isReimbursement: true })).toEqual([payback])
+    expect(((await checked('get_group', { groupId: 'Lists' }, headers))['group'] as { id: string }).id).toBe(groupId)
+    expect(((await checked('list_activity', { groupId: 'lists', limit: 1 }, headers))['activities'] as { groupId: string }[])[0]?.groupId).toBe(groupId)
+    const reimbursement = (await checked('list_expenses', { groupId, filter: 'Payback' }, headers))['expenses'] as Record<string, unknown>[]
+    expect(reimbursement[0]).toMatchObject({ isReimbursement: true, paidBy: { id: b, name: `Name ${b}` }, paidFor: [{ participant: { id: a, name: 'Lena' }, shares: '1' }], category: { id: 1 } })
   })
 
   it('refuses bad list bounds and history selections before reading', async () => {
     for (const args of [{ limit: 0 }, { from: '2026-09-31' }, { from: '2026-02-29' }, { to: '2026-11-01T00:00:00Z' }, { from: '2026-11-02', to: '2026-11-01' }]) {
-      const refused = await failure(h, { name: 'list_expenses', args: { groupId: 'g1', ...args }, headers: alice })
-      expect(refused.code).toBe('VALIDATION')
+      const refused = await h.mcp.failure({ name: 'list_expenses', args: { groupId: 'g1', ...args }, headers: alice })
+      expect(refused.code).toBe(SDK_INPUT_REFUSED)
     }
-    const history = await failure(h, { name: 'list_expenses', args: { groupId: 'g1', asOf: '2026-11-01T00:00:00Z', atActivityId: 'a1' }, headers: alice })
+    const history = await h.mcp.failure({ name: 'list_expenses', args: { groupId: 'g1', asOf: '2026-11-01T00:00:00Z', atActivityId: 'a1' }, headers: alice })
     expect(history.code).toBe('BAD_REQUEST')
-    const denied = await failure(h, { name: 'list_expenses', args: { groupId: 'g3' }, headers: alice })
+    const denied = await h.mcp.failure({ name: 'list_expenses', args: { groupId: 'g3' }, headers: alice })
     expect(denied.code).toBe('FORBIDDEN')
     // A wrong group never shows another group’s expense.
-    const other = await failure(h, { name: 'get_expense', args: { groupId: 'g2', expenseId: id21(1) }, headers: alice })
+    const id = newExpenseId()
+    await checked('create_expense', { groupId: 'g1', expenseId: id, expense: expense() })
+    const other = await h.mcp.failure({ name: 'get_expense', args: { groupId: 'g2', expenseId: id }, headers: alice })
     expect(other).toMatchObject({ code: 'NOT_FOUND', message: 'Expense not found' })
   })
 
   it('soft-deletes with the current revision and keeps the history', async () => {
-    const stale = await failure(h, { name: 'delete_expense', args: { groupId: 'g1', expenseId: id21(2), expectedRevision: 0 }, headers: alice })
+    const id = newExpenseId()
+    await checked('create_expense', { groupId: 'g1', expenseId: id, expense: expense({ title: 'Taxi' }) })
+    const stale = await h.mcp.failure({ name: 'delete_expense', args: { groupId: 'g1', expenseId: id, expectedRevision: 0 }, headers: alice })
     expect(stale.code).toBe('CONFLICT')
-    const deleted = await checked('delete_expense', { groupId: 'g1', expenseId: id21(2), expectedRevision: 1 })
-    expect(deleted).toEqual({ expenseId: id21(2), revision: 2, deleted: true })
-    expect((await failure(h, { name: 'get_expense', args: { groupId: 'g1', expenseId: id21(2) }, headers: alice })).code).toBe('NOT_FOUND')
-    expect((await failure(h, { name: 'delete_expense', args: { groupId: 'g1', expenseId: id21(2), expectedRevision: 2 }, headers: alice })).code).toBe('NOT_FOUND')
+    const deleted = await checked('delete_expense', { groupId: 'g1', expenseId: id, expectedRevision: 1 })
+    expect(deleted).toEqual({ expenseId: id, revision: 2, deleted: true })
+    expect((await h.mcp.failure({ name: 'get_expense', args: { groupId: 'g1', expenseId: id }, headers: alice })).code).toBe('NOT_FOUND')
+    expect((await h.mcp.failure({ name: 'delete_expense', args: { groupId: 'g1', expenseId: id, expectedRevision: 2 }, headers: alice })).code).toBe('NOT_FOUND')
     const listed = (await checked('list_expenses', { groupId: 'g1', limit: 100 }))['expenses'] as { id: string }[]
-    expect(listed.map((e) => e.id)).not.toContain(id21(2))
-    const events = await h.withDb((db) => db.select({ revision: activities.expenseRevision }).from(activities).where(eq(activities.expenseId, id21(2))))
+    expect(listed.map((e) => e.id)).not.toContain(id)
+    const events = await h.withDb((db) => db.select({ revision: activities.expenseRevision }).from(activities).where(eq(activities.expenseId, id)))
     expect(events.map((e) => e.revision).sort()).toEqual([1, 2])
   })
 
   it('lists the participants referenced by any expense, deleted ones included', async () => {
-    expect((await checked('get_group', { groupId: 'g1' }))['participantsWithExpenses']).toEqual(['pa', 'pb', 'pc'])
-    expect((await checked('get_group', { groupId: 'g2' }))['participantsWithExpenses']).toEqual([])
+    const { groupId, a, b, c, headers, expense: draft } = await household('referenced')
+    const referenced = async () => (await checked('get_group', { groupId }, headers))['participantsWithExpenses']
+    expect(await referenced()).toEqual([])
+    await checked('create_expense', { groupId, expenseId: newExpenseId(), expense: draft({ people: [a, b] }) }, headers)
+    expect(await referenced()).toEqual([a, b])
+    // Only a deleted expense names c.
+    const gone = newExpenseId()
+    await checked('create_expense', { groupId, expenseId: gone, expense: draft({ paidBy: a, paidFor: [{ participant: c, shares: '1' }] }) }, headers)
+    await checked('delete_expense', { groupId, expenseId: gone, expectedRevision: 1 }, headers)
+    expect(await referenced()).toEqual([a, b, c])
   })
 
   it('applies a membership removal to every key at the next request', async () => {
-    expect((await checked('get_group', { groupId: 'g1' }, bob))['context']).toBeDefined()
-    await h.withDb((db) => db.update(memberships).set({ active: false }).where(eq(memberships.userId, 'bob')))
-    expect((await failure(h, { name: 'get_group', args: { groupId: 'g1' }, headers: bob })).code).toBe('FORBIDDEN')
-    await h.withDb((db) => db.update(memberships).set({ active: true }).where(eq(memberships.userId, 'bob')))
+    const { owner, groupId, headers } = await household('removal')
+    const second = { authorization: `Bearer ${await h.apiKey(owner)}` }
+    for (const key of [headers, second]) expect(((await checked('get_group', { groupId }, key))['group'] as { id: string }).id).toBe(groupId)
+    await h.withDb((db) => db.update(memberships).set({ active: false }).where(eq(memberships.userId, owner)))
+    for (const key of [headers, second]) expect((await h.mcp.failure({ name: 'get_group', args: { groupId }, headers: key })).code).toBe('FORBIDDEN')
   })
 
   it('retries a write after a serialization failure, as the RPC path does', async () => {
-    await h.group({ id: 'g-retry', people: ['ta'], members: [['alice', 'ta', 'admin']] })
+    const { groupId, headers, expense: draft } = await household('retry')
+    const id = id21('r', 1)
     // The first insert of this expense fails as a concurrent SERIALIZABLE write would. A sequence is not rolled back, so only the first attempt fails.
     await h.withDb((db) =>
       db.execute(sql`
@@ -478,22 +525,55 @@ describe('expense writes and reads', () => {
         CREATE TRIGGER fail_first_attempt BEFORE INSERT ON expenses FOR EACH ROW WHEN (NEW.id = 'r00000000000000000001') EXECUTE FUNCTION fail_first_attempt();`),
     )
     try {
-      const created = await checked('create_expense', {
-        groupId: 'g-retry',
-        expenseId: 'r00000000000000000001',
-        expense: expense({ paidBy: 'ta', paidFor: [{ participant: 'ta', shares: '1' }] }),
-      })
-      expect(created).toMatchObject({ groupId: 'g-retry', expenseId: 'r00000000000000000001', revision: 1 })
+      const created = await checked('create_expense', { groupId, expenseId: id, expense: draft() }, headers)
+      expect(created).toMatchObject({ groupId, expenseId: id, revision: 1 })
       const attempts = await h.withDb((db) => db.execute<{ n: string }>(sql`SELECT last_value::text AS n FROM retry_attempts`))
       expect(attempts.rows[0]?.n).toBe('2')
     } finally {
       await h.withDb((db) => db.execute(sql`DROP TRIGGER fail_first_attempt ON expenses; DROP FUNCTION fail_first_attempt(); DROP SEQUENCE retry_attempts;`))
     }
   })
+
+  it('splits a negative amount by amount, as a refund that the group shares (P-BAL-93, P-MONEY-52)', async () => {
+    const id = newExpenseId()
+    const refund = expense({ title: 'Refund', amount: '-30', splitMode: 'BY_AMOUNT', paidFor: [{ participant: 'pa', shares: '-10' }, { participant: 'pb', shares: '-20' }] })
+    const created = await checked('create_expense', { groupId: 'g1', expenseId: id, expense: refund })
+    expect(created).toMatchObject({ revision: 1, amount: '-30.00' })
+    const shares = [
+      { expenseId: id, participantId: 'pa', shares: '-10.00' },
+      { expenseId: id, participantId: 'pb', shares: '-20.00' },
+    ]
+    expect(((await checked('get_expense', { groupId: 'g1', expenseId: id }))['expense'] as { paidFor: unknown }).paidFor).toEqual(shares)
+    // The saved revision reads back the same split.
+    expect(((await checked('get_expense', { groupId: 'g1', expenseId: id, revision: 1 }))['expense'] as { paidFor: unknown }).paidFor).toEqual(shares)
+  })
+
+  // A database rule answers the caller; as an outage, the agent would read the outcome as unknown and retry.
+  it('answers a write that a database CHECK refuses as BAD_REQUEST, without database detail', async () => {
+    await h.withDb((db) => db.execute(sql`ALTER TABLE expenses ADD CONSTRAINT refused_for_test CHECK (title <> 'Refused by the database') NOT VALID`))
+    try {
+      const refused = await h.mcp.failure({ name: 'create_expense', args: { groupId: 'g1', expense: expense({ title: 'Refused by the database' }) }, headers: alice })
+      expect(refused).toEqual({
+        code: 'BAD_REQUEST',
+        message: 'The change breaks a rule of the ledger. Check the amounts, the splits and the other fields.',
+        outcomeUnknown: false,
+        recovery: 'correct_arguments',
+      })
+    } finally {
+      await h.withDb((db) => db.execute(sql`ALTER TABLE expenses DROP CONSTRAINT refused_for_test`))
+    }
+  })
 })
 
 describe('API keys on the endpoint', () => {
-  const list = (headers: Record<string, string>) => h.mcp(new Request(MCP_URL, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18', ...headers }, body: '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' }))
+  const list = (headers: Record<string, string>) =>
+    h.fetch(
+      new Request(MCP_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18', ...headers },
+        body: '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}',
+      }),
+    )
   it('accepts the raw key in X-API-Key or Bearer, or both when equal', async () => {
     const key = alice['x-api-key'] ?? ''
     expect((await list({ 'x-api-key': key })).status).toBe(200)
@@ -505,6 +585,10 @@ describe('API keys on the endpoint', () => {
   it('refuses conflicting, malformed, unknown, revoked and unverified credentials with one challenge format', async () => {
     const key = alice['x-api-key'] ?? ''
     const carol = await h.apiKey('carol')
+    await h.account('revoked')
+    const revoked = await h.apiKey('revoked')
+    expect((await list({ 'x-api-key': revoked })).status).toBe(200)
+    await h.withDb((db) => db.execute(sql`DELETE FROM apikey WHERE reference_id = 'revoked'`))
     for (const headers of [
       {},
       { 'x-api-key': key, authorization: `Bearer ${bob['authorization']?.slice(7)}` },
@@ -512,48 +596,55 @@ describe('API keys on the endpoint', () => {
       { 'x-api-key': 'short' },
       { 'x-api-key': `agentsplit_${'x'.repeat(40)}` },
       { 'x-api-key': carol },
+      { 'x-api-key': revoked },
     ]) {
       const r = await list(headers)
       expect(r.status).toBe(401)
       expect(r.headers.get('www-authenticate')).toBe(
-        `Bearer resource_metadata="${BASE}/.well-known/oauth-protected-resource/api/mcp", scope="agentsplit:read agentsplit:write offline_access"`,
+        mcpChallenge(BASE),
       )
       expect(await r.json()).toEqual({ error: 'Authentication required' })
       expect(r.headers.get('cache-control')).toBe('no-store')
     }
-    const revoked = await h.apiKey('alice')
-    await h.withDb((db) => db.execute(sql`DELETE FROM apikey WHERE key = (SELECT key FROM apikey ORDER BY created_at DESC LIMIT 1)`))
-    expect((await list({ 'x-api-key': revoked })).status).toBe(401)
   })
 })
 
 describe('rate limit', () => {
-  it('shares one bucket per user across keys, answers 429 with Retry-After, and refills', async () => {
+  it('takes LIMITS.mcpRequestsPerMinute requests a minute per user, refilled evenly over the minute, at a fixed clock', async () => {
+    const at = new Date('2026-11-05T12:00:00.000Z')
+    const take = (userId: string, time: Date) => h.withDb((db) => takeMcpRequest(db, { userId, at: time }))
+    for (let i = 0; i < LIMITS.mcpRequestsPerMinute; i++) expect(await take('erin', at)).toBe(0)
+    expect(await take('erin', at)).toBe(1)
+    // One refill later exactly one more request fits.
+    const later = new Date(at.getTime() + 60_000 / LIMITS.mcpRequestsPerMinute)
+    expect(await take('erin', later)).toBe(0)
+    expect(await take('erin', later)).toBe(1)
+    expect(await take('frank', at)).toBe(0)
+  })
+
+  it('shares one bucket per user across keys and answers 429 with Retry-After at the endpoint', async () => {
     await h.account('dave')
     const daveKey = { 'x-api-key': await h.apiKey('dave') }
     const otherKey = { 'x-api-key': await h.apiKey('dave') }
-    // 120 requests empty the bucket (the endpoint takes one per request; take the rest directly).
-    expect((await rpc(h, { method: 'tools/list', headers: daveKey })).status).toBe(200)
-    for (let i = 0; i < 119; i++) expect(await h.withDb((db) => takeMcpRequest(db, 'dave'))).toBe(0)
+    for (const headers of [daveKey, otherKey]) expect((await h.mcp.rpc({ method: 'tools/list', headers })).status).toBe(200)
+    // The user's whole budget, spent a minute ahead of the database clock, so the requests below see no refill.
+    const ahead = new Date(Date.now() + 60_000)
+    for (let i = 0; i < LIMITS.mcpRequestsPerMinute; i++) await h.withDb((db) => takeMcpRequest(db, { userId: 'dave', at: ahead }))
     for (const headers of [daveKey, otherKey]) {
-      const limited = await rpc(h, { method: 'tools/call', params: { name: 'list_groups', arguments: {} }, headers })
+      const limited = await h.mcp.rpc({ method: 'tools/call', params: { name: 'list_groups', arguments: {} }, headers })
       expect(limited.status).toBe(429)
       expect(limited.body).toEqual({ error: 'MCP request rate exceeded' })
       expect(limited.headers.get('retry-after')).toBe('1')
       expect(limited.headers.get('cache-control')).toBe('no-store')
     }
     // Another user is not affected.
-    expect((await rpc(h, { method: 'tools/list', headers: alice })).status).toBe(200)
-    // Half a second refills one request.
-    await h.withDb((db) => db.execute(sql`UPDATE mcp_rate_limits SET updated_at = updated_at - interval '500 milliseconds' WHERE user_id = 'dave'`))
-    expect((await rpc(h, { method: 'tools/list', headers: daveKey })).status).toBe(200)
-    expect((await rpc(h, { method: 'tools/list', headers: daveKey })).status).toBe(429)
+    expect((await h.mcp.rpc({ method: 'tools/list', headers: alice })).status).toBe(200)
   })
 
   it('does not spend a bucket on unauthenticated requests', async () => {
-    const before = await h.withDb((db) => db.execute(sql`SELECT count(*)::int AS n FROM mcp_rate_limits`))
-    expect((await rpc(h, { method: 'tools/list' })).status).toBe(401)
-    const after = await h.withDb((db) => db.execute(sql`SELECT count(*)::int AS n FROM mcp_rate_limits`))
-    expect(after.rows).toEqual(before.rows)
+    const buckets = () => h.withDb(async (db) => (await db.select().from(mcpRateLimits)).length)
+    const before = await buckets()
+    expect((await h.mcp.rpc({ method: 'tools/list' })).status).toBe(401)
+    expect(await buckets()).toBe(before)
   })
 })

@@ -41,9 +41,9 @@ Proofs:
 | 07 | Done, 30 per page | The list uses the shared `expensesQuery` (30 per page, as before this area). The next page loads when the end of the list scrolls into view. |
 | 09 | Done | 300 ms debounce before the search reaches the URL and the query. |
 | 11 | Changed (lead's core) | The v2 search also matches notes (`ledger.ts listExpenses`). |
-| 12–17 | Done | `list` "date headings" (3,000 random dates and week starts). |
+| 12–17 | Done | `src/client/routes/$group/-date-groups.ts`. The week starts on Sunday, the current app's en-US week (`WEEK_STARTS_ON` in `src/client/dates.ts`, which the Log uses too). |
 | 18, 19 | Done | `ledger` |
-| 20 | Changed | v2 caches lists for 30 s and drops every money query after each write (`invalidateMoney`), instead of refetching on every visit. This keeps screens fast; a write by another person shows after 30 s or a refresh. |
+| 20 | Done | Every visit reads again, as in the current app (`staleTime: 0` in `src/client/main/main.tsx`), and a write refreshes every view it changes (`afterWrite` in `src/client/queries/keys.ts`). |
 | 21, 23–25, 34, 35 | Done | `browser` |
 | 22 | Deferred | The category icon set is not ported yet. |
 | 26 | Done | `addedBy`/`editedBy` in the list statement. `db` "names who added and who last edited". |
@@ -120,14 +120,14 @@ Proofs:
 | 06, 09, 13, 15–19, 22, 23 | Done | `db` "creates every missed month…", "never duplicates when two runs race", "stops a series…", "counts an edited rule…". Each occurrence gets a deterministic ID from its link, so a duplicate fails on the primary key even if the lock were bypassed. Cron checked on the dev server: two runs created three weekly copies once. |
 | 10, 11 | Done | No read path writes. |
 | 12, 14 | Done | `recurring.process`. `db` "lets a member process one group only, and records them". Write scope belongs to the MCP area. |
-| 24 | Done | The scheduled job logs a failed occurrence and stops that run; `recurring.process` fails the call. |
+| 24 | Done | The scheduled job logs a failed occurrence, skips its link for the rest of the run and creates the other links; the next run tries it again. `recurring.process` fails the call. `db/expenses.test.ts` "skips a link that always fails in the scheduled run". |
 | 25 | Done | `recurring.list` (open series, non-payments, largest amount first). |
 
 ## Receipts (P-RECEIPT)
 
 | Items | Status | Proof or reason |
 | --- | --- | --- |
-| 01 | Done | `ENABLE_EXPENSE_DOCUMENTS` (true, yes, 1 or on), set to `true` in `wrangler.jsonc`, and reported by `reference.get`. |
+| 01 | Changed | Receipts are always on (Freeman, 2026-11-07): the `ENABLE_EXPENSE_DOCUMENTS` setting is gone, and `reference.get` reports `attachments.enabled: true`. |
 | 02–05, 07 | Done | `browser` (upload of a synthetic PNG, thumbnail through `/api/receipts`). |
 | 06 | Done, without a carousel | A thumbnail opens one image with "Delete document" and "Close". |
 | 08 | Done | `DocumentInput` in the core contract. |
@@ -145,5 +145,5 @@ Proofs:
 | 39 | Changed | Size and completeness are checked at the PUT; the content must also match the declared type. |
 | 40 | Changed | No copy: the one PUT writes the final key, and the target is spent after it. |
 | 42, 43 | Changed | Nothing to clean up after a failed attach: the transaction rolls back and the uploads stay attachable. The upload row is deleted at attach. The hourly cron deletes targets older than 25 hours and their objects. |
-| 44 | Changed | The R2 binding is always there. Uploads fail with PRECONDITION_FAILED "Receipts are disabled" only when `ENABLE_EXPENSE_DOCUMENTS` is off. |
+| 44 | Changed | The bucket is always there and receipts are always on, so uploads never fail with "Receipts are disabled". |
 | 45–54 | Not ported | The AI features are off (group E). |

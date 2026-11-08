@@ -1,13 +1,14 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { BalancesCard, SuggestedPayments } from '~/client/components/balances-view'
-import { groupQuery } from '~/client/queries'
+import { BalancesCard } from '~/client/components/balance/balances-card'
+import { SuggestedPayments } from '~/client/components/balance/settlements'
 import { balancesQuery } from '~/client/queries/expenses'
+import { groupQuery } from '~/client/queries/groups'
 import { Skeleton } from '~/client/ui/skeleton'
 
 export const Route = createFileRoute('/$group/balances')({
   // Fresh balances each time the tab opens (P-BAL-50).
-  loader: ({ context, params }) => context.queryClient.fetchQuery(balancesQuery(params.group)),
+  loader: ({ context }) => context.queryClient.fetchQuery(balancesQuery(context.groupId)),
   pendingComponent: () => (
     <div className="space-y-2" aria-busy="true">
       {[0, 1, 2].map((i) => (
@@ -20,16 +21,14 @@ export const Route = createFileRoute('/$group/balances')({
 
 function BalancesTab() {
   const { group } = Route.useParams()
-  const { data: g } = useSuspenseQuery(groupQuery(group))
-  const { data } = useSuspenseQuery(balancesQuery(group))
+  const { groupId } = Route.useRouteContext()
+  const { data: g } = useSuspenseQuery(groupQuery(groupId))
+  const { data } = useSuspenseQuery(balancesQuery(groupId))
   const names = new Map(g.participants.map((p) => [p.id, p.name]))
   return (
     <div className="flex flex-col gap-6">
+      <SuggestedPayments currencies={data.currencies} names={names} group={group} viewer={g.participantId} />
       <BalancesCard currencies={data.currencies} names={names} />
-      {/* The payments to record come before the chart. */}
-      <div className="order-first">
-        <SuggestedPayments currencies={data.currencies} names={names} group={group} viewer={g.participantId} />
-      </div>
     </div>
   )
 }

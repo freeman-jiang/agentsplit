@@ -3,10 +3,8 @@
 // owns the key format and hash; listing and revoking them run here.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
-import { Id, ReadError, WriteError } from './core'
-
-
-export * from '../account'
+import { LIMITS } from '../limits'
+import { Id, NameInput, ReadError, WriteError } from './core'
 
 export const Profile = Schema.Struct({
   id: Schema.String,
@@ -36,25 +34,26 @@ export const Account = Schema.Struct({
   connections: Schema.Array(ConnectedApp),
 })
 
+const ClientId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(LIMITS.clientIdMax))
+
 export const ConsentClient = Schema.Struct({ clientId: Schema.String, name: Schema.NullOr(Schema.String) })
 
 export class AccountApi extends RpcGroup.make(
   Rpc.make('account.get', { success: Account, error: ReadError }),
   Rpc.make('account.updateProfile', {
-    // The server trims the name and checks its length, so MCP gets the same rule.
-    payload: { name: Schema.String.check(Schema.isMaxLength(200)) },
+    payload: { name: NameInput },
     success: Schema.Struct({ profile: Profile }),
     error: WriteError,
   }),
   Rpc.make('account.revokeApiKey', { payload: { keyId: Id }, success: Schema.Struct({ revoked: Schema.Literal(true) }), error: WriteError }),
   Rpc.make('account.revokeConnection', {
-    payload: { clientId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048)) },
+    payload: { clientId: ClientId },
     success: Schema.Struct({ revoked: Schema.Literal(true) }),
     error: WriteError,
   }),
   /** The client named on the consent page; null when it is unknown or disabled. */
   Rpc.make('account.consentClient', {
-    payload: { clientId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048)) },
+    payload: { clientId: ClientId },
     success: Schema.NullOr(ConsentClient),
     error: ReadError,
   }),

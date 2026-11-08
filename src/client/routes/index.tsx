@@ -1,21 +1,38 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { ChevronDown, Search } from 'lucide-react'
-import { pickSearch } from '~/client/search'
-import { useEffect, useState } from 'react'
+import { Search } from 'lucide-react'
 import { LoginButton } from '~/client/components/login-button'
-import { meQuery } from '~/client/queries'
-import { accountBalancesQuery, errorMessage, feedOptionsQuery, feedQuery } from '~/client/queries/feed'
+import { attributionLine } from '~/client/components/expense-row/figures'
+import { ExpenseRow } from '~/client/components/expense-row/row'
+import { describeError } from '~/client/errors'
+import { useDebounced } from '~/client/hooks'
+import { meQuery } from '~/client/queries/session'
+import { accountBalancesQuery, feedOptionsQuery, feedQuery } from '~/client/queries/feed'
+import { currencyParam, oneOf, searchParams, text as textOf, textParam } from '~/client/search'
 import { Button } from '~/client/ui/button'
+import { CurrencySelect } from '~/client/ui/currency-select'
+import { DisclosureSummary } from '~/client/ui/disclosure'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
-import type { FeedFilter } from '~/shared/api'
-import { CURRENCIES, type CurrencyCode } from '~/shared/currencies'
-import { DashboardBalance } from './expenses/-dashboard-balance'
-import { FeedCard } from './expenses/-feed-card'
+import type { FeedFilter, FeedItem, FeedScope } from '~/shared/api'
+import { isCalendarDate } from '~/shared/dates'
+import { LIMITS } from '~/shared/limits'
+import { EXPENSE_KINDS } from '~/shared/vocabulary'
+import { DashboardBalance } from './-dashboard-balance'
 
-// The router parses `?category=18` as a number, so each value may be either.
-const parseSearch = pickSearch(['q', 'group', 'view', 'person', 'payer', 'type', 'currency', 'category', 'from', 'to'])
+// Every filter stays as the URL has it, so a value the feed cannot use shows a message (toFilter).
+const parseSearch = searchParams({
+  q: textParam,
+  group: textParam,
+  view: textParam,
+  person: textParam,
+  payer: textParam,
+  type: textParam,
+  currency: textParam,
+  category: textParam,
+  from: textParam,
+  to: textParam,
+})
 type SearchParams = ReturnType<typeof parseSearch>
 type Key = keyof SearchParams
 
@@ -38,12 +55,11 @@ function Home() {
 
 function Landing() {
   return (
-    // The hero centers in the space between the header and the footer.
     <main className="flex flex-1 items-center">
       <section className="w-full py-16">
-        <div className="container mx-auto flex max-w-screen-md flex-col items-center gap-6 px-4 text-center">
-          <h1 className="landing-header py-2 font-display text-4xl leading-none! font-normal sm:text-5xl md:text-6xl">
-            Shared expenses. <strong>Simply settled.</strong>
+        <div className="mx-auto flex w-full max-w-screen-md flex-col items-center gap-6 px-4 text-center">
+          <h1 className="py-2 font-display text-4xl leading-none! sm:text-5xl md:text-6xl">
+            Shared expenses. <strong className="block font-semibold text-muted-foreground">Simply settled.</strong>
           </h1>
           <p className="max-w-lg leading-normal text-pretty text-muted-foreground sm:text-xl sm:leading-8">
             Keep track of everyday expenses with the people you share them with. In your browser, or with your agent.
@@ -55,44 +71,38 @@ function Landing() {
   )
 }
 
-const text = (value: string | number | undefined) => (value === undefined ? '' : String(value))
-const DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
-const CODES = (Object.keys(CURRENCIES) as CurrencyCode[]).sort()
+const text = (value: string | number | undefined) => textOf(value) ?? ''
+/** The Group select's choices that are a scope rather than one group; 'all' filters nothing. */
+const scopeParam = oneOf(['grouped', 'ungrouped'] as const satisfies ReadonlyArray<typeof FeedScope.Type>)
+const kindParam = oneOf(EXPENSE_KINDS)
 
 /** The URL's filters as a feed filter, or the message to show instead of the list. */
 function toFilter(s: SearchParams, search: string): { filter: typeof FeedFilter.Type } | { error: string } {
   const group = text(s.group) || 'all'
   const currency = text(s.currency)
+  const currencyCode = currencyParam(currency)
   const category = text(s.category)
-  const type = text(s.type)
+  const kind = kindParam(text(s.type))
+  const scope = scopeParam(group)
   const [from, to] = [text(s.from), text(s.to)]
-  if (currency && !(currency in CURRENCIES)) return { error: 'Choose a supported currency.' }
+  if (currency && !currencyCode) return { error: 'Choose a supported currency.' }
   if (category && !/^\d+$/.test(category)) return { error: 'Choose a category from the list.' }
-  if ((from && !DATE.test(from)) || (to && !DATE.test(to))) return { error: 'Use a calendar date, YYYY-MM-DD.' }
+  if ((from && !isCalendarDate(from)) || (to && !isCalendarDate(to))) return { error: 'Use a calendar date, YYYY-MM-DD.' }
   if (from && to && from > to) return { error: 'The start date must be on or before the end date.' }
   return {
     filter: {
       involvingMe: text(s.view) !== 'all',
-      ...(group === 'grouped' || group === 'ungrouped' ? { scope: group } : group !== 'all' ? { groupId: group } : {}),
-      ...(search.trim() ? { search: search.trim().slice(0, 200) } : {}),
+      ...(scope ? { scope } : group !== 'all' ? { groupId: group } : {}),
+      ...(search.trim() ? { search: search.trim().slice(0, LIMITS.searchMax) } : {}),
       ...(text(s.person) ? { personUserId: text(s.person) } : {}),
       ...(text(s.payer) ? { payerUserId: text(s.payer) } : {}),
-      ...(currency ? { currency: currency as CurrencyCode } : {}),
+      ...(currencyCode ? { currency: currencyCode } : {}),
       ...(category ? { categoryId: Number(category) } : {}),
-      ...(type === 'expense' || type === 'payment' ? { kind: type } : {}),
+      ...(kind ? { kind } : {}),
       ...(from ? { from } : {}),
       ...(to ? { to } : {}),
     },
   }
-}
-
-function useDebounced(value: string, ms: number) {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), ms)
-    return () => clearTimeout(timer)
-  }, [value, ms])
-  return debounced
 }
 
 const ADVANCED: Key[] = ['person', 'payer', 'currency', 'category', 'type', 'from', 'to']
@@ -103,11 +113,7 @@ function Dashboard() {
   const options = useQuery(feedOptionsQuery)
   const search = useDebounced(text(params.q), 250)
   const parsed = toFilter(params, search)
-  const feed = useInfiniteQuery({
-    ...feedQuery('filter' in parsed ? parsed.filter : {}),
-    enabled: 'filter' in parsed,
-    refetchOnMount: 'always',
-  })
+  const feed = useInfiniteQuery({ ...feedQuery('filter' in parsed ? parsed.filter : {}), enabled: 'filter' in parsed })
   const update = (key: Key, value: string) =>
     navigate({
       to: '/',
@@ -126,7 +132,7 @@ function Dashboard() {
       <div className="space-y-4 sm:space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="font-display text-3xl tracking-tight">Dashboard</h1>
+            <h1 className="font-display text-3xl">Dashboard</h1>
             <p className="mt-2 hidden text-sm text-muted-foreground sm:block">Your balances and shared expenses, in one place.</p>
           </div>
           <Button asChild>
@@ -143,7 +149,7 @@ function Dashboard() {
             <label className="relative col-span-2 text-sm sm:col-span-1">
               <span className="sr-only">Search</span>
               <Search aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input type="search" className="ps-9" placeholder="Search descriptions or merchants" maxLength={200} {...select('q')} />
+              <Input type="search" className="ps-9" placeholder="Search descriptions or merchants" maxLength={LIMITS.searchMax} {...select('q')} />
             </label>
             <label className="text-sm">
               <span className="sr-only">Group</span>
@@ -166,11 +172,8 @@ function Dashboard() {
               </NativeSelect>
             </label>
           </div>
-          <details open={advanced || undefined} className="group">
-            <summary className="flex cursor-pointer list-none items-center gap-1 text-sm text-muted-foreground [&::-webkit-details-marker]:hidden">
-              More filters
-              <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden="true" />
-            </summary>
+          <details open={advanced || undefined}>
+            <DisclosureSummary className="min-h-0 justify-start gap-1 font-normal text-muted-foreground">More filters</DisclosureSummary>
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <label className="space-y-2 text-sm">
                 <span>Person involved</span>
@@ -204,14 +207,7 @@ function Dashboard() {
               </label>
               <label className="space-y-2 text-sm">
                 <span>Currency</span>
-                <NativeSelect {...select('currency')}>
-                  <option value="">All currencies</option>
-                  {CODES.map((code) => (
-                    <option key={code} value={code}>
-                      {code}
-                    </option>
-                  ))}
-                </NativeSelect>
+                <CurrencySelect any="All currencies" compact value={currencyParam(params.currency) ?? ''} onChange={(currency) => update('currency', currency)} />
               </label>
               <label className="space-y-2 text-sm">
                 <span>Category</span>
@@ -243,7 +239,7 @@ function Dashboard() {
         {'error' in parsed ? (
           <p role="alert">{parsed.error}</p>
         ) : feed.error ? (
-          <p role="alert">{errorMessage(feed.error)}</p>
+          <p role="alert">{describeError(feed.error).message}</p>
         ) : !feed.data ? (
           <p role="status">Loading expenses…</p>
         ) : expenses.length === 0 ? (
@@ -254,7 +250,7 @@ function Dashboard() {
         ) : (
           <div aria-label="Expense history" className="divide-y overflow-hidden rounded-2xl border bg-card">
             {expenses.map((expense) => (
-              <FeedCard key={expense.id} expense={expense} />
+              <FeedRow key={expense.id} expense={expense} />
             ))}
           </div>
         )}
@@ -265,5 +261,21 @@ function Dashboard() {
         )}
       </div>
     </main>
+  )
+}
+
+/** A feed item in the shared row: its own people, and its group, or "No group". */
+function FeedRow({ expense: e }: { expense: typeof FeedItem.Type }) {
+  const { attribution } = e
+  return (
+    <ExpenseRow
+      expense={e}
+      link={{ to: '/expenses/$expenseId', params: { expenseId: e.id } }}
+      viewer={e.participantId}
+      names={new Map(e.people.map((p) => [p.id, p.name]))}
+      attribution={attributionLine({ addedBy: attribution.createdBy?.name ?? null, editedBy: attribution.updatedBy?.name ?? null })}
+      place={e.group}
+      context={!e.group && e.kind === 'payment' && e.contextExpenseTitle ? `Repayment for ${e.contextExpenseTitle}` : null}
+    />
   )
 }

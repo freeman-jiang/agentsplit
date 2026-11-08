@@ -12,11 +12,17 @@ updates:
         update-types:
           - 'minor'
           - 'patch'
+    # Bun follows the flake's nixpkgs pin, with the Dockerfile images
+    # (scripts/check-bun-version.ts), so it is bumped by hand with them.
+    ignore:
+      - dependency-name: '@types/bun'
 
   - package-ecosystem: 'docker'
     directory: '/'
     schedule:
       interval: 'weekly'
+    ignore:
+      - dependency-name: 'oven/bun'
 
   # Keeps the workflow action pins current. Without this nothing watches them,
   # which is how checkout/setup-node drifted several majors behind.

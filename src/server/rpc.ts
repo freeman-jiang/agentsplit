@@ -1,105 +1,114 @@
+// The RPC side of a call: the session check once per call, then the domain
+// work through src/server/calls.ts. The handlers in src/server/handlers/ use
+// `read`, `write` and `publicRead`.
 import { Cause, Context, Effect, Layer, Option } from 'effect'
 import { RpcMiddleware } from 'effect/rpc'
-import { AgentSplitApi, Conflict, Invalid, Unauthorized, Unavailable } from '../shared/api'
-import { tooManyWritesMessage } from '../shared/limits'
+import { AgentSplitApi, Unauthorized, Unavailable } from '../shared/api'
+import { ERROR_ANSWERS, errorKind, UNAVAILABLE, type DeclaredError } from '../shared/errors'
+import type { Principal } from './core/access'
+import { sessionPrincipal } from './auth/session'
 import type { Bucket } from './bucket'
-import { DatabaseError, REQUEST_ID_HEADER, RequestDb, requestDbFor, transaction, useDb, type Db, type DomainError } from './db'
-import type * as ledger from './ledger'
-import { takeWrite } from './rate-limit'
-import { sessionPrincipal } from './session'
+import { answerOf, readAnswerOf, runRead, runWrite, type AfterCommit, type CallName } from './calls'
+import type { Db } from './core/db'
 
-/** Settings from the server environment that the handlers need. */
-export class AppConfig extends Context.Service<
-  AppConfig,
-  {
-    readonly baseUrl: string
-    readonly secret: string
-    readonly googleClientId: string
-    readonly googleClientSecret: string
-    /** Receipts on expenses (the current app's ENABLE_EXPENSE_DOCUMENTS). */
-    readonly documentsEnabled: boolean
-  }
->()('agentsplit/AppConfig') {}
+/** The settings that the handlers and the session check use. */
+export class AppConfig extends Context.Service<AppConfig, { readonly baseUrl: string; readonly secret: string }>()('agentsplit/AppConfig') {}
 
 /** The receipts bucket, for handlers that remove receipts from storage after their write commits. */
 export class ReceiptBucket extends Context.Service<ReceiptBucket, Bucket>()('agentsplit/ReceiptBucket') {}
 
-/** The signed-in caller, or null. Resolved once per request by AuthMiddleware. */
-export class CurrentPrincipal extends Context.Service<CurrentPrincipal, ledger.Principal | null>()('agentsplit/CurrentPrincipal') {}
+/**
+ * This request's database connection and ID. The server's request handler
+ * (app.ts) puts it in the request's context; the RPC server runs every call
+ * of the request with that context, so the middleware reads it from there.
+ */
+export class RpcRequest extends Context.Service<RpcRequest, { readonly db: Db; readonly requestId: string }>()('agentsplit/RpcRequest') {}
 
-export class AuthMiddleware extends RpcMiddleware.Service<AuthMiddleware, { provides: CurrentPrincipal | RequestDb }>()(
-  'agentsplit/AuthMiddleware',
-  { error: Unavailable },
+/** One call: the request's connection, its name for the log, and the signed-in caller or null. */
+export class CurrentCall extends Context.Service<CurrentCall, { readonly db: Db; readonly call: CallName; readonly principal: Principal | null }>()(
+  'agentsplit/CurrentCall',
 ) {}
 
-const unavailable = (error: DatabaseError | DomainError) => new Unavailable({ message: error instanceof DatabaseError ? error.message : 'Sign-in check failed' })
+export class AuthMiddleware extends RpcMiddleware.Service<AuthMiddleware, { provides: CurrentCall }>()('agentsplit/AuthMiddleware', { error: Unavailable }) {}
 
-/** Declared errors that answer the caller's own request. Every other failure is the server's. */
-const ANSWERS: ReadonlySet<string> = new Set(['Unauthorized', 'Forbidden', 'NotFound', 'Conflict', 'Invalid'])
+const isDeclared = (error: unknown): error is DeclaredError =>
+  typeof error === 'object' && error !== null && '_tag' in error && typeof error._tag === 'string' && Object.hasOwn(ERROR_ANSWERS, error._tag)
 
 /**
  * Logs a failed call with the request ID that the response header carries and
- * the error page shows, so a quoted reference finds its log line.
+ * the error page shows, so a quoted reference finds its log line. The cause of
+ * an Unavailable was logged where it happened (calls.ts).
  */
-const logFailure = (data: { requestId: string | undefined; rpc: string; cause: Cause.Cause<unknown> }) =>
+const logFailure = (data: { call: CallName; cause: Cause.Cause<unknown> }) =>
   Effect.sync(() => {
     if (Cause.hasInterruptsOnly(data.cause)) return
     const error = Cause.findErrorOption(data.cause)
-    const tag = Option.isSome(error) && typeof error.value === 'object' && error.value !== null && '_tag' in error.value ? String(error.value._tag) : null
-    if (tag !== null && ANSWERS.has(tag)) console.warn(`RPC ${data.rpc} answered ${tag}`, { requestId: data.requestId })
-    else console.error(`RPC ${data.rpc} failed`, { requestId: data.requestId }, Cause.pretty(data.cause))
+    const meta = { requestId: data.call.requestId }
+    if (Option.isNone(error) || !isDeclared(error.value)) return console.error(`${data.call.name} failed`, meta, Cause.pretty(data.cause))
+    const tag = error.value._tag
+    if (ERROR_ANSWERS[errorKind(error.value)].answer) console.warn(`${data.call.name} answered ${tag}`, meta)
+    else console.error(`${data.call.name} answered ${tag}`, meta)
   })
 
 export const AuthMiddlewareLive = Layer.effect(AuthMiddleware)(
   Effect.gen(function* () {
     const config = yield* AppConfig
-    return (effect, { headers, rpc }) => {
-      const values = headers as Record<string, string | undefined>
-      const requestId = values[REQUEST_ID_HEADER]
-      const db = requestDbFor(requestId)
-      const call = db
-        ? Effect.flatMap(
-            useDb((d) => sessionPrincipal(d, { cookie: values['cookie'] ?? null, secret: config.secret, baseUrl: config.baseUrl })).pipe(
-              Effect.provideService(RequestDb, db),
-              Effect.mapError(unavailable),
-            ),
-            (principal) => effect.pipe(Effect.provideService(CurrentPrincipal, principal), Effect.provideService(RequestDb, db)),
-          )
-        : Effect.fail(new Unavailable({ message: 'No database connection for this request' }))
-      return Effect.tapCause(call, (cause) => logFailure({ requestId, rpc: rpc._tag, cause }))
-    }
+    return (effect, { headers, rpc }) =>
+      Effect.gen(function* () {
+        const request = yield* Effect.serviceOption(RpcRequest)
+        const call: CallName = { name: `RPC ${rpc._tag}`, requestId: Option.isSome(request) ? request.value.requestId : undefined }
+        if (Option.isNone(request)) {
+          console.error(`${call.name}: no database connection for this request`)
+          return yield* Effect.fail(new Unavailable({ message: UNAVAILABLE }))
+        }
+        const { db } = request.value
+        const cookie = (headers as Record<string, string | undefined>)['cookie'] ?? null
+        const principal = yield* Effect.tryPromise({
+          try: () => sessionPrincipal(db, { cookie, secret: config.secret, baseUrl: config.baseUrl }),
+          catch: (error) => {
+            console.error(`${call.name}: the session check failed`, { requestId: call.requestId }, error)
+            return new Unavailable({ message: UNAVAILABLE })
+          },
+        })
+        return yield* effect.pipe(Effect.provideService(CurrentCall, { db, call, principal }), Effect.tapCause((cause) => logFailure({ call, cause })))
+      })
   }),
 )
 
-export const currentPrincipal = Effect.gen(function* () {
-  return yield* CurrentPrincipal
-})
-export const requirePrincipal = Effect.flatMap(currentPrincipal, (p) => (p ? Effect.succeed(p) : Effect.fail(new Unauthorized())))
+export const currentPrincipal = Effect.map(CurrentCall, (current) => current.principal)
 
-/** Maps a database failure to Unavailable; domain errors pass through. */
-const run = <A, R>(effect: Effect.Effect<A, DatabaseError | DomainError, R>) =>
-  Effect.mapError(effect, (e) => (e instanceof DatabaseError ? new Unavailable({ message: e.message }) : e))
+const signedIn = Effect.flatMap(CurrentCall, (current) =>
+  current.principal ? Effect.succeed({ ...current, principal: current.principal }) : Effect.fail(new Unauthorized()),
+)
+
+/** Public reference data: no principal needed, and no access to check. Its only failure is Unavailable. */
+export const publicRead = <A>(work: (db: Db) => Promise<A>) =>
+  Effect.flatMap(CurrentCall, ({ db, call }) =>
+    Effect.tryPromise({
+      try: () => runRead({ db, call, work }),
+      catch: (error) => {
+        const answer = readAnswerOf(error, call)
+        if (answer instanceof Unavailable) return answer
+        // The contract declares only Unavailable here, so a domain error is a bug: log it before it becomes Unavailable.
+        console.error(`${call.name}: a public read failed with ${answer._tag}`, { requestId: call.requestId }, error)
+        return new Unavailable({ message: UNAVAILABLE })
+      },
+    }),
+  )
 
 /** A read on this request's connection, for a signed-in caller. */
-export const read = <A>(work: (db: Db, principal: ledger.Principal) => Promise<A>) =>
-  Effect.flatMap(requirePrincipal, (principal) =>
-    run(useDb((db) => work(db, principal))).pipe(
-      // Reads never check revisions; a Conflict here would be a bug, so report it as a failure.
-      Effect.mapError((e) => (e instanceof Conflict ? new Unavailable({ message: 'Unexpected conflict on a read' }) : e)),
-    ),
+export const read = <A>(work: (db: Db, principal: Principal) => Promise<A>) =>
+  Effect.flatMap(signedIn, ({ db, call, principal }) =>
+    Effect.tryPromise({ try: () => runRead({ db, call, work: (d) => work(d, principal) }), catch: (error) => readAnswerOf(error, call) }),
   )
-/**
- * A write in one SERIALIZABLE transaction, for a signed-in caller. It first
- * takes one write from the caller's fair-use budget, outside the transaction;
- * a refused write changes nothing and says how long to wait.
- */
-export const write = <A>(work: (db: Db, principal: ledger.Principal) => Promise<A>) =>
-  Effect.flatMap(requirePrincipal, (principal) =>
-    run(
-      Effect.flatMap(useDb((db) => takeWrite(db, principal.userId)), (wait) =>
-        wait > 0 ? Effect.fail(new Invalid({ message: tooManyWritesMessage(wait) })) : transaction((db) => work(db, principal)),
-      ),
-    ),
+
+/** A write for a signed-in caller, with the write budget and one SERIALIZABLE transaction (calls.ts). */
+export const write = <A>(work: (db: Db, principal: Principal, afterCommit: AfterCommit) => Promise<A>) =>
+  Effect.flatMap(signedIn, ({ db, call, principal }) =>
+    Effect.tryPromise({
+      try: () => runWrite({ db, principal, call, work: (tx, afterCommit) => work(tx, principal, afterCommit) }),
+      catch: (error) => answerOf(error, call),
+    }),
   )
 
 export const Api = AgentSplitApi.middleware(AuthMiddleware)

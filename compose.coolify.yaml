@@ -4,7 +4,7 @@
 #
 # `db2` holds the ledger and `garage` the receipts. `db` is the pre-cutover
 # PostgreSQL 17 database of the old app. Nothing reads it; it stays for
-# rollback until Freeman's approved removal on 2026-11-13 (docs/v2/CUTOVER.md).
+# rollback until its removal, which Freeman approved for 2026-11-13 (DEPLOYMENT.md).
 services:
   app:
     build:
@@ -18,8 +18,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?Set GOOGLE_CLIENT_SECRET}
       AUTH_BOOTSTRAP_EMAIL: ${AUTH_BOOTSTRAP_EMAIL:-}
-      ENABLE_EXPENSE_DOCUMENTS: 'true'
-      # The cutover's freeze: 503 for everything but /api/health (docs/v2/CUTOVER.md).
+      # The maintenance switch: 503 for everything but the health checks (DEPLOYMENT.md).
       AGENTSPLIT_MAINTENANCE: ${AGENTSPLIT_MAINTENANCE:-}
       # New accounts per 24 hours; empty means 200 (src/shared/limits.ts).
       SIGN_UP_DAILY_LIMIT: ${SIGN_UP_DAILY_LIMIT:-}
@@ -74,7 +73,7 @@ services:
         # network, where a plain service name can resolve to another stack.
         aliases: [agentsplit-db2]
 
-  # The old app's database, unchanged and unused. Removed on 2026-11-13; keep the volume.
+  # The old app's database, unchanged and unused. Its removal is approved for 2026-11-13; keep the volume.
   db:
     image: postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     environment:

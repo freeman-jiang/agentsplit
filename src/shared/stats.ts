@@ -2,16 +2,15 @@
 // current app's (src/lib/totals.ts, src/lib/monthly-spending.ts): payments are
 // left out of every figure, shares are the same parts balances use, and dates
 // are calendar dates. One change: both monthly charts use the same months
-// (DECISIONS.md, P-STATS-36).
-import { Result } from 'effect'
+// (DECISIONS.md, P-STATS-36). No Effect import: the client uses regroupMonthly.
 import type { CurrencyCode } from './currencies'
-import { formatMinor, minor, parseMinor, type DecimalString, type Minor } from './money'
-import type { Category, Recurrence } from './history'
-import { titleWithVendor } from './history'
+import { titleWithVendor, type Category } from './history'
+import { formatMinor, minor, minorOrNull, sumMinor, type DecimalString, type Minor } from './minor'
+import { RECURRING_PERIODS, type ExpenseKind, type Recurrence, type RecurringPeriod } from './vocabulary'
 
 export type StatsExpense = {
   readonly id: string
-  readonly kind: 'expense' | 'payment'
+  readonly kind: ExpenseKind
   readonly title: string
   readonly vendor: string | null
   /** YYYY-MM-DD. */
@@ -28,11 +27,6 @@ export type StatsExpense = {
 export type DateRange = { readonly from?: string | undefined; readonly to?: string | undefined }
 
 const spending = (list: readonly StatsExpense[]) => list.filter((e) => e.kind === 'expense')
-const sum = (values: Iterable<bigint>) => {
-  let total = 0n
-  for (const v of values) total += v
-  return minor(total)
-}
 
 /** Inclusive calendar-date range; either bound may be missing. */
 export function inRange<T extends { expenseDate: string }>(list: readonly T[], range: DateRange): T[] {
@@ -51,19 +45,19 @@ export function divRound(numerator: bigint, denominator: bigint): bigint {
 
 export function totals(data: { expenses: readonly StatsExpense[]; participantId: string | null }) {
   const list = spending(data.expenses)
-  const total = sum(list.map((e) => e.amount))
+  const total = sumMinor(list.map((e) => e.amount))
   if (data.participantId === null) return { total, paid: null, share: null }
   const id = data.participantId
   return {
     total,
-    paid: sum(list.flatMap((e) => e.payers.filter((p) => p.participantId === id).map((p) => p.amount))),
-    share: sum(list.flatMap((e) => e.shares.filter((s) => s.participantId === id).map((s) => s.amount))),
+    paid: sumMinor(list.flatMap((e) => e.payers.filter((p) => p.participantId === id).map((p) => p.amount))),
+    share: sumMinor(list.flatMap((e) => e.shares.filter((s) => s.participantId === id).map((s) => s.amount))),
   }
 }
 
 export function summary(expenses: readonly StatsExpense[]) {
   const list = spending(expenses)
-  const total = sum(list.map((e) => e.amount))
+  const total = sumMinor(list.map((e) => e.amount))
   let largest: StatsExpense | undefined
   for (const e of list) if (!largest || e.amount > largest.amount) largest = e
   const dates = list.map((e) => e.expenseDate).sort()
@@ -204,10 +198,7 @@ export function monthlyByCategory(data: { expenses: readonly StatsExpense[]; mon
 /** Regroups the category payload by category group on the client, without a request. */
 export function regroupMonthly(data: { spending: MonthlySpending; grouping: MonthlyGrouping; currency: CurrencyCode }): MonthlySpending {
   if (data.grouping === 'category' || data.spending.months.length === 0) return data.spending
-  const m = (text: string) => {
-    const parsed = parseMinor({ amount: text, currency: data.currency })
-    return Result.isSuccess(parsed) ? (parsed.success as bigint) : 0n
-  }
+  const m = (text: string): bigint => minorOrNull({ amount: text, currency: data.currency }) ?? 0n
   const totalsByKey = new Map<string, Acc>()
   const months = data.spending.months.map((month) => {
     const categories = new Map<string, Acc>()
@@ -228,6 +219,12 @@ export function regroupMonthly(data: { spending: MonthlySpending; grouping: Mont
 // ---------- recurring ----------
 
 /**
+ * Each period's occurrences in 8400 months. 365.25 = 36525 / 100, so
+ * daily·365.25/12 = daily·36525·7/8400 and weekly·365.25/84 = weekly·36525/8400.
+ */
+const PER_8400_MONTHS: Record<RecurringPeriod, bigint> = { daily: 36525n * 7n, weekly: 36525n, monthly: 8400n }
+
+/**
  * Active recurring expenses as estimated monthly and yearly costs, with 365.25
  * days a year. Both estimates come from the exact sum, so the yearly figure is
  * not the rounded monthly figure times 12. In minor units, with N =
@@ -235,13 +232,11 @@ export function regroupMonthly(data: { spending: MonthlySpending; grouping: Mont
  * yearly = N / 700, each rounded half away from zero.
  */
 export function recurring(expenses: readonly StatsExpense[]) {
-  const periods = (['daily', 'weekly', 'monthly'] as const).map((period) => {
+  const periods = RECURRING_PERIODS.map((period) => {
     const list = spending(expenses).filter((e) => e.recurrence === period)
-    return { period, count: list.length, total: sum(list.map((e) => e.amount)) }
+    return { period, count: list.length, total: sumMinor(list.map((e) => e.amount)) }
   })
-  const [daily, weekly, monthly] = periods.map((p) => p.total as bigint)
-  // 365.25 = 36525 / 100, so daily·365.25/12 = daily·36525·7/8400 and weekly·365.25/84 = weekly·36525/8400.
-  const numerator = (daily ?? 0n) * 36525n * 7n + (weekly ?? 0n) * 36525n + (monthly ?? 0n) * 8400n
+  const numerator = periods.reduce((sum, p) => sum + p.total * PER_8400_MONTHS[p.period], 0n)
   return {
     count: periods.reduce((s, p) => s + p.count, 0),
     byPeriod: periods.filter((p) => p.count > 0),

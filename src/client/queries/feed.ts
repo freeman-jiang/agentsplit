@@ -1,43 +1,22 @@
-import { infiniteQueryOptions, queryOptions, type QueryClient } from '@tanstack/react-query'
+// The dashboard and the /expenses pages: reads across every group. Each visit
+// reads them fresh, as the client's default does (main.tsx).
+import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import type { FeedCursor, FeedFilter } from '../../shared/api'
+import { LIMITS } from '../../shared/limits'
 import { rpc } from '../rpc'
+import { keys } from './keys'
 
-type Filter = typeof FeedFilter.Type
-type Cursor = typeof FeedCursor.Type
-
-// The dashboard reads fresh on every visit: other people and agents change the ledger.
-export const feedQuery = (filter: Filter) =>
+export const feedQuery = (filter: typeof FeedFilter.Type) =>
   infiniteQueryOptions({
-    queryKey: ['feed', 'list', filter],
-    initialPageParam: null as Cursor | null,
-    queryFn: ({ pageParam }) => rpc((api) => api('feed.list', { filter, cursor: pageParam, limit: 30 })),
+    queryKey: keys.feedList(filter),
+    initialPageParam: null as typeof FeedCursor.Type | null,
+    queryFn: ({ pageParam }) => rpc((api) => api('feed.list', { filter, cursor: pageParam, limit: LIMITS.expensePage })),
     getNextPageParam: (page) => page.nextCursor,
-    staleTime: 0,
   })
 
-export const accountBalancesQuery = queryOptions({
-  queryKey: ['feed', 'balances'],
-  queryFn: () => rpc((api) => api('feed.balances', undefined)),
-  staleTime: 0,
-})
+export const accountBalancesQuery = queryOptions({ queryKey: keys.feedBalances, queryFn: () => rpc((api) => api('feed.balances', undefined)) })
 
-export const feedOptionsQuery = queryOptions({ queryKey: ['feed', 'options'], queryFn: () => rpc((api) => api('feed.options', undefined)) })
+export const feedOptionsQuery = queryOptions({ queryKey: keys.feedOptions, queryFn: () => rpc((api) => api('feed.options', undefined)) })
 
 export const expenseContextQuery = (expenseId: string) =>
-  queryOptions({ queryKey: ['expense-context', expenseId], queryFn: () => rpc((api) => api('expenses.context', { expenseId })) })
-
-/** After any expense write: every screen that shows expenses or balances reads again. */
-export const invalidateExpenses = (client: QueryClient) =>
-  Promise.all(['feed', 'expense-context', 'expenses', 'expense', 'balances', 'group'].map((key) => client.invalidateQueries({ queryKey: [key] })))
-
-/** The message to show for a failed call: the server's text, or a plain fallback. */
-export function errorMessage(error: unknown): string {
-  if (typeof error === 'object' && error !== null && '_tag' in error) {
-    const e = error as { _tag: string; message?: unknown }
-    if (e._tag === 'NotFound') return 'Expense not found.'
-    if (e._tag === 'Conflict') return 'Someone changed this expense. Reload it, then try again.'
-    if (e._tag === 'Unauthorized') return 'Sign in again to continue.'
-    if (typeof e.message === 'string' && e.message) return e.message
-  }
-  return error instanceof Error ? error.message : 'Something went wrong. Try again.'
-}
+  queryOptions({ queryKey: keys.expenseContext(expenseId), queryFn: () => rpc((api) => api('expenses.context', { expenseId })) })

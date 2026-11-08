@@ -5,165 +5,127 @@
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { receipts } from '../../db/schema/app'
-import { makeDb, serializable, type Db } from '~/server/db'
 import { getExpenseDetail } from '~/server/expenses'
 import { getSavedExpense, listActivities } from '~/server/history'
-import { createExpense, updateExpense, type Principal } from '~/server/ledger'
-import { receiptUsage, spaceFor } from '~/server/receipt-quota'
-import { downloadReceipt, uploadReceipt } from '~/server/receipts'
+import { createExpense, deleteExpense, updateExpense } from '~/server/ledger'
+import { receiptUsage } from '~/server/receipt-quota'
+import { RECEIPT_REFUSED, receiptKey, receiptUrl } from '~/server/receipts'
 import { deleteReceipts, purgeDeletedReceipts } from '~/server/storage'
-import { LIMITS } from '~/shared/limits'
-import { BASE, failure, ok, startHarness, type Harness } from './mcp-harness'
+import { LIMITS, storageFullMessage } from '~/shared/limits'
+import { GROUP_DENIED } from '~/shared/errors'
+import { RECEIPTS_PATH } from '~/shared/paths'
+import { draft, mcpExpense } from '../kit/drafts'
+import { counter } from '../kit/ids'
+import { png } from '../kit/images'
+import { principal } from '../kit/people'
+import { receiptUpload } from '../kit/upload'
+import { waitFor } from '../kit/wait'
+import { BASE, startHarness, testApp, type Harness } from './harness'
 
 let h: Harness
-const web = (id: string, name: string): Principal => ({ userId: id, name, email: `${id}@example.com`, source: 'web', agentKeyId: null })
-const alice = web('alice', 'Alice')
-const bob = web('bob', 'Bob')
-const cara = web('cara', 'Cara')
-const mallory = web('mallory', 'Mallory')
+const cookies = new Map<string, string>()
+const groupId = counter('g')
 
 beforeAll(async () => {
   h = await startHarness()
-  for (const p of [alice, bob, cara, mallory]) await h.account(p.userId, { name: p.name })
-  for (const id of ['dave', 'erin', 'hank']) await h.account(id)
-  await h.group({
-    id: 'g1',
-    name: 'Home',
-    people: ['pa', 'pb', 'pc', 'pd', 'pe'],
-    members: [
-      ['alice', 'pa', 'admin'],
-      ['bob', 'pb', 'member'],
-      ['cara', 'pc', 'member'],
-      ['dave', 'pd', 'member'],
-      ['erin', 'pe', 'member'],
-    ],
-  })
 })
 afterAll(() => h.close())
 
-const png = (width: number, height: number) => {
-  const bytes = new Uint8Array(64)
-  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52])
-  new DataView(bytes.buffer).setUint32(16, width)
-  new DataView(bytes.buffer).setUint32(20, height)
-  return bytes
+/** A new group whose people are the new accounts `users`, the first of them its admin. Returns the group ID. */
+async function groupOf(...users: [string, ...string[]]): Promise<string> {
+  for (const id of users) if (!cookies.has(id)) cookies.set(id, (await h.account(id, { name: id.toUpperCase() })).cookie)
+  const id = groupId()
+  const [admin, ...others] = users
+  await h.group({ id, people: users.map((u) => `p-${u}`), members: [[admin, `p-${admin}`, 'admin'], ...others.map((u): [string, string, 'member'] => [u, `p-${u}`, 'member'])] })
+  return id
 }
 
-/** A browser upload to POST /api/receipts, on its own connection. */
-async function upload(principal: Principal, image = png(40, 30)) {
-  const form = new FormData()
-  form.set('groupId', 'g1')
-  form.set('file', new File([image], 'receipt.png', { type: 'image/png' }))
-  const encoded = new Request(BASE, { method: 'POST', body: form })
-  const bytes = await encoded.arrayBuffer()
-  const request = new Request(`${BASE}/api/receipts`, {
-    method: 'POST',
-    body: bytes,
-    headers: { origin: BASE, 'content-type': encoded.headers.get('content-type') ?? '', 'content-length': String(bytes.byteLength) },
-  })
-  return h.withDb((db) => uploadReceipt({ db, bucket: h.r2.bucket, principal, request, baseUrl: BASE, enabled: true }))
+/** A browser upload to POST /api/receipts with the user's session. */
+async function upload(data: { userId: string; groupId: string; image?: Uint8Array<ArrayBuffer> }) {
+  return h.fetch(await receiptUpload({ baseUrl: BASE, groupId: data.groupId, file: data.image ?? png({ width: 40, height: 30, bytes: 64 }), cookie: cookies.get(data.userId) ?? '' }))
 }
 
-let filler = 0
+const fillers = counter('fill')
 /** Usage that is already there: a receipt row of `bytes` uploaded by `userId`. */
-const fill = (userId: string, bytes: number) =>
-  h.withDb((db) => db.insert(receipts).values({ id: `fill-${++filler}`, groupId: 'g1', url: `r2://agentsplit-receipts/receipts/fill-${filler}.jpg`, createdBy: userId, bytes }))
-
+const fill = (data: { userId: string; groupId: string; bytes: number }) => {
+  const id = fillers()
+  return h.withDb((db) => db.insert(receipts).values({ id, groupId: data.groupId, url: receiptUrl(`receipts/${id}.jpg`), createdBy: data.userId, bytes: data.bytes }))
+}
+/** GET /api/receipts with the user's session, or with no credential when `userId` is null. */
+const download = (data: { userId: string | null; groupId: string; url?: string }) =>
+  h.fetch(
+    new Request(`${BASE}${RECEIPTS_PATH}?${new URLSearchParams({ groupId: data.groupId, ...(data.url === undefined ? {} : { url: data.url }) })}`, {
+      headers: data.userId ? { cookie: cookies.get(data.userId) ?? '' } : {},
+    }),
+  )
 const usage = (userId: string) => h.withDb((db) => receiptUsage(db, userId))
-const tx = <A>(work: (db: Db) => Promise<A>) => h.withDb((db) => serializable(db, work))
-
-const draft = (notes: string) => ({
-  kind: 'expense' as const,
-  title: 'Groceries',
-  vendor: null,
-  notes,
-  categoryId: 0,
-  expenseDate: '2026-11-01',
-  currency: 'USD' as const,
-  amount: '20.00',
-  payers: [{ participantId: 'pb', amount: '20.00' }],
-  splitMode: 'evenly' as const,
-  shares: [
-    { participantId: 'pa', weight: '1' },
-    { participantId: 'pb', weight: '1' },
-  ],
-  recurrence: 'none' as const,
-})
+const keyOf = (url: string) => receiptKey(url) ?? ''
 
 describe('receipt storage quota', () => {
   it('counts the uploader’s receipts and refuses an upload that does not fit, with the plain message', async () => {
-    await fill('dave', LIMITS.receiptStorageBytes - 100)
-    const dave = web('dave', 'Dave')
-    expect((await upload(dave)).status).toBe(200)
+    const g = await groupOf('dave')
+    await fill({ userId: 'dave', groupId: g, bytes: LIMITS.receiptStorageBytes - 100 })
+    expect((await upload({ userId: 'dave', groupId: g })).status).toBe(200)
     expect(await usage('dave')).toBe(LIMITS.receiptStorageBytes - 100 + 64)
-    const refused = await upload(dave)
+    const refused = await upload({ userId: 'dave', groupId: g })
     expect(refused.status).toBe(413)
-    expect(((await refused.json()) as { error: string }).error).toMatch(/^You're out of receipt space \(500 MB of 500 MB\)\. Download or delete old receipts/)
+    expect(((await refused.json()) as { error: string }).error).toBe(storageFullMessage(LIMITS.receiptStorageBytes - 36))
     expect(await usage('dave')).toBe(LIMITS.receiptStorageBytes - 36)
   })
 
-  it('lets only one of two concurrent uploads use the last free space', async () => {
-    await fill('erin', LIMITS.receiptStorageBytes - 100)
-    const erin = web('erin', 'Erin')
-    const results = await Promise.all([upload(erin), upload(erin), upload(erin)])
-    expect(results.map((r) => r.status).sort()).toEqual([200, 413, 413])
-    expect(await usage('erin')).toBeLessThanOrEqual(LIMITS.receiptStorageBytes)
-    // A refused upload leaves no object behind.
-    const stored = await h.withDb((db) => db.select({ url: receipts.url }).from(receipts).where(eq(receipts.createdBy, 'erin')))
-    const keys = [...h.r2.objects.keys()].filter((k) => stored.some((r) => r.url.endsWith(k)))
-    expect(keys).toHaveLength(1)
-  })
-
-  it('makes a second upload wait for the first one’s commit before it decides, so both cannot take the last free space', async () => {
-    await h.account('kim')
-    await fill('kim', LIMITS.receiptStorageBytes - 100)
-    const [first, second] = [await h.pool.connect(), await h.pool.connect()]
+  it('lets only one of two concurrent uploads use the last free space, and a refused upload leaves no object', async () => {
+    const g = await groupOf('erin')
+    await fill({ userId: 'erin', groupId: g, bytes: LIMITS.receiptStorageBytes - 100 })
+    // Holding this lock stops every receipt insert, but not the reads of the quota check, so both
+    // uploads reach their decision before either one's receipt row exists.
+    const gate = await h.pool.connect()
     try {
-      await first.query('BEGIN')
-      await second.query('BEGIN')
-      expect(await spaceFor(makeDb(first), { userId: 'kim', bytes: 64, lock: true, outstanding: false })).toBeNull()
-      await makeDb(first).insert(receipts).values({ id: 'kim-1', groupId: 'g1', url: 'r2://agentsplit-receipts/receipts/kim-1.png', createdBy: 'kim', bytes: 64 })
-      let decided = false
-      const waiting = spaceFor(makeDb(second), { userId: 'kim', bytes: 64, lock: true, outstanding: false }).finally(() => {
-        decided = true
-      })
-      await new Promise((resolve) => setTimeout(resolve, 200))
-      expect(decided).toBe(false)
-      await first.query('COMMIT')
-      expect(await waiting).toMatch(/^You're out of receipt space/)
+      await gate.query('BEGIN')
+      await gate.query('LOCK TABLE receipts IN EXCLUSIVE MODE')
+      const uploads = [upload({ userId: 'erin', groupId: g }), upload({ userId: 'erin', groupId: g })]
+      // One waits for the table and the other for the uploader's quota lock; without that lock, both would wait for the table.
+      await waitFor(
+        async () => (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`)).rows[0]?.n === 2,
+        { what: 'both uploads to wait for a lock' },
+      )
+      await gate.query('COMMIT')
+      expect((await Promise.all(uploads)).map((r) => r.status).sort()).toEqual([200, 413])
     } finally {
-      await second.query('ROLLBACK')
-      first.release()
-      second.release()
+      await gate.query('ROLLBACK')
+      gate.release()
     }
+    expect(await usage('erin')).toBe(LIMITS.receiptStorageBytes - 36)
+    const stored = await h.withDb((db) => db.select({ url: receipts.url }).from(receipts).where(eq(receipts.createdBy, 'erin')))
+    const objects = [...h.storage.objects.keys()].filter((k) => stored.some((r) => keyOf(r.url) === k))
+    expect(objects).toHaveLength(1)
   })
 
   it('reports a full quota as uploadError when an agent asks for targets, and refuses the attach when space ran out since', async () => {
-    await h.group({ id: 'g2', name: 'Trip', people: ['ha'], members: [['hank', 'ha', 'admin']] })
+    const g = await groupOf('hank')
     const hank = { 'x-api-key': await h.apiKey('hank') }
-    await fill('hank', LIMITS.receiptStorageBytes - 100)
-    const expense = { title: 'Taxi', expenseDate: '2026-11-01', amount: '9', currencyCode: 'USD', paidBy: 'ha', paidFor: [{ participant: 'ha', shares: '1' }], isReimbursement: false }
-    const image = png(20, 20)
-    const created = await ok(h, {
+    await fill({ userId: 'hank', groupId: g, bytes: LIMITS.receiptStorageBytes - 100 })
+    const expense = mcpExpense({ paidBy: 'p-hank', people: ['p-hank'], title: 'Taxi', amount: '9' })
+    const image = png({ width: 20, height: 20, bytes: 64 })
+    const created = await h.mcp.ok({
       name: 'create_expense',
-      args: { groupId: 'g2', expenseId: 'q0000000000000000000a', expense, uploads: [{ filename: 'a.png', contentType: 'image/png', bytes: image.length }] },
+      args: { groupId: g, expenseId: 'q0000000000000000000a', expense, uploads: [{ filename: 'a.png', contentType: 'image/png', bytes: image.length }] },
       headers: hank,
     })
     const [target] = created['uploads'] as { uploadId: string; url: string; headers: Record<string, string> }[]
     if (!target) throw new Error('no target')
     // The outstanding target counts: a second request does not fit, but the expense is saved.
-    const second = await ok(h, {
+    const second = await h.mcp.ok({
       name: 'create_expense',
-      args: { groupId: 'g2', expenseId: 'q0000000000000000000b', expense, uploads: [{ filename: 'b.png', contentType: 'image/png', bytes: image.length }] },
+      args: { groupId: g, expenseId: 'q0000000000000000000b', expense, uploads: [{ filename: 'b.png', contentType: 'image/png', bytes: image.length }] },
       headers: hank,
     })
     expect(second).toMatchObject({ revision: 1, uploads: [] })
     expect(second['uploadError']).toMatch(/^You're out of receipt space/)
 
-    const put = await h.app.fetch(new Request(target.url, { method: 'PUT', headers: target.headers, body: image }))
+    const put = await h.fetch(new Request(target.url, { method: 'PUT', headers: target.headers, body: image }))
     expect(put.status).toBe(200)
-    await fill('hank', 50)
-    const refused = await failure(h, { name: 'update_expense', args: { groupId: 'g2', expenseId: 'q0000000000000000000a', expectedRevision: 1, attachUploadIds: [target.uploadId] }, headers: hank })
+    await fill({ userId: 'hank', groupId: g, bytes: 50 })
+    const refused = await h.mcp.failure({ name: 'update_expense', args: { groupId: g, expenseId: 'q0000000000000000000a', expectedRevision: 1, attachUploadIds: [target.uploadId] }, headers: hank })
     expect(refused).toMatchObject({ code: 'PRECONDITION_FAILED', outcomeUnknown: false })
     expect(refused.message).toMatch(/^You're out of receipt space/)
   })
@@ -171,82 +133,191 @@ describe('receipt storage quota', () => {
 
 describe('permanent receipt deletion', () => {
   it('frees the uploader’s space and tombstones the receipt in old revisions, the log and downloads, without changing any activity', async () => {
-    const uploaded = (await (await upload(bob, png(64, 48))).json()) as { id: string; url: string; width: number; height: number }
+    const g = await groupOf('alice', 'bob')
+    const [alice, bob] = [principal('alice', { name: 'ALICE' }), principal('bob', { name: 'BOB' })]
+    const uploaded = (await (await upload({ userId: 'bob', groupId: g, image: png({ width: 64, height: 48, bytes: 64 }) })).json()) as { id: string; url: string; width: number; height: number }
     const document = { id: 'new', url: uploaded.url, width: uploaded.width, height: uploaded.height }
+    const expense = (notes: string) => draft({ payer: 'p-bob', people: ['p-alice', 'p-bob'], amount: '20.00', notes })
     const expenseId = 'd0000000000000000000a'
-    await tx((db) => createExpense(db, { principal: bob, group: 'g1', expenseId, idempotencyKey: null, expense: draft(''), documents: [document] }))
-    await tx((db) => updateExpense(db, { principal: alice, group: 'g1', expenseId, expectedRevision: 1, idempotencyKey: null, expense: draft('Two people') }))
+    await h.tx((db) => createExpense(db, { principal: bob, groupId: g, expenseId, idempotencyKey: null, expense: expense(''), documents: [document] }))
+    await h.tx((db) => updateExpense(db, { principal: alice, groupId: g, expenseId, expectedRevision: 1, idempotencyKey: null, expense: expense('Two people') }))
     expect(await usage('bob')).toBe(64)
-    const key = uploaded.url.replace('r2://agentsplit-receipts/', '')
-    expect(h.r2.objects.has(key)).toBe(true)
+    expect(h.storage.objects.has(keyOf(uploaded.url))).toBe(true)
 
-    const history = () => h.withDb(async (db) => (await db.execute<{ id: string; row: string }>(sql`SELECT id, row_to_json(a)::text AS row FROM activities a WHERE group_id = 'g1' ORDER BY sequence`)).rows)
+    const history = () => h.withDb(async (db) => (await db.execute<{ id: string; row: string }>(sql`SELECT id, row_to_json(a)::text AS row FROM activities a WHERE group_id = ${g} ORDER BY sequence`)).rows)
     const before = await history()
 
-    const result = await tx((db) => deleteReceipts(db, { principal: bob, receiptIds: [uploaded.id] }))
+    const result = await h.tx((db) => deleteReceipts(db, { principal: bob, receiptIds: [uploaded.id] }))
     expect(result).toEqual({ deleted: [{ receiptId: uploaded.id, bytes: 64 }], freedBytes: 64 })
-    expect(await h.withDb((db) => purgeDeletedReceipts({ db, bucket: h.r2.bucket, receiptIds: [uploaded.id] }))).toBe(1)
-    expect(h.r2.objects.has(key)).toBe(false)
+    expect(await h.withDb((db) => purgeDeletedReceipts({ db, bucket: h.storage.bucket, receiptIds: [uploaded.id] }))).toBe(1)
+    expect(h.storage.objects.has(keyOf(uploaded.url))).toBe(false)
     expect(await usage('bob')).toBe(0)
 
     // Every earlier activity is byte for byte the same; one new revision removes the receipt.
     const after = await history()
     expect(after.slice(0, before.length)).toEqual(before)
     expect(after).toHaveLength(before.length + 1)
-    const detail = await h.withDb((db) => getExpenseDetail(db, { principal: alice, group: 'g1', expenseId }))
+    const detail = await h.withDb((db) => getExpenseDetail(db, { principal: alice, groupId: g, expenseId }))
     expect(detail.expense).toMatchObject({ revision: 3, amount: '20.00', documentCount: 0 })
     expect(detail.documents).toEqual([])
 
-    const tombstone = { by: 'Bob', at: expect.stringMatching(/^\d{4}-\d\d-\d\dT/) }
-    const saved = await h.withDb((db) => getSavedExpense(db, { principal: alice, group: 'g1', expenseId, revision: 1 }))
+    const tombstone = { by: 'BOB', at: expect.stringMatching(/^\d{4}-\d\d-\d\dT/) }
+    const saved = await h.withDb((db) => getSavedExpense(db, { principal: alice, groupId: g, expenseId, revision: 1 }))
     expect(saved.expense.documents).toEqual([{ id: expect.any(String), url: uploaded.url, deleted: tombstone }])
-    const log = await h.withDb((db) => listActivities(db, { principal: alice, group: 'g1', expenseId, order: 'asc', limit: 10 }))
+    const log = await h.withDb((db) => listActivities(db, { principal: alice, groupId: g, expenseId, order: 'asc', limit: 10 }))
     const created = log.activities[0]?.snapshot
     expect(created?._tag === 'expense' ? created.expense.documents : null).toEqual([{ id: expect.any(String), url: uploaded.url, deleted: tombstone }])
 
-    const download = await h.withDb((db) =>
-      downloadReceipt({ db, bucket: h.r2.bucket, principal: alice, url: new URL(`${BASE}/api/receipts?${new URLSearchParams({ groupId: 'g1', url: uploaded.url })}`) }),
-    )
-    expect(download.status).toBe(410)
-    expect(((await download.json()) as { error: string }).error).toMatch(/^Receipt deleted by Bob on \d{4}-\d\d-\d\d$/)
+    const gone = await download({ userId: 'alice', groupId: g, url: uploaded.url })
+    expect(gone.status).toBe(410)
+    expect(((await gone.json()) as { error: string }).error).toMatch(/^Receipt deleted by BOB on \d{4}-\d\d-\d\d$/)
 
     // Agents see the tombstone instead of a download URL.
-    const agent = await ok(h, { name: 'get_expense', args: { groupId: 'g1', expenseId, revision: 1 }, headers: { 'x-api-key': await h.apiKey('alice') } })
+    const agent = await h.mcp.ok({ name: 'get_expense', args: { groupId: g, expenseId, revision: 1 }, headers: { 'x-api-key': await h.apiKey('alice') } })
     const [agentDocument] = (agent['expense'] as { documents: Record<string, unknown>[] }).documents
     expect(agentDocument).toMatchObject({ url: uploaded.url, deleted: tombstone })
     expect(agentDocument).not.toHaveProperty('downloadUrl')
 
     // The receipt cannot be attached again, and a second delete frees nothing.
     await expect(
-      tx((db) => updateExpense(db, { principal: bob, group: 'g1', expenseId, expectedRevision: 3, idempotencyKey: null, expense: draft('Two people'), documents: [document] })),
+      h.tx((db) => updateExpense(db, { principal: bob, groupId: g, expenseId, expectedRevision: 3, idempotencyKey: null, expense: expense('Two people'), documents: [document] })),
     ).rejects.toMatchObject({ _tag: 'Invalid', field: 'documents' })
-    expect(await tx((db) => deleteReceipts(db, { principal: bob, receiptIds: [uploaded.id] }))).toEqual({ deleted: [{ receiptId: uploaded.id, bytes: 0 }], freedBytes: 0 })
+    expect(await h.tx((db) => deleteReceipts(db, { principal: bob, receiptIds: [uploaded.id] }))).toEqual({ deleted: [{ receiptId: uploaded.id, bytes: 0 }], freedBytes: 0 })
   })
 
   it('lets only the uploader or a group admin delete, and hides receipts of other groups', async () => {
-    const mine = (await (await upload(bob)).json()) as { id: string }
-    const other = (await (await upload(bob)).json()) as { id: string }
-    await expect(tx((db) => deleteReceipts(db, { principal: cara, receiptIds: [mine.id] }))).rejects.toMatchObject({ _tag: 'Forbidden' })
-    await expect(tx((db) => deleteReceipts(db, { principal: mallory, receiptIds: [mine.id] }))).rejects.toMatchObject({ _tag: 'NotFound' })
+    const g = await groupOf('olga', 'pete', 'quinn')
+    await groupOf('mallory')
+    const [olga, pete, quinn, mallory] = ['olga', 'pete', 'quinn', 'mallory'].map((id) => principal(id))
+    if (!olga || !pete || !quinn || !mallory) throw new Error('four people')
+    const mine = (await (await upload({ userId: 'pete', groupId: g })).json()) as { id: string }
+    const other = (await (await upload({ userId: 'pete', groupId: g })).json()) as { id: string }
+    await expect(h.tx((db) => deleteReceipts(db, { principal: quinn, receiptIds: [mine.id] }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    await expect(h.tx((db) => deleteReceipts(db, { principal: mallory, receiptIds: [mine.id] }))).rejects.toMatchObject({ _tag: 'NotFound' })
     // One refused receipt refuses the whole request.
-    await expect(tx((db) => deleteReceipts(db, { principal: cara, receiptIds: [other.id, mine.id] }))).rejects.toMatchObject({ _tag: 'Forbidden' })
-    expect(await usage('bob')).toBe(128)
-    expect((await tx((db) => deleteReceipts(db, { principal: alice, receiptIds: [mine.id] }))).freedBytes).toBe(64)
-    expect(await usage('bob')).toBe(64)
+    await expect(h.tx((db) => deleteReceipts(db, { principal: quinn, receiptIds: [other.id, mine.id] }))).rejects.toMatchObject({ _tag: 'Forbidden' })
+    expect(await usage('pete')).toBe(128)
+    expect((await h.tx((db) => deleteReceipts(db, { principal: olga, receiptIds: [mine.id] }))).freedBytes).toBe(64)
+    expect(await usage('pete')).toBe(64)
   })
 
   it('deletes through the agent tool and removes the object from storage after the commit', async () => {
-    const uploaded = (await (await upload(bob)).json()) as { id: string; url: string }
-    const key = uploaded.url.replace('r2://agentsplit-receipts/', '')
-    const bobKey = { 'x-api-key': await h.apiKey('bob') }
-    const listed = await ok(h, { name: 'list_receipts', args: { order: 'oldest' }, headers: bobKey })
-    expect((listed['receipts'] as { receiptId: string }[]).map((r) => r.receiptId)).toContain(uploaded.id)
-    const before = await usage('bob')
-    const deleted = await ok(h, { name: 'delete_receipts', args: { receiptIds: [uploaded.id] }, headers: bobKey })
-    expect(deleted).toEqual({ deleted: [{ receiptId: uploaded.id, bytes: 64 }], freedBytes: 64, usedBytes: before - 64 })
-    expect(h.r2.objects.has(key)).toBe(false)
+    const g = await groupOf('rosa')
+    const uploaded = (await (await upload({ userId: 'rosa', groupId: g })).json()) as { id: string; url: string }
+    const key = { 'x-api-key': await h.apiKey('rosa') }
+    const listed = await h.mcp.ok({ name: 'list_receipts', args: { order: 'oldest' }, headers: key })
+    expect((listed['receipts'] as { receiptId: string }[]).map((r) => r.receiptId)).toEqual([uploaded.id])
+    const deleted = await h.mcp.ok({ name: 'delete_receipts', args: { receiptIds: [uploaded.id] }, headers: key })
+    expect(deleted).toEqual({ deleted: [{ receiptId: uploaded.id, bytes: 64 }], freedBytes: 64, usedBytes: 0 })
+    expect(h.storage.objects.has(keyOf(uploaded.url))).toBe(false)
     const purged = await h.withDb(async (db) => (await db.execute<{ purged: boolean }>(sql`SELECT purged_at IS NOT NULL AS purged FROM deleted_receipts WHERE receipt_id = ${uploaded.id}`)).rows[0])
     expect(purged).toEqual({ purged: true })
   })
 })
 
+describe('receipt uploads and downloads', () => {
+  it('keeps the receipt ZIP file valid when storage fails on one receipt, and names that receipt', async () => {
+    const g = await groupOf('ivy')
+    for (let i = 0; i < 2; i++) expect((await upload({ userId: 'ivy', groupId: g })).status).toBe(200)
+    const [broken, ...rest] = await h.withDb((db) => db.select({ url: receipts.url }).from(receipts).where(eq(receipts.groupId, g)))
+    const brokenKey = keyOf(broken?.url ?? '')
+    const down = testApp({
+      pool: h.pool,
+      bucket: { ...h.storage.bucket, get: (key, options) => (key === brokenKey ? Promise.reject(new Error('storage is down')) : h.storage.bucket.get(key, options)) },
+    })
+    const response = await down.fetch(new Request(`${BASE}/groups/${g}/expenses/export/receipts`, { headers: { cookie: cookies.get('ivy') ?? '' } }))
+    const zip = new Uint8Array(await response.arrayBuffer())
+    // The end-of-central-directory record closes every complete ZIP file, and counts its entries.
+    const end = new DataView(zip.buffer, zip.length - 22)
+    expect({ signature: end.getUint32(0, true), entries: end.getUint16(10, true) }).toEqual({ signature: 0x06054b50, entries: rest.length + 1 })
+    expect(new TextDecoder().decode(zip)).toMatch(/could not be read from storage[^]*Not attached\//)
+  })
+
+  it('refuses a download without a session or an API key before reading storage', async () => {
+    const g = await groupOf('ursula')
+    const uploaded = (await (await upload({ userId: 'ursula', groupId: g })).json()) as { url: string }
+    const reads = h.storage.calls.length
+    const anonymous = await download({ userId: null, groupId: g, url: uploaded.url })
+    expect(anonymous.status).toBe(401)
+    expect(h.storage.calls.slice(reads)).toEqual([])
+  })
+
+  it('checks the reference and the membership before reading storage', async () => {
+    const g = await groupOf('vera')
+    const other = await groupOf('wanda')
+    const [registered, foreign] = [receiptUrl(`receipts/${fillers()}.jpg`), receiptUrl(`receipts/${fillers()}.jpg`)]
+    await h.withDb((db) =>
+      db.insert(receipts).values([
+        { id: fillers(), groupId: g, url: registered, createdBy: 'vera' },
+        { id: fillers(), groupId: other, url: foreign, createdBy: 'wanda' },
+      ]),
+    )
+    const reads = h.storage.calls.length
+    expect((await download({ userId: 'vera', groupId: g })).status).toBe(400)
+    const denied = await download({ userId: 'wanda', groupId: g, url: registered })
+    expect(denied.status).toBe(403)
+    expect(denied.headers.get('cache-control')).toBe('no-store')
+    expect(await denied.json()).toEqual({ error: GROUP_DENIED })
+    // PostgreSQL text cannot hold a NUL byte: such a reference is denied or not found, never a database error.
+    expect((await download({ userId: 'vera', groupId: `${g}\0`, url: registered })).status).toBe(403)
+    expect((await download({ userId: 'vera', groupId: g, url: `${registered}\0` })).status).toBe(404)
+    // Another group's receipt is not found through this group.
+    expect((await download({ userId: 'vera', groupId: g, url: foreign })).status).toBe(404)
+    expect(h.storage.calls.slice(reads)).toEqual([])
+    // Registered, but missing in storage.
+    expect((await download({ userId: 'vera', groupId: g, url: registered })).status).toBe(404)
+  })
+
+  it('uploads to the bucket for a member, and serves the image with safe headers', async () => {
+    const g = await groupOf('xena', 'yuri')
+    const other = await groupOf('zack')
+    const send = async (data: { groupId: string; file: Uint8Array<ArrayBuffer>; length?: number; userId?: string | null }) =>
+      h.fetch(await receiptUpload({ baseUrl: BASE, type: 'image/jpeg', groupId: data.groupId, file: data.file, ...(data.length === undefined ? {} : { length: data.length }), ...(data.userId === null ? {} : { cookie: cookies.get(data.userId ?? 'xena') ?? '' }) }))
+    const objects = h.storage.objects.size
+    const tiny = png({ width: 1, height: 1 })
+    expect((await send({ groupId: g, file: tiny, userId: null })).status).toBe(401)
+    expect((await send({ groupId: g, file: tiny, length: 2 * LIMITS.receiptBytes })).status).toBe(413)
+    expect((await send({ groupId: other, file: tiny })).status).toBe(403)
+    const bad = await send({ groupId: g, file: new TextEncoder().encode('not an image at all, really') })
+    expect(bad.status).toBe(400)
+    expect(await bad.json()).toEqual({ error: RECEIPT_REFUSED })
+    expect((await send({ groupId: g, file: png({ width: LIMITS.receiptPixelsMax + 1, height: 1 }) })).status).toBe(400)
+    expect(h.storage.objects.size).toBe(objects)
+
+    // A storage outage is an outage, not a refused image.
+    const down = testApp({ pool: h.pool, bucket: { ...h.storage.bucket, put: () => Promise.reject(new Error('storage is down')) } })
+    const outage = await down.fetch(await receiptUpload({ baseUrl: BASE, type: 'image/png', groupId: g, file: png({ width: 2, height: 2 }), cookie: cookies.get('xena') ?? '' }))
+    expect(outage.status).toBe(503)
+
+    const stored = await send({ groupId: g, file: png({ width: 64, height: 48 }) })
+    expect(stored.status).toBe(200)
+    const receipt = (await stored.json()) as { id: string; url: string; width: number; height: number }
+    expect(receipt).toMatchObject({ width: 64, height: 48 })
+    expect(receipt.url).toMatch(/^r2:\/\/agentsplit-receipts\/receipts\/[A-Za-z0-9_-]{21}\.png$/)
+    // The detected type wins over the declared image/jpeg.
+    expect(h.storage.objects.get(keyOf(receipt.url))?.contentType).toBe('image/png')
+
+    const image = await download({ userId: 'yuri', groupId: g, url: receipt.url })
+    expect(image.status).toBe(200)
+    expect(Object.fromEntries(image.headers)).toMatchObject({
+      'content-type': 'image/png',
+      'cache-control': 'private, no-store',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; sandbox",
+      'content-disposition': 'inline',
+    })
+    expect(new Uint8Array(await image.arrayBuffer())).toEqual(png({ width: 64, height: 48 }))
+  })
+
+  it('serves a receipt that only a deleted expense refers to', async () => {
+    const g = await groupOf('abel', 'bert')
+    const uploaded = (await (await upload({ userId: 'abel', groupId: g })).json()) as { id: string; url: string; width: number; height: number }
+    const expenseId = 'd0000000000000000000b'
+    const expense = draft({ payer: 'p-abel', people: ['p-abel', 'p-bert'], amount: '20.00' })
+    await h.tx((db) => createExpense(db, { principal: principal('abel'), groupId: g, expenseId, idempotencyKey: null, expense, documents: [{ id: 'kept', url: uploaded.url, width: uploaded.width, height: uploaded.height }] }))
+    await h.tx((db) => deleteExpense(db, { principal: principal('abel'), groupId: g, expenseId, expectedRevision: 1, idempotencyKey: null }))
+    const response = await download({ userId: 'bert', groupId: g, url: uploaded.url })
+    expect(response.status).toBe(200)
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(png({ width: 40, height: 30, bytes: 64 }))
+  })
+})

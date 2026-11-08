@@ -20,7 +20,7 @@ AgentSplit v2 runs a Bun server, PostgreSQL and Garage on the operator's Coolify
 - PostgreSQL 18 (`db2`) on the Oracle host holds everything except the receipt images.
 - Garage on the same host holds the receipt images, in the bucket `agentsplit-receipts`.
 - The old app's PostgreSQL (`db`) on the same host still holds the data as it was at the cutover on 2026-11-05, for a rollback.
-- The nightly backup copies a database dump and every receipt object to the dev box (`~/backups/agentsplit/`), where restic backs it up. The job is being changed to dump `db2`; until then it does not back up v2 (DEPLOYMENT.md).
+- The nightly backup copies a dump of `db2` and every receipt object to the dev box (`~/backups/agentsplit/`), where restic backs it up (DEPLOYMENT.md).
 
 ## Who can see what
 

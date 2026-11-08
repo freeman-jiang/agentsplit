@@ -1,18 +1,24 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
-import { cn } from '~/client/cn'
-import { ExpenseForm, type PageTarget } from '~/client/components/expense-form'
+import { useRef, useState } from 'react'
+import type { EntryTarget } from '~/client/components/entry-write'
+import { ExpenseForm } from '~/client/components/expense-form'
 import { newExpenseState } from '~/client/components/expense-form-state'
-import { rpc } from '~/client/rpc'
+import { describeError } from '~/client/errors'
 import { referenceQuery } from '~/client/queries/expenses'
-import { errorMessage, expenseContextQuery, feedOptionsQuery, invalidateExpenses } from '~/client/queries/feed'
+import { expenseContextQuery, feedOptionsQuery } from '~/client/queries/feed'
+import { afterWrite } from '~/client/queries/keys'
+import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
-import { disclosure, DisclosureSummary } from '~/client/ui/disclosure'
+import { DisclosureSummary } from '~/client/ui/disclosure'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
-import { randomId } from '~/shared/ids'
 import type { FeedOptions, Reference, UngroupedResult } from '~/shared/api'
+import { DEFAULT_CURRENCY } from '~/shared/currencies'
+import { groupRef, INVITED_PERSON_PROBLEM, invitedPerson, normalizeEmail } from '~/shared/groups'
+import { randomId } from '~/shared/ids'
+import { LIMITS } from '~/shared/limits'
+import { InvitationLink } from './-private-context'
 
 export const Route = createFileRoute('/expenses/create')({
   loader: ({ context }) => {
@@ -25,11 +31,10 @@ export const Route = createFileRoute('/expenses/create')({
 type Person = { id: string; name: string; email: string; userId?: string }
 type Options = typeof FeedOptions.Type
 type Invitations = (typeof UngroupedResult.Type)['invitations']
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function NewExpense() {
   const options = useQuery(feedOptionsQuery)
-  if (options.error) return <p role="alert">{errorMessage(options.error)}</p>
+  if (options.error) return <p role="alert">{describeError(options.error).message}</p>
   if (!options.data) return <p role="status">Loading people and groups…</p>
   return <ExpenseSetup options={options.data} />
 }
@@ -56,7 +61,7 @@ function ExpenseSetup({ options }: { options: Options }) {
         {invitations.map((invitation) => (
           <label key={invitation.email} className="block space-y-2 text-sm">
             <span>{invitation.email}</span>
-            <Input readOnly value={invitation.url} onFocus={(event) => event.currentTarget.select()} />
+            <InvitationLink url={invitation.url} />
           </label>
         ))}
         <Button asChild>
@@ -78,19 +83,19 @@ function ExpenseSetup({ options }: { options: Options }) {
         {reference.data ? (
           <PrivateExpense id={id} people={people} selfId={self.id} reference={reference.data} onInvitations={setInvitations} />
         ) : reference.error ? (
-          <p role="alert">{errorMessage(reference.error)}</p>
+          <p role="alert">{describeError(reference.error).message}</p>
         ) : (
           <p role="status">Loading categories…</p>
         )}
       </div>
     )
   const addInvited = () => {
-    const normalized = email.trim().toLowerCase()
-    if (!name.trim() || name.trim().length > 50 || !EMAIL.test(normalized)) return setError('Enter a name and a valid email address.')
-    if (people.some((p) => p.email.toLowerCase() === normalized)) return setError('That person is already included.')
+    const invited = invitedPerson({ name, email })
+    if (!invited) return setError(INVITED_PERSON_PROBLEM)
+    if (people.some((p) => normalizeEmail(p.email) === invited.email)) return setError('That person is already included.')
     // A known contact's email links that account, so no invitation is needed.
-    const existing = options.people.find((p) => p.email.toLowerCase() === normalized)
-    setPeople((current) => [...current, { id: randomId(), name: existing?.name ?? name.trim(), email: normalized, ...(existing ? { userId: existing.id } : {}) }])
+    const existing = options.people.find((p) => normalizeEmail(p.email) === invited.email)
+    setPeople((current) => [...current, { id: randomId(), name: existing?.name ?? invited.name, email: invited.email, ...(existing ? { userId: existing.id } : {}) }])
     setName('')
     setEmail('')
     setError('')
@@ -150,7 +155,7 @@ function ExpenseSetup({ options }: { options: Options }) {
             >
               <option value="">Choose a person</option>
               {options.people
-                .filter((p) => !people.some((chosen) => chosen.email.toLowerCase() === p.email.toLowerCase()))
+                .filter((p) => !people.some((chosen) => normalizeEmail(chosen.email) === normalizeEmail(p.email)))
                 .map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.email})
@@ -158,12 +163,12 @@ function ExpenseSetup({ options }: { options: Options }) {
                 ))}
             </NativeSelect>
           </label>
-          <details className={cn(disclosure, 'rounded-2xl border px-4 py-1')}>
+          <details className="rounded-2xl border px-4 py-1">
             <DisclosureSummary>Invite someone new by email</DisclosureSummary>
             <div className="space-y-3 pt-2 pb-3">
               <label className="block space-y-2 text-sm">
                 <span>Name</span>
-                <Input value={name} maxLength={50} onChange={(e) => setName(e.target.value)} />
+                <Input value={name} maxLength={LIMITS.nameMax} onChange={(e) => setName(e.target.value)} />
               </label>
               <label className="block space-y-2 text-sm">
                 <span>Email</span>
@@ -186,7 +191,7 @@ function ExpenseSetup({ options }: { options: Options }) {
         disabled={!groupId && (people.length < 2 || options.categories.length === 0)}
         onClick={() => {
           const group = options.groups.find((g) => g.id === groupId)
-          if (group) void navigate({ to: '/$group/expenses/create', params: { group: group.slug ?? group.id } })
+          if (group) void navigate({ to: '/$group/expenses/create', params: { group: groupRef(group) } })
           else setEditing(true)
         }}
       >
@@ -202,39 +207,35 @@ function PrivateExpense(props: { id: string; people: readonly Person[]; selfId: 
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const me = people.find((p) => p.userId === props.selfId)
-  // The context does not exist until the save, so the expense ID stands in for the group ID.
-  const group = { id, participants: people.map((p) => ({ id: p.id, name: p.name })), participantId: me?.id ?? null, defaultCurrency: 'USD' as const }
-  const [initial] = useState(() =>
-    newExpenseState({ groupId: null, participants: people.map((p) => p.id), viewer: me?.id ?? null, defaultCurrency: group.defaultCurrency, prefill: {} }),
-  )
-  const target: PageTarget = {
-    kind: 'page',
+  const [initial] = useState(() => newExpenseState({ groupId: null, participants: people.map((p) => p.id), viewer: me?.id ?? null, defaultCurrency: DEFAULT_CURRENCY, prefill: {} }))
+  const invitations = useRef<Invitations>([])
+  const contextId = useRef<string | null>(null)
+  // The private context is created with the expense; until then there is no group for receipts.
+  const target: EntryTarget = {
+    groupId: null,
     privateExpense: true,
     back: { to: '/' },
-    create: async ({ expense, idempotencyKey }) => {
-      const open = async () => {
-        await invalidateExpenses(queryClient)
-        await navigate({ to: '/expenses/$expenseId', params: { expenseId: id } })
-      }
-      try {
-        const result = await rpc((api) =>
-          api('expenses.createUngrouped', {
-            expenseId: id,
-            idempotencyKey,
-            expense,
-            people: people.map((p) => (p.userId ? { kind: 'account', id: p.id, userId: p.userId } : { kind: 'email', id: p.id, name: p.name, email: p.email })),
-          }),
-        )
-        if (!result.invitations.length) return await open()
-        await invalidateExpenses(queryClient)
-        props.onInvitations(result.invitations)
-      } catch (cause) {
-        // The save may have reached the server: if the expense exists now, open it (P-UNGROUP-19).
-        const saved = await queryClient.fetchQuery(expenseContextQuery(id)).catch(() => null)
-        if (!saved) throw cause
-        await open()
-      }
+    save: async ({ expense, idempotencyKey }) => {
+      const result = await rpc((api) =>
+        api('expenses.createUngrouped', {
+          expenseId: id,
+          idempotencyKey,
+          expense,
+          people: people.map((p) => (p.userId ? { kind: 'account', id: p.id, userId: p.userId } : { kind: 'email', id: p.id, name: p.name, email: p.email })),
+        }),
+      )
+      invitations.current = result.invitations
+      contextId.current = result.groupId
+    },
+    exists: (expenseId) => queryClient.fetchQuery(expenseContextQuery(expenseId)).then(() => true, () => false),
+    // The saved expense opens, or its invitations show first (P-UNGROUP-19).
+    leave: async ({ alreadySaved }) => {
+      // An earlier attempt that saved the expense left no answer here; its context comes from the expense.
+      const groupId = contextId.current ?? (await queryClient.fetchQuery(expenseContextQuery(id))).group.id
+      await afterWrite({ queryClient, scope: 'group', groupId })
+      if (!alreadySaved && invitations.current.length) props.onInvitations(invitations.current)
+      else await navigate({ to: '/expenses/$expenseId', params: { expenseId: id } })
     },
   }
-  return <ExpenseForm mode="create" expenseId={id} group={group} reference={props.reference} target={target} initial={initial} />
+  return <ExpenseForm mode="create" expenseId={id} participants={people.map((p) => ({ id: p.id, name: p.name }))} reference={props.reference} target={target} initial={initial} />
 }

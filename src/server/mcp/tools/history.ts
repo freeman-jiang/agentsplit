@@ -4,35 +4,18 @@
 // figures, the Log and the files come from src/server/stats.ts, history.ts
 // and export.ts; this file only maps names.
 import { Schema } from 'effect'
-import { sql } from 'drizzle-orm'
-import { minor } from '../../../shared/money'
-import { preferredPayer } from '../../../shared/split'
+import { FileExportFormatSchema, Id as IdInput } from '../../../shared/api'
+import { LIMITS } from '../../../shared/limits'
+import { ACTIVITY_TYPE_BY_NAME, ACTIVITY_TYPE_NAMES, RECURRENCE_NAMES, RECURRING_PERIODS } from '../../../shared/vocabulary'
+import { loadExpenses } from '../../expense-read'
 import * as exports from '../../export'
 import * as history from '../../history'
-import { iso } from '../../sql'
 import * as stats from '../../stats'
-import { defineTool } from '../registry'
-import { Snapshot, snapshotOf } from './saved'
-import {
-  CalendarDate,
-  CurrencyCodeInput,
-  DateTime,
-  HistoryFields,
-  Id,
-  MODE_NAMES,
-  money,
-  Money,
-  NonNegativeInt,
-  NullableString,
-  RecordedTime,
-  RecurrenceInput,
-  type Rule,
-  RULE_NAMES,
-  ShortId,
-  SplitModeInput,
-} from './shared'
-
-const optional = <S extends Schema.Top>(schema: S) => Schema.optionalKey(schema)
+import { formatMinor, minor } from '../../../shared/minor'
+import { CurrencyCodeSchema } from '../../../shared/money'
+import { defineTool } from './registry'
+import { CalendarDate, HistoryFields, PageLimit } from './inputs'
+import { ActivityTypeName, DateTime, expenseRow, ExpenseRow, Id, liveSource, Money, NonNegativeInt, NullableString, optional, RecordedTime, Snapshot, snapshotOf } from './wire'
 
 // ---------- get_spending_stats ----------
 
@@ -55,11 +38,11 @@ export const getSpendingStats = defineTool({
   description:
     'Read spending totals, participant shares, categories, monthly trends and recurrence estimates in one selected currency. Optional participantId and inclusive from/to dates select the view. Discover other available currencies in availableCurrencyCodes. Money is exact decimal text. Payments are not spending.',
   input: Schema.Struct({
-    groupId: Schema.String.check(Schema.isMinLength(1)),
-    participantId: optional(Schema.String),
+    groupId: IdInput,
+    participantId: optional(IdInput),
     from: optional(CalendarDate),
     to: optional(CalendarDate),
-    currencyCode: optional(CurrencyCodeInput),
+    currencyCode: optional(CurrencyCodeSchema),
   }),
   strict: [''],
   output: Schema.Struct({
@@ -98,24 +81,25 @@ export const getSpendingStats = defineTool({
       count: NonNegativeInt,
       estimatedMonthly: Money,
       estimatedYearly: Money,
-      byPeriod: Schema.Array(Schema.Struct({ period: Schema.Literals(['DAILY', 'WEEKLY', 'MONTHLY']), count: Schema.Int, total: Money })),
+      byPeriod: Schema.Array(Schema.Struct({ period: Schema.Literals(RECURRING_PERIODS.map((p) => RECURRENCE_NAMES[p])), count: Schema.Int, total: Money })),
     }),
   }),
   run: async ({ db, principal }, input) => {
     const s = await stats.statsOverview(db, {
       principal,
-      group: input.groupId,
+      groupId: input.groupId,
       ...(input.currencyCode === undefined ? {} : { currency: input.currencyCode }),
       ...(input.from === undefined ? {} : { from: input.from }),
       ...(input.to === undefined ? {} : { to: input.to }),
       ...(input.participantId === undefined ? {} : { participantId: input.participantId }),
     })
+    const zero = formatMinor({ amount: minor(0n), currency: s.currency })
     return {
       currencyCode: s.currency,
       availableCurrencyCodes: s.currencies,
       totalGroupSpendings: s.total,
       // Only for an explicit participant, as in the current app.
-      ...(input.participantId === undefined ? {} : { totalParticipantSpendings: s.yourPaid ?? money('0', s.currency), totalParticipantShare: s.yourShare ?? money('0', s.currency) }),
+      ...(input.participantId === undefined ? {} : { totalParticipantSpendings: s.yourPaid ?? zero, totalParticipantShare: s.yourShare ?? zero }),
       summary: {
         expenseCount: s.summary.count,
         totalSpending: s.total,
@@ -144,111 +128,13 @@ export const getSpendingStats = defineTool({
         count: s.recurring.count,
         estimatedMonthly: s.recurring.monthly,
         estimatedYearly: s.recurring.yearly,
-        byPeriod: s.recurring.byPeriod.map((p) => ({ period: RULE_NAMES[p.period], count: p.count, total: p.total })),
+        byPeriod: s.recurring.byPeriod.map((p) => ({ period: RECURRENCE_NAMES[p.period], count: p.count, total: p.total })),
       },
     }
   },
 })
 
 // ---------- list_activity ----------
-
-const TYPES = {
-  CREATE_GROUP: 'create_group',
-  JOIN_GROUP: 'join_group',
-  LEAVE_GROUP: 'leave_group',
-  UPDATE_GROUP: 'update_group',
-  CREATE_EXPENSE: 'create_expense',
-  UPDATE_EXPENSE: 'update_expense',
-  DELETE_EXPENSE: 'delete_expense',
-} as const satisfies Record<string, history.ActivityType>
-const TYPE_NAMES = Object.fromEntries(Object.entries(TYPES).map(([name, type]) => [type, name])) as { [K in keyof typeof TYPES as (typeof TYPES)[K]]: K }
-const ActivityTypeInput = Schema.Literals(Object.keys(TYPES) as [keyof typeof TYPES, ...(keyof typeof TYPES)[]])
-
-/** The live expense beside a current Log entry (the current app's `expense` convenience field). */
-const LiveExpense = Schema.Struct({
-  id: Id,
-  groupId: Id,
-  title: Schema.String,
-  vendor: NullableString,
-  amount: Money,
-  currencyCode: Schema.String,
-  createdAt: DateTime,
-  expenseDate: DateTime,
-  categoryId: Schema.Int,
-  paidById: Id,
-  originalAmount: Schema.NullOr(Money),
-  originalCurrency: NullableString,
-  conversionRate: NullableString,
-  isReimbursement: Schema.Boolean,
-  splitMode: SplitModeInput,
-  notes: NullableString,
-  recurrenceRule: Schema.NullOr(RecurrenceInput),
-  recurringExpenseLinkId: Schema.NullOr(Id),
-  deletedAt: Schema.NullOr(DateTime),
-  revision: NonNegativeInt,
-})
-
-type LiveRow = {
-  id: string
-  group_id: string
-  title: string
-  vendor: string | null
-  amount: string
-  currency: string
-  created_at: string
-  expense_date: string
-  category_id: number
-  original_amount: string | null
-  original_currency: string | null
-  conversion_rate: string | null
-  kind: 'expense' | 'payment'
-  split_mode: keyof typeof MODE_NAMES
-  notes: string
-  recurrence: Rule
-  link_id: string | null
-  revision: number
-  payers: { participantId: string; amount: string }[]
-}
-
-/** The live rows of the expenses on a page. listActivities has checked access to the group. */
-async function liveExpenses(db: Parameters<typeof history.listActivities>[0], data: { group: string; ids: readonly string[] }) {
-  if (data.ids.length === 0) return new Map<string, typeof LiveExpense.Encoded>()
-  const result = await db.execute<LiveRow>(sql`
-    SELECT e.id, e.group_id, e.title, e.vendor, e.amount::text AS amount, e.currency, ${iso(sql`e.created_at`)} AS created_at,
-      e.expense_date::text AS expense_date, e.category_id, e.original_amount::text AS original_amount, e.original_currency, e.conversion_rate,
-      e.kind, e.split_mode, e.notes, e.recurrence, e.revision,
-      (SELECT l.id FROM recurring_links l WHERE l.current_frame_expense_id = e.id LIMIT 1) AS link_id,
-      coalesce((SELECT json_agg(json_build_object('participantId', p.participant_id, 'amount', p.amount::text)) FROM expense_payers p WHERE p.expense_id = e.id), '[]') AS payers
-    FROM expenses e
-    WHERE e.group_id = agentsplit_group_id(${data.group}) AND e.deleted_at IS NULL AND e.id IN (${sql.join(data.ids.map((id) => sql`${id}`), sql`, `)})`)
-  return new Map(
-    result.rows.map((e) => [
-      e.id,
-      {
-        id: e.id,
-        groupId: e.group_id,
-        title: e.title,
-        vendor: e.vendor,
-        amount: money(e.amount, e.currency),
-        currencyCode: e.currency,
-        createdAt: e.created_at,
-        expenseDate: `${e.expense_date}T00:00:00.000Z`,
-        categoryId: e.category_id,
-        paidById: e.payers.length ? preferredPayer(e.payers.map((p) => ({ participantId: p.participantId, amount: minor(BigInt(p.amount)) }))) : '',
-        originalAmount: e.original_amount === null || e.original_currency === null ? null : money(e.original_amount, e.original_currency),
-        originalCurrency: e.original_currency,
-        conversionRate: e.conversion_rate,
-        isReimbursement: e.kind === 'payment',
-        splitMode: MODE_NAMES[e.split_mode],
-        notes: e.notes === '' ? null : e.notes,
-        recurrenceRule: RULE_NAMES[e.recurrence],
-        recurringExpenseLinkId: e.link_id,
-        deletedAt: null,
-        revision: e.revision,
-      },
-    ]),
-  )
-}
 
 export const listActivity = defineTool({
   name: 'list_activity',
@@ -260,13 +146,13 @@ export const listActivity = defineTool({
     recordedFrom: optional(RecordedTime),
     recordedTo: optional(RecordedTime),
     order: optional(Schema.Literals(['asc', 'desc']).annotate({ default: 'desc' })),
-    groupId: ShortId,
+    groupId: IdInput,
     cursor: optional(NonNegativeInt.annotate({ default: 0 })),
-    limit: optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 })).annotate({ default: 5 })),
-    expenseId: optional(ShortId),
+    limit: optional(PageLimit(LIMITS.agentActivityPage)),
+    expenseId: optional(IdInput),
     from: optional(CalendarDate),
     to: optional(CalendarDate),
-    activityType: optional(ActivityTypeInput),
+    activityType: optional(ActivityTypeName),
   }),
   strict: [''],
   output: Schema.Struct({
@@ -277,7 +163,7 @@ export const listActivity = defineTool({
         id: Id,
         groupId: Id,
         time: DateTime,
-        activityType: ActivityTypeInput,
+        activityType: ActivityTypeName,
         participantId: NullableString,
         expenseId: NullableString,
         data: NullableString,
@@ -288,19 +174,30 @@ export const listActivity = defineTool({
         actorName: NullableString,
         actorUserId: NullableString,
         agentKeyId: NullableString,
-        expense: optional(LiveExpense),
+        expense: optional(ExpenseRow),
       }),
     ),
     hasMore: Schema.Boolean,
     nextCursor: NonNegativeInt,
   }),
   run: async ({ db, principal }, input) => {
-    const { activityType, groupId, ...query } = input
-    const page = await history.listActivities(db, { principal, group: groupId, withActors: true, ...query, ...(activityType ? { type: TYPES[activityType] } : {}) })
+    const { activityType, ...query } = input
+    const page = await history.listActivities(db, {
+      principal,
+      withActors: true,
+      ...query,
+      limit: query.limit ?? LIMITS.agentActivityPage,
+      ...(activityType ? { type: ACTIVITY_TYPE_BY_NAME[activityType] } : {}),
+    })
+    const { groupId } = page
     const historical = input.asOf !== undefined || input.atActivityId !== undefined
-    const live = historical
-      ? new Map<string, typeof LiveExpense.Encoded>()
-      : await liveExpenses(db, { group: groupId, ids: [...new Set(page.activities.flatMap((a) => (a.expense && a.expenseId ? [a.expenseId] : [])))] })
+    // The current app's convenience field: the live expense beside a current entry. listActivities has checked access to the group.
+    const ids = historical ? [] : [...new Set(page.activities.flatMap((a) => (a.expense && a.expenseId ? [a.expenseId] : [])))]
+    const live = new Map(
+      (await loadExpenses(db, { ids, groupId }))
+        .filter((e) => !e.deleted)
+        .map((e) => [e.id, expenseRow(liveSource(e), { groupId: e.groupId, revision: e.revision, linkId: e.link?.id ?? null, deletedAt: null })]),
+    )
     return {
       atActivityId: page.atActivityId,
       asOf: page.asOf,
@@ -310,7 +207,7 @@ export const listActivity = defineTool({
           id: a.id,
           groupId,
           time: a.time,
-          activityType: TYPE_NAMES[a.type],
+          activityType: ACTIVITY_TYPE_NAMES[a.type],
           participantId: a.participantId,
           expenseId: a.expenseId,
           data: a.data,
@@ -338,13 +235,9 @@ export const exportGroup = defineTool({
   kind: 'read',
   description:
     'Export the authorized group as CSV or JSON. Returns filename, contentType and complete UTF-8 content. JSON includes preserved audit history; deleted expenses are excluded from current expense rows. This read does not process recurrence.',
-  input: Schema.Struct({ groupId: ShortId, format: optional(Schema.Literals(['json', 'csv']).annotate({ default: 'json' })) }),
+  input: Schema.Struct({ groupId: IdInput, format: optional(FileExportFormatSchema.annotate({ default: 'json' })) }),
   strict: [''],
   output: Schema.Struct({ filename: Schema.String, contentType: Schema.String, content: Schema.String }),
-  run: async ({ db, principal }, input) => {
-    // The same file as the export.group RPC.
-    return exports.exportFile(db, { principal, group: input.groupId, format: input.format ?? 'json' })
-  },
+  run: ({ db, principal }, input) => exports.exportFile(db, { principal, groupId: input.groupId, format: input.format ?? 'json' }),
 })
 
-export const historyTools = [getSpendingStats, listActivity, exportGroup]

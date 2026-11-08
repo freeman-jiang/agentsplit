@@ -8,12 +8,12 @@ test('a group opens on its expenses, sorts by date or by last change, and keeps 
   // Editing the older expense makes it the most recently changed one.
   await editExpense(h, `${h.groupId}-old`, 1, draft(h, { title: 'Old groceries (edited)', amount: '31.00', date: '2026-10-01', vendor: 'Costco' }))
 
-  // The group's slug shows its expenses and stays in the address bar, as in the current app (P-GROUP-98).
+  // The group's slug shows its expenses and stays in the address bar, as in v1 (P-GROUP-98).
   await page.goto(`/${h.slug}`)
   await expect(page.getByTestId('expense-list')).toBeVisible()
   await expect(page).toHaveURL(new RegExp(`/${h.slug}$`))
-  await expect(page.getByRole('link', { name: 'Expenses', exact: true })).toHaveClass(/border-primary!/)
-  // Titles name the page and the group, as in the current app (P-GROUP-48).
+  await expect(page.getByRole('link', { name: 'Expenses', exact: true })).toHaveAttribute('aria-current', 'page')
+  // Titles name the page and the group, as in v1 (P-GROUP-48).
   await expect(page).toHaveTitle(/^Expenses · .+ · AgentSplit$/)
   const rows = page.getByTestId('expense-list').getByRole('listitem')
   await expect(rows).toHaveCount(2)
@@ -30,7 +30,7 @@ test('a group opens on its expenses, sorts by date or by last change, and keeps 
   await expect(rail).toContainText('Alice Example')
   const people = rail.getByTestId('summary-participant').filter({ visible: true })
   await expect(people).toHaveCount(3)
-  const nets = await people.locator('.tabular-nums').allInnerTexts()
+  const nets = await people.getByTestId('summary-net').allInnerTexts()
   const cents = nets.map((n) => (n.startsWith('owes') ? -1 : 1) * Math.round(Number(n.replace(/[^\d.]/g, '') || '0') * 100))
   expect(cents.reduce((a, b) => a + b, 0)).toBe(0)
 
@@ -85,11 +85,6 @@ test('the rail tells the viewer what they owe, and refreshes to "Settled up" (P-
   await expect(page).toHaveURL(new RegExp(`/${h.slug}/balances$`))
 })
 
-test('a signed-out visitor is sent to sign-in', async ({ page }) => {
-  await page.goto('/groups')
-  await expect(page).toHaveURL(/\/sign-in/)
-})
-
 test('a signed-out visitor returns to the page they asked for after sign-in (P-AUTH-49)', async ({ page }) => {
   await page.goto('/groups')
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fgroups/)
@@ -102,7 +97,7 @@ test('a signed-out visitor returns to the page they asked for after sign-in (P-A
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fgroups%2FAbCdEfGhIjKlMnOpQrS_1%2Fbalances$/)
 })
 
-test('group URLs are the current app’s: /groups/<id>/… without a slug, /<slug>/… with one (P-GROUP-98, P-GROUP-100, P-PWA-21, P-PWA-23)', async ({ page, context, baseURL, request }) => {
+test('group URLs are v1’s: /groups/<id>/… without a slug, /<slug>/… with one (P-GROUP-98, P-GROUP-100, P-PWA-21, P-PWA-23)', async ({ page, context, baseURL, request }) => {
   const h = await seedHousehold(context, baseURL ?? '')
   const tripId = await seedUnsluggedGroup(h)
   // A group without a slug opens on its expenses at /groups/<id>/expenses.
@@ -122,8 +117,8 @@ test('group URLs are the current app’s: /groups/<id>/… without a slug, /<slu
   await expect(page.locator(`a[href="/${h.slug}"]`).first()).toBeVisible()
   await page.locator(`a[href="/${h.slug}"]`).first().click()
   await expect(page).toHaveURL(new RegExp(`/${h.slug}$`))
-  await expect(page.getByRole('link', { name: 'Expenses', exact: true })).toHaveClass(/border-primary!/)
-  // v2's first URL for a group without a slug moves to the current app's URL with a 307.
+  await expect(page.getByRole('link', { name: 'Expenses', exact: true })).toHaveAttribute('aria-current', 'page')
+  // v2's first URL for a group without a slug moves to v1's URL with a 307.
   const moved = await request.get(`/${tripId}/stats?x=1`, { maxRedirects: 0 })
   expect(moved.status()).toBe(307)
   expect(moved.headers()['location']).toBe(`/groups/${tripId}/stats?x=1`)
@@ -178,13 +173,14 @@ test('a failure the server answered shows the server’s request ID as the refer
 test('returning to a tab shows a change made elsewhere (P-EXP-20)', async ({ page, context, baseURL }) => {
   const h = await seedHousehold(context, baseURL ?? '')
   await addExpense(h, `${h.groupId}-first`, draft(h, { title: 'First lamp', amount: '10.00', date: '2026-11-01' }))
+  // The page's clock: TanStack Query keeps suspense data fresh for its first second, and a person comes back later than that.
+  await page.clock.install()
   await page.goto(`/${h.slug}/expenses`)
   await expect(page.getByTestId('expense-list')).toContainText('First lamp')
   // Another tab or person writes while this page is open.
   await addExpense(h, `${h.groupId}-second`, draft(h, { title: 'Second lamp', amount: '12.00', date: '2026-11-02' }))
   await page.getByRole('link', { name: 'Balances', exact: true }).click()
-  // TanStack Query treats suspense data as fresh for its first second, so wait past it, as a person would.
-  await page.waitForTimeout(1_100)
+  await page.clock.fastForward(1_100)
   await page.getByRole('link', { name: 'Expenses', exact: true }).click()
   await expect(page.getByTestId('expense-list')).toContainText('Second lamp')
 })

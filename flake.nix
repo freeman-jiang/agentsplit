@@ -1,7 +1,9 @@
 {
   description = "AgentSplit dev shell";
 
-  # Same revision as ~/dots/flake.lock, so the shell reuses the box's packages.
+  # The revision that ~/dots/flake.lock pinned when this was set. Dots moves its own
+  # pin, so the two can differ; bump this one only on purpose. It also fixes Bun,
+  # which the Dockerfile images and @types/bun follow (scripts/check-bun-version.ts).
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/7dcdd87373d72e7a2173e4db02e20d3d7f495cfd";
 
   outputs =
@@ -48,15 +50,21 @@
             '';
           };
 
-          # Drops and recreates one database. Refuses names without test, e2e,
-          # perf or dev, so it never runs against anything that matters.
+          # Drops and recreates one database. It accepts only a disposable name and
+          # refuses the databases the lead uses (db/local-databases.json, which the
+          # test kit and scripts/seed-synthetic.ts also read).
+          databases = builtins.fromJSON (builtins.readFile ./db/local-databases.json);
           db-reset = pkgs.writeShellApplication {
             name = "db-reset";
             runtimeInputs = [ postgresql ];
             text = ''
               name="''${1:?usage: db-reset <database>}"
               case "$name" in
-                *test* | *e2e* | *perf* | *dev*) ;;
+                ${pkgs.lib.concatMapStringsSep " | " pkgs.lib.escapeShellArg databases.protected})
+                  echo "db-reset: refusing to reset '$name': the lead uses it (docs/v2/BUILDING.md)" >&2
+                  exit 1
+                  ;;
+                ${pkgs.lib.concatMapStringsSep " | " (part: "*${part}*") databases.disposable}) ;;
                 *)
                   echo "db-reset: refusing to reset '$name'" >&2
                   exit 1
@@ -70,6 +78,7 @@
         {
           default = pkgs.mkShell {
             packages = [
+              # Vitest and Playwright run on Node (their bins start with `env node`); the server runs on Bun.
               pkgs.nodejs_26
               pkgs.bun
               postgresql

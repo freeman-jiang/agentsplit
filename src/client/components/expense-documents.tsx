@@ -7,25 +7,23 @@ import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '~/client/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '~/client/ui/dialog'
-import { LIMITS } from '~/shared/limits'
+import type { DocumentInput } from '~/shared/api'
+import type { HttpErrorBody } from '~/shared/errors'
+import { LIMITS, mebibytes } from '~/shared/limits'
+import { RECEIPTS_PATH, receiptDownloadPath } from '~/shared/paths'
+import { RECEIPT_CONTENT_TYPES } from '~/shared/vocabulary'
 import { prepareReceipt, tombstoneText, type Tombstone } from './receipt-files'
 
 /** `deleted` is set for a receipt that was deleted for good: it shows a tombstone, and saving needs it removed. */
 export type FormDocument = { id: string; url: string; width: number; height: number; deleted?: Tombstone | null }
 
-const MAX_BYTES = LIMITS.receiptBytes
-const mib = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1).replace(/\.0$/, '')} MiB`
-export const receiptSrc = (data: { groupId: string; url: string }) => `/api/receipts?${new URLSearchParams({ groupId: data.groupId, url: data.url })}`
-
-type Uploaded = { id: string; url: string; width: number; height: number }
-
-async function upload(data: { groupId: string; file: File }): Promise<Uploaded> {
+async function upload(data: { groupId: string; file: File }): Promise<typeof DocumentInput.Type> {
   const body = new FormData()
   body.set('groupId', data.groupId)
   body.set('file', data.file)
-  const response = await fetch('/api/receipts', { method: 'POST', body, credentials: 'same-origin' })
-  if (!response.ok) throw new Error(((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? `Upload failed (${response.status})`)
-  return (await response.json()) as Uploaded
+  const response = await fetch(RECEIPTS_PATH, { method: 'POST', body, credentials: 'same-origin' })
+  if (!response.ok) throw new Error(((await response.json().catch(() => null)) as HttpErrorBody | null)?.error ?? `Upload failed (${response.status})`)
+  return (await response.json()) as typeof DocumentInput.Type
 }
 
 export function ExpenseDocuments(props: { groupId: string; documents: readonly FormDocument[]; onChange: (documents: FormDocument[]) => void }) {
@@ -39,8 +37,8 @@ export function ExpenseDocuments(props: { groupId: string; documents: readonly F
     setUploading(true)
     const file = await prepareReceipt(original)
     setUploading(false)
-    if (file.size > MAX_BYTES) {
-      toast.error('The file is too big', { description: `The maximum file size you can upload is ${mib(MAX_BYTES)}. Yours is ${mib(file.size)}.` })
+    if (file.size > LIMITS.receiptBytes) {
+      toast.error('The file is too big', { description: `The maximum file size you can upload is ${mebibytes(LIMITS.receiptBytes)}. Yours is ${mebibytes(file.size)}.` })
       return
     }
     setUploading(true)
@@ -77,14 +75,14 @@ export function ExpenseDocuments(props: { groupId: string; documents: readonly F
             className="h-20 w-20 overflow-hidden border bg-muted"
             aria-label={`Open document ${index + 1}`}
           >
-            <img src={receiptSrc({ groupId: props.groupId, url: doc.url })} alt="" width={doc.width} height={doc.height} className="h-full w-full object-cover" loading="lazy" />
+            <img src={receiptDownloadPath({ groupId: props.groupId, url: doc.url })} alt="" width={doc.width} height={doc.height} className="h-full w-full object-cover" loading="lazy" />
           </button>
         ),
       )}
       <input
         ref={input}
         type="file"
-        accept="image/jpeg,image/png"
+        accept={RECEIPT_CONTENT_TYPES.join(',')}
         className="hidden"
         aria-label="Attach documents"
         onChange={(event) => {
@@ -101,7 +99,7 @@ export function ExpenseDocuments(props: { groupId: string; documents: readonly F
           <DialogTitle className="sr-only">Document</DialogTitle>
           {shown && (
             <>
-              <img src={receiptSrc({ groupId: props.groupId, url: shown.url })} alt="Receipt" className="max-h-[75dvh] w-full object-contain" />
+              <img src={receiptDownloadPath({ groupId: props.groupId, url: shown.url })} alt="Receipt" className="max-h-[75dvh] w-full object-contain" />
               <div className="flex justify-end gap-2">
                 <Button
                   type="button"

@@ -61,7 +61,7 @@ else
   DATABASE_URL="$E2E_DATABASE_URL" bun db/migrate.ts > /dev/null
   if [ "${SKIP_BUILD:-}" != "1" ]; then bun run build > "$work/build.log" 2>&1 || { cat "$work/build.log" >&2; exit 1; }; fi
   compose up -d --wait garage > "$work/up.log" 2>&1 || { cat "$work/up.log" >&2; exit 1; }
-  DATABASE_URL="$E2E_DATABASE_URL" PORT="$port" HOST=127.0.0.1 ENABLE_EXPENSE_DOCUMENTS=true \
+  DATABASE_URL="$E2E_DATABASE_URL" PORT="$port" HOST=127.0.0.1 \
     S3_UPLOAD_ENDPOINT="http://127.0.0.1:${E2E_S3_PORT}" \
     bun dist/server/server.js > "$work/server.log" 2>&1 &
   server=$!

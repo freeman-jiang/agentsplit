@@ -3,24 +3,24 @@
 // (createGroup, updateGroup) and src/lib/group-access.ts.
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
-import { CurrencyCodeSchema, DecimalOutput } from '../money'
-import { Id, IdempotencyKey, ReadError, WriteError } from './core'
+import { EMAIL } from '../groups'
+import { SECRET_TOKEN } from '../ids'
+import { LIMITS } from '../limits'
+import { CurrencyCodeSchema } from '../money'
+import { CallerTotals, EmailInput, GroupKindSchema, Id, IdempotencyKey, Offset, ReadError, Timestamp, RoleSchema, WriteError } from './core'
 
-// ---------- rules shared by the form and the server ----------
+/** The lengths of a group name and a person's name, which MCP also checks before it trims (mcp/tools/groups.ts). */
+export const GROUP_NAME_LENGTH = { min: LIMITS.groupNameMin, max: LIMITS.nameMax } as const
+export const PERSON_NAME_LENGTH = { min: 1, max: LIMITS.nameMax } as const
 
-import { INVITATION_TOKEN } from '../groups'
-import { GROUP_ID } from '../ids'
-
-export * from '../groups'
-
-const GroupName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(2, 50))
-const Information = Schema.String.check(Schema.isMaxLength(10_000))
-const PersonName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(1, 50))
+export const GroupName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(GROUP_NAME_LENGTH.min, GROUP_NAME_LENGTH.max))
+export const Information = Schema.String.check(Schema.isMaxLength(LIMITS.informationMax))
+export const PersonName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(PERSON_NAME_LENGTH.min, PERSON_NAME_LENGTH.max))
 /** A slug as typed; the server normalizes and checks it. Empty or null removes it. */
-const SlugInput = Schema.NullOr(Schema.String.check(Schema.isMaxLength(80)))
-const Email = Schema.String.check(Schema.isMaxLength(254), Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/))
-const Role = Schema.Literals(['admin', 'member'])
-const Timestamp = Schema.String // ISO 8601, UTC
+export const SlugInput = Schema.NullOr(Schema.String.check(Schema.isMaxLength(LIMITS.slugMax)))
+export const Email = EmailInput.check(Schema.isPattern(EMAIL))
+/** An invitation link from this app, as a person pastes it. */
+export const ShareUrl = Schema.String.check(Schema.isMaxLength(LIMITS.urlMax))
 
 // ---------- shapes ----------
 
@@ -37,7 +37,7 @@ export const Directory = Schema.Struct({
   /** Pass back as `offset` for the next page; null at the end. */
   nextOffset: Schema.NullOr(Schema.Number),
   /** The caller's net balance per currency across every group where they have a participant. */
-  totals: Schema.Array(Schema.Struct({ currency: CurrencyCodeSchema, net: DecimalOutput })),
+  totals: CallerTotals,
   /** Groups the caller belongs to without a linked participant; their balances are not in `totals`. */
   unboundGroupCount: Schema.Number,
 })
@@ -49,7 +49,7 @@ export const Person = Schema.Struct({
   status: Schema.Literals(['joined', 'invited', 'none']),
   /** The member's or the invitee's email. */
   email: Schema.NullOr(Schema.String),
-  role: Schema.NullOr(Role),
+  role: Schema.NullOr(RoleSchema),
   userId: Schema.NullOr(Schema.String),
   /** Pays or shares in any expense, deleted ones included: the person cannot be removed. */
   inExpenses: Schema.Boolean,
@@ -66,18 +66,18 @@ export const Invitation = Schema.Struct({
 })
 
 export const GroupDetails = Schema.Struct({
-  kind: Schema.Literals(['named', 'private']),
+  kind: GroupKindSchema,
   id: Schema.String,
   slug: Schema.NullOr(Schema.String),
   name: Schema.String,
   information: Schema.String,
   defaultCurrency: CurrencyCodeSchema,
   revision: Schema.Number,
-  role: Role,
+  role: RoleSchema,
   participantId: Schema.NullOr(Schema.String),
   people: Schema.Array(Person),
   /** Active members with no participant yet (legacy memberships). */
-  unboundMembers: Schema.Array(Schema.Struct({ userId: Schema.String, name: Schema.String, email: Schema.String, role: Role })),
+  unboundMembers: Schema.Array(Schema.Struct({ userId: Schema.String, name: Schema.String, email: Schema.String, role: RoleSchema })),
   /** Pending invitations, for admins only; members get an empty list. */
   invitations: Schema.Array(Invitation),
 })
@@ -88,7 +88,7 @@ export const GroupCreateInput = Schema.Struct({
   information: Information,
   defaultCurrency: CurrencyCodeSchema,
   /** Other participants; the creator is added automatically. */
-  participants: Schema.Array(PersonName).check(Schema.isMaxLength(99)),
+  participants: Schema.Array(PersonName).check(Schema.isMaxLength(LIMITS.participantsPerGroup - 1)),
 })
 
 export const GroupChanges = Schema.Struct({
@@ -101,7 +101,7 @@ export const GroupChanges = Schema.Struct({
    * them), entries without one add a person, and people left out are removed.
    */
   participants: Schema.optionalKey(
-    Schema.Array(Schema.Struct({ id: Schema.optionalKey(Id), name: PersonName })).check(Schema.isBetweenLength(1, 100)),
+    Schema.Array(Schema.Struct({ id: Schema.optionalKey(Id), name: PersonName })).check(Schema.isBetweenLength(1, LIMITS.participantsPerGroup)),
   ),
 })
 
@@ -109,12 +109,12 @@ export const GroupWritten = Schema.Struct({ id: Schema.String, slug: Schema.Null
 
 export const AccessRequest = Schema.Union([
   /** Joins with an email-bound invitation URL from this app. */
-  Schema.Struct({ action: Schema.Literal('join'), shareUrl: Schema.String.check(Schema.isMaxLength(2000)) }),
+  Schema.Struct({ action: Schema.Literal('join'), shareUrl: ShareUrl }),
   Schema.Struct({ action: Schema.Literal('leave'), groupId: Id }),
   Schema.Struct({ action: Schema.Literal('invite'), groupId: Id, email: Email, participantId: Id }),
   Schema.Struct({ action: Schema.Literal('revoke_invitation'), groupId: Id, invitationId: Id }),
   Schema.Struct({ action: Schema.Literal('remove_member'), groupId: Id, userId: Id }),
-  Schema.Struct({ action: Schema.Literal('set_role'), groupId: Id, userId: Id, role: Role }),
+  Schema.Struct({ action: Schema.Literal('set_role'), groupId: Id, userId: Id, role: RoleSchema }),
   /** Links an active member without a participant to an unclaimed participant, permanently. */
   Schema.Struct({ action: Schema.Literal('bind_member'), groupId: Id, userId: Id, email: Email, participantId: Id }),
 ])
@@ -131,7 +131,7 @@ export const AccessResult = Schema.Struct({
 export const InvitationPreview = Schema.Union([
   Schema.Struct({
     status: Schema.Literal('valid'),
-    kind: Schema.Literals(['named', 'private']),
+    kind: GroupKindSchema,
     groupName: Schema.String,
     participantName: Schema.String,
   }),
@@ -141,12 +141,10 @@ export const InvitationPreview = Schema.Union([
 // ---------- procedures ----------
 
 export class GroupsApi extends RpcGroup.make(
-  Rpc.make('groups.directory', { payload: { offset: Schema.Number }, success: Directory, error: ReadError }),
+  Rpc.make('groups.directory', { payload: { offset: Offset }, success: Directory, error: ReadError }),
   Rpc.make('groups.details', { payload: { groupId: Id }, success: GroupDetails, error: ReadError }),
   Rpc.make('groups.create', {
     payload: {
-      /** Optional caller-chosen ID, 21 URL-safe characters. */
-      groupId: Schema.NullOr(Schema.String.check(Schema.isPattern(GROUP_ID))),
       idempotencyKey: IdempotencyKey,
       group: GroupCreateInput,
     },
@@ -160,7 +158,7 @@ export class GroupsApi extends RpcGroup.make(
   }),
   Rpc.make('groups.access', { payload: { idempotencyKey: IdempotencyKey, request: AccessRequest }, success: AccessResult, error: WriteError }),
   Rpc.make('invitations.preview', {
-    payload: { token: Schema.String.check(Schema.isPattern(INVITATION_TOKEN)) },
+    payload: { token: Schema.String.check(Schema.isPattern(SECRET_TOKEN)) },
     success: InvitationPreview,
     error: ReadError,
   }),

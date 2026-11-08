@@ -4,14 +4,15 @@
 import { useInfiniteQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { cn } from '~/client/cn'
-import { ownReceiptsQuery, storageUsageQuery, type ReceiptOrder } from '~/client/queries/storage'
+import { formatMoment } from '~/client/dates'
+import { afterWrite } from '~/client/queries/keys'
+import { ownReceiptsQuery, storageUsageQuery } from '~/client/queries/storage'
 import { rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
-import { NativeSelect } from '~/client/ui/native-select'
+import { ChoiceSelect } from '~/client/ui/choice-select'
+import type { ReceiptOrder } from '~/shared/api'
 import { FAIR_USE, LIMITS, megabytes } from '~/shared/limits'
 import { DeleteDialog } from './delete-dialog'
-
-const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 
 export function StorageLimits() {
   const { data: usage } = useSuspenseQuery(storageUsageQuery)
@@ -77,9 +78,14 @@ function Limit(props: { label: string; value: string }) {
   )
 }
 
+const ORDERS = [
+  { value: 'largest', label: 'Largest first' },
+  { value: 'oldest', label: 'Oldest first' },
+] as const satisfies ReadonlyArray<{ value: typeof ReceiptOrder.Type; label: string }>
+
 function Receipts() {
   const queryClient = useQueryClient()
-  const [order, setOrder] = useState<ReceiptOrder>('largest')
+  const [order, setOrder] = useState<typeof ReceiptOrder.Type>('largest')
   const pages = useInfiniteQuery(ownReceiptsQuery(order))
   const receipts = pages.data?.pages.flatMap((page) => page.receipts) ?? []
   return (
@@ -88,15 +94,7 @@ function Receipts() {
         <h3 className="font-medium">Your receipts</h3>
         <label className="flex items-center gap-2 text-sm">
           <span className="text-muted-foreground">Sort</span>
-          <NativeSelect
-            aria-label="Sort receipts"
-            wrapperClassName="w-40"
-            value={order}
-            onChange={(event) => setOrder(event.target.value === 'oldest' ? 'oldest' : 'largest')}
-          >
-            <option value="largest">Largest first</option>
-            <option value="oldest">Oldest first</option>
-          </NativeSelect>
+          <ChoiceSelect aria-label="Sort receipts" wrapperClassName="w-40" value={order} options={ORDERS} onChange={setOrder} />
         </label>
       </div>
       {pages.isPending ? (
@@ -116,7 +114,7 @@ function Receipts() {
                   {receipt.expense ? `${receipt.expense.deleted ? 'Deleted expense: ' : ''}${receipt.expense.title}` : 'Not on an expense'}
                 </p>
                 <p className="text-muted-foreground">
-                  {receipt.groupName ?? 'Ungrouped expense'} · <span className="tabular-nums">{megabytes(receipt.bytes)}</span> · {day(receipt.createdAt)}
+                  {receipt.groupName ?? 'Ungrouped expense'} · <span className="tabular-nums">{megabytes(receipt.bytes)}</span> · {formatMoment.date(receipt.createdAt)}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -126,14 +124,17 @@ function Receipts() {
                   </a>
                 </Button>
                 <DeleteDialog
-                  label="Delete"
-                  quiet
+                  trigger={
+                    <Button variant="outline" size="sm">
+                      Delete
+                    </Button>
+                  }
                   title="Delete this receipt for good?"
                   description={`It frees ${megabytes(receipt.bytes)}. The image is removed for everyone in ${receipt.groupName ?? 'this expense'}, from the expense and from its history, which will show who deleted it and when. This cannot be undone.`}
                   onConfirm={async () => {
                     await rpc((api) => api('storage.deleteReceipts', { receiptIds: [receipt.id] }))
-                    // The expense has a new revision too, so read everything again.
-                    await queryClient.invalidateQueries()
+                    // The expense has a new revision too, in any group.
+                    await afterWrite({ queryClient, scope: 'account' })
                   }}
                 />
               </div>
