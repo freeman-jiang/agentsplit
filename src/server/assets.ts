@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { brotliCompressSync, gzipSync } from 'node:zlib'
+import { accepts } from './compression'
 
 const TYPES: Readonly<Record<string, string>> = {
   html: 'text/html; charset=utf-8',
@@ -80,14 +81,6 @@ export function loadAssets(data: { dir: string; baseUrl: string }): ReadonlyMap<
     })
   }
   return assets
-}
-
-/** Whether the client accepts `encoding`, from Accept-Encoding; q=0 refuses it. */
-function accepts(header: string, encoding: 'br' | 'gzip') {
-  return header.split(',').some((part) => {
-    const [name, ...params] = part.trim().split(';')
-    return name?.trim().toLowerCase() === encoding && !params.some((p) => /^\s*q=0(\.0*)?\s*$/.test(p))
-  })
 }
 
 function respond(request: Request, asset: Asset): Response {
