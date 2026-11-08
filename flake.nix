@@ -5,15 +5,36 @@
   # pin, so the two can differ; bump this one only on purpose. It also fixes Bun,
   # which the Dockerfile images and @types/bun follow (scripts/check-bun-version.ts).
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/7dcdd87373d72e7a2173e4db02e20d3d7f495cfd";
+  # The operating system of the host (nix/host). It is locked at the same revision
+  # as nixpkgs; the host's daily upgrade moves it to the head of its release
+  # branch (hostNixpkgs below), while the app keeps the Bun of nixpkgs.
+  inputs.nixpkgs-host.url = "github:NixOS/nixpkgs/nixos-26.05";
+  # The disk layout for nixos-anywhere installs (nix/host/disk.nix).
+  inputs.disko = {
+    url = "github:nix-community/disko";
+    inputs.nixpkgs.follows = "nixpkgs-host";
+  };
 
   outputs =
-    { self, nixpkgs, ... }:
+    {
+      self,
+      nixpkgs,
+      nixpkgs-host,
+      disko,
+    }:
     let
       systems = [
         "aarch64-linux"
         "x86_64-linux"
       ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+
+      # The release branch that the host's operating system follows. When it
+      # nears its end of life, move this and nixpkgs-host to the next release.
+      hostNixpkgs = "github:NixOS/nixpkgs/nixos-26.05";
+      # The commit that the host's daily upgrade rebuilds. A build from a tree
+      # with uncommitted changes has none, and its upgrade timer stays off.
+      agentsplitRev = self.rev or null;
 
       # services.agentsplit with this flake's build of the app.
       agentsplitModule =
@@ -22,6 +43,12 @@
           imports = [ ./nix/module.nix ];
           services.agentsplit.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.agentsplit;
         };
+      hostModules = [
+        disko.nixosModules.disko
+        agentsplitModule
+        ./nix/host
+      ];
+      hostArgs = { inherit agentsplitRev hostNixpkgs; };
     in
     {
       packages = forAllSystems (pkgs: {
@@ -30,6 +57,18 @@
       });
 
       nixosModules.default = agentsplitModule;
+
+      # The production host (DEPLOYMENT.md, "NixOS host"): a t4g.small on EC2.
+      nixosConfigurations.agentsplit = nixpkgs-host.lib.nixosSystem {
+        modules = hostModules ++ [ { nixpkgs.hostPlatform = "aarch64-linux"; } ];
+        specialArgs = hostArgs;
+      };
+
+      # The host configuration in a VM, without the tunnel and Tailscale.
+      checks.aarch64-linux.host = import ./nix/vm-test.nix {
+        pkgs = nixpkgs-host.legacyPackages.aarch64-linux;
+        inherit hostModules hostArgs;
+      };
 
       devShells = forAllSystems (
         pkgs:
@@ -89,6 +128,17 @@
               createdb "$name"
             '';
           };
+
+          # Builds the host on this machine and switches the host to it over
+          # Tailscale SSH (DEPLOYMENT.md, "NixOS host"). The new system first
+          # runs without becoming the boot default; it becomes the default only
+          # after the health check passes, so a reboot undoes a bad deploy.
+          deploy-host = pkgs.writeShellApplication {
+            name = "deploy-host";
+            # The store paths in the remote commands expand here on purpose.
+            excludeShellChecks = [ "SC2029" ];
+            text = builtins.replaceStrings [ "@hostNixpkgs@" ] [ hostNixpkgs ] (builtins.readFile ./nix/deploy-host.sh);
+          };
         in
         {
           default = pkgs.mkShell {
@@ -103,6 +153,7 @@
               db-start
               db-stop
               db-reset
+              deploy-host
             ];
 
             shellHook = ''
