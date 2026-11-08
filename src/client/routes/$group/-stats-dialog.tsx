@@ -48,7 +48,7 @@ export default function ExpensesDialog(props: Props) {
             <ul className="divide-y">
               {data.map((e) => (
                 <li key={e.id}>
-                  <Link {...editorLink({ group: drill.group, expenseId: e.id, kind: e.kind })} className="flex items-center justify-between gap-2 px-6 py-3 text-sm hover:bg-accent">
+                  <Link {...editorLink({ group: drill.group, expenseId: e.id, kind: e.kind })} className="press flex items-center justify-between gap-2 px-6 py-3 text-sm hover:bg-accent">
                     <div className="min-w-0">
                       {e.vendor && <div className="mb-1 truncate text-xs text-muted-foreground">{e.vendor}</div>}
                       <div className="truncate">{e.title}</div>

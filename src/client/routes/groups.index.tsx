@@ -207,7 +207,8 @@ function GroupCard({ group, starred, archived, marks }: { group: Group; starred:
     <li>
       {/* The whole card opens the group; the name stays a real link for keyboards and new tabs. */}
       <div
-        className="w-full cursor-pointer rounded-2xl border bg-card p-4 transition-colors hover:bg-accent"
+        // The card does not shrink while its star or menu button is pressed.
+        className="press w-full cursor-pointer rounded-2xl border bg-card p-4 hover:bg-accent has-[button:active]:scale-100"
         onClick={() => navigate({ to: '/$group', params })}
       >
         <div className="flex justify-between gap-2">
