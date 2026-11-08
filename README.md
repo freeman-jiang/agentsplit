@@ -6,7 +6,7 @@ AgentSplit is a fork of [Spliit](https://github.com/spliit-app/spliit). People s
 
 - [MCP.md](MCP.md): the agent API.
 - [AUTH.md](AUTH.md): sign-in, API keys and OAuth.
-- [DEPLOYMENT.md](DEPLOYMENT.md): production on Coolify, backups and rollback.
+- [DEPLOYMENT.md](DEPLOYMENT.md): production on Coolify, backups and rollback, and the NixOS host that replaces Coolify.
 - [PRIVACY.md](PRIVACY.md): what is stored, where, and who can see it.
 
 ## Repository layout
