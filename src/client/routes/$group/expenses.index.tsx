@@ -25,11 +25,13 @@ const SORTS = [
 
 const parseSearch = searchParams({ sort: oneOf(SORTS.map((s) => s.value)), q: nonEmptyParam })
 
+/** The list's filter, from its search params; the loader and the page must read the same query. */
+const filterOf = (search: ReturnType<typeof parseSearch>) => ({ sort: search.sort ?? 'date', ...(search.q ? { search: search.q } : {}) })
+
 export const Route = createFileRoute('/$group/expenses/')({
   validateSearch: parseSearch,
   loaderDeps: ({ search }) => search,
-  loader: ({ context, deps }) =>
-    context.queryClient.ensureInfiniteQueryData(expensesQuery(context.groupId, { sort: deps.sort ?? 'date', ...(deps.q ? { search: deps.q } : {}) })),
+  loader: ({ context, deps }) => context.queryClient.ensureInfiniteQueryData(expensesQuery(context.groupId, filterOf(deps))),
   pendingComponent: ListSkeleton,
   component: ExpensesTab,
 })
@@ -49,7 +51,8 @@ function ExpensesTab() {
   const { groupId } = Route.useRouteContext()
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
-  const sort = search.sort ?? 'date'
+  const filter = filterOf(search)
+  const { sort } = filter
   const q = search.q ?? ''
   const [text, setText] = useState(q)
   // Search waits 300 ms after typing stops (P-EXP-09).
@@ -58,7 +61,7 @@ function ExpensesTab() {
     if (typed !== q) void navigate({ search: ({ q: _q, ...rest }) => (typed ? { ...rest, q: typed } : rest), replace: true })
   }, [typed, q, navigate])
   const { data: g } = useSuspenseQuery(groupQuery(groupId))
-  const expenses = useSuspenseInfiniteQuery(expensesQuery(groupId, { sort, ...(q ? { search: q } : {}) }))
+  const expenses = useSuspenseInfiniteQuery(expensesQuery(groupId, filter))
   const names = new Map(g.participants.map((p) => [p.id, p.name]))
   const rows = expenses.data.pages.flatMap((p) => p.expenses)
   const sections = sort === 'date' ? groupByDate({ expenses: rows, today: localDate(), weekStartsOn: weekStartsOn(navigator.language) }) : [{ key: 'all', label: '', expenses: rows }]
