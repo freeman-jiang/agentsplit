@@ -39,7 +39,7 @@ export type V1Expense = {
   documents?: { id: string; url: string; width: number; height: number }[]
 }
 
-export const v1Snapshot = (e: V1Expense) => ({
+const v1Snapshot = (e: V1Expense) => ({
   schemaVersion: 1,
   kind: 'expense',
   group: { id: e.groupId, name: 'Imported', slug: null, currency: '$', currencyCode: 'USD' },
