@@ -27,8 +27,9 @@ export default function ExpensesDialog(props: Props) {
   const { data, error } = useQuery(statsExpensesQuery(drill.groupId, { ...scope, ...(drill.range.from ? { from: drill.range.from } : {}), ...(drill.range.to ? { to: drill.range.to } : {}) }))
   return (
     <Dialog open={props.open} onOpenChange={(open) => !open && props.onClose()}>
-      {/* The top edge stays at 10% of the screen, so the header does not move when the rows arrive. */}
-      <DialogContent className="top-[10dvh] max-h-[80dvh] translate-y-0 gap-0 overflow-hidden p-0">
+      {/* The top edge stays at 10% of the screen, so the header does not move when the rows arrive.
+          The list's row is bounded by the dialog's height, so the list scrolls. */}
+      <DialogContent className="top-[10dvh] max-h-[80dvh] translate-y-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
         <DialogHeader className="space-y-1.5 border-b p-6">
           <DialogTitle className="flex items-center gap-2">{props.title}</DialogTitle>
           <DialogDescription>{props.description}</DialogDescription>
