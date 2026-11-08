@@ -15,7 +15,7 @@ import { expenseRowFigures, type RowExpense, type Tone } from './figures'
  * under the text. Wide: date, category, text, the paid figure, the viewer's figure.
  */
 const rowClass =
-  'grid grid-cols-[2.5rem_minmax(0,1fr)_auto] items-start gap-x-3 px-3 py-3 press hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-ring sm:min-h-16 sm:grid-cols-[2.5rem_2rem_minmax(0,1fr)_minmax(7rem,auto)_7rem] sm:items-center sm:gap-x-4 sm:px-4 sm:py-2.5'
+  'grid grid-cols-[2.5rem_minmax(0,1fr)_auto] items-start gap-x-3 px-3 py-3 transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-ring sm:min-h-16 sm:grid-cols-[2.5rem_2rem_minmax(0,1fr)_minmax(7rem,auto)_7rem] sm:items-center sm:gap-x-4 sm:px-4 sm:py-2.5'
 
 /** Only the viewer's amount carries red or green. */
 const TONES: Record<Tone, string> = { neutral: '', positive: 'text-owed', negative: 'text-owe' }

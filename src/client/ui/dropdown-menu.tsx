@@ -18,9 +18,7 @@ const DropdownMenuContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
-        // The menu grows out of its trigger, not from its own centre.
-        "origin-(--radix-dropdown-menu-content-transform-origin) data-[state=open]:animate-menu-in data-[state=closed]:animate-menu-out",
+        "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out",
         "max-h-[80vh] overflow-y-scroll",
         className
       )}
