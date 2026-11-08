@@ -11,23 +11,8 @@ import { bootstrapOwner } from './owner-bootstrap'
 import type { AuthSettings } from '../core/config'
 import type { Db } from '../core/db'
 import { apiKeyCount } from './api-key'
-import { AUTH_RATE_LIMIT, authPlugins, DAY_SECONDS, type ClientMetadataResourceFetch } from './auth-options'
+import { AUTH_RATE_LIMIT, authPlugins, DAY_SECONDS } from './auth-options'
 import { connectionClaims } from './oauth-connections'
-
-
-/**
- * CIMD metadata fetch. A container can reach the private networks around it
- * (the database, the bucket), so Better Auth's Node fetcher checks that every
- * DNS answer is a public address and pins the connection to it, as in the
- * current app. This adds the remaining rules: no redirects, and limits on time and size.
- */
-const cimdFetch: ClientMetadataResourceFetch = async (input, init) => {
-  const response = await fetchClientMetadataResource(input, { ...init, signal: AbortSignal.timeout(5_000), headers: { accept: 'application/json' } })
-  if (response.status >= 300 && response.status < 400) throw new Error('Client metadata redirects are not followed')
-  const body = await response.arrayBuffer()
-  if (body.byteLength > 64 * 1024) throw new Error('Client metadata is too large')
-  return new Response(body, { status: response.status, headers: response.headers })
-}
 
 /**
  * The daily cap on new accounts (LIMITS.signUpsPerDay, or SIGN_UP_DAILY_LIMIT):
@@ -109,7 +94,11 @@ export function createAuth(config: AuthSettings & { readonly db: Db }) {
     },
     plugins: authPlugins({
       baseUrl: config.baseUrl,
-      fetchClientMetadataResource: cimdFetch,
+      // A container can reach the private networks around it (the database, the bucket), so the CIMD
+      // metadata fetch uses Better Auth's Node fetcher: every DNS answer must be a public address, and
+      // the connection is pinned to it, as in the current app. The plugin refuses redirects and any
+      // status but 200, and limits the time (5 s) and the size (5 KiB).
+      fetchClientMetadataResource,
       extensions: [connectionClaims(config.db)],
     }),
   })
