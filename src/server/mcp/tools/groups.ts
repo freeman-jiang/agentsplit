@@ -130,7 +130,7 @@ function currencyOf(data: { currency: string | undefined; currencyCode: string |
 const Name = trimmed(PersonName, PERSON_NAME_LENGTH)
 const GroupInputFields = {
   name: trimmed(GroupName, GROUP_NAME_LENGTH),
-  slug: SlugInput.annotate({ description: 'Optional unique group URL slug, e.g. maple. Set null or empty string to remove it.' }),
+  slug: SlugInput.annotate({ description: 'Optional unique group URL slug, e.g. our-flat. Set null or empty string to remove it.' }),
   information: Information,
   currency: Schema.String.check(Schema.isBetweenLength(1, 5)),
   currencyCode: Schema.Union([Schema.NullOr(Schema.String.check(Schema.isBetweenLength(3, 3))), Schema.Literal('')]),
