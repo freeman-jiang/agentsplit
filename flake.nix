@@ -79,7 +79,11 @@
       # The production host (DEPLOYMENT.md, "NixOS host"): an e2-micro on GCE.
       nixosConfigurations.agentsplit = mkHost {
         system = "x86_64-linux";
-        profile = ./nix/host/gce.nix;
+        profile = {
+          imports = [ ./nix/host/gce.nix ];
+          # The dev box (aarch64) builds the image (nix/host/gce.nix).
+          agentsplit.imageBuildPackages = nixpkgs-host.legacyPackages.aarch64-linux;
+        };
       };
       # The same host on EC2 (a t4g.small), the documented alternative.
       nixosConfigurations.agentsplit-ec2 = mkHost {
