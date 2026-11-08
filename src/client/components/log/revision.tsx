@@ -4,21 +4,23 @@
 import { DisclosureSummary } from '~/client/ui/disclosure'
 import type { Activity } from '~/shared/api'
 import { describeRevision, isBaseline, REVISION_FIELDS } from '~/shared/history'
-import { receiptDownloadPath } from '~/shared/paths'
+import { RECEIPT_URL_PREFIX, receiptDownloadPath } from '~/shared/paths'
 import { tombstoneText } from '../receipt-files'
 import { fieldChanged } from './revision-diff'
 
 type ActivityItem = typeof Activity.Type
 
+/** The URL schemes of stored receipts: the current app's storage URLs, and v2's own pointers. */
+const RECEIPT_PROTOCOLS = ['http:', 'https:', new URL(RECEIPT_URL_PREFIX).protocol]
+
 /**
- * Only http and https pointers and v2's own r2: pointers become links; a
- * `javascript:` URL never does (P-HIST-76). The r2: name is historical: the
- * objects are in Garage. The link is always /api/receipts.
+ * Only a stored receipt's URL scheme becomes a link; a `javascript:` URL never
+ * does (P-HIST-76). The link is always /api/receipts.
  */
 function receiptLink(data: { groupId: string; url: string }) {
   try {
     const parsed = new URL(data.url)
-    if (!['http:', 'https:', 'r2:'].includes(parsed.protocol)) return undefined
+    if (!RECEIPT_PROTOCOLS.includes(parsed.protocol)) return undefined
   } catch {
     return undefined
   }

@@ -8,6 +8,7 @@ import { Invalid, NotFound, type DocumentInput } from '../shared/api'
 import { LIMITS, mebibytes } from '../shared/limits'
 import { RECEIPT_FORMATS, receiptTypeOf, type ReceiptContentType, type ReceiptFormat } from '../shared/vocabulary'
 import { randomId } from '../shared/ids'
+import { RECEIPT_URL_PREFIX } from '../shared/paths'
 import { removeOrphans, storageUnavailable, type Bucket } from './bucket'
 import type { Db } from './core/db'
 import { requireMember, type Principal } from './core/access'
@@ -15,18 +16,12 @@ import { spaceFor } from './receipt-quota'
 import { iso } from './sql'
 import type { Tombstone } from './expense-read'
 
-/**
- * The pointer of a receipt stored by v2: this prefix and the object key. The
- * name is from the time v2 stored receipts in R2. The current app's objects
- * and v2's share one bucket and one key scheme.
- */
-const NEW_URL_PREFIX = 'r2://agentsplit-receipts/'
 
 /** The object key of a new receipt of `contentType`, which receiptKey reads back from its URL. */
 export const newReceiptKey = (contentType: ReceiptContentType) => `receipts/${randomId()}.${RECEIPT_FORMATS[contentType].extension}`
 
 /** The stored URL of the receipt at object key `key`. */
-export const receiptUrl = (key: string) => `${NEW_URL_PREFIX}${key}`
+export const receiptUrl = (key: string) => `${RECEIPT_URL_PREFIX}${key}`
 
 export type ImageInfo = { format: ReceiptFormat; width: number; height: number }
 
@@ -66,13 +61,13 @@ const sized = (info: ImageInfo) => (info.width >= 1 && info.height >= 1 && info.
 /**
  * The object key of a stored receipt URL: the part after the storage prefix, as the
  * current app's readReceipt takes it. A current-app URL is
- * `https://<host>/<bucket>/<key>`; a v2 upload is `r2://agentsplit-receipts/<key>`.
+ * `https://<host>/<bucket>/<key>`; a v2 upload is RECEIPT_URL_PREFIX and the key.
  * Keys keep their original form, such as `receipts/<id>.png` or the older
  * `document-<time>-<id>.png`. Refuses keys with `..`, `?`, `#`, `%` (P-RECEIPT-26) or a NUL
  * byte, which PostgreSQL text cannot hold.
  */
 export function receiptKey(url: string): string | null {
-  const key = url.startsWith(NEW_URL_PREFIX) ? url.slice(NEW_URL_PREFIX.length) : /^https?:\/\/[^/]+\/[^/]+\/(.+)$/.exec(url)?.[1]
+  const key = url.startsWith(RECEIPT_URL_PREFIX) ? url.slice(RECEIPT_URL_PREFIX.length) : /^https?:\/\/[^/]+\/[^/]+\/(.+)$/.exec(url)?.[1]
   if (!key || /\.\.|[?#%\0]/.test(key)) return null
   return key
 }
