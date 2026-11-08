@@ -182,6 +182,10 @@ export const expenses = pgTable(
     updatedAt: now(),
     // Nullable: set when the expense is deleted (a tombstone; rows are never removed).
     deletedAt: timestamp({ withTimezone: true, mode: 'date' }),
+    /** Whether the expense counts in balances. Its payers and shares keep a copy (expense_state_fk), which the running balances read. */
+    live: boolean()
+      .notNull()
+      .generatedAlwaysAs(sql`deleted_at IS NULL`),
   },
   (t) => [
     check('expenses_revision_nonnegative', sql`${t.revision} >= 0`),
@@ -195,6 +199,8 @@ export const expenses = pgTable(
     check('expenses_currency_supported', oneOf(t.currency, CURRENCY_CODES)),
     check('expenses_original_currency_supported', sql`${t.originalCurrency} IS NULL OR ${oneOf(t.originalCurrency, CURRENCY_CODES)}`),
     unique('expenses_id_group').on(t.id, t.groupId),
+    // The key of the copy in each payer and share row: a change of currency or liveness cascades to them.
+    unique('expenses_id_currency_live').on(t.id, t.currency, t.live),
     index('expenses_group_date').on(t.groupId, t.deletedAt, t.expenseDate.desc(), t.createdAt.desc(), t.id.desc()),
     index('expenses_group_updated').on(t.groupId, t.deletedAt, t.updatedAt.desc(), t.id.desc()),
     index('expenses_feed').on(t.expenseDate.desc(), t.createdAt.desc(), t.id.desc()),
@@ -214,10 +220,16 @@ const allocation = (name: 'expense_payers' | 'expense_shares', weightRule: RegEx
       amount: money(),
       /** The split input as exact decimal text (share count, percentage or amount); '1' for payers. */
       weight: text().notNull().default('1'),
+      /** The expense's currency and liveness, kept equal to it by expense_state_fk, so the running balances need no join (0020). */
+      currency: text().$type<CurrencyCode>().notNull(),
+      live: boolean().notNull(),
     },
     (t) => [
       primaryKey({ columns: [t.expenseId, t.participantId] }),
       foreignKey({ columns: [t.expenseId, t.groupId], foreignColumns: [expenses.id, expenses.groupId] }).onDelete('restrict'),
+      foreignKey({ name: `${name}_expense_state_fk`, columns: [t.expenseId, t.currency, t.live], foreignColumns: [expenses.id, expenses.currency, expenses.live] })
+        .onUpdate('cascade')
+        .onDelete('restrict'),
       foreignKey({ columns: [t.participantId, t.groupId], foreignColumns: [participants.id, participants.groupId] }).onDelete(
         'restrict',
       ),
@@ -230,6 +242,26 @@ export const expensePayers = allocation('expense_payers', WEIGHT)
 // A share's weight takes the sign of a negative amount split by amount, such as a refund (docs/history/v2/DECISIONS.md, P-BAL-93, P-MONEY-52).
 // The CHECK allows a sign in every split mode; the allocation trigger (0019) refuses it at commit in any other expense.
 export const expenseShares = allocation('expense_shares', DECIMAL)
+
+/**
+ * What each participant paid and owes per currency in a group, over the
+ * payers and shares of live expenses, with the number of those rows. Triggers
+ * on expense_payers and expense_shares keep it in the same transaction as each
+ * change (0020); a row exists while its count is above zero. Balances read
+ * this instead of every payer and share of the group.
+ */
+export const balanceTotals = pgTable(
+  'balance_totals',
+  {
+    groupId: text().notNull(),
+    participantId: text().notNull(),
+    currency: text().$type<CurrencyCode>().notNull(),
+    paid: money(),
+    owed: money(),
+    parts: integer().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.groupId, t.participantId, t.currency] }), check('balance_totals_parts_positive', sql`${t.parts} > 0`)],
+)
 
 /** Append-only history: every group change and every expense revision with its full snapshot. */
 export const activities = pgTable(

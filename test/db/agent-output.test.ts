@@ -169,8 +169,8 @@ describe('agent writes and their history', () => {
     await h.withDb((db) =>
       db.transaction(async (tx) => {
         await tx.insert(expenses).values({ id, groupId: 'g1', revision: 0, kind: 'expense', title: 'Legacy', vendor: null, notes: '', categoryId: 0, expenseDate: '2026-10-01', currency: 'USD', amount: minor(1000n), splitMode: 'evenly' })
-        await tx.insert(expensePayers).values({ expenseId: id, groupId: 'g1', participantId: 'pa', amount: minor(1000n) })
-        await tx.insert(expenseShares).values({ expenseId: id, groupId: 'g1', participantId: 'pa', amount: minor(1000n), weight: '1' })
+        await tx.insert(expensePayers).values({ expenseId: id, groupId: 'g1', participantId: 'pa', amount: minor(1000n), currency: 'USD', live: true })
+        await tx.insert(expenseShares).values({ expenseId: id, groupId: 'g1', participantId: 'pa', amount: minor(1000n), weight: '1', currency: 'USD', live: true })
       }),
     )
     await h.mcp.ok({ name: 'update_expense', args: { groupId: 'g1', expenseId: id, expectedRevision: 0, changes: { title: 'Legacy, edited' } }, headers: alice })

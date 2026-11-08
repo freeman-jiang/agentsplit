@@ -293,11 +293,12 @@ async function writeExpense(tx: Db, data: { expenseId: string; groupId: string; 
       .getSQL(),
     upsert: tx
       .insert(table)
-      .values(rows.map((r) => ({ expenseId: data.expenseId, groupId: data.groupId, ...r })))
+      // A write leaves the expense live in its new currency; expense_state_fk refuses any other copy.
+      .values(rows.map((r) => ({ expenseId: data.expenseId, groupId: data.groupId, currency: data.expense.currency, live: true, ...r })))
       .onConflictDoUpdate({
         target: [table.expenseId, table.participantId],
-        set: { amount: sql`excluded.amount`, weight: sql`excluded.weight` },
-        setWhere: sql`(excluded.amount, excluded.weight) IS DISTINCT FROM (${table.amount}, ${table.weight})`,
+        set: { amount: sql`excluded.amount`, weight: sql`excluded.weight`, currency: sql`excluded.currency` },
+        setWhere: sql`(excluded.amount, excluded.weight, excluded.currency) IS DISTINCT FROM (${table.amount}, ${table.weight}, ${table.currency})`,
       })
       .getSQL(),
   })
