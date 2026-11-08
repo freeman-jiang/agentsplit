@@ -6,8 +6,8 @@
   # which the Dockerfile images and @types/bun follow (scripts/check-bun-version.ts).
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/7dcdd87373d72e7a2173e4db02e20d3d7f495cfd";
   # The operating system of the host (nix/host). It is locked at the same revision
-  # as nixpkgs; the host's daily upgrade moves it to the head of its release
-  # branch (hostNixpkgs below), while the app keeps the Bun of nixpkgs.
+  # as nixpkgs; deploy-host moves it to the head of its release branch
+  # (hostNixpkgs below), while the app keeps the Bun of nixpkgs.
   inputs.nixpkgs-host.url = "github:NixOS/nixpkgs/nixos-26.05";
   # The disk layout for nixos-anywhere installs (nix/host/disk.nix).
   inputs.disko = {
@@ -32,8 +32,8 @@
       # The release branch that the host's operating system follows. When it
       # nears its end of life, move this and nixpkgs-host to the next release.
       hostNixpkgs = "github:NixOS/nixpkgs/nixos-26.05";
-      # The commit that the host's daily upgrade rebuilds. A build from a tree
-      # with uncommitted changes has none, and its upgrade timer stays off.
+      # The commit that `deploy-host --update` rebuilds. A build from a tree
+      # with uncommitted changes has none.
       agentsplitRev = self.rev or null;
 
       # services.agentsplit with this flake's build of the app.
