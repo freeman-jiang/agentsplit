@@ -228,6 +228,7 @@ const allocation = (name: 'expense_payers' | 'expense_shares', weightRule: RegEx
 
 export const expensePayers = allocation('expense_payers', WEIGHT)
 // A share's weight takes the sign of a negative amount split by amount, such as a refund (DECISIONS.md, P-BAL-93, P-MONEY-52).
+// The CHECK allows a sign in every split mode; the allocation trigger (0019) refuses it at commit in any other expense.
 export const expenseShares = allocation('expense_shares', DECIMAL)
 
 /** Append-only history: every group change and every expense revision with its full snapshot. */
@@ -285,7 +286,7 @@ export const receipts = pgTable(
     groupId: text()
       .notNull()
       .references(() => groups.id, { onDelete: 'restrict' }),
-    /** The public receipt URL; its object key in the bucket is derived from it. */
+    /** The receipt's private storage pointer, not a download link (MCP.md); receiptKey derives its object key from it. */
     url: text().notNull(),
     // Nullable: receipts imported from before accounts have no known uploader, and count against no one.
     createdBy: text(),
