@@ -1,5 +1,5 @@
 {
-  description = "AgentSplit dev shell";
+  description = "AgentSplit: the dev shell, the package, and the NixOS host";
 
   # The revision that ~/dots/flake.lock pinned when this was set. Dots moves its own
   # pin, so the two can differ; bump this one only on purpose. It also fixes Bun,
@@ -7,7 +7,7 @@
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/7dcdd87373d72e7a2173e4db02e20d3d7f495cfd";
 
   outputs =
-    { nixpkgs, ... }:
+    { self, nixpkgs, ... }:
     let
       systems = [
         "aarch64-linux"
@@ -16,6 +16,11 @@
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
     in
     {
+      packages = forAllSystems (pkgs: {
+        agentsplit = pkgs.callPackage ./nix/package.nix { };
+        default = self.packages.${pkgs.stdenv.hostPlatform.system}.agentsplit;
+      });
+
       devShells = forAllSystems (
         pkgs:
         let
