@@ -31,7 +31,7 @@
 The plan's invariants require these changes. v2 already implements most of them.
 
 - Money and dates: integer minor units (P-DB-32), a complete conversion or none (P-DB-35), payer and share sums checked by the database (P-DB-36), precision fixed by the integer type (P-DB-37), `timestamptz` (P-DB-145), calendar `date` for recurrence (P-DB-66), a non-null recurrence (P-DB-46), a role limited to admin or member (P-DB-95), and UTC on every server (P-DB-144).
-- History stays permanent; no migration disables history triggers (P-DB-131). Only the importer writes revision 0 rows (P-DB-15). An expense never moves between groups (P-DB-09; enforced by the revision trigger).
+- History stays permanent; no migration disables history triggers (P-DB-131). Only the one-time importer wrote revision 0 rows (P-DB-15); it is gone, and no code path writes them now. An expense never moves between groups (P-DB-09; enforced by the revision trigger).
 - The signing keys are imported with the production secret (P-DB-128).
 - Stale tests and docs are corrected, not ported (P-MCP-173, P-MCP-174, P-MCP-175). `postinstall` no longer migrates (P-PWA-48).
 - Authorize keeps redirecting only real browser navigations (P-MCP-118). Edits and deletes keep requiring `expectedRevision` (P-HIST-24).
@@ -91,7 +91,9 @@ P-AUTH-03 (client errors reported as 503), P-AUTH-30 (bootstrap errors on every 
 
 ## H. Database rules changed after the cutover
 
+- 0013 added CHECKs for `groups.kind`, `expenses.kind` and `activities.source` with the lists of `src/shared/vocabulary.ts`. The columns had none; every stored row held a listed value.
 - 0014 dropped the 0006 trigger that filled `recurring_links.anchor_day` on insert. Only the one-time importer needed it, and the importer is gone (owner decision); the column stays NOT NULL, so a link without the day is still refused.
+- 0015 made the reference from `private_contexts` to its expense DEFERRABLE INITIALLY DEFERRED, so ungrouped creation writes the context before the expense and the expense write checks the private rules. The reference is still checked, at commit instead of at the insert.
 - 0017 let a share weight carry a sign, so that a negative amount split by amount (a refund) can be stored (P-BAL-93, P-MONEY-52). A CHECK cannot see the expense, so 0017 allowed a sign in every split mode. 0019 restores the rest of the rule at commit: a signed share weight is refused unless the expense is split by amount and its amount is negative. The form of a weight stays a CHECK (`1.` and `--1` are refused).
 - 0018 rewrote the payer weight CHECK of 0001 in the text that `db/schema/app.ts` declares. It accepts the same values.
 
