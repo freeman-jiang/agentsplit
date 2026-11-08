@@ -6,7 +6,7 @@
 import type { CurrencyCode } from './currencies'
 import { titleWithVendor, type Category } from './history'
 import { formatMinor, minor, minorOrNull, sumMinor, type DecimalString, type Minor } from './minor'
-import { RECURRING_PERIODS, type ExpenseKind, type Recurrence } from './vocabulary'
+import { RECURRING_PERIODS, type ExpenseKind, type Recurrence, type RecurringPeriod } from './vocabulary'
 
 export type StatsExpense = {
   readonly id: string
@@ -219,6 +219,12 @@ export function regroupMonthly(data: { spending: MonthlySpending; grouping: Mont
 // ---------- recurring ----------
 
 /**
+ * Each period's occurrences in 8400 months. 365.25 = 36525 / 100, so
+ * daily·365.25/12 = daily·36525·7/8400 and weekly·365.25/84 = weekly·36525/8400.
+ */
+const PER_8400_MONTHS: Record<RecurringPeriod, bigint> = { daily: 36525n * 7n, weekly: 36525n, monthly: 8400n }
+
+/**
  * Active recurring expenses as estimated monthly and yearly costs, with 365.25
  * days a year. Both estimates come from the exact sum, so the yearly figure is
  * not the rounded monthly figure times 12. In minor units, with N =
@@ -230,9 +236,7 @@ export function recurring(expenses: readonly StatsExpense[]) {
     const list = spending(expenses).filter((e) => e.recurrence === period)
     return { period, count: list.length, total: sumMinor(list.map((e) => e.amount)) }
   })
-  const [daily, weekly, monthly] = periods.map((p) => p.total)
-  // 365.25 = 36525 / 100, so daily·365.25/12 = daily·36525·7/8400 and weekly·365.25/84 = weekly·36525/8400.
-  const numerator = (daily ?? 0n) * 36525n * 7n + (weekly ?? 0n) * 36525n + (monthly ?? 0n) * 8400n
+  const numerator = periods.reduce((sum, p) => sum + p.total * PER_8400_MONTHS[p.period], 0n)
   return {
     count: periods.reduce((s, p) => s + p.count, 0),
     byPeriod: periods.filter((p) => p.count > 0),
