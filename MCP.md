@@ -210,7 +210,7 @@ A successful result has `structuredContent` and the same JSON as text. A failed 
 | `CONFLICT` | The record changed, the ID exists, or the request conflicts with the current state (the last admin, a used invitation). `recovery` is `read_current_revision`. |
 | `PRECONDITION_FAILED` | A historical read has incomplete history, or an attach does not fit the caller's receipt storage. |
 | `TOO_MANY_REQUESTS` | The account made more than about 60 changes in a minute. Nothing changed. `recovery` is `retry_later`; wait the seconds that the message gives. |
-| `INTERNAL_SERVER_ERROR` | An unexpected failure, also on a read. For a write, `outcomeUnknown` is true and `recovery` is `read_before_retry`. |
+| `INTERNAL_SERVER_ERROR` | An unexpected failure, also on a read. For a write, `outcomeUnknown` is true and `recovery` is `read_before_retry`. For a read, `recovery` is `correct_arguments`. |
 
 The web app and the agent tools share one error table (`src/shared/errors.ts`), so a refusal has the same meaning and text on both.
 
