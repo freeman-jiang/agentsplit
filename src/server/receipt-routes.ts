@@ -19,7 +19,7 @@ import { receiptArchive } from './storage'
 import { zipStream, type ZipEntry } from './zip'
 
 /** The multipart envelope may add this much to the image. */
-export const ENVELOPE_BYTES = 64 * 1024
+const ENVELOPE_BYTES = 64 * 1024
 
 /**
  * GET /api/receipts?groupId=&url=. `reader` is the caller (httpReader): an
