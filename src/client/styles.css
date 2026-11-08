@@ -159,6 +159,14 @@
   @apply mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase;
 }
 
+/* viewport-fit=cover lets the page run under the notch and the home indicator.
+   safe-px-4 is 1rem of padding on each side plus the safe-area inset there, so
+   content clears the notch in landscape; safe-px-0 is the inset alone. */
+@utility safe-px-* {
+  padding-left: calc(var(--spacing) * --value(integer) + env(safe-area-inset-left, 0px));
+  padding-right: calc(var(--spacing) * --value(integer) + env(safe-area-inset-right, 0px));
+}
+
 /* A small control keeps its visible size and gets an invisible touch target of
    at least 44 px, centred on it. The control needs a positioned box. */
 @utility hit-area {
