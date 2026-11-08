@@ -274,7 +274,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
               const error = rowError('shares', p.id)
               return (
                 <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 sm:py-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 pointer-coarse:min-h-11">
                     <Checkbox
                       id={`share-${p.id}`}
                       checked={selected}
@@ -380,7 +380,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
                 <ChoiceSelect id="recurrence" className="h-11" disabled={isPrivate} value={state.recurrence} options={RECURRENCE_OPTIONS} onChange={(recurrence) => set({ recurrence })} />
               </Field>
               {!income && !isPrivate && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 pointer-coarse:min-h-11">
                   <Checkbox id="is-payment" checked={state.kind === 'payment'} onCheckedChange={(value) => set({ kind: value === true ? 'payment' : 'expense' })} />
                   <Label htmlFor="is-payment" className="font-normal">
                     This is a payment
@@ -389,7 +389,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
               )}
               {/* Each private expense has its own people, so a saved default would never apply again. */}
               {!isPrivate && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 pointer-coarse:min-h-11">
                   <Checkbox id="save-default" checked={state.saveDefault} onCheckedChange={(value) => set({ saveDefault: value === true })} />
                   <Label htmlFor="save-default" className="font-normal">
                     Save as default splitting options

@@ -159,8 +159,24 @@
   @apply mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase;
 }
 
+/* A small control keeps its visible size and gets an invisible touch target of
+   at least 44 px, centred on it. The control needs a positioned box. */
+@utility hit-area {
+  @media (pointer: coarse) {
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      translate: -50% -50%;
+    }
+  }
+}
+
 @media (pointer: coarse) {
-  button {
+  button:not(.hit-area) {
     min-height: 44px;
   }
 }

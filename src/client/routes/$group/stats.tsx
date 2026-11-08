@@ -401,14 +401,14 @@ function MonthlyCard({ data }: { data: Overview | undefined }) {
   const years = new Set(view?.months.map((m) => m.key.slice(0, 4)))
   const controls = (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex h-9 shrink-0 items-center gap-2 rounded-xl border border-input px-3 text-sm">
+      <div className="flex h-9 shrink-0 items-center gap-2 rounded-xl border border-input px-3 text-sm pointer-coarse:h-11">
         <Checkbox id="round-amounts" checked={round} onCheckedChange={(value) => setRound(value === true)} />
         <Label htmlFor="round-amounts" className="font-normal">
           Round amounts
         </Label>
       </div>
-      <ChoiceSelect aria-label="Category grouping" value={grouping} options={GROUPINGS} onChange={setGrouping} wrapperClassName="w-36 sm:w-32" className="h-9 sm:text-sm" />
-      <Segmented label="Chart type" value={chart} options={CHART_TYPES} onChange={setChart} className="h-9 shrink-0" />
+      <ChoiceSelect aria-label="Category grouping" value={grouping} options={GROUPINGS} onChange={setGrouping} wrapperClassName="w-36 sm:w-32" className="h-9 sm:text-sm pointer-coarse:h-11" />
+      <Segmented label="Chart type" value={chart} options={CHART_TYPES} onChange={setChart} className="h-9 shrink-0 pointer-coarse:h-11" />
     </div>
   )
   return (
