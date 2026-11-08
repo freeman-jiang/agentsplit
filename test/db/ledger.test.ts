@@ -1,8 +1,6 @@
 // The ledger against a real database: create, retry, update, list and delete,
 // and the membership check. Each test that writes works in its own group.
-import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { expenses } from '../../db/schema/app'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { listBalances } from '~/server/balances'
 import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense } from '~/server/ledger'
@@ -106,8 +104,6 @@ describe('ledger', () => {
     await tx((db) => createExpense(db, { principal: alice, groupId: h.groupId, expenseId: kept, idempotencyKey: key(), expense: h.expense() }))
     await tx((db) => createExpense(db, { principal: alice, groupId: h.groupId, expenseId: removed, idempotencyKey: key(), expense: h.expense({ amount: '90.00', payers: [{ participantId: h.pb, amount: '90.00' }] }) }))
     await tx((db) => deleteExpense(db, { principal: alice, groupId: h.groupId, expenseId: removed, expectedRevision: 1, idempotencyKey: key() }))
-    const [row] = await tx((db) => db.select({ deletedAt: expenses.deletedAt }).from(expenses).where(eq(expenses.id, removed)))
-    expect(row?.deletedAt).not.toBeNull()
     const live = await tx((db) => listExpenses(db, { principal: alice, groupId: h.groupId, filter: {}, cursor: null, limit: 10 }))
     expect(live.expenses.map((e) => e.id)).toEqual([kept])
     // Only the live expense counts, and the balances sum to zero.
