@@ -4,9 +4,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { gzipSync } from 'node:zlib'
+import { gunzipSync, gzipSync } from 'node:zlib'
 import { afterAll, describe, expect, it } from 'vitest'
-import { assetHandler, loadAssets } from '../src/server/assets'
+import { assetHandler, clientFiles, loadAssets } from '../src/server/assets'
 import { readSettings } from '../src/server/core/config'
 import { nextRun } from '../src/server/hourly'
 
@@ -19,7 +19,7 @@ describe('static files', () => {
   const chunk = 'export const a = 1;'.repeat(100)
   writeFileSync(join(dir, 'assets', 'index-abc123.js'), chunk)
   writeFileSync(join(dir, 'assets', 'index-abc123.js.gz'), gzipSync(chunk))
-  const assets = loadAssets(dir)
+  const assets = loadAssets({ dir, baseUrl: 'https://app.example' })
   if (!assets) throw new Error('no assets')
   const serve = assetHandler(assets)
   const get = (path: string, headers: Record<string, string> = {}) => serve(new Request(`https://app.example${path}`, { headers }))
@@ -48,6 +48,30 @@ describe('static files', () => {
     const plain = await get('/assets/index-abc123.js', { 'accept-encoding': 'gzip;q=0' })
     expect(plain.headers.get('content-encoding')).toBeNull()
     expect(await plain.text()).toBe(chunk)
+  })
+})
+
+describe('the client build at start', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentsplit-build-'))
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+  // Link previews ignore relative image URLs, and only the server knows its public origin.
+  it('writes the public origin into the page’s share-preview URLs, in every encoding', async () => {
+    writeFileSync(join(dir, 'index.html'), '<meta property="og:image" content="/banner.png" /><meta property="og:url" content="/" /><meta name="twitter:image" content="/banner.png" />')
+    writeFileSync(join(dir, 'index.html.gz'), gzipSync('stale'))
+    const serve = clientFiles({ dir, baseUrl: 'https://agentsplit.example/ignored' })
+    const expected =
+      '<meta property="og:image" content="https://agentsplit.example/banner.png" /><meta property="og:url" content="https://agentsplit.example/" /><meta name="twitter:image" content="https://agentsplit.example/banner.png" />'
+    expect(await (await serve(new Request('https://agentsplit.example/groups'))).text()).toBe(expected)
+    const zipped = await serve(new Request('https://agentsplit.example/', { headers: { 'accept-encoding': 'gzip' } }))
+    expect(zipped.headers.get('content-encoding')).toBe('gzip')
+    expect(gunzipSync(new Uint8Array(await zipped.arrayBuffer())).toString()).toBe(expected)
+  })
+
+  // A wrong CLIENT_DIR would otherwise pass the health checks and answer every page with 404.
+  it('stops the start when CLIENT_DIR names no build', () => {
+    const missing = join(dir, 'missing')
+    expect(() => clientFiles({ dir: missing, baseUrl: 'https://agentsplit.example' })).toThrow(`Set CLIENT_DIR to the client build: ${missing} has none`)
   })
 })
 
