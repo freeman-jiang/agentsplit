@@ -293,7 +293,9 @@ function BarRow(props: { label: ReactNode; value: number; max: number; color: st
 }
 
 function OverTimeCard({ data, drill }: { data: Overview | undefined; drill: Drill }) {
+  // The last month stays set while the dialog closes, so it can play its exit animation.
   const [month, setMonth] = useState<string | null>(null)
+  const [open, setOpen] = useState(false)
   const c = data?.currency
   const max = data ? Math.max(0, ...data.months.map((m) => Number(m.total))) : 0
   return (
@@ -315,7 +317,10 @@ function OverTimeCard({ data, drill }: { data: Overview | undefined; drill: Dril
               // Lighter than the monthly chart below, so the two month lists read as different charts.
               color="hsl(var(--muted-foreground))"
               amount={money(m.total, c)}
-              onClick={() => setMonth(m.month)}
+              onClick={() => {
+                setMonth(m.month)
+                setOpen(true)
+              }}
             />
           ))}
         </div>
@@ -327,7 +332,8 @@ function OverTimeCard({ data, drill }: { data: Overview | undefined; drill: Dril
           title={formatMonth(month)}
           description="Expenses in this month for the selected period."
           empty="There are no expenses in this month."
-          onClose={() => setMonth(null)}
+          open={open}
+          onClose={() => setOpen(false)}
         />
       )}
     </StatsCard>
@@ -335,7 +341,9 @@ function OverTimeCard({ data, drill }: { data: Overview | undefined; drill: Dril
 }
 
 function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Drill }) {
+  // The last category stays set while the dialog closes, so it can play its exit animation.
   const [selected, setSelected] = useState<Overview['categories'][number] | null>(null)
+  const [open, setOpen] = useState(false)
   const c = data?.currency
   const max = data ? Math.max(0, ...data.categories.map((x) => Number(x.total))) : 0
   return (
@@ -357,7 +365,10 @@ function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Dr
               max={max}
               color={chartColor(i)}
               amount={`${money(x.total, c)} (${x.percent}%)`}
-              onClick={() => setSelected(x)}
+              onClick={() => {
+                setSelected(x)
+                setOpen(true)
+              }}
             />
           ))}
         </div>
@@ -369,7 +380,8 @@ function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Dr
           title={selected.name}
           description="Expenses in this category for the selected period."
           empty="There are no expenses in this category."
-          onClose={() => setSelected(null)}
+          open={open}
+          onClose={() => setOpen(false)}
         />
       )}
     </StatsCard>

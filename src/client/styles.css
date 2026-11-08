@@ -37,11 +37,11 @@
 @theme {
   --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
   --animate-pop-in: pop-in 200ms var(--ease-out-strong);
-  --animate-pop-out: pop-out 150ms var(--ease-out-strong);
+  --animate-pop-out: pop-out 150ms var(--ease-out-strong) forwards;
   --animate-fade-in: fade-in 200ms var(--ease-out-strong);
-  --animate-fade-out: fade-out 150ms var(--ease-out-strong);
+  --animate-fade-out: fade-out 150ms var(--ease-out-strong) forwards;
   --animate-menu-in: pop-in 150ms var(--ease-out-strong);
-  --animate-menu-out: pop-out 120ms var(--ease-out-strong);
+  --animate-menu-out: pop-out 120ms var(--ease-out-strong) forwards;
 }
 
 /* A surface grows from 96% and fades in, around its transform-origin. */
