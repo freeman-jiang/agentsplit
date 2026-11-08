@@ -36,7 +36,7 @@ export function DashboardBalance() {
           {summary.data.totals.length === 0 ? (
             <p className="mt-4 text-lg">No recorded balance yet.</p>
           ) : (
-            <TotalAmounts totals={summary.data.totals.map(({ currency, amount }) => ({ currency, net: amount }))} />
+            <TotalAmounts totals={summary.data.totals} />
           )}
         </>
       )}

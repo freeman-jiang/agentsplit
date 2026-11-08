@@ -97,6 +97,9 @@ export const Balance = Schema.Struct({
   net: DecimalOutput,
 })
 
+/** The caller's net per currency across groups, sorted by code: the dashboard's and the directory's totals. Currencies are never added together. */
+export const CallerTotals = Schema.Array(Schema.Struct({ currency: CurrencyCodeSchema, net: DecimalOutput }))
+
 export const Group = Schema.Struct({
   ...GroupSummary.fields,
   /**

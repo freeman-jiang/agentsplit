@@ -412,7 +412,7 @@ describe('ungrouped expenses', () => {
     )
     // Household +40, the repaid dinner 0, the three-person dinner +40.
     const summary = await tx((db) => accountBalances(db, { principal: dana }))
-    expect(summary.totals).toEqual([{ currency: 'USD', amount: '80.00' }])
+    expect(summary.totals).toEqual([{ currency: 'USD', net: '80.00' }])
     expect(summary.balances.find((b) => b.groupId === repaid.id)).toMatchObject({ kind: 'private', currency: 'USD', amount: '0.00' })
     expect(summary.unboundGroupIds).toEqual([])
     expect(await tx((db) => accountBalances(db, { principal: outsider }))).toEqual({ balances: [], totals: [], unboundGroupIds: [] })
@@ -426,8 +426,8 @@ describe('ungrouped expenses', () => {
       }),
     )
     expect((await tx((db) => accountBalances(db, { principal: dana }))).totals).toEqual([
-      { currency: 'EUR', amount: '5.00' },
-      { currency: 'USD', amount: '80.00' },
+      { currency: 'EUR', net: '5.00' },
+      { currency: 'USD', net: '80.00' },
     ])
     await tx(async (db) => {
       await db.insert(groups).values({ id: 'dana-legacy', kind: 'named', name: 'Unbound legacy test', defaultCurrency: 'USD' })
@@ -436,8 +436,8 @@ describe('ungrouped expenses', () => {
     const partial = await tx((db) => accountBalances(db, { principal: dana }))
     expect(partial.unboundGroupIds).toEqual(['dana-legacy'])
     expect(partial.totals).toEqual([
-      { currency: 'EUR', amount: '5.00' },
-      { currency: 'USD', amount: '80.00' },
+      { currency: 'EUR', net: '5.00' },
+      { currency: 'USD', net: '80.00' },
     ])
     // Reading balances never creates expenses (no recurring side effect).
     const before = (await tx((db) => db.select({ id: expenses.id }).from(expenses))).length

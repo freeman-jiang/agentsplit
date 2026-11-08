@@ -120,7 +120,7 @@ export const getParticipantBalances = defineTool({
   run: async ({ db, principal }, input) => {
     const result = await balances.accountBalances(db, { principal, ...(input.groups ? { scope: input.groups } : {}) })
     return {
-      totals: result.totals.map((t) => ({ currencyCode: t.currency, amount: t.amount })),
+      totals: result.totals.map((t) => ({ currencyCode: t.currency, amount: t.net })),
       unboundGroupIds: result.unboundGroupIds,
       balances: result.balances.map((b) => ({
         groupId: b.groupId,

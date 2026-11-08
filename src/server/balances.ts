@@ -169,7 +169,7 @@ export async function accountBalances(db: Db, data: { principal: Principal; scop
   if (row.foreign.length) throw new Invalid({ message: 'Participant does not belong to this group.', field: 'participantId' })
   return {
     balances: row.rows.map((r) => ({ ...r, amount: formatMinor({ amount: minor(BigInt(r.amount)), currency: r.currency }) })),
-    totals: formatTotals(row.totals).map((t) => ({ currency: t.currency, amount: t.net })),
+    totals: formatTotals(row.totals),
     unboundGroupIds: [...row.unbound].sort(compareIds),
   }
 }
