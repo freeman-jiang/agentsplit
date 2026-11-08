@@ -92,7 +92,7 @@ function ExpensesTab() {
           value={sort}
           options={SORTS}
           onChange={(value) => void navigate({ search: (s) => ({ ...s, sort: value }), replace: true })}
-          className="min-h-10 text-sm max-sm:grid max-sm:w-full max-sm:grid-cols-2"
+          className="min-h-10 text-sm max-sm:grid max-sm:w-full max-sm:grid-cols-2 pointer-coarse:min-h-11"
         />
         <div className="relative min-w-48 flex-1">
           <Search aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
