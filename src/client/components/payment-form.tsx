@@ -85,7 +85,9 @@ export function PaymentForm(
     const checked = validateExpense({ draft, participantIds: new Set(participants.map((p) => p.id)) })
     if (!checked.ok) return setError(checked.issues.map((i) => i.message).join(' '))
     setError(null)
-    await write.submit(toInput({ draft, resolved: checked.value, documents: props.mode === 'edit' ? props.detail.documents : [] }))
+    // The form has no receipt controls, so a receipt deleted for good drops out here; the server refuses to keep it.
+    const documents = props.mode === 'edit' ? props.detail.documents.filter((d) => !d.deleted) : []
+    await write.submit(toInput({ draft, resolved: checked.value, documents }))
   }
 
   const select = (id: string, label: string, value: string, onChange: (value: string) => void) => (
