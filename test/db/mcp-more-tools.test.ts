@@ -285,7 +285,7 @@ describe('groups and access', () => {
     expect((await checked('get_group', { groupId }, dave.headers))['access']).toMatchObject({ participantId: pc, role: 'member' })
     const left = await checked('manage_group_access', { action: 'leave', groupId }, dave.headers)
     expect(left).toEqual({ groupId, joined: false })
-    // State conflicts answer CONFLICT, as in the current app (P-TOOL-ACCESS-10, P-TOOL-ACCESS-20).
+    // State conflicts answer CONFLICT, as in v1 (P-TOOL-ACCESS-10, P-TOOL-ACCESS-20).
     const reused = await failure(h, { name: 'manage_group_access', args: { action: 'join', shareUrl: invitation.url }, headers: dave.headers })
     expect(reused).toEqual({ code: 'CONFLICT', message: 'Invitation already used', outcomeUnknown: false, recovery: 'read_current_revision' })
     const lastAdmin = await failure(h, { name: 'manage_group_access', args: { action: 'leave', groupId }, headers: owner })

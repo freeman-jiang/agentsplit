@@ -68,7 +68,7 @@ describe('protocol', () => {
       const result = (r.body as { result: { protocolVersion: string; serverInfo: unknown; instructions: string } }).result
       expect(result.protocolVersion).toBe(protocolVersion)
       expect(result.serverInfo).toEqual({ name: 'agentsplit', version: '0.4.0' })
-      // The current app's money and naming rules stay in the text (P-MCP-06).
+      // v1's money and naming rules stay in the text (P-MCP-06).
       expect(result.instructions).toContain('decimal strings')
       expect(result.instructions).toContain('global')
       expect(result.instructions).not.toContain('minor units')

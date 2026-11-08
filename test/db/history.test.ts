@@ -1,4 +1,4 @@
-// History reads against a real database. The scenarios port the current app's
+// History reads against a real database. The scenarios port v1's
 // scripts/test-history-queries.ts and scripts/test-expense-history.ts. The v1
 // rows are synthetic, in the format the importer wrote (history-fixtures.ts).
 import { eq, sql } from 'drizzle-orm'
@@ -460,10 +460,10 @@ describe('imported expenses and v1 snapshots', () => {
     const current = describeRevision(a.snapshot.expense)
     const previous = describeRevision(a.previousSnapshot.expense)
     const changed = Object.keys(current).filter((k) => current[k as keyof typeof current] !== previous[k as keyof typeof previous])
-    // v2 snapshots keep only the document count, so the attachment field changes form.
-    expect(changed).toEqual(['splits', 'attachments'])
+    // The v2 edit changed only the split; the receipt carries over from the v1 revision.
+    expect(changed).toEqual(['splits'])
     expect(previous).toMatchObject({ title: 'Hardware store', vendor: 'Ikea', amount: '100.01 USD', date: '2025-03-04', payer: 'Ann', splitMode: 'By amount', category: 'Household Supplies', recurrence: 'None', attachments: 'https://receipts.example/a.jpg' })
-    expect(current.attachments).toBe('')
+    expect(current.attachments).toBe(previous.attachments)
   })
 
   it('reads imported and v2 revisions into one ledger', async () => {

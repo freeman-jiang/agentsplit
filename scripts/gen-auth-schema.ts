@@ -22,7 +22,7 @@ const schema = getSchema({ plugins: authPlugins(), rateLimit: { storage: 'databa
 >
 
 /**
- * Rules of the current app's schema that getSchema() does not declare: unique
+ * Rules of v1's schema that getSchema() does not declare: unique
  * keys (P-DB-115, P-DB-116, P-DB-121) and the owner of an API key (P-DB-117).
  * Keys are model and field names as getSchema() gives them.
  */

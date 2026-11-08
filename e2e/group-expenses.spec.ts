@@ -8,12 +8,12 @@ test('a group opens on its expenses, sorts by date or by last change, and keeps 
   // Editing the older expense makes it the most recently changed one.
   await editExpense(h, `${h.groupId}-old`, 1, draft(h, { title: 'Old groceries (edited)', amount: '31.00', date: '2026-10-01', vendor: 'Costco' }))
 
-  // The group's slug shows its expenses and stays in the address bar, as in the current app (P-GROUP-98).
+  // The group's slug shows its expenses and stays in the address bar, as in v1 (P-GROUP-98).
   await page.goto(`/${h.slug}`)
   await expect(page.getByTestId('expense-list')).toBeVisible()
   await expect(page).toHaveURL(new RegExp(`/${h.slug}$`))
   await expect(page.getByRole('link', { name: 'Expenses', exact: true })).toHaveAttribute('aria-current', 'page')
-  // Titles name the page and the group, as in the current app (P-GROUP-48).
+  // Titles name the page and the group, as in v1 (P-GROUP-48).
   await expect(page).toHaveTitle(/^Expenses · .+ · AgentSplit$/)
   const rows = page.getByTestId('expense-list').getByRole('listitem')
   await expect(rows).toHaveCount(2)
@@ -102,7 +102,7 @@ test('a signed-out visitor returns to the page they asked for after sign-in (P-A
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fgroups%2FAbCdEfGhIjKlMnOpQrS_1%2Fbalances$/)
 })
 
-test('group URLs are the current app’s: /groups/<id>/… without a slug, /<slug>/… with one (P-GROUP-98, P-GROUP-100, P-PWA-21, P-PWA-23)', async ({ page, context, baseURL, request }) => {
+test('group URLs are v1’s: /groups/<id>/… without a slug, /<slug>/… with one (P-GROUP-98, P-GROUP-100, P-PWA-21, P-PWA-23)', async ({ page, context, baseURL, request }) => {
   const h = await seedHousehold(context, baseURL ?? '')
   const tripId = await seedUnsluggedGroup(h)
   // A group without a slug opens on its expenses at /groups/<id>/expenses.
@@ -123,7 +123,7 @@ test('group URLs are the current app’s: /groups/<id>/… without a slug, /<slu
   await page.locator(`a[href="/${h.slug}"]`).first().click()
   await expect(page).toHaveURL(new RegExp(`/${h.slug}$`))
   await expect(page.getByRole('link', { name: 'Expenses', exact: true })).toHaveAttribute('aria-current', 'page')
-  // v2's first URL for a group without a slug moves to the current app's URL with a 307.
+  // v2's first URL for a group without a slug moves to v1's URL with a 307.
   const moved = await request.get(`/${tripId}/stats?x=1`, { maxRedirects: 0 })
   expect(moved.status()).toBe(307)
   expect(moved.headers()['location']).toBe(`/groups/${tripId}/stats?x=1`)

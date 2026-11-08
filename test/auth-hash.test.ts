@@ -1,5 +1,5 @@
 // Stored OAuth tokens and API keys are hashed: base64url(SHA-256(UTF-8 text)),
-// as the current app stored them. If v2 hashed differently, every refresh
+// as v1 stored them. If v2 hashed differently, every refresh
 // token and API key in the database would stop working at once.
 import { expect, it } from 'vitest'
 import { sha256Base64url } from '~/server/core/ids'

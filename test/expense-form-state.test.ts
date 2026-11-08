@@ -80,7 +80,7 @@ describe('expense form state', () => {
     ])
   })
 
-  it("reads and writes the current app's saved split defaults (P-EXP-93..95)", () => {
+  it("reads and writes v1's saved split defaults (P-EXP-93..95)", () => {
     saveSplitDefaults({ groupId: 'g', participants: people, state: base({ splitMode: 'shares', weights: { pa: '2', pb: '1', pc: '1' }, selected: { pa: true, pb: true, pc: false } }) })
     expect(JSON.parse(localStorage.getItem('g-defaultSplittingOptions-v2') ?? '')).toEqual({
       splitMode: 'BY_SHARES',
@@ -92,8 +92,9 @@ describe('expense form state', () => {
     expect(loadSplitDefaults({ groupId: 'g', participants: people })).toMatchObject({ splitMode: 'shares', selected: { pa: true, pb: true, pc: false } })
     saveSplitDefaults({ groupId: 'g', participants: people, state: base({ splitMode: 'amount' }) })
     expect(loadSplitDefaults({ groupId: 'g', participants: people })).toMatchObject({ splitMode: 'amount', selected: { pa: true, pb: true, pc: true } })
-    // A default that names someone no longer in the group is dropped.
+    // An amount default names no one, so it stays when the people change.
     expect(loadSplitDefaults({ groupId: 'g', participants: ['pa'] }).splitMode).toBe('amount')
+    // A default that names someone no longer in the group is dropped.
     localStorage.setItem('g-defaultSplittingOptions-v2', JSON.stringify({ splitMode: 'BY_SHARES', paidFor: [{ participant: 'gone', shares: '1' }] }))
     expect(loadSplitDefaults({ groupId: 'g', participants: people }).splitMode).toBe('evenly')
     expect(localStorage.getItem('g-defaultSplittingOptions-v2')).toBeNull()

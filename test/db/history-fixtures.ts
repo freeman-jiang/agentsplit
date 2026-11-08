@@ -1,8 +1,9 @@
-// Synthetic history rows in the current app's format (schemaVersion 1), as the
-// one-time importer wrote them; production keeps those rows. The shape follows src/lib/expense-history.ts
-// makeExpenseSnapshot: Prisma's expense with decimal strings, stripped to the
-// snapshot schema's keys.
-import { activities, expensePayers, expenses, expenseShares } from '../../db/schema/app'
+// Synthetic history rows in v1's format (schemaVersion 1), as the one-time
+// importer wrote them; production keeps those rows. The shape follows
+// makeExpenseSnapshot in v1's src/lib/expense-history.ts (in Git before the
+// move of v2 to the root): Prisma's expense with decimal strings, stripped to
+// the snapshot schema's keys.
+import { activities, expenseDocuments, expensePayers, expenses, expenseShares, receipts } from '../../db/schema/app'
 import type { Db } from '~/server/core/db'
 import { randomId } from '~/shared/ids'
 import { isCurrencyCode } from '~/shared/currencies'
@@ -74,8 +75,9 @@ export const v1GroupSnapshot = (g: { id: string; name: string; slug: string | nu
 })
 
 /**
- * An imported expense: the current row, then its v1 history rows, as the
- * importer wrote them. `current` holds the live parts in minor units.
+ * An imported expense: the current row with the receipts of its last
+ * revision, then its v1 history rows, as the importer wrote them. `current`
+ * holds the live parts in minor units.
  */
 export async function insertImportedExpense(
   tx: Db,
@@ -123,4 +125,10 @@ export async function insertImportedExpense(
     })
   await tx.insert(expensePayers).values(data.current.payers.map((p) => ({ expenseId: last.id, groupId: last.groupId, participantId: p.participantId, amount: minor(p.amount) })))
   await tx.insert(expenseShares).values(data.current.shares.map((s) => ({ expenseId: last.id, groupId: last.groupId, participantId: s.participantId, amount: minor(s.amount), weight: s.weight })))
+  const documents = last.documents ?? []
+  if (documents.length) {
+    // Receipts from before accounts have no known uploader.
+    await tx.insert(receipts).values(documents.map((d) => ({ id: randomId(), groupId: last.groupId, url: d.url, createdBy: null })))
+    await tx.insert(expenseDocuments).values(documents.map((d, position) => ({ id: d.id, expenseId: last.id, url: d.url, width: d.width, height: d.height, position })))
+  }
 }
