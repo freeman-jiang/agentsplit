@@ -44,6 +44,12 @@ export const money = (amount: string, currency: string) => (isCurrencyCode(curre
 /** The current app's `currency` field: the symbol. v2 stores only the code. */
 export const symbolOf = (code: string) => (isCurrencyCode(code) ? CURRENCIES[code].symbol : code)
 
+/** A saved group's currency as the current app names it: the symbol, and the code when it is a known one. */
+const groupCurrency = (code: string) => ({ currency: symbolOf(code), currencyCode: isCurrencyCode(code) ? code : null })
+
+/** The current app stores an empty note or description as null. */
+const textOrNull = (text: string) => (text === '' ? null : text)
+
 /** The authenticated receipt URL of a stored receipt pointer. */
 const downloadUrl = (data: { baseUrl: string; groupId: string; url: string }) => absoluteUrl({ baseUrl: data.baseUrl, path: receiptDownloadPath(data) })
 
@@ -304,12 +310,15 @@ export const expenseRow = (s: Source, data: { groupId: string; revision: number;
   originalAmount: s.originalAmount,
   originalCurrency: s.originalCurrency,
   conversionRate: s.conversionRate,
-  notes: s.notes === '' ? null : s.notes,
+  notes: textOrNull(s.notes),
   recurringExpenseLinkId: data.linkId,
   deletedAt: data.deletedAt,
   revision: data.revision,
   ...names(s),
 })
+
+/** Every payer with the name and the amount, as get_expense and the snapshots list them. */
+const payersOf = (s: Source) => s.payers.map((p) => ({ participantId: p.participantId, name: p.name, amount: p.amount }))
 
 const listPartsOf = (s: Source) => ({
   paidBy: payerOf(s),
@@ -394,7 +403,7 @@ export function expenseDetail(
     ...expenseRow(s, { groupId, revision: data.revision, linkId: data.link?.id ?? null, deletedAt: data.deletedAt }),
     attribution: attribution(data.attribution),
     paidBy: { ...payer, groupId },
-    payers: s.payers.map((p) => ({ participantId: p.participantId, name: p.name, amount: p.amount })),
+    payers: payersOf(s),
     paidFor: s.shares.map((p) => ({ expenseId: s.id, participantId: p.participantId, shares: p.shares })),
     category: s.category,
     documents: data.documents.map((d) => ({
@@ -425,16 +434,8 @@ export function expenseSnapshot(data: { expense: SavedExpense; groupId: string }
   return {
     schemaVersion: e.schemaVersion,
     kind: 'expense',
-    group: e.group
-      ? {
-          id: e.group.id,
-          name: e.group.name,
-          slug: e.group.slug,
-          currency: symbolOf(e.group.currency),
-          currencyCode: isCurrencyCode(e.group.currency) ? e.group.currency : null,
-        }
-      : // Not seen in stored data; the expense's own group and currency then stand in.
-        { id: data.groupId, name: '', slug: null, currency: symbolOf(e.currency), currencyCode: e.currency },
+    // No stored snapshot lacks its group; the expense's own group and currency would stand in.
+    group: { ...(e.group ? { id: e.group.id, name: e.group.name, slug: e.group.slug } : { id: data.groupId, name: '', slug: null }), ...groupCurrency(e.group?.currency ?? e.currency) },
     expense: {
       id: e.id,
       groupId: data.groupId,
@@ -443,7 +444,6 @@ export function expenseSnapshot(data: { expense: SavedExpense; groupId: string }
       vendor: e.vendor,
       amount: e.amount,
       currencyCode: e.currency,
-      expenseDate: legacyDateTime(e.expenseDate),
       createdAt: e.createdAt,
       categoryId: e.categoryId,
       category: s.category,
@@ -451,12 +451,10 @@ export function expenseSnapshot(data: { expense: SavedExpense; groupId: string }
       originalCurrency: e.originalCurrency,
       conversionRate: e.conversionRate,
       paidBy: payerOf(s),
-      payers: s.payers.map((p) => ({ participantId: p.participantId, name: p.name, amount: p.amount })),
+      payers: payersOf(s),
       paidFor: s.shares.map((p) => ({ participantId: p.participantId, name: p.name, shares: p.shares })),
-      splitMode: SPLIT_MODE_NAMES[e.splitMode],
-      isReimbursement: e.kind === 'payment',
-      notes: e.notes === '' ? null : e.notes,
-      recurrenceRule: RECURRENCE_NAMES[e.recurrence],
+      notes: textOrNull(e.notes),
+      ...names(s),
       documents: e.documents.map((d) => ({ id: d.id, url: d.url, ...(d.deleted === undefined ? {} : { deleted: d.deleted }) })),
     },
   }
@@ -474,9 +472,8 @@ export function snapshotOf(data: { state: SavedState | null; groupId: string }):
       id: data.groupId,
       name: g.name,
       slug: g.slug,
-      currency: symbolOf(g.currency),
-      currencyCode: isCurrencyCode(g.currency) ? g.currency : null,
-      information: g.information === '' ? null : g.information,
+      ...groupCurrency(g.currency),
+      information: textOrNull(g.information),
       participants: g.participants.map((p) => ({ id: p.id, name: p.name })),
     },
   }
@@ -488,8 +485,7 @@ export const groupFields = (g: { id: string; name: string; slug: string | null; 
   id: g.id,
   name: g.name,
   slug: g.slug,
-  // The current app stores a missing description as null.
-  information: g.information === '' ? null : g.information,
+  information: textOrNull(g.information),
   revision: g.revision,
   currency: symbolOf(g.defaultCurrency),
   currencyCode: g.defaultCurrency,
