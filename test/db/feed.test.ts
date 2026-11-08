@@ -12,7 +12,6 @@ import type { Principal } from '~/server/core/access'
 import { makeDb } from '~/server/core/db'
 import { listCategories } from '~/server/expenses'
 import { expenseContext, feedOptions, listFeed, type FeedFilter } from '~/server/feed'
-import { materializeDue } from '~/server/recurring'
 import { createExpense, updateExpense } from '~/server/ledger'
 import { AccountBalances, ExpenseContext, FeedOptions, FeedPage } from '~/shared/api'
 import type { ExpenseDraft } from '~/shared/expense-rules'
@@ -21,6 +20,7 @@ import { testDatabase, type TestDatabase } from '../kit/database'
 import { draft } from '../kit/drafts'
 import { counter } from '../kit/ids'
 import { principal, userRows } from '../kit/people'
+import { scheduledRun } from '../kit/recurring'
 import { seedHousehold } from '../kit/seed'
 
 let database: TestDatabase
@@ -145,7 +145,7 @@ describe('feed', () => {
     expect((await one('attr-rent', h.bob))?.attribution.lastEditedByYouAt).toBeNull()
     // A recurring copy is named "Automatic recurrence".
     await h.create(h.alice, 'attr-daily', { title: 'Daily coffee', recurrence: 'daily' })
-    const [copy] = await materializeDue(makeDb(database.pool), { today: '2026-10-02', groupId: h.groupId, onError: () => {} })
+    const [copy] = await scheduledRun(makeDb(database.pool), { today: '2026-10-02', groupId: h.groupId })
     expect((await one(copy ?? ''))?.attribution.createdBy).toEqual({ userId: null, name: 'Automatic recurrence', source: 'system' })
     // A legacy expense with only a baseline has no author; only v1's import wrote baselines, so the row is written here.
     await tx((db) =>

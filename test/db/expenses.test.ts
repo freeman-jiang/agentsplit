@@ -19,6 +19,7 @@ import { testDatabase, type TestDatabase } from '../kit/database'
 import { draft } from '../kit/drafts'
 import { counter, id21 } from '../kit/ids'
 import { principal } from '../kit/people'
+import { scheduledRun } from '../kit/recurring'
 import { seedHousehold } from '../kit/seed'
 
 let database: TestDatabase
@@ -58,13 +59,7 @@ async function household(data: { receipts?: readonly string[] } = {}) {
   /** The group's expenses whose title or vendor matches `search`, newest first. */
   const search = async (search: string) => (await tx((db) => listExpenses(db, { principal: alice, groupId, filter: { search }, cursor: null, limit: 50 }))).expenses
   const balances = (currency?: 'JPY') => tx((db) => listBalances(db, { principal: alice, groupId, ...(currency ? { currency } : {}) }))
-  /** The scheduled run for this group only. A link that fails throws here, so "created nothing" never hides a failure. */
-  const run = async (today: string) => {
-    const failed: unknown[] = []
-    const created = await materializeDue(makeDb(database.pool), { today, groupId, onError: (error) => failed.push(error) })
-    if (failed.length) throw new AggregateError(failed, `The scheduled run failed for ${failed.length} link(s)`)
-    return created
-  }
+  const run = (today: string) => scheduledRun(makeDb(database.pool), { today, groupId })
   return { groupId, slug, pa, pb, pc, expense, create, update, remove, search, balances, run }
 }
 type Household = Awaited<ReturnType<typeof household>>
