@@ -3,13 +3,16 @@
 // in ungrouped.test.ts. The read tests share one flat; each test that writes
 // builds its own flat with its own accounts, so the shared feed never changes.
 import { Schema } from 'effect'
-import { asc, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { activities, categories } from '../../db/schema/app'
+import { activities } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { accountBalances } from '~/server/balances'
 import type { Principal } from '~/server/core/access'
+import { makeDb } from '~/server/core/db'
+import { listCategories } from '~/server/expenses'
 import { expenseContext, feedOptions, listFeed, type FeedFilter } from '~/server/feed'
+import { materializeDue } from '~/server/recurring'
 import { createExpense, updateExpense } from '~/server/ledger'
 import { AccountBalances, ExpenseContext, FeedOptions, FeedPage } from '~/shared/api'
 import type { ExpenseDraft } from '~/shared/expense-rules'
@@ -130,7 +133,6 @@ describe('feed', () => {
     const one = async (id: string, p: Principal = h.alice) => (await feed(p)).expenses.find((e) => e.id === id)
     // Bob creates it, and Alice pays.
     await h.create(h.bob, 'attr-rent', { title: 'Rent', categoryId: 18 })
-    await h.create(h.alice, 'attr-eur', { currency: 'EUR', title: 'Euro snacks' })
     await h.create(h.alice, 'attr-cara', { title: 'Cara only', payers: [{ participantId: h.pc, amount: '30' }], shares: [{ participantId: h.pc, weight: '1' }] })
     const rent = await one('attr-rent')
     expect(rent?.attribution.createdBy).toEqual({ userId: h.bob.userId, name: 'Bob', source: 'agent' })
@@ -140,11 +142,11 @@ describe('feed', () => {
     expect(edited?.attribution.updatedBy).toEqual({ userId: h.alice.userId, name: 'Alice', source: 'web' })
     expect(edited?.attribution.lastEditedByYouAt).toBe(edited?.attribution.updatedAt)
     expect((await one('attr-rent', h.bob))?.attribution.lastEditedByYouAt).toBeNull()
-    // A recurring copy is named "Automatic recurrence"; a legacy expense with only a baseline has no author.
-    await tx((db) =>
-      db.insert(activities).values({ id: 'attr-act-system', groupId: h.groupId, type: 'update_expense', expenseId: 'attr-eur', expenseRevision: 2, snapshot: {}, source: 'system' }),
-    )
-    expect((await one('attr-eur'))?.attribution.updatedBy).toEqual({ userId: null, name: 'Automatic recurrence', source: 'system' })
+    // A recurring copy is named "Automatic recurrence".
+    await h.create(h.alice, 'attr-daily', { title: 'Daily coffee', recurrence: 'daily' })
+    const [copy] = await materializeDue(makeDb(database.pool), { today: '2026-10-02', groupId: h.groupId, onError: () => {} })
+    expect((await one(copy ?? ''))?.attribution.createdBy).toEqual({ userId: null, name: 'Automatic recurrence', source: 'system' })
+    // A legacy expense with only a baseline has no author; only v1's import wrote baselines, so the row is written here.
     await tx((db) =>
       db.insert(activities).values({ id: 'attr-act-baseline', groupId: h.groupId, type: 'update_expense', expenseId: 'attr-cara', expenseRevision: 0, snapshot: {}, actorUserId: h.alice.userId, actorName: 'Alice' }),
     )
@@ -153,7 +155,7 @@ describe('feed', () => {
 
   it('returns options and the expense page in the contract shape', async () => {
     const options = await tx((db) => feedOptions(db, { principal: home.alice }))
-    expect(options.categories).toEqual(await tx((db) => db.select().from(categories).orderBy(asc(categories.id))))
+    expect(options.categories).toEqual(await tx((db) => listCategories(db)))
     expect(() => Schema.encodeSync(FeedOptions)(options)).not.toThrow()
     const page = await tx((db) => expenseContext(db, { principal: home.bob, expenseId: 'e-groceries' }))
     expect(page).toMatchObject({ group: { id: home.groupId, kind: 'named' }, role: 'member', participantId: home.pb, context: null })

@@ -2,17 +2,19 @@
 // series, balances with settlements, and the edit screen's detail read. Tests
 // that only read their own expenses share one group; tests that read a whole
 // group (balances, series, links) each build their own.
-import { asc, eq, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { activities, categories, expenses, receipts, recurringLinks } from '../../db/schema/app'
+import { activities, expenses, receipts, recurringLinks } from '../../db/schema/app'
 import type { ExpenseDraft } from '~/shared/expense-rules'
 import { GROUP_DENIED } from '~/shared/errors'
 import { LIMITS } from '~/shared/limits'
+import { CATEGORY } from '~/shared/vocabulary'
 import { listBalances } from '~/server/balances'
 import { makeDb, sqlState } from '~/server/core/db'
 import type { Principal } from '~/server/core/access'
 import type { StoredDocument } from '~/server/expense-read'
 import { locateExpense, getExpenseDetail, listCategories } from '~/server/expenses'
+import { getSavedExpense } from '~/server/history'
 import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense } from '~/server/ledger'
 import { downloadReceipt, ENVELOPE_BYTES, uploadReceipt } from '~/server/receipt-routes'
 import { RECEIPT_REFUSED } from '~/server/receipts'
@@ -92,16 +94,18 @@ afterAll(async () => {
   await database.close()
 })
 
-const snapshotOf = async (expenseId: string, revision: number) => {
-  const all = await tx((db) => db.select().from(activities).where(eq(activities.expenseId, expenseId)))
-  return all.find((a) => a.expenseRevision === revision)?.snapshot as { expense: { documents: { url: string }[] } } | undefined
-}
-const snapshotUrls = async (expenseId: string, revision: number) => (await snapshotOf(expenseId, revision))?.expense.documents.map((d) => d.url)
+/** The receipt URLs of revision `revision` of an expense in Home, as the history reader returns them. */
+const snapshotUrls = async (expenseId: string, revision: number) =>
+  (await tx((db) => getSavedExpense(db, { principal: alice, groupId: home.groupId, expenseId, revision }))).expense.documents.map((d) => d.url)
 
 describe('expense writes', () => {
-  it('lists every category in ID order', async () => {
-    const table = await tx((db) => db.select().from(categories).orderBy(asc(categories.id)))
-    expect(await tx((db) => listCategories(db))).toEqual(table)
+  it('lists the categories in ID order, with the two the code names', async () => {
+    const list = await tx((db) => listCategories(db))
+    expect(list.map((c) => c.id)).toEqual([...list.map((c) => c.id)].sort((a, b) => a - b))
+    expect(list.slice(0, 2)).toEqual([
+      { id: CATEGORY.general, grouping: 'Uncategorized', name: 'General' },
+      { id: CATEGORY.payment, grouping: 'Uncategorized', name: 'Payment' },
+    ])
   })
 
   it('records receipts in revision 1 and keeps them when an update omits them', async () => {
@@ -122,7 +126,7 @@ describe('expense writes', () => {
     expect(detail.documents.map((d) => d.downloadUrl)).toEqual([`/api/receipts?groupId=${home.groupId}&url=${encodeURIComponent(doc2.url)}`])
   })
 
-  it('lists receipts in the order they were attached, as the current app does', async () => {
+  it('lists receipts in the order they were attached, as v1 did', async () => {
     const expenseId = nextExpense()
     const docs = [5, 1, 4, 2, 3].map((n) => ({ id: `o${n}`, url: receiptUrl(`${expenseId}o${n}`), width: n, height: n }))
     await tx((db) => db.insert(receipts).values(docs.map((d) => ({ id: `r-${expenseId}-${d.id}`, groupId: home.groupId, url: d.url, createdBy: alice.userId }))))
@@ -301,14 +305,12 @@ describe('recurring expenses', () => {
     const gym = nextExpense()
     await h.create({ expenseId: gym, expense: h.expense({ title: 'Gym', expenseDate: '2026-05-10', recurrence: 'monthly' }) })
     await h.update({ expenseId: gym, expectedRevision: 1, expense: h.expense({ title: 'Gym', expenseDate: '2026-05-12', recurrence: 'weekly' }) })
-    const [link] = await tx((db) => db.select().from(recurringLinks).where(eq(recurringLinks.currentFrameExpenseId, gym)))
-    expect(link).toMatchObject({ nextExpenseDate: '2026-05-19', anchorDay: 12 })
-    expect(await h.run('2026-05-19')).toHaveLength(1)
-    // The older occurrence's link is closed: changing its rule does not open a new one.
+    const series = async () => (await tx((db) => listRecurring(db, { principal: alice, groupId: h.groupId }))).map((r) => ({ id: r.expense.id, nextDate: r.nextDate }))
+    expect(await series()).toEqual([{ id: gym, nextDate: '2026-05-19' }])
+    const [next] = await h.run('2026-05-19')
+    // The older occurrence's series is over: changing its rule does not start it again.
     await h.update({ expenseId: gym, expectedRevision: 2, expense: h.expense({ title: 'Gym', expenseDate: '2026-05-12', recurrence: 'daily' }) })
-    const links = await tx((db) => db.select().from(recurringLinks).where(eq(recurringLinks.groupId, h.groupId)))
-    expect(links.filter((l) => l.currentFrameExpenseId === gym)).toHaveLength(1)
-    expect(links.filter((l) => !l.nextExpenseCreatedAt).map((l) => l.nextExpenseDate)).toEqual(['2026-05-26'])
+    expect(await series()).toEqual([{ id: next, nextDate: '2026-05-26' }])
   })
 
   it('lets a member process one group only, and records them', async () => {

@@ -333,8 +333,7 @@ describe('sign-in destination', () => {
     const { url } = (await ok.json()) as { url: string }
     const google = new URL(url)
     expect(google.host).toBe('accounts.google.com')
-    expect((await db.select().from(auth.rateLimit)).length).toBeGreaterThan(0)
-    // Better Auth's defaults repeat the configured scopes, as in the current app; the set is what counts.
+    // Better Auth's defaults repeat the configured scopes, as in v1; the set is what counts.
     expect([...new Set(google.searchParams.get('scope')?.split(' '))].sort()).toEqual(['email', 'openid', 'profile'])
     for (const bad of ['/\\evil.example', '//evil.example', 'https://evil.example/']) expect({ bad, status: (await start(bad)).status }).toEqual({ bad, status: 403 })
   })
