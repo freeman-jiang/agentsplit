@@ -99,7 +99,25 @@ export const LIMITS = {
   uploadTargetSeconds: 300,
   /** A stored upload can be attached this long after its PUT (P-RECEIPT-39). */
   uploadAttachHours: 24,
+  /** An OAuth access token, as in the current app. */
+  accessTokenSeconds: 300,
+  /** An OAuth refresh token; each refresh rotates it. */
+  refreshTokenDays: 30,
+  /** A web session, which Better Auth extends once a day while it is used. */
+  sessionDays: 7,
 } as const
+
+/** What each fair-use limit limits, as get_reference_data's description and MCP.md's table name it. */
+export const FAIR_USE_LABELS = {
+  receiptStorageBytes: 'Receipt storage per uploader',
+  receiptBytes: 'One receipt image',
+  receiptsPerRequest: 'Upload targets per request',
+  groupsCreated: 'Named groups that one account creates',
+  participantsPerGroup: 'People in one group',
+  apiKeys: 'API keys per account',
+  writesPerMinute: 'Writes per account',
+  clientRegistrationsPerHour: 'Client registrations per IP address',
+} as const satisfies Record<keyof typeof FAIR_USE_LIMITS, string>
 
 export const FAIR_USE = 'These are fair-use limits that keep AgentSplit free. A normal household never reaches them.'
 

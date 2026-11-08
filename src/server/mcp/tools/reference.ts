@@ -1,7 +1,7 @@
 // Reference data: get_reference_data, with the current app's output
 // (src/trpc/routers/reference.ts), from getReference in src/server/expenses.ts.
 import { Record, Schema } from 'effect'
-import { FAIR_USE_LIMITS } from '../../../shared/limits'
+import { FAIR_USE_LABELS, FAIR_USE_LIMITS } from '../../../shared/limits'
 import { CurrencyCodeSchema } from '../../../shared/money'
 import { RECEIPT_CONTENT_TYPES, RECURRENCE_NAMES, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
 import * as expenses from '../../expenses'
@@ -9,11 +9,16 @@ import { defineTool } from './registry'
 import { NoArguments } from './inputs'
 import { NonNegativeInt, RecurrenceName, SplitModeName } from './wire'
 
+/** The fair-use limits in a sentence: "receipt storage per uploader, …, and client registrations per IP address". */
+const FAIR_USE_TEXT = new Intl.ListFormat('en', { type: 'conjunction' }).format(
+  Object.values(FAIR_USE_LABELS).map((label) => label.replace(/^[A-Z](?=[a-z])/, (first) => first.toLowerCase())),
+)
+
 export const getReferenceData = defineTool({
   name: 'get_reference_data',
   kind: 'read',
   description:
-    'Discover category IDs, supported currencies and decimal precision, split modes, recurrence rules, whether receipt uploads are enabled with their MIME/size limits, and the fair-use limits: receipt storage per uploader, receipts per request, groups you can create, people per group, API keys, writes per minute, and OAuth client registrations per IP per hour.',
+    `Discover category IDs, supported currencies and decimal precision, split modes, recurrence rules, whether receipt uploads are enabled with their MIME/size limits, and the fair-use limits: ${FAIR_USE_TEXT}.`,
   input: NoArguments,
   strict: [''],
   output: Schema.Struct({

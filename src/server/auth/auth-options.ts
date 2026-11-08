@@ -12,6 +12,9 @@ import { sha256Base64url } from '../core/ids'
 import { OAUTH_SCOPES } from '../../shared/account'
 import { mcpResource, oauthIssuer } from './constants'
 
+/** Better Auth takes its lifetimes in seconds. */
+export const DAY_SECONDS = 24 * 60 * 60
+
 /** Better Auth's own rate limits (sign-in, client registration) count in its rate_limit table. */
 export const AUTH_RATE_LIMIT = { enabled: true, storage: 'database', modelName: 'rateLimit' } as const
 
@@ -36,8 +39,8 @@ export function authPlugins(config: {
       consentPage: '/settings/connections/consent',
       scopes: [...OAUTH_SCOPES],
       grantTypes: ['authorization_code', 'refresh_token'],
-      accessTokenExpiresIn: 300,
-      refreshTokenExpiresIn: 60 * 60 * 24 * 30,
+      accessTokenExpiresIn: LIMITS.accessTokenSeconds,
+      refreshTokenExpiresIn: LIMITS.refreshTokenDays * DAY_SECONDS,
       // The stored form of every OAuth token, as in the current app.
       storeTokens: { hash: sha256Base64url },
       // CIMD stays preferred; older MCP clients can register before sign-in.
