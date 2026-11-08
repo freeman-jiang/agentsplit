@@ -23,6 +23,7 @@
 - Coolify preview (Freeman, 2026-11-05): create a separate Coolify application on the Oracle host for the v2 preview: branch `v2`, synthetic data only, its own Postgres and Garage, on a preview domain. It does not touch the production application. Remove it after the cutover unless Freeman keeps it.
 - Workers Free CPU (Freeman, 2026-11-05): accept the current cost and cut over on Workers Free. Reads cost about 8 ms of CPU before their rows; pages of 30 expenses sit near 13 ms at p50 (BASELINE.md). After the cutover, watch the Worker's errors and CPU, and serve the hottest reads through plain JSON routes instead of Effect RPC only if errors appear.
 - Payments store category 1 (Payment) on every path (P-BAL-92, approved in group C).
+- Reserved slugs (lead, 2026-11-07): v2 also reserves `assets`, which the current app's list (P-GROUP-94) lacks. The client build serves its chunks under `/assets/`, so a group with that slug would get no pages. Production has no group with that slug.
 - Revision snapshots record the expense's receipts, so history shows them (history area question 1).
 - A retried private-expense create returns Conflict instead of a stored result, because the response holds secret links that are never stored. An invitation renewal takes no idempotency key: a retry issues a new link and revokes the previous one. An agent renews the invitation to get a new link.
 

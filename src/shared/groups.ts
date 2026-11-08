@@ -2,8 +2,12 @@
 // the client bundle must stay free of the Effect runtime (BUILDING.md).
 import { LIMITS } from './limits'
 
-/** Root routes and infrastructure names a group cannot claim (P-GROUP-94). */
-const RESERVED_GROUP_SLUGS: ReadonlySet<string> = new Set([
+/**
+ * Root routes and infrastructure names a group cannot claim (P-GROUP-94).
+ * `assets` is v2's own: the client build serves its chunks under /assets/
+ * (DECISIONS.md).
+ */
+export const RESERVED_GROUP_SLUGS = [
   'sign-in',
   'api',
   'groups',
@@ -28,7 +32,9 @@ const RESERVED_GROUP_SLUGS: ReadonlySet<string> = new Set([
   'manifest',
   'opengraph-image',
   'twitter-image',
-])
+  'assets',
+] as const
+const RESERVED: ReadonlySet<string> = new Set(RESERVED_GROUP_SLUGS)
 
 /** A slug is trimmed and lowercased before it is checked and stored (P-GROUP-92). */
 export const normalizeSlug = (slug: string) => slug.trim().toLowerCase()
@@ -38,7 +44,7 @@ const SLUG_PATTERN = new RegExp(`^[a-z0-9](?:[a-z0-9-]{${LIMITS.slugMin - 2},${L
 /** The problem with a normalized, non-empty slug, or null if it is valid. */
 export function slugProblem(slug: string): string | null {
   if (!SLUG_PATTERN.test(slug)) return `Use ${LIMITS.slugMin}–${LIMITS.slugMax} lowercase letters, numbers or hyphens; start and end with a letter or number.`
-  if (RESERVED_GROUP_SLUGS.has(slug)) return 'This URL is reserved.'
+  if (RESERVED.has(slug)) return 'This URL is reserved.'
   return null
 }
 

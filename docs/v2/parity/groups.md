@@ -97,7 +97,7 @@ The shared `Conflict` error means "the revision changed" and carries `currentRev
 
 | Item | Status | Proof |
 | --- | --- | --- |
-| P-GROUP-92 to -95 | Done | "normalizes, validates and reserves slugs", "refuses a slug in use…" |
+| P-GROUP-92 to -95 | Done; changed: `assets` is reserved too (DECISIONS.md) | "normalizes, validates and reserves slugs", "refuses a slug in use…" |
 | P-GROUP-96 | Done: an advisory lock plus SERIALIZABLE retries; needed the retry fix in `src/server/db.ts` | "lets exactly one of two concurrent creates claim a slug" (runs through the server's `transaction()`) |
 | P-GROUP-97 | Done | "resolves slugs case-insensitively…" |
 | P-GROUP-98 | Changed: the canonical path is `/<slug>`, else `/<id>` (the v2 router's `$group` segment) | — |
