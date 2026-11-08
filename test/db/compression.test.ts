@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { brotliCompressSync, gunzipSync } from 'node:zlib'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { assetHandler, loadAssets } from '~/server/assets'
+import { compressed } from '~/server/compression'
 import { png } from '../kit/images'
 import { receiptUpload } from '../kit/upload'
 import { BASE, startHarness, testApp, type Harness } from './harness'
@@ -49,6 +50,17 @@ describe('origin compression', () => {
     expect(gunzipSync(bytes).toString()).toBe(text)
 
     expect((await groupCall('gzip;q=0')).headers.get('content-encoding')).toBeNull()
+  })
+
+  it('gzips a buffered event-stream answer, as the MCP endpoint sends one', async () => {
+    const event = `event: message\ndata: ${JSON.stringify({ result: { text: 'x'.repeat(4000) } })}\n\n`
+    const response = compressed({
+      request: new Request(`${BASE}/api/mcp`, { method: 'POST', headers: { 'accept-encoding': 'gzip' } }),
+      body: new TextEncoder().encode(event).buffer,
+      init: { status: 200, headers: new Headers({ 'content-type': 'text/event-stream' }) },
+    })
+    expect(response.headers.get('content-encoding')).toBe('gzip')
+    expect(gunzipSync(new Uint8Array(await response.arrayBuffer())).toString()).toBe(event)
   })
 
   it('leaves the receipt ZIP stream as it is', async () => {
