@@ -1,12 +1,12 @@
 {
   "name": "AgentSplit",
   "short_name": "AgentSplit",
-  "description": "Shared expenses for people and their agents.",
+  "description": "Split expenses with people and agents.",
   "start_url": "/",
   "id": "/groups",
   "display": "standalone",
-  "background_color": "#f5f1e8",
-  "theme_color": "#526044",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "icons": [
     {
       "src": "/logo/48x48.png",

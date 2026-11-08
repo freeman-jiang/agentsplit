@@ -20,8 +20,8 @@ export function ErrorState({ error, reset }: ErrorComponentProps) {
   }, [error, reference])
   return (
     <div className={inGroup ? 'space-y-4 py-10 text-center' : 'mx-auto max-w-lg space-y-4 px-4 py-16 text-center'} role="alert">
-      <h2 className="text-xl font-semibold">{inGroup ? 'Couldn’t load this group' : 'Something went wrong'}</h2>
-      <p className="text-sm text-muted-foreground">Please try again. If this keeps happening, reload the page.</p>
+      <h2 className="text-xl font-semibold">{inGroup ? 'Could not load this group' : 'Could not load this page'}</h2>
+      <p className="text-sm text-muted-foreground">Try again. If it fails again, reload the page.</p>
       <p className="font-mono text-xs text-muted-foreground" data-testid="error-reference">
         Reference: {reference}
       </p>

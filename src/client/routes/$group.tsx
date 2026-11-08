@@ -1,6 +1,7 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, Outlet, redirect, useRouterState } from '@tanstack/react-router'
 import { RefreshCw, Users } from 'lucide-react'
+import { useLayoutEffect, useRef } from 'react'
 import { requireSignedIn } from '~/client/queries/session'
 import { cn } from '~/client/cn'
 import { isZero, magnitude, NET_CLASS, netLabel, netTone } from '~/client/components/balance/net'
@@ -68,6 +69,7 @@ function GroupLayout() {
   const onForm = useRouterState({ select: (s) => s.matches.some((m) => FORM_ROUTES.has(m.routeId)) })
   // The Balances tab shows every balance itself, so the rail keeps only the viewer's summary there.
   const onBalances = useRouterState({ select: (s) => s.matches.some((m) => m.routeId === '/$group/balances') })
+  const tabs = useActiveTabInView()
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-3 sm:px-8 md:py-6">
       <div className="mb-2 flex items-center justify-between gap-3 md:mb-3">
@@ -84,17 +86,19 @@ function GroupLayout() {
         </Button>
       </div>
       <div className="-mx-4 mb-4 border-b sm:mx-0">
-        {/* On narrow screens the row scrolls; the fade at the right edge shows that more tabs follow. */}
+        {/* On narrow screens the row scrolls; the fade at the right edge shows that more tabs follow.
+            The end padding is as wide as the fade, so the last tab can scroll clear of it. */}
         <nav
+          ref={tabs}
           aria-label="Group"
-          className="flex gap-x-1 overflow-x-auto px-4 [mask-image:linear-gradient(to_right,#000_calc(100%-2.5rem),transparent)] [scrollbar-width:none] sm:gap-x-6 sm:px-0 sm:[mask-image:none]"
+          className="flex gap-x-1 overflow-x-auto ps-4 pe-10 [mask-image:linear-gradient(to_right,#000_calc(100%-2.5rem),transparent)] [scrollbar-width:none] sm:gap-x-6 sm:px-0 sm:[mask-image:none]"
         >
           {TABS.map(({ to, label }) => (
             <Link
               key={to}
               to={to}
               params={{ group }}
-              className="inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 border-transparent px-2 py-3 text-sm whitespace-nowrap text-muted-foreground sm:px-0"
+              className="press inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 border-transparent px-2 py-3 text-sm whitespace-nowrap text-muted-foreground sm:px-0"
               activeProps={{ className: 'border-primary! text-foreground! font-medium' }}
             >
               {label}
@@ -110,6 +114,30 @@ function GroupLayout() {
       </div>
     </div>
   )
+}
+
+/** The fade at the right edge of the tab row (its mask), which the active tab must clear. */
+const TAB_FADE_PX = 40
+
+/**
+ * On narrow screens the tab row scrolls, so a page opened on Stats, Log or
+ * Settings would start with its own tab out of view. After each navigation
+ * this scrolls the row, without animation, until the active tab is in view.
+ */
+function useActiveTabInView() {
+  const nav = useRef<HTMLElement>(null)
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  useLayoutEffect(() => {
+    const row = nav.current
+    const active = row?.querySelector('[aria-current="page"]')
+    if (!row || !active) return
+    const box = row.getBoundingClientRect()
+    const tab = active.getBoundingClientRect()
+    const padding = parseFloat(getComputedStyle(row).paddingLeft)
+    if (tab.left < box.left + padding) row.scrollLeft -= box.left + padding - tab.left
+    else if (tab.right > box.right - TAB_FADE_PX) row.scrollLeft += tab.right - (box.right - TAB_FADE_PX)
+  }, [pathname])
+  return nav
 }
 
 const FORM_ROUTES: ReadonlySet<string> = new Set<keyof FileRoutesById>(['/$group/expenses/create', '/$group/expenses/$expenseId/edit', '/$group/payments/create', '/$group/payments/$expenseId/edit'])
@@ -140,11 +168,11 @@ function BalanceRail({ groupId, group, hideOnMobile, summaryOnly }: { groupId: s
       {/* On narrow screens the heading is for screen readers and the refresh button sits in the summary row. */}
       <div className="flex items-center justify-between gap-2 max-md:absolute max-md:end-2 max-md:top-2.5">
         <h2 className="text-base font-semibold leading-tight max-md:sr-only">Group balances</h2>
-        <Button variant="ghost" size="icon" className="h-7 w-7 md:-my-1.5" onClick={() => void refetch()} disabled={isFetching} aria-label="Refresh balances">
+        <Button variant="ghost" size="icon" className="hit-area relative h-7 w-7 md:-my-1.5" onClick={() => void refetch()} disabled={isFetching} aria-label="Refresh balances">
           <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} aria-hidden="true" />
         </Button>
       </div>
-      <p className="mt-1 mb-4 hidden text-xs text-muted-foreground md:block">Net across all group expenses</p>
+      <p className="mt-1 mb-4 hidden text-xs text-muted-foreground md:block">Net balance of all group expenses</p>
       {isError ? (
         <p role="alert" className="text-sm">
           Could not load balances. Try refreshing.
@@ -160,7 +188,7 @@ function BalanceRail({ groupId, group, hideOnMobile, summaryOnly }: { groupId: s
             const summary = (
               <div className="min-w-0 max-md:flex max-md:items-baseline max-md:gap-2">
                 <div className="text-xs text-muted-foreground">
-                  {ownTotal === null ? 'Group net balances' : netLabel(ownTotal, 'you')} · {entry.currency}
+                  {ownTotal === null ? 'Group balances' : netLabel(ownTotal, 'you')} · {entry.currency}
                 </div>
                 {ownTotal !== null && (
                   <div className={cn('mt-1 text-lg font-semibold tabular-nums max-md:mt-0 md:text-xl', NET_CLASS[netTone(ownTotal)])} data-testid="summary-personal-net">
@@ -202,7 +230,7 @@ function BalanceDetails(props: { entry: Entry; participants: ReadonlyArray<typeo
   const nets = new Map(entry.balances.map((b) => [b.participantId, b.net]))
   return (
     <div className="space-y-4">
-      <ul className="space-y-3" aria-label={`${currency} participant balances`}>
+      <ul className="space-y-3" aria-label={`${currency} balance of each person`}>
         {participants.map((person) => {
           const total = nets.get(person.id) ?? '0'
           return (

@@ -59,10 +59,10 @@ function Landing() {
       <section className="w-full py-16">
         <div className="mx-auto flex w-full max-w-screen-md flex-col items-center gap-6 px-4 text-center">
           <h1 className="py-2 font-display text-4xl leading-none! sm:text-5xl md:text-6xl">
-            Shared expenses. <strong className="block font-semibold text-muted-foreground">Simply settled.</strong>
+            Split expenses <strong className="block font-semibold text-muted-foreground">with people and agents.</strong>
           </h1>
           <p className="max-w-lg leading-normal text-pretty text-muted-foreground sm:text-xl sm:leading-8">
-            Keep track of everyday expenses with the people you share them with. In your browser, or with your agent.
+            Record shared expenses and payments, and see who owes whom. Use the website or your AI agent.
           </p>
           <LoginButton label="Sign in with Google" selectAccount={false} callbackURL="/" errorCallbackURL="/sign-in" />
         </div>
@@ -133,7 +133,7 @@ function Dashboard() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="font-display text-3xl">Dashboard</h1>
-            <p className="mt-2 hidden text-sm text-muted-foreground sm:block">Your balances and shared expenses, in one place.</p>
+            <p className="mt-2 hidden text-sm text-muted-foreground sm:block">Your balance and your expenses.</p>
           </div>
           <Button asChild>
             <Link to="/expenses/create">Add expense</Link>
@@ -149,14 +149,14 @@ function Dashboard() {
             <label className="relative col-span-2 text-sm sm:col-span-1">
               <span className="sr-only">Search</span>
               <Search aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input type="search" className="ps-9" placeholder="Search descriptions or merchants" maxLength={LIMITS.searchMax} {...select('q')} />
+              <Input type="search" className="ps-9" placeholder="Search descriptions and vendors" maxLength={LIMITS.searchMax} {...select('q')} />
             </label>
             <label className="text-sm">
               <span className="sr-only">Group</span>
               <NativeSelect value={text(params.group) || 'all'} onChange={(e) => update('group', e.target.value === 'all' ? '' : e.target.value)}>
                 <option value="all">All expenses</option>
                 <option value="ungrouped">No group</option>
-                <option value="grouped">Any named group</option>
+                <option value="grouped">Any group</option>
                 {options.data?.groups.map((g) => (
                   <option key={g.id} value={g.id}>
                     {g.name}
@@ -168,7 +168,7 @@ function Dashboard() {
               <span className="sr-only">Show</span>
               <NativeSelect value={text(params.view) === 'all' ? 'all' : 'mine'} onChange={(e) => update('view', e.target.value === 'all' ? 'all' : '')}>
                 <option value="mine">Involving me</option>
-                <option value="all">All accessible expenses</option>
+                <option value="all">All expenses I can see</option>
               </NativeSelect>
             </label>
           </div>
@@ -225,7 +225,7 @@ function Dashboard() {
                 <Input type="date" {...select('from')} />
               </label>
               <label className="space-y-2 text-sm">
-                <span>Through date</span>
+                <span>To date</span>
                 <Input type="date" {...select('to')} />
               </label>
             </div>
@@ -244,8 +244,8 @@ function Dashboard() {
           <p role="status">Loading expenses…</p>
         ) : expenses.length === 0 ? (
           <div className="rounded-2xl border border-dashed px-6 py-12 text-center">
-            <h2 className="font-display text-xl">No expenses here yet</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Add an expense or adjust your filters.</p>
+            <h2 className="font-display text-xl">No expenses</h2>
+            <p className="mt-2 text-sm text-muted-foreground">Add an expense or change the filters.</p>
           </div>
         ) : (
           <div aria-label="Expense history" className="divide-y overflow-hidden rounded-2xl border bg-card">
@@ -275,7 +275,7 @@ function FeedRow({ expense: e }: { expense: typeof FeedItem.Type }) {
       names={new Map(e.people.map((p) => [p.id, p.name]))}
       attribution={attributionLine({ addedBy: attribution.createdBy?.name ?? null, editedBy: attribution.updatedBy?.name ?? null })}
       place={e.group}
-      context={!e.group && e.kind === 'payment' && e.contextExpenseTitle ? `Repayment for ${e.contextExpenseTitle}` : null}
+      context={!e.group && e.kind === 'payment' && e.contextExpenseTitle ? `Payment for ${e.contextExpenseTitle}` : null}
     />
   )
 }

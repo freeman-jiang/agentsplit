@@ -120,14 +120,14 @@ describe('receipt storage quota', () => {
       headers: hank,
     })
     expect(second).toMatchObject({ revision: 1, uploads: [] })
-    expect(second['uploadError']).toMatch(/^You're out of receipt space/)
+    expect(second['uploadError']).toMatch(/^Your receipt storage is full/)
 
     const put = await h.fetch(new Request(target.url, { method: 'PUT', headers: target.headers, body: image }))
     expect(put.status).toBe(200)
     await fill({ userId: 'hank', groupId: g, bytes: 50 })
     const refused = await h.mcp.failure({ name: 'update_expense', args: { groupId: g, expenseId: 'q0000000000000000000a', expectedRevision: 1, attachUploadIds: [target.uploadId] }, headers: hank })
     expect(refused).toMatchObject({ code: 'PRECONDITION_FAILED', outcomeUnknown: false })
-    expect(refused.message).toMatch(/^You're out of receipt space/)
+    expect(refused.message).toMatch(/^Your receipt storage is full/)
   })
 })
 

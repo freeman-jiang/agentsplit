@@ -1,5 +1,4 @@
 @import 'tailwindcss';
-@plugin 'tailwindcss-animate';
 @plugin '@tailwindcss/typography';
 
 @custom-variant dark (&:is(.dark *));
@@ -32,6 +31,78 @@
   --radius-lg: var(--radius);
   --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Motion: one strong ease-out curve for everything that responds to the user. */
+@theme {
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-pop-in: pop-in 200ms var(--ease-out-strong);
+  --animate-pop-out: pop-out 150ms var(--ease-out-strong) forwards;
+  --animate-fade-in: fade-in 200ms var(--ease-out-strong);
+  --animate-fade-out: fade-out 150ms var(--ease-out-strong) forwards;
+  --animate-menu-in: pop-in 150ms var(--ease-out-strong);
+  --animate-menu-out: pop-out 120ms var(--ease-out-strong) forwards;
+  /* A bottom sheet slides on the iOS sheet curve. */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --animate-sheet-in: sheet-in 300ms var(--ease-drawer);
+  --animate-sheet-out: sheet-out 200ms var(--ease-drawer) forwards;
+}
+
+/* A surface grows from 96% and fades in, around its transform-origin. */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes sheet-out {
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+/* Less motion: surfaces only fade. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes sheet-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes sheet-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-out {
+    to {
+      opacity: 0;
+    }
+  }
 }
 
 @layer base {
@@ -112,12 +183,81 @@
   @apply mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase;
 }
 
+/* viewport-fit=cover lets the page run under the notch and the home indicator.
+   safe-px-4 is 1rem of padding on each side plus the safe-area inset there, so
+   content clears the notch in landscape; safe-px-0 is the inset alone. */
+@utility safe-px-* {
+  padding-left: calc(var(--spacing) * --value(integer) + env(safe-area-inset-left, 0px));
+  padding-right: calc(var(--spacing) * --value(integer) + env(safe-area-inset-right, 0px));
+}
+
+/* A small control keeps its visible size and gets an invisible touch target of
+   at least 44 px, centred on it. The control needs a positioned box. */
+@utility hit-area {
+  @media (pointer: coarse) {
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      translate: -50% -50%;
+    }
+  }
+}
+
+/* A <details> panel grows and fades open, and shrinks closed, where the browser
+   can animate to auto. Other browsers open it at once. With less motion it
+   only fades. The clip margin keeps focus rings at the panel's edge visible. */
+@supports (interpolate-size: allow-keywords) {
+  details::details-content {
+    interpolate-size: allow-keywords;
+    block-size: 0;
+    opacity: 0;
+    overflow: clip;
+    overflow-clip-margin: 0.5rem;
+    transition:
+      block-size 200ms var(--ease-out-strong),
+      opacity 200ms var(--ease-out-strong),
+      content-visibility 200ms allow-discrete;
+  }
+  details[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    details::details-content {
+      transition:
+        opacity 150ms ease,
+        content-visibility 150ms allow-discrete;
+    }
+  }
+}
+
+/* Press feedback for a control: it shrinks a little while pressed, and a long
+   press does not select its label or open a callout. Not for text fields. */
+@utility press {
+  transition-property: color, background-color, border-color, scale;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-out-strong);
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  &:active {
+    scale: 0.97;
+  }
+}
+
 @media (pointer: coarse) {
-  button {
+  button:not(.hit-area) {
     min-height: 44px;
   }
 }
-@media (max-width: 640px) {
+/* iOS zooms into a field under 16 px and does not zoom back. A landscape phone
+   is wider than any breakpoint, so this keys to touch, not to width. */
+@media (pointer: coarse) {
   input,
   textarea,
   select {

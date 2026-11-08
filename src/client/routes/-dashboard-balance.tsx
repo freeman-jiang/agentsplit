@@ -13,12 +13,12 @@ export function DashboardBalance() {
         <h2 id="dashboard-balance-title" className="text-sm font-semibold">
           Your total balance
         </h2>
-        <p className="hidden text-xs text-muted-foreground sm:block">Across all your groups and ungrouped expenses. Filters don’t change it.</p>
+        <p className="hidden text-xs text-muted-foreground sm:block">All your groups and expenses with no group. Filters do not change it.</p>
       </div>
       {summary.error ? (
         <div className="mt-4 space-y-2">
           <p role="alert" className="text-sm">
-            Couldn’t load your balance.
+            Could not load your balance.
           </p>
           <Button variant="outline" size="sm" onClick={() => summary.refetch()}>
             Try again
@@ -30,11 +30,11 @@ export function DashboardBalance() {
         <>
           {summary.data.unboundGroupIds.length > 0 && (
             <p role="status" className="mt-3 text-sm text-muted-foreground">
-              Partial total: your account still needs to be linked to a participant in {summary.data.unboundGroupIds.length} group(s).
+              Partial total. Your account is not linked to a person in {summary.data.unboundGroupIds.length} {summary.data.unboundGroupIds.length === 1 ? 'group' : 'groups'}.
             </p>
           )}
           {summary.data.totals.length === 0 ? (
-            <p className="mt-4 text-lg">No recorded balance yet.</p>
+            <p className="mt-4 text-lg">No balance yet.</p>
           ) : (
             <TotalAmounts totals={summary.data.totals} />
           )}

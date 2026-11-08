@@ -3,21 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>AgentSplit · Shared expenses, simply settled</title>
-    <meta name="description" content="Shared expenses for people and their agents. Keep track of costs, split fairly, and settle up." />
+    <title>AgentSplit · Split expenses with people and agents</title>
+    <meta name="description" content="Record shared expenses and payments, and see who owes whom. Use the website or your AI agent." />
     <meta name="application-name" content="AgentSplit" />
-    <meta name="theme-color" content="#526044" />
+    <!-- The browser and status bar match the page; theme.js keeps them on a theme the user chose. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141414" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="AgentSplit" />
-    <meta property="og:title" content="AgentSplit · Shared expenses, simply settled" />
-    <meta property="og:description" content="Shared expenses for people and their agents. Keep track of costs, split fairly, and settle up." />
+    <meta property="og:title" content="AgentSplit · Split expenses with people and agents" />
+    <meta property="og:description" content="Record shared expenses and payments, and see who owes whom. Use the website or your AI agent." />
     <meta property="og:image" content="/banner.png" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="/" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="AgentSplit · Shared expenses, simply settled" />
-    <meta name="twitter:description" content="Shared expenses for people and their agents. Keep track of costs, split fairly, and settle up." />
+    <meta name="twitter:title" content="AgentSplit · Split expenses with people and agents" />
+    <meta name="twitter:description" content="Record shared expenses and payments, and see who owes whom. Use the website or your AI agent." />
     <meta name="twitter:image" content="/banner.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -26,9 +28,56 @@
     <link rel="icon" href="/logo/512x512.png" sizes="512x512" type="image/png" />
     <link rel="apple-touch-icon" href="/apple-icon.png" />
     <script src="/theme.js"></script>
+    <style>
+      /* The boot shell: the page colour and a header placeholder paint before the
+         app's CSS and JavaScript load. It shows only while #root is empty, so it
+         also covers the wait for the session. The values repeat styles.css. */
+      html {
+        background: #fff;
+        color: #0d0d0d;
+      }
+      html.dark {
+        background: #141414;
+        color: #ededed;
+      }
+      body {
+        margin: 0;
+      }
+      #root:not(:empty) + .boot-shell {
+        display: none;
+      }
+      .boot-shell {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 40px;
+        padding: calc(12px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) 12px calc(16px + env(safe-area-inset-left, 0px));
+        border-bottom: 1px solid #e8e8e8;
+        font: 600 20px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        letter-spacing: -0.02em;
+      }
+      html.dark .boot-shell {
+        border-color: #363636;
+      }
+      .boot-shell span {
+        width: 40px;
+        height: 32px;
+        background: currentColor;
+        mask: url('/brand-mark.svg') center / contain no-repeat;
+        -webkit-mask: url('/brand-mark.svg') center / contain no-repeat;
+      }
+      @media (min-width: 640px) {
+        .boot-shell {
+          padding-left: calc(32px + env(safe-area-inset-left, 0px));
+          padding-right: calc(32px + env(safe-area-inset-right, 0px));
+          font-size: 24px;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div class="boot-shell" aria-hidden="true"><span></span>AgentSplit</div>
     <script type="module" src="/src/client/main/main.tsx"></script>
   </body>
 </html>

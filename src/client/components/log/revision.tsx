@@ -29,22 +29,22 @@ function receiptLink(data: { groupId: string; url: string }) {
 
 /** Who recorded the change, without user IDs (DECISIONS.md, P-HIST-75). */
 function author(activity: ActivityItem) {
-  if (isBaseline(activity)) return 'History begins here for an existing expense'
+  if (isBaseline(activity)) return 'The log starts here. The expense existed before.'
   if (activity.source === 'system') return 'Created by the recurring schedule'
-  if (activity.verified) return `Recorded by ${activity.actorName ?? 'an account'}${activity.agent ? ' through an agent connection' : ''}`
-  return 'The participant name is an unverified label.'
+  if (activity.verified) return `Recorded by ${activity.actorName ?? 'an account'}${activity.agent ? ' through an agent' : ''}`
+  return 'The author name is not verified.'
 }
 
 export function ActivityRevision({ activity, groupId }: { activity: ActivityItem; groupId: string }) {
   const state = activity.snapshot ?? activity.previousSnapshot
   // Opening a panel must not follow the event's link (P-HIST-79).
   const stop = (event: React.SyntheticEvent) => event.stopPropagation()
-  if (!state) return <p className="mt-1 text-xs text-muted-foreground">No saved revision details for this event.</p>
+  if (!state) return <p className="mt-1 text-xs text-muted-foreground">No saved details for this change.</p>
   if (state._tag === 'group') {
     const g = state.group
     return (
       <details onClick={stop} className="mt-1 text-xs sm:border-l sm:border-border/60 sm:pl-3">
-        <DisclosureSummary quiet>View saved group settings</DisclosureSummary>
+        <DisclosureSummary quiet>Show saved group settings</DisclosureSummary>
         <div className="mt-2 space-y-1 rounded-xl bg-muted/50 p-3">
           <p>
             {g.name} · {g.currency}
@@ -52,7 +52,7 @@ export function ActivityRevision({ activity, groupId }: { activity: ActivityItem
           {g.information && <p className="whitespace-pre-wrap">{g.information}</p>}
           {g.slug && <p>/{g.slug}</p>}
           <p>{g.participants.map((p) => p.name).join(', ')}</p>
-          {!activity.verified && <p className="text-muted-foreground">The participant name is an unverified label.</p>}
+          {!activity.verified && <p className="text-muted-foreground">The author name is not verified.</p>}
         </div>
       </details>
     )
@@ -64,13 +64,13 @@ export function ActivityRevision({ activity, groupId }: { activity: ActivityItem
   return (
     <details onClick={stop} className="mt-1 text-xs sm:border-l sm:border-border/60 sm:pl-3" data-testid="revision">
       <DisclosureSummary quiet>
-        View saved revision {saved.revision}
+        Show revision {saved.revision}
         {deleted ? ' · Deleted' : ''}
       </DisclosureSummary>
       <div className="mt-2 space-y-2 rounded-xl bg-muted/50 p-3">
-        {deleted && <p>Removed from current balances. This saved version remains in history.</p>}
+        {deleted && <p>Deleted. The balances no longer include it. The log keeps this version.</p>}
         <p className="text-muted-foreground">{author(activity)}</p>
-        {previous && <p className="font-medium">Changes from the preceding revision</p>}
+        {previous && <p className="font-medium">Changes from the previous revision</p>}
         <dl className="space-y-2">
           {REVISION_FIELDS.map(([key, label]) => {
             const changed = previous !== undefined && fieldChanged({ field: key, previous: previous[key], current: current[key] })
@@ -103,7 +103,7 @@ export function ActivityRevision({ activity, groupId }: { activity: ActivityItem
           const href = receiptLink({ groupId, url: document.url })
           return href ? (
             <a key={document.id} href={href} target="_blank" rel="noopener noreferrer" className="block underline">
-              Open saved attachment {index + 1}
+              Open receipt {index + 1}
             </a>
           ) : null
         })}

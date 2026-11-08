@@ -2,9 +2,9 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '~/client/cn'
 
-/** The chevron turns when its own `<details>` opens, so a disclosure inside another keeps its state. */
-const OPEN_DOWN = 'transition-transform [details[open]>summary_&]:rotate-180'
-const OPEN_RIGHT = 'transition-transform [details[open]>summary_&]:rotate-90'
+/** The chevron turns when its own `<details>` opens, so a disclosure inside another keeps its state. It turns with the panel (styles.css). */
+const OPEN_DOWN = 'transition-transform duration-200 ease-out-strong [details[open]>summary_&]:rotate-180'
+const OPEN_RIGHT = 'transition-transform duration-200 ease-out-strong [details[open]>summary_&]:rotate-90'
 
 /**
  * The one `<summary>` style: no browser marker, and a chevron that turns when

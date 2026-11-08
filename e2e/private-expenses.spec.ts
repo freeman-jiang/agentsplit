@@ -21,19 +21,19 @@ test('an ungrouped expense uses the full expense form with the private options, 
   // The live share preview of the full form: 30.00 evenly between two people.
   await expect(page.getByTestId('share-preview')).toHaveText(['$15.00', '$15.00'])
   // v1's privateExpense options.
-  await expect(page.getByLabel('Expense Recurrence')).toBeDisabled()
+  await expect(page.getByLabel('Repeat')).toBeDisabled()
   await expect(page.getByLabel('This is a payment')).toHaveCount(0)
-  await expect(page.getByLabel('Save as default splitting options')).toHaveCount(0)
+  await expect(page.getByLabel('Save this split as the default')).toHaveCount(0)
   await expect(page.getByText('Receipts', { exact: true })).toHaveCount(0)
-  await expect(page.getByLabel('Expense total')).toContainText('Edits stay in this expense’s private log.')
+  await expect(page.getByLabel('Expense total')).toContainText('Changes go to this expense’s private log.')
 
   // Every person stays involved: Dana neither pays nor shares, so the form refuses the save.
   await page.getByLabel('Dana Guest').uncheck()
-  await page.getByRole('button', { name: 'Create' }).click()
+  await page.getByRole('button', { name: 'Add expense' }).click()
   await expect(page.getByText(/Include yourself and exactly the people paying for or sharing this expense/)).toBeVisible()
   await page.getByLabel('Dana Guest').check()
 
-  await page.getByRole('button', { name: 'Create' }).click()
+  await page.getByRole('button', { name: 'Add expense' }).click()
   await expect(page.getByRole('heading', { name: 'Expense saved' })).toBeVisible()
   await page.getByRole('link', { name: 'View expense' }).click()
   await expect(page).toHaveURL(/\/expenses\/[A-Za-z0-9_-]{21}$/)
@@ -43,10 +43,10 @@ test('an ungrouped expense uses the full expense form with the private options, 
   await expect(page.getByRole('heading', { name: 'Edit expense' })).toBeVisible()
   await expect(page.getByLabel('Amount', { exact: true })).toHaveValue('30.00')
   await expect(page.getByTestId('share-preview')).toHaveText(['$15.00', '$15.00'])
-  await expect(page.getByLabel('Expense Recurrence')).toBeDisabled()
-  await expect(page.getByLabel('Expense total')).toContainText('Edits stay in this expense’s private log.')
+  await expect(page.getByLabel('Repeat')).toBeDisabled()
+  await expect(page.getByLabel('Expense total')).toContainText('Changes go to this expense’s private log.')
   await expect(page.getByTestId('expense-log')).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Repayments for this expense' })).toContainText('Dana Guest owes Alice Example')
+  await expect(page.getByRole('region', { name: 'Payments for this expense' })).toContainText('Dana Guest owes Alice Example')
 
   await page.getByLabel('Amount', { exact: true }).fill('40.00')
   await expect(page.getByTestId('share-preview')).toHaveText(['$20.00', '$20.00'])
@@ -56,12 +56,13 @@ test('an ungrouped expense uses the full expense form with the private options, 
   await expect(page.getByLabel('Amount', { exact: true })).toHaveValue('40.00')
 
   // A repayment uses the full payment form, prefilled from the suggestion, and returns to the expense (P-UNGROUP-72).
-  await page.getByRole('link', { name: 'Record repayment' }).click()
+  // The suggestion's link carries the amount; the section's own Record payment link does not.
+  await page.locator('a[href*="amount="]', { hasText: 'Record payment' }).click()
   await expect(page.getByRole('heading', { name: 'Record payment' })).toBeVisible()
   await expect(page.getByLabel('Amount', { exact: true })).toHaveValue('20.00')
   await page.getByRole('button', { name: 'Record payment' }).click()
   await expect(page).toHaveURL(editUrl)
-  await expect(page.getByRole('region', { name: 'Repayments for this expense' })).toContainText('Settled in USD.')
+  await expect(page.getByRole('region', { name: 'Payments for this expense' })).toContainText('Settled in USD.')
 })
 
 test('a private create whose response is lost opens the saved expense instead of failing (P-UNGROUP-19)', async ({ page, context, baseURL }) => {
@@ -73,7 +74,7 @@ test('a private create whose response is lost opens the saved expense instead of
     await route.fetch()
     await route.fulfill({ status: 500, body: 'lost response' })
   })
-  await page.getByRole('button', { name: 'Create' }).click()
+  await page.getByRole('button', { name: 'Add expense' }).click()
   await expect(page).toHaveURL(/\/expenses\/[A-Za-z0-9_-]{21}$/)
   await expect(page.getByRole('heading', { name: 'Edit expense' })).toBeVisible()
   await expect(page.getByLabel('Description')).toHaveValue('Concert tickets')
@@ -82,7 +83,7 @@ test('a private create whose response is lost opens the saved expense instead of
 test('the ID of a private context opens its expense, not a group page (P-UNGROUP-39, P-GROUP-47, P-HIST-63)', async ({ page, context, baseURL }) => {
   await seedHousehold(context, baseURL ?? '')
   await startPrivateExpense(page)
-  await page.getByRole('button', { name: 'Create' }).click()
+  await page.getByRole('button', { name: 'Add expense' }).click()
   await page.getByRole('link', { name: 'View expense' }).click()
   await expect(page).toHaveURL(/\/expenses\/[A-Za-z0-9_-]{21}$/)
   const expenseUrl = page.url()
