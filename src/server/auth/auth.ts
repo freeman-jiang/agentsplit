@@ -11,7 +11,7 @@ import { bootstrapOwner } from './owner-bootstrap'
 import type { AuthSettings } from '../core/config'
 import type { Db } from '../core/db'
 import { apiKeyCount } from './api-key'
-import { AUTH_RATE_LIMIT, authPlugins, type ClientMetadataResourceFetch } from './auth-options'
+import { AUTH_RATE_LIMIT, authPlugins, DAY_SECONDS, type ClientMetadataResourceFetch } from './auth-options'
 import { connectionClaims } from './oauth-connections'
 
 
@@ -59,7 +59,7 @@ export function createAuth(config: AuthSettings & { readonly db: Db }) {
       google: { clientId: config.googleClientId, clientSecret: config.googleClientSecret, scope: ['openid', 'email', 'profile'] },
     },
     account: { accountLinking: { enabled: false } },
-    session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24, cookieCache: { enabled: false } },
+    session: { expiresIn: LIMITS.sessionDays * DAY_SECONDS, updateAge: DAY_SECONDS, cookieCache: { enabled: false } },
     rateLimit: AUTH_RATE_LIMIT,
     hooks: {
       // Better Auth accepts relative callbacks such as /\evil.example, which
