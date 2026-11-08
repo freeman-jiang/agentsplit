@@ -1,6 +1,7 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, Outlet, redirect, useRouterState } from '@tanstack/react-router'
 import { RefreshCw, Users } from 'lucide-react'
+import { useLayoutEffect, useRef } from 'react'
 import { requireSignedIn } from '~/client/queries/session'
 import { cn } from '~/client/cn'
 import { isZero, magnitude, NET_CLASS, netLabel, netTone } from '~/client/components/balance/net'
@@ -68,6 +69,7 @@ function GroupLayout() {
   const onForm = useRouterState({ select: (s) => s.matches.some((m) => FORM_ROUTES.has(m.routeId)) })
   // The Balances tab shows every balance itself, so the rail keeps only the viewer's summary there.
   const onBalances = useRouterState({ select: (s) => s.matches.some((m) => m.routeId === '/$group/balances') })
+  const tabs = useActiveTabInView()
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-3 sm:px-8 md:py-6">
       <div className="mb-2 flex items-center justify-between gap-3 md:mb-3">
@@ -84,10 +86,12 @@ function GroupLayout() {
         </Button>
       </div>
       <div className="-mx-4 mb-4 border-b sm:mx-0">
-        {/* On narrow screens the row scrolls; the fade at the right edge shows that more tabs follow. */}
+        {/* On narrow screens the row scrolls; the fade at the right edge shows that more tabs follow.
+            The end padding is as wide as the fade, so the last tab can scroll clear of it. */}
         <nav
+          ref={tabs}
           aria-label="Group"
-          className="flex gap-x-1 overflow-x-auto px-4 [mask-image:linear-gradient(to_right,#000_calc(100%-2.5rem),transparent)] [scrollbar-width:none] sm:gap-x-6 sm:px-0 sm:[mask-image:none]"
+          className="flex gap-x-1 overflow-x-auto ps-4 pe-10 [mask-image:linear-gradient(to_right,#000_calc(100%-2.5rem),transparent)] [scrollbar-width:none] sm:gap-x-6 sm:px-0 sm:[mask-image:none]"
         >
           {TABS.map(({ to, label }) => (
             <Link
@@ -110,6 +114,30 @@ function GroupLayout() {
       </div>
     </div>
   )
+}
+
+/** The fade at the right edge of the tab row (its mask), which the active tab must clear. */
+const TAB_FADE_PX = 40
+
+/**
+ * On narrow screens the tab row scrolls, so a page opened on Stats, Log or
+ * Settings would start with its own tab out of view. After each navigation
+ * this scrolls the row, without animation, until the active tab is in view.
+ */
+function useActiveTabInView() {
+  const nav = useRef<HTMLElement>(null)
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  useLayoutEffect(() => {
+    const row = nav.current
+    const active = row?.querySelector('[aria-current="page"]')
+    if (!row || !active) return
+    const box = row.getBoundingClientRect()
+    const tab = active.getBoundingClientRect()
+    const padding = parseFloat(getComputedStyle(row).paddingLeft)
+    if (tab.left < box.left + padding) row.scrollLeft -= box.left + padding - tab.left
+    else if (tab.right > box.right - TAB_FADE_PX) row.scrollLeft += tab.right - (box.right - TAB_FADE_PX)
+  }, [pathname])
+  return nav
 }
 
 const FORM_ROUTES: ReadonlySet<string> = new Set<keyof FileRoutesById>(['/$group/expenses/create', '/$group/expenses/$expenseId/edit', '/$group/payments/create', '/$group/payments/$expenseId/edit'])
