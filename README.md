@@ -8,6 +8,7 @@ AgentSplit is a fork of [Spliit](https://github.com/spliit-app/spliit). People s
 - [AUTH.md](AUTH.md): sign-in, API keys and OAuth.
 - [DEPLOYMENT.md](DEPLOYMENT.md): production on the NixOS host, deploys, backups, and the Coolify stack kept for a rollback.
 - [PRIVACY.md](PRIVACY.md): what is stored, where, and who can see it.
+- [docs/CAPACITY.md](docs/CAPACITY.md): how many people one free VM can host, and the benchmark that measures it.
 
 ## Repository layout
 
