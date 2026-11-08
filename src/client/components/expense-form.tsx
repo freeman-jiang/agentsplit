@@ -339,7 +339,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
                 <div className="space-y-1.5">
                   <p className="text-sm font-medium">Receipts</p>
                   <p className="text-xs text-muted-foreground">See and attach receipts to the {noun}.</p>
-                  <ExpenseDocuments groupId={target.groupId} attachments={reference.attachments} documents={state.documents} onChange={(documents) => set({ documents })} />
+                  <ExpenseDocuments groupId={target.groupId} documents={state.documents} onChange={(documents) => set({ documents })} />
                 </div>
               )}
             </div>
