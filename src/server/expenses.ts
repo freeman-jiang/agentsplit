@@ -8,10 +8,10 @@ import { CURRENCIES, CURRENCY_CODES } from '../shared/currencies'
 import { FAIR_USE, FAIR_USE_LIMITS, LIMITS } from '../shared/limits'
 import { receiptDownloadPath } from '../shared/paths'
 import { RECEIPT_CONTENT_TYPES, RECURRENCES, SPLIT_MODES, type ExpenseKind } from '../shared/vocabulary'
+import { attributionOf } from './activity'
 import { myMemberships, requireMember, type Principal } from './core/access'
 import type { Db } from './core/db'
 import { expenseColumns, openLink, toExpense, type ExpenseRow } from './expense-read'
-import { iso } from './sql'
 
 /** Every category, ordered by ID (P-EXP-102: the current app has no order). */
 export async function listCategories(db: Db) {
@@ -24,9 +24,8 @@ export async function listCategories(db: Db) {
  */
 export async function getExpenseDetail(db: Db, data: { principal: Principal; groupId: string; expenseId: string }) {
   const { groupId } = await requireMember(db, data)
-  const result = await db.execute<ExpenseRow & { my_last_edit: string | null }>(sql`
-    SELECT ${expenseColumns({ documents: true })},
-      (SELECT ${iso(sql`max(a.time)`)} FROM activities a WHERE a.expense_id = e.id AND a.actor_user_id = ${data.principal.userId}) AS my_last_edit
+  const result = await db.execute<ExpenseRow>(sql`
+    SELECT ${expenseColumns({ documents: true, attribution: true })}
     FROM expenses e WHERE e.id = ${data.expenseId} AND e.group_id = ${groupId}
   `)
   const [row] = result.rows
@@ -45,7 +44,7 @@ export async function getExpenseDetail(db: Db, data: { principal: Principal; gro
     })),
     added: expense.addedAt ? { at: expense.addedAt, by: expense.addedBy } : null,
     edited: expense.editedAt ? { at: expense.editedAt, by: expense.editedBy } : null,
-    myLastEdit: row.my_last_edit,
+    myLastEdit: attributionOf({ events: expense.attributionEvents ?? [], viewer: data.principal.userId }).lastEditedByYouAt,
     nextOccurrence: open?.nextExpenseDate ?? null,
   }
 }

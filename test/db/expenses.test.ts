@@ -192,8 +192,10 @@ describe('expense writes', () => {
     const detail = await tx((db) => getExpenseDetail(db, { principal: alice, groupId: home.groupId, expenseId }))
     expect(detail.added?.by).toBe('Alice')
     expect(detail.edited?.by).toBe('Bob')
-    // Alice only added it, so her last change is the addition.
-    expect(detail.myLastEdit).toBe(detail.added?.at)
+    // Adding an expense is not an edit (v1's expense-attribution.test.ts).
+    expect(detail.myLastEdit).toBeNull()
+    const bobs = await tx((db) => getExpenseDetail(db, { principal: bob, groupId: home.groupId, expenseId }))
+    expect(bobs.myLastEdit).toBe(detail.edited?.at)
     const page = await tx((db) => listExpenses(db, { principal: alice, groupId: home.groupId, filter: {}, cursor: null, limit: 50 }))
     expect(page.expenses.find((e) => e.id === expenseId)).toMatchObject({ addedBy: 'Alice', editedBy: 'Bob' })
   })
