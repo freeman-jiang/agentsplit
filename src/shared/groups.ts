@@ -75,3 +75,12 @@ export const participantNameOf = (accountName: string) => accountName.trim().sli
 export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 /** The form of an email that invitations and accounts compare: trimmed and lowercase. */
 export const normalizeEmail = (email: string) => email.trim().toLowerCase()
+
+export const INVITED_PERSON_PROBLEM = 'Enter a name and a valid email address.'
+
+/** A person whom an ungrouped expense invites by email, as stored: the trimmed name and the normalized email; null when either is not usable. */
+export const invitedPerson = (data: { name: string; email: string }) => {
+  const name = trimmedName(data.name)
+  const email = normalizeEmail(data.email)
+  return name !== null && EMAIL.test(email) ? { name, email } : null
+}
