@@ -3,6 +3,7 @@
 // stats, export, reference data, recurrence and ungrouped creates. Parity
 // items are named in docs/v2/parity/mcp.md.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { SDK_INPUT_REFUSED } from '../kit/mcp'
 import type { ExpenseCreateArgument } from '~/server/mcp/tools/expenses'
 import { exportCsv, exportJson } from '~/server/export'
 import { CURRENCY_CODES } from '~/shared/currencies'
@@ -170,7 +171,7 @@ describe('feed and options', () => {
         { id: 'bob', name: 'Bob', email: 'bob@example.com' },
       ],
     })
-    expect((await failure(h, { name: 'get_expense_options', args: { userId: 'x' }, headers: alice })).code).toBe('VALIDATION')
+    expect((await failure(h, { name: 'get_expense_options', args: { userId: 'x' }, headers: alice })).code).toBe(SDK_INPUT_REFUSED)
   })
 })
 
@@ -233,7 +234,7 @@ describe('profile', () => {
     const log = (await checked('list_activity', { groupId: hh.groupId, expenseId: groceries }, headers))['activities'] as { actorName: string }[]
     expect(log[0]?.actorName).toBe('Alice')
     expect((await failure(h, { name: 'update_profile', args: { name: ' ' }, headers })).code).toBe('BAD_REQUEST')
-    expect((await failure(h, { name: 'update_profile', args: { name: 'X', userId: hh.member.userId }, headers })).code).toBe('VALIDATION')
+    expect((await failure(h, { name: 'update_profile', args: { name: 'X', userId: hh.member.userId }, headers })).code).toBe(SDK_INPUT_REFUSED)
   })
 })
 
@@ -345,7 +346,7 @@ describe('balances', () => {
     expect(past['history']).toMatchObject({ atActivityId: before[0]?.id, complete: true, unavailableExpenseIds: [] })
     expect(((past['currencies'] as Bucket[])[0]?.reimbursements ?? []).length).toBe(2)
     const precise = await failure(h, { name: 'get_balances', args: { groupId, asOf: '2026-11-01T00:00:00.0001Z' }, headers })
-    expect(precise.code).toBe('VALIDATION')
+    expect(precise.code).toBe(SDK_INPUT_REFUSED)
     const future = await failure(h, { name: 'get_balances', args: { groupId, asOf: '2999-01-01T00:00:00Z' }, headers })
     expect(future).toMatchObject({ code: 'BAD_REQUEST', message: 'asOf cannot be in the future' })
   })

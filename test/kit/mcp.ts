@@ -4,6 +4,8 @@
 import { MCP_PATH } from '../../src/shared/mcp'
 
 export const LEGACY = '2025-06-18'
+/** The code failure() reports for the SDK's plain-text refusal, which is not one of the tools' own codes. */
+export const SDK_INPUT_REFUSED = 'SDK_INPUT_REFUSED'
 
 export type Reply = { status: number; headers: Headers; body: unknown }
 type ToolResult = { isError?: boolean; structuredContent?: Record<string, unknown>; content: { type: string; text: string }[] }
@@ -47,12 +49,9 @@ export function mcpClient(data: { baseUrl: string; send: (request: Request) => P
     const reply = await callTool(call)
     if (reply.status !== 200 || !reply.result?.isError) throw new Error(`${call.name} did not fail: ${reply.status} ${JSON.stringify(reply.body)}`)
     const text = reply.result.content[0]?.text ?? ''
-    try {
-      return (JSON.parse(text) as { error: ToolError }).error
-    } catch {
-      // The SDK's validation errors are plain text.
-      return { code: 'VALIDATION', message: text, outcomeUnknown: false, recovery: 'correct_arguments' }
-    }
+    // The MCP SDK refuses arguments that do not match the advertised input schema with plain text, before the tool runs.
+    if (!text.startsWith('{')) return { code: SDK_INPUT_REFUSED, message: text, outcomeUnknown: false, recovery: 'correct_arguments' }
+    return (JSON.parse(text) as { error: ToolError }).error
   }
 
   return { url, rpc, callTool, ok, failure }
