@@ -1,6 +1,7 @@
-// The Better Auth plugin set, shared by the runtime (auth.ts) and the
-// schema generator (scripts/gen-auth-schema.ts). It matches the current app's
-// src/lib/auth.ts, so imported rows keep working.
+// The Better Auth options that decide its tables, shared by the runtime
+// (auth.ts) and the schema generator (scripts/gen-auth-schema.ts): the plugin
+// set and the rate-limit storage. It matches v1's src/lib/auth.ts, so
+// imported rows keep working.
 import { apiKey } from '@better-auth/api-key'
 import { cimd } from '@better-auth/cimd'
 import { mcp } from '@better-auth/mcp'
@@ -10,6 +11,9 @@ import { LIMITS } from '../../shared/limits'
 import { sha256Base64url } from '../core/ids'
 import { OAUTH_SCOPES } from '../../shared/account'
 import { mcpResource, oauthIssuer } from './constants'
+
+/** Better Auth's own rate limits (sign-in, client registration) count in its rate_limit table. */
+export const AUTH_RATE_LIMIT = { enabled: true, storage: 'database', modelName: 'rateLimit' } as const
 
 export type ClientMetadataResourceFetch = Parameters<typeof cimd>[0]['fetchClientMetadataResource']
 

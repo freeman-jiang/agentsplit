@@ -11,7 +11,7 @@ import { bootstrapOwner } from './owner-bootstrap'
 import type { AuthSettings } from '../core/config'
 import type { Db } from '../core/db'
 import { apiKeyCount } from './api-key'
-import { authPlugins, type ClientMetadataResourceFetch } from './auth-options'
+import { AUTH_RATE_LIMIT, authPlugins, type ClientMetadataResourceFetch } from './auth-options'
 import { connectionClaims } from './oauth-connections'
 
 
@@ -60,7 +60,7 @@ export function createAuth(config: AuthSettings & { readonly db: Db }) {
     },
     account: { accountLinking: { enabled: false } },
     session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24, cookieCache: { enabled: false } },
-    rateLimit: { enabled: true, storage: 'database', modelName: 'rateLimit' },
+    rateLimit: AUTH_RATE_LIMIT,
     hooks: {
       // Better Auth accepts relative callbacks such as /\evil.example, which
       // browsers resolve to another host. Only same-origin targets pass here.
