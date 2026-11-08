@@ -1,12 +1,14 @@
 // The call runner of RPC and MCP (src/server/calls.ts): work queued for after
-// a write's commit, the answer a database failure gets on RPC, and dates that
-// do not exist. Each fails silently: a purge that runs for a rolled-back write
-// deletes a receipt that stays, a raw database error tells the client the
-// schema, and a date answered as an outage tells an agent to retry it.
+// a write's commit, a write that conflicts on every attempt, the answer a
+// database failure gets on RPC, and dates that do not exist. Each fails
+// silently: a purge that runs for a rolled-back write deletes a receipt that
+// stays, a busy write answered as an outage tells an agent that the outcome is
+// unknown, a raw database error tells the client the schema, and a date
+// answered as an outage tells an agent to retry it.
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { runRead, runWrite } from '~/server/calls'
-import { GROUP_DENIED, UNAVAILABLE } from '~/shared/errors'
+import { BUSY, ERROR_ANSWERS, GROUP_DENIED, UNAVAILABLE } from '~/shared/errors'
 import { draft } from '../kit/drafts'
 import { counter, id21Counter } from '../kit/ids'
 import { principal } from '../kit/people'
@@ -59,6 +61,26 @@ describe('work after the commit', () => {
     )
     await expect(write).rejects.toMatchObject({ _tag: 'Unavailable' })
     expect(ran).toEqual([])
+  })
+})
+
+describe('a write that conflicts on every attempt', () => {
+  it('stops after 10 attempts and answers busy, so the caller knows that nothing changed and can retry', async () => {
+    let attempts = 0
+    const write = h.withDb((db) =>
+      runWrite({
+        db,
+        principal: alice,
+        call,
+        work: async (tx) => {
+          attempts++
+          await tx.execute(sql`DO $$ BEGIN RAISE EXCEPTION 'could not serialize access' USING ERRCODE = 'serialization_failure'; END $$`)
+        },
+      }),
+    )
+    await expect(write).rejects.toMatchObject({ _tag: 'Invalid', reason: 'busy', message: BUSY })
+    expect(attempts).toBe(10)
+    expect(ERROR_ANSWERS['Invalid.busy']).toEqual({ answer: true, mcp: 'CONFLICT', recovery: 'retry_later', http: 409 })
   })
 })
 

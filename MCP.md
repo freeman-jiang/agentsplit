@@ -207,7 +207,7 @@ A successful result has `structuredContent` and the same JSON as text. A failed 
 | `BAD_REQUEST` | The arguments are invalid, or the change breaks a rule of the ledger that the database enforces. `recovery` is `correct_arguments`. |
 | `FORBIDDEN` | The account or connection has no access. The outcome is certain. |
 | `NOT_FOUND` | The group, expense, receipt, invitation, member or history point does not exist. |
-| `CONFLICT` | The record changed, the ID exists, or the request conflicts with the current state (the last admin, a used invitation). `recovery` is `read_current_revision`. |
+| `CONFLICT` | The record changed, the ID exists, or the request conflicts with the current state (the last admin, a used invitation). `recovery` is `read_current_revision`. When other writes to the same group ran at the same time and the server's own retries ran out, `recovery` is `retry_later`: nothing changed, so send the same call again. |
 | `PRECONDITION_FAILED` | A historical read has incomplete history, or an attach does not fit the caller's receipt storage. |
 | `TOO_MANY_REQUESTS` | The account made more than about 60 changes in a minute. Nothing changed. `recovery` is `retry_later`; wait the seconds that the message gives. |
 | `INTERNAL_SERVER_ERROR` | An unexpected failure, also on a read. For a write, `outcomeUnknown` is true and `recovery` is `read_before_retry`. For a read, `recovery` is `correct_arguments`. |
