@@ -196,7 +196,9 @@ export const ExpenseInput = Schema.Struct({
   payers: Schema.Array(PartInput).check(Schema.isBetweenLength(1, LIMITS.participantsPerGroup)),
   splitMode: SplitModeSchema,
   /** Who shares the cost, with each person's weight: a share count, a percentage, or an exact amount. */
-  shares: Schema.Array(Schema.Struct({ participantId: Id, weight: Schema.String })).check(Schema.isBetweenLength(1, LIMITS.participantsPerGroup)),
+  shares: Schema.Array(Schema.Struct({ participantId: Id, weight: Schema.String.check(Schema.isMaxLength(LIMITS.decimalMax)) })).check(
+    Schema.isBetweenLength(1, LIMITS.participantsPerGroup),
+  ),
   recurrence: RecurrenceSchema,
   /** The full list of receipts. Omitted on an update: keep the saved receipts. */
   documents: Schema.optionalKey(Documents),
