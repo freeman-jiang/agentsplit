@@ -172,7 +172,7 @@ function BalanceRail({ groupId, group, hideOnMobile, summaryOnly }: { groupId: s
           <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} aria-hidden="true" />
         </Button>
       </div>
-      <p className="mt-1 mb-4 hidden text-xs text-muted-foreground md:block">Net across all group expenses</p>
+      <p className="mt-1 mb-4 hidden text-xs text-muted-foreground md:block">Net balance of all group expenses</p>
       {isError ? (
         <p role="alert" className="text-sm">
           Could not load balances. Try refreshing.
@@ -188,7 +188,7 @@ function BalanceRail({ groupId, group, hideOnMobile, summaryOnly }: { groupId: s
             const summary = (
               <div className="min-w-0 max-md:flex max-md:items-baseline max-md:gap-2">
                 <div className="text-xs text-muted-foreground">
-                  {ownTotal === null ? 'Group net balances' : netLabel(ownTotal, 'you')} · {entry.currency}
+                  {ownTotal === null ? 'Group balances' : netLabel(ownTotal, 'you')} · {entry.currency}
                 </div>
                 {ownTotal !== null && (
                   <div className={cn('mt-1 text-lg font-semibold tabular-nums max-md:mt-0 md:text-xl', NET_CLASS[netTone(ownTotal)])} data-testid="summary-personal-net">
@@ -230,7 +230,7 @@ function BalanceDetails(props: { entry: Entry; participants: ReadonlyArray<typeo
   const nets = new Map(entry.balances.map((b) => [b.participantId, b.net]))
   return (
     <div className="space-y-4">
-      <ul className="space-y-3" aria-label={`${currency} participant balances`}>
+      <ul className="space-y-3" aria-label={`${currency} balance of each person`}>
         {participants.map((person) => {
           const total = nets.get(person.id) ?? '0'
           return (

@@ -101,7 +101,7 @@ function StatsTab() {
   const drill = { group, groupId, range }
   return (
     <section>
-      <h2 className="sr-only">Totals</h2>
+      <h2 className="sr-only">Stats</h2>
       <div className="mb-4 flex flex-wrap items-start gap-3" aria-label="Statistics filters">
         {data && data.currencies.length > 0 && (
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -128,7 +128,7 @@ function StatsTab() {
           )}
         </div>
         {/* The date range describes the selection, so it sits with the filters, not in a card. */}
-        {data && data.summary.count > 0 && <span className="self-center text-sm tabular-nums text-muted-foreground sm:ml-auto">Active period · {activeSpan(data.summary)}</span>}
+        {data && data.summary.count > 0 && <span className="self-center text-sm tabular-nums text-muted-foreground sm:ml-auto">Expense dates · {activeSpan(data.summary)}</span>}
       </div>
       {error ? (
         <p role="alert" className="text-sm">
@@ -137,7 +137,7 @@ function StatsTab() {
       ) : (
         <div className="grid gap-6 xl:grid-cols-2">
           <SummaryCard data={data} />
-          <StatsCard title="Totals" description="Spending summary of the entire group.">
+          <StatsCard title="Totals" description="Spending of the whole group and your part of it.">
             {!data || !c ? <Lines rows={3} /> : <Totals data={data} currency={c} />}
           </StatsCard>
           <OverTimeCard data={data} drill={drill} />
@@ -193,7 +193,7 @@ function SummaryCard({ data }: { data: Overview | undefined }) {
       {!s || !c ? (
         <Lines rows={2} />
       ) : s.count === 0 ? (
-        <Empty>There are no expenses yet.</Empty>
+        <Empty>No expenses.</Empty>
       ) : (
         <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 xl:grid-cols-2">
           <Metric label="Expenses">{s.count}</Metric>
@@ -232,9 +232,9 @@ function Totals({ data, currency }: { data: Overview; currency: CurrencyCode }) 
   )
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 xl:grid-cols-2">
-      <Metric label={isNegative(data.total) ? 'Total group earnings' : 'Total group spendings'}>{money(magnitude(data.total), currency)}</Metric>
-      {data.yourPaid !== null && personal(isNegative(data.yourPaid) ? 'Your total earnings' : 'Your total spendings', data.yourPaid)}
-      {data.yourShare !== null && personal('Your total share', data.yourShare)}
+      <Metric label={isNegative(data.total) ? 'Group income' : 'Group spending'}>{money(magnitude(data.total), currency)}</Metric>
+      {data.yourPaid !== null && personal(isNegative(data.yourPaid) ? 'You received' : 'You paid', data.yourPaid)}
+      {data.yourShare !== null && personal('Your share', data.yourShare)}
     </div>
   )
 }
@@ -303,7 +303,7 @@ function OverTimeCard({ data, drill }: { data: Overview | undefined; drill: Dril
       {!data || !c ? (
         <Lines rows={4} />
       ) : data.months.length === 0 ? (
-        <Empty>There are no expenses yet.</Empty>
+        <Empty>No expenses.</Empty>
       ) : (
         <div className="flex flex-col gap-0.5">
           {data.months.map((m) => (
@@ -331,7 +331,7 @@ function OverTimeCard({ data, drill }: { data: Overview | undefined; drill: Dril
           scope={{ currency: c, month }}
           title={formatMonth(month)}
           description="Expenses in this month for the selected period."
-          empty="There are no expenses in this month."
+          empty="No expenses in this month."
           open={open}
           onClose={() => setOpen(false)}
         />
@@ -351,7 +351,7 @@ function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Dr
       {!data || !c ? (
         <Lines rows={4} />
       ) : data.categories.length === 0 ? (
-        <Empty>There are no expenses yet.</Empty>
+        <Empty>No expenses.</Empty>
       ) : (
         <div className="flex flex-col gap-0.5">
           {data.categories.map((x, i) => (
@@ -379,7 +379,7 @@ function CategoriesCard({ data, drill }: { data: Overview | undefined; drill: Dr
           scope={{ currency: c, categoryId: selected.categoryId }}
           title={selected.name}
           description="Expenses in this category for the selected period."
-          empty="There are no expenses in this category."
+          empty="No expenses in this category."
           open={open}
           onClose={() => setOpen(false)}
         />
@@ -428,7 +428,7 @@ function MonthlyCard({ data }: { data: Overview | undefined }) {
       {!view || !c ? (
         <Lines rows={3} />
       ) : view.months.length === 0 ? (
-        <p className="py-4 text-sm text-muted-foreground">No spending data yet.</p>
+        <p className="py-4 text-sm text-muted-foreground">No expenses.</p>
       ) : (
         <div className={cn('gap-4', chart === 'columns' && 'grid lg:grid-cols-[minmax(0,1fr)_13rem] lg:items-end')}>
           <section className="space-y-3">
@@ -542,16 +542,16 @@ function StackedColumns({ view, visible, colors, currency, round, grouping, incl
 function ParticipantsCard({ data }: { data: Overview | undefined }) {
   const c = data?.currency
   return (
-    <StatsCard wide title="Spending by participant" description="How much each participant paid and their share of the expenses.">
+    <StatsCard wide title="Spending by person" description="What each person paid, and their share of the expenses.">
       {!data || !c ? (
         <Lines rows={3} />
       ) : data.participants.length === 0 ? (
-        <Empty>There are no expenses yet.</Empty>
+        <Empty>No expenses.</Empty>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="h-8 px-2 pl-0">Participant</TableHead>
+              <TableHead className="h-8 px-2 pl-0">Person</TableHead>
               <TableHead className="h-8 px-2 text-right">Paid</TableHead>
               <TableHead className="h-8 px-2 text-right">Count</TableHead>
               <TableHead className="h-8 px-2 pr-0 text-right">Share</TableHead>

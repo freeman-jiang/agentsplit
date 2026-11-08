@@ -27,10 +27,10 @@ function Information() {
             </Button>
           )}
         </CardTitle>
-        <CardDescription className="mr-12">Use this place to add any information that can be relevant to the group participants.</CardDescription>
+        <CardDescription className="mr-12">Notes for everyone in the group.</CardDescription>
       </CardHeader>
       <CardContent className="prose prose-sm max-w-full whitespace-break-spaces sm:prose-base">
-        {g.information ? <p className="text-foreground">{g.information}</p> : <p className="text-sm text-muted-foreground">No group information yet.</p>}
+        {g.information ? <p className="text-foreground">{g.information}</p> : <p className="text-sm text-muted-foreground">No information yet.</p>}
       </CardContent>
     </Card>
   )

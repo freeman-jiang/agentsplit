@@ -185,7 +185,7 @@ function People({ details, onPeopleSaved }: { details: Details; onPeopleSaved: P
         <h2 id="people-heading" className="text-base font-semibold leading-tight">
           People
         </h2>
-        <p className="text-sm text-muted-foreground">Track expenses for everyone here. Invite people to give them access.</p>
+        <p className="text-sm text-muted-foreground">Everyone who can pay for or share an expense. Invite a person to give them access to the group.</p>
       </div>
       {actions.error && (
         <Alert variant="destructive">
@@ -304,7 +304,7 @@ function People({ details, onPeopleSaved }: { details: Details; onPeopleSaved: P
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="roommate@gmail.com"
+                      placeholder="name@gmail.com"
                     />
                     <Button disabled={busy}>Create invitation</Button>
                     <Button type="button" variant="ghost" disabled={busy} onClick={() => setInviting(null)}>
@@ -312,25 +312,25 @@ function People({ details, onPeopleSaved }: { details: Details; onPeopleSaved: P
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Only this Google account can join as {person.name}. Share the invitation link; it expires in {LIMITS.invitationDays} days.
+                    Only this Google account can join as {person.name}. The link expires in {LIMITS.invitationDays} days.
                   </p>
                 </form>
               )}
               {/* The link exists only in this page's memory: after a reload the person shows "Invited" (P-ACCESS-24). */}
               {admin && pending && created?.participantId === person.id && (
                 <div className="space-y-3 rounded-xl bg-muted/50 p-3">
-                  <p className="text-sm">Send this to {person.name}. AgentSplit does not send an email automatically.</p>
+                  <p className="text-sm">Send this link to {person.name}. AgentSplit does not send email.</p>
                   <div className="flex items-center gap-3">
                     <code className="min-w-0 flex-1 text-xs break-all">{created.url}</code>
-                    <CopyButton variant="outline" className="shrink-0" text={created.url} title="Copy invitation" />
+                    <CopyButton variant="outline" className="shrink-0" text={created.url} title="Copy link" />
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm">Copy a message with the steps to join</span>
+                    <span className="text-sm">Copy a message with the link and the steps to join</span>
                     <CopyButton
                       variant="outline"
                       className="shrink-0"
-                      title="Copy invitation message"
-                      text={`Join ${details.name} on AgentSplit:\n${created.url}\n\nOpen the link and sign in with Google using ${created.email}. Your account will be created automatically if you’re new. Then click Accept invitation to join as ${person.name} and see our shared expenses and balances.\n\nYou can use the website, or open Agents after joining to connect ChatGPT or Claude. An agent is optional.\n\nThe invitation expires ${formatMoment.full(created.expiresAt)}.`}
+                      title="Copy message"
+                      text={`Join ${details.name} on AgentSplit:\n${created.url}\n\n1. Open the link.\n2. Sign in with Google as ${created.email}. This creates your account if you do not have one.\n3. Click Accept invitation. You join as ${person.name}.\n\nTo use ChatGPT or Claude, open Agents after you join. An agent is optional.\n\nThe link expires ${formatMoment.full(created.expiresAt)}.`}
                     />
                   </div>
                 </div>
@@ -341,7 +341,7 @@ function People({ details, onPeopleSaved }: { details: Details; onPeopleSaved: P
         {details.unboundMembers.map((member) => (
           <li key={member.userId} className="space-y-3 py-3">
             <p className="text-sm font-medium">{member.name}</p>
-            <p className="text-xs text-muted-foreground">Joined · Identity needs setup</p>
+            <p className="text-xs text-muted-foreground">Joined · Not linked to a person</p>
             <p className="text-xs break-all">{member.email}</p>
             {admin && (
               <div className="flex flex-wrap gap-2">
@@ -352,7 +352,7 @@ function People({ details, onPeopleSaved }: { details: Details; onPeopleSaved: P
                   wrapperClassName="max-w-full"
                   className="h-9"
                 >
-                  <option value="">Choose their person</option>
+                  <option value="">Choose a person</option>
                   {people
                     .filter((p) => !p.reserved)
                     .map((p) => (
@@ -364,7 +364,7 @@ function People({ details, onPeopleSaved }: { details: Details; onPeopleSaved: P
                 <DeleteDialog
                   trigger={
                     <Button size="sm" disabled={busy || !bindings[member.userId]}>
-                      Link identity
+                      Link
                     </Button>
                   }
                   title={`Permanently link ${member.email} to ${people.find((p) => p.id === bindings[member.userId])?.name}?`}
@@ -387,7 +387,7 @@ function People({ details, onPeopleSaved }: { details: Details; onPeopleSaved: P
           .filter((i) => !i.participantId)
           .map((invite) => (
             <div key={invite.id} className="flex flex-wrap items-center gap-3">
-              <p className="text-sm break-all">{invite.email} · Old invitation needs reissuing</p>
+              <p className="text-sm break-all">{invite.email} · Old invitation. Revoke it and invite again.</p>
               <Button variant="outline" size="sm" disabled={busy} onClick={() => actions.access({ action: 'revoke_invitation', groupId: details.id, invitationId: invite.id })}>
                 Revoke invitation
               </Button>

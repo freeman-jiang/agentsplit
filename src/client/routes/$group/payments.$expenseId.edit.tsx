@@ -24,10 +24,10 @@ function EditPayment() {
   if (!isSimplePayment(detail))
     return (
       <div className="space-y-3 rounded-2xl border bg-card p-4">
-        <p>This entry uses the expense editor.</p>
+        <p>This payment has more than one sender or recipient. Edit it in the expense form.</p>
         <Button asChild>
           <Link to="/$group/expenses/$expenseId/edit" params={{ group, expenseId }}>
-            Open entry
+            Open expense form
           </Link>
         </Button>
       </div>

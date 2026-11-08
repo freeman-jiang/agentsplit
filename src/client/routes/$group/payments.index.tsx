@@ -36,7 +36,7 @@ function PaymentsTab() {
           Payment history
         </h2>
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No payments recorded yet.</p>
+          <p className="text-sm text-muted-foreground">No payments yet.</p>
         ) : (
           <ul className="divide-y overflow-hidden rounded-2xl border bg-card" data-testid="payment-list">
             {rows.map((p) => (

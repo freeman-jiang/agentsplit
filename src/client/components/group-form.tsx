@@ -74,7 +74,7 @@ export function GroupForm(props: {
   const actions = (
     <>
       <Button type="submit" disabled={saving}>
-        {props.mode === 'edit' ? (saving ? 'Saving…' : 'Save') : saving ? 'Creating…' : 'Create'}
+        {props.mode === 'edit' ? (saving ? 'Saving…' : 'Save') : saving ? 'Creating…' : 'Create group'}
       </Button>
       {props.cancel}
     </>
@@ -100,7 +100,7 @@ export function GroupForm(props: {
     >
       <Card className={props.mode === 'create' ? 'mb-4' : undefined}>
         <CardHeader>
-          <CardTitle>Group information</CardTitle>
+          <CardTitle>Group details</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&>*]:min-w-0">
           <div className="space-y-2">
@@ -150,17 +150,17 @@ export function GroupForm(props: {
             />
             <p id="group-currency-help" className="text-xs text-muted-foreground">
               {props.mode === 'edit'
-                ? 'Changes the default for new expenses only. Existing amounts, currencies and balances stay unchanged.'
-                : 'The starting currency for new expenses. Each expense can use a different currency.'}
+                ? 'Applies to new expenses only. Existing expenses and balances do not change.'
+                : 'New expenses start in this currency. Each expense can use a different currency.'}
             </p>
           </div>
           <div className="col-span-full space-y-2">
-            <Label htmlFor="group-information">Group information</Label>
+            <Label htmlFor="group-information">Information</Label>
             <Textarea
               id="group-information"
               rows={2}
               maxLength={LIMITS.informationMax}
-              placeholder="What information is relevant to group participants?"
+              placeholder="Notes for everyone in the group"
               value={values.information}
               onChange={(e) => set('information', e.target.value)}
             />
