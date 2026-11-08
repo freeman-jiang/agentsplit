@@ -53,12 +53,6 @@ export function rpcError(cause: unknown): RpcError {
   return new RpcFailure(cause instanceof Error ? cause.message : 'The request failed')
 }
 
-/** The server's ID of the request that failed with `error`, or null if no response came back. */
-export function requestIdOf(error: unknown): string | null {
-  if (typeof error !== 'object' || error === null || !('requestId' in error)) return null
-  return typeof error.requestId === 'string' ? error.requestId : null
-}
-
 type Pending = { readonly id: string; readonly tag: Tag; readonly payload: unknown; resolve: (value: unknown) => void; reject: (error: RpcError) => void }
 type ExitMessage = {
   readonly _tag: 'Exit'

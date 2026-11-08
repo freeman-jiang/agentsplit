@@ -1,6 +1,6 @@
 import { useMatch, useRouter, type ErrorComponentProps } from '@tanstack/react-router'
 import { useEffect, useMemo } from 'react'
-import { requestIdOf } from '~/client/rpc'
+import { rpcError } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 
 /**
@@ -14,7 +14,7 @@ import { Button } from '~/client/ui/button'
 export function ErrorState({ error, reset }: ErrorComponentProps) {
   const router = useRouter()
   const inGroup = useMatch({ from: '/$group', shouldThrow: false }) !== undefined
-  const reference = useMemo(() => requestIdOf(error) ?? crypto.randomUUID().slice(0, 8), [error])
+  const reference = useMemo(() => rpcError(error).requestId ?? crypto.randomUUID().slice(0, 8), [error])
   useEffect(() => {
     console.error(`Error reference ${reference}`, error)
   }, [error, reference])
