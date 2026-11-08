@@ -2,9 +2,12 @@
 # its tunnel connector. It has no open inbound port. Cloudflare Tunnel brings
 # the public traffic in, and Tailscale SSH is the only admin path.
 #
-# The provider-specific part is one import (./ec2.nix). To move to another
-# cloud, replace it with that provider's hardware profile and install with
-# nixos-anywhere (./disk.nix, DEPLOYMENT.md).
+# The provider-specific part is one hardware profile, which the flake adds
+# (mkHost in flake.nix): ./gce.nix for production, ./ec2.nix for EC2. To move
+# to another cloud, write that provider's profile, and install from its image
+# or with nixos-anywhere (./disk.nix, DEPLOYMENT.md).
+#
+# Sized for 1 GB of memory (a GCE e2-micro). DEPLOYMENT.md has the budget.
 {
   lib,
   pkgs,
@@ -13,18 +16,16 @@
 }:
 {
   # services.agentsplit comes from the flake (agentsplitModule in flake.nix).
-  imports = [
-    ./disk.nix
-    ./ec2.nix
-  ];
+  imports = [ ./disk.nix ];
 
   networking.hostName = "agentsplit";
   time.timeZone = "UTC";
   system.stateVersion = "26.05";
   system.configurationRevision = agentsplitRev;
 
-  # The file system labels of the official NixOS EC2 image, which disk.nix
-  # also writes, so one definition fits both installs.
+  # The file system labels of the GCE image (gce.nix) and of the official
+  # NixOS EC2 image, which disk.nix also writes, so one definition fits every
+  # install.
   fileSystems."/" = {
     device = "/dev/disk/by-label/nixos";
     fsType = "ext4";
@@ -36,8 +37,8 @@
     options = [ "umask=0077" ];
   };
   boot.growPartition = true;
-  # Every aarch64 cloud VM boots with UEFI. The removable path needs no EFI
-  # variables, so the same disk boots on any of them.
+  # UEFI, which GCE and every aarch64 cloud VM boot. The removable path needs
+  # no EFI variables, so the same disk boots on any of them.
   boot.loader.grub = {
     enable = true;
     device = "nodev";
