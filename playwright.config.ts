@@ -10,7 +10,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: [['list']],
   use: {
-    baseURL: process.env['E2E_BASE_URL'] ?? 'http://localhost:5190',
+    baseURL: process.env['E2E_BASE_URL'],
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
