@@ -50,15 +50,21 @@
             '';
           };
 
-          # Drops and recreates one database. Refuses names without test, e2e,
-          # perf or dev, so it never runs against anything that matters.
+          # Drops and recreates one database. It accepts only a disposable name and
+          # refuses the databases the lead uses (db/local-databases.json, which the
+          # test kit and scripts/seed-synthetic.ts also read).
+          databases = builtins.fromJSON (builtins.readFile ./db/local-databases.json);
           db-reset = pkgs.writeShellApplication {
             name = "db-reset";
             runtimeInputs = [ postgresql ];
             text = ''
               name="''${1:?usage: db-reset <database>}"
               case "$name" in
-                *test* | *e2e* | *perf* | *dev*) ;;
+                ${pkgs.lib.concatMapStringsSep " | " pkgs.lib.escapeShellArg databases.protected})
+                  echo "db-reset: refusing to reset '$name': the lead uses it (docs/v2/BUILDING.md)" >&2
+                  exit 1
+                  ;;
+                ${pkgs.lib.concatMapStringsSep " | " (part: "*${part}*") databases.disposable}) ;;
                 *)
                   echo "db-reset: refusing to reset '$name'" >&2
                   exit 1

@@ -1,0 +1,4 @@
+{
+  "disposable": ["test", "e2e", "perf", "dev"],
+  "protected": ["agentsplit_dev", "agentsplit_restore_test"]
+}
