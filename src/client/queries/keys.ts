@@ -36,10 +36,11 @@ export const isGroupSummaryKey = (queryKey: readonly unknown[]) => queryKey[0] =
 
 /**
  * `group`: a write in one group or private context (an expense, a payment, its
- * settings or people). `account`: a write that can change every group, such as
- * the display name or a receipt deleted for good.
+ * settings or people). `left`: the caller left the group, so its views go.
+ * `account`: a write that can change every group, such as the display name or
+ * a receipt deleted for good.
  */
-type WriteScope = { readonly scope: 'group'; readonly groupId: string } | { readonly scope: 'account' }
+export type WriteScope = { readonly scope: 'group' | 'left'; readonly groupId: string } | { readonly scope: 'account' }
 
 /**
  * After a write, every view it can change reads again: the group's own pages,
@@ -50,7 +51,13 @@ type WriteScope = { readonly scope: 'group'; readonly groupId: string } | { read
 export function afterWrite(data: { queryClient: QueryClient } & WriteScope) {
   const { queryClient } = data
   if (data.scope === 'account') return queryClient.invalidateQueries()
+  if (data.scope === 'left') queryClient.removeQueries({ queryKey: keys.group(data.groupId) })
   return Promise.all(
     [keys.group(data.groupId), keys.feed, keys.directories, keys.expenseContexts].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
   )
+}
+
+/** Reads one entry again, as after a revision conflict: its detail, and its context on the /expenses pages. */
+export function reloadEntry(data: { queryClient: QueryClient; groupId: string; expenseId: string }) {
+  return Promise.all([keys.expense(data.groupId, data.expenseId), keys.expenseContext(data.expenseId)].map((queryKey) => data.queryClient.invalidateQueries({ queryKey })))
 }

@@ -6,6 +6,7 @@ import { stateFromExpense } from '~/client/components/expense-form-state'
 import { ExpenseLog } from '~/client/components/log/expense-log'
 import { expenseDetailQuery, referenceQuery } from '~/client/queries/expenses'
 import { groupQuery } from '~/client/queries/groups'
+import { reloadEntry } from '~/client/queries/keys'
 
 export const Route = createFileRoute('/$group/expenses/$expenseId/edit')({
   loader: ({ context, params }) => Promise.all([context.queryClient.ensureQueryData(expenseDetailQuery(context.groupId, params.expenseId)), context.queryClient.ensureQueryData(referenceQuery)]),
@@ -31,7 +32,7 @@ function EditExpense() {
         target={target}
         reference={reference}
         initial={stateFromExpense({ expense: detail.expense, documents: detail.documents, participants: g.participants.map((p) => p.id) })}
-        onReload={() => void queryClient.invalidateQueries({ queryKey: expenseDetailQuery(groupId, expenseId).queryKey })}
+        onReload={() => void reloadEntry({ queryClient, groupId, expenseId })}
       />
       {/* The collapsed expense log under the editor, as in the current app (P-HIST-80). */}
       <ExpenseLog groupId={groupId} expenseId={expenseId} />

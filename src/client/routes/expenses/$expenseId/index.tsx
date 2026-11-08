@@ -12,7 +12,7 @@ import { formatMoment } from '~/client/dates'
 import { describeError } from '~/client/errors'
 import { expenseDetailQuery, paymentsQuery, referenceQuery } from '~/client/queries/expenses'
 import { expenseContextQuery } from '~/client/queries/feed'
-import { afterWrite } from '~/client/queries/keys'
+import { afterWrite, reloadEntry } from '~/client/queries/keys'
 import { newIdempotencyKey, rpc } from '~/client/rpc'
 import { Button } from '~/client/ui/button'
 import type { ExpenseContext } from '~/shared/api'
@@ -76,11 +76,7 @@ function Workspace({ data }: { data: Context }) {
   const reference = useQuery(referenceQuery)
   // The current app's privateExpense options apply to ungrouped expenses only (P-UNGROUP-66, P-UNGROUP-67).
   const target = usePageTarget({ groupId: group.id, privateExpense: data.context !== null, back: backTo(data) })
-  const onReload = () =>
-    void Promise.all([
-      queryClient.invalidateQueries({ queryKey: expenseContextQuery(expense.id).queryKey }),
-      queryClient.invalidateQueries({ queryKey: expenseDetailQuery(group.id, expense.id).queryKey }),
-    ])
+  const onReload = () => void reloadEntry({ queryClient, groupId: group.id, expenseId: expense.id })
   const failure = detail.error ?? reference.error
   return (
     <div className="space-y-6">

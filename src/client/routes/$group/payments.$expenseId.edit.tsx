@@ -5,6 +5,7 @@ import { ExpenseLog } from '~/client/components/log/expense-log'
 import { isSimplePayment, PaymentForm } from '~/client/components/payment-form'
 import { balancesQuery, expenseDetailQuery } from '~/client/queries/expenses'
 import { groupQuery } from '~/client/queries/groups'
+import { reloadEntry } from '~/client/queries/keys'
 import { Button } from '~/client/ui/button'
 
 export const Route = createFileRoute('/$group/payments/$expenseId/edit')({
@@ -39,7 +40,7 @@ function EditPayment() {
         detail={detail}
         participants={g.participants}
         target={target}
-        onReload={() => void queryClient.invalidateQueries({ queryKey: expenseDetailQuery(groupId, expenseId).queryKey })}
+        onReload={() => void reloadEntry({ queryClient, groupId, expenseId })}
       />
       <ExpenseLog groupId={groupId} expenseId={expenseId} />
     </>
