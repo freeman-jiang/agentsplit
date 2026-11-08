@@ -56,6 +56,7 @@ export function errorBody(data: { error: CallError; kind: 'read' | 'write' }) {
       code,
       message: answer ? errorText(error) : MCP_INTERNAL,
       outcomeUnknown,
+      // An unexpected failure of a read keeps the current app's correct_arguments (P-MCP-37); only a write's outcome can be unknown.
       recovery: answer || outcomeUnknown ? recovery : ('correct_arguments' as const),
     },
   }
