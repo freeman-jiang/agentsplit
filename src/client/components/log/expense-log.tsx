@@ -27,8 +27,8 @@ export function ExpenseLog(props: Props) {
 }
 
 function what(entry: typeof Activity.Type) {
-  const action = isBaseline(entry) ? 'History started' : entry.type === 'create_expense' ? 'Added' : entry.type === 'delete_expense' ? 'Deleted' : 'Edited'
-  return `${action} by ${entry.actorName ?? (entry.source === 'system' ? 'automatic schedule' : 'unknown author')}`
+  const action = isBaseline(entry) ? 'Log started' : entry.type === 'create_expense' ? 'Added' : entry.type === 'delete_expense' ? 'Deleted' : 'Edited'
+  return `${action} by ${entry.actorName ?? (entry.source === 'system' ? 'the recurring schedule' : 'unknown author')}`
 }
 
 function Entries({ groupId, expenseId }: Props) {
@@ -47,7 +47,7 @@ function Entries({ groupId, expenseId }: Props) {
       </p>
     )
   const entries = query.data.pages.flatMap((p) => p.activities)
-  if (entries.length === 0) return <p className="mt-3 text-sm text-muted-foreground">No recorded changes.</p>
+  if (entries.length === 0) return <p className="mt-3 text-sm text-muted-foreground">No changes.</p>
   return (
     <div className="mt-3 space-y-3">
       <ol className="divide-y">

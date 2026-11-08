@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { authCall, authClient } from '~/client/auth-client'
 import { Button } from '~/client/ui/button'
 
-const FAILED = 'Unable to log in. Please try again.'
+const FAILED = 'Could not start Google sign-in. Try again.'
 
 /** Starts Google sign-in at once, as the current app's login button does (P-AUTH-59, P-AUTH-60). */
 export function LoginButton(props: { label: string; selectAccount: boolean; callbackURL: string; errorCallbackURL: string }) {

@@ -211,7 +211,8 @@ function ApiKeys(props: { keys: ReadonlyArray<typeof ApiKeySummary.Type> }) {
                 </Button>
               }
               title={`Revoke ${key.name ?? 'this key'}?`}
-              description="Its agent will lose access."
+              description="Agents that use it lose access."
+              confirm="Revoke"
               pending="Revoking…"
               onConfirm={async () => {
                 setError('')

@@ -24,8 +24,8 @@ export function AccountMenu({ name }: { name: string }) {
   return (
     <Link
       to="/settings"
-      aria-label="Profile and settings"
-      title={`${name || 'Your profile'} · Settings`}
+      aria-label="Account"
+      title={`${name || 'Your account'} · Account`}
       className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-sm font-medium text-primary press hover:bg-primary/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
     >
       <span aria-hidden="true">{initials}</span>

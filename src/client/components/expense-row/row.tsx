@@ -131,7 +131,7 @@ function RowTitle(props: { title: string; payment: boolean; documentCount: numbe
         {props.title}
       </span>
       {props.documentCount > 0 && (
-        <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground" title={`${props.documentCount} receipt(s)`}>
+        <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground" title={`${props.documentCount} ${props.documentCount === 1 ? 'receipt' : 'receipts'}`}>
           <Paperclip aria-hidden="true" className="h-3 w-3" />
           {props.documentCount}
         </span>
