@@ -21,6 +21,8 @@ pkgs.testers.runNixOSTest {
       services.tailscale.enable = lib.mkForce false;
       # The test VM's root is a whole disk without a partition to grow.
       boot.growPartition = lib.mkForce false;
+      # The VM has no network, and a commit's build would turn the upgrade timer on.
+      system.autoUpgrade.enable = lib.mkForce false;
       virtualisation.memorySize = 2048;
       virtualisation.cores = 2;
       # Test-only values. Production keeps this file out of the store (DEPLOYMENT.md).
