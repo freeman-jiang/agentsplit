@@ -2,7 +2,7 @@ import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-q
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { authClient } from '~/client/auth-client'
+import { authCall, authClient } from '~/client/auth-client'
 import { signOut } from '~/client/queries/session'
 import { DeleteDialog } from '~/client/components/delete-dialog'
 import { StorageLimits } from '~/client/components/storage-limits'
@@ -153,21 +153,13 @@ function ApiKeys(props: { keys: ReadonlyArray<typeof ApiKeySummary.Type> }) {
           event.preventDefault()
           setPending(true)
           setError('')
-          try {
-            // Better Auth creates the key: it owns the prefix, the hash and the rate limit.
-            const result = await authClient.apiKey.create({ name: label })
-            if (result.error) setError(describeError(result.error, 'Could not create key').message)
-            else {
-              setSecret(result.data.key)
-              setLabel('')
-              await reload()
-            }
-          } catch (cause) {
-            console.error('API key creation failed', cause)
-            setError('Could not create key. Check your connection.')
-          } finally {
-            setPending(false)
-          }
+          // Better Auth creates the key: it owns the prefix, the hash and the rate limit.
+          const result = await authCall({ run: () => authClient.apiKey.create({ name: label }), refused: 'Could not create key', failed: 'Could not create key. Check your connection.' })
+          setPending(false)
+          if ('error' in result) return setError(result.error)
+          setSecret(result.data.key)
+          setLabel('')
+          await reload()
         }}
       >
         <label className="min-w-40 flex-1">
