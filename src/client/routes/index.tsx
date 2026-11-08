@@ -8,15 +8,16 @@ import { describeError } from '~/client/errors'
 import { useDebounced } from '~/client/hooks'
 import { meQuery } from '~/client/queries/session'
 import { accountBalancesQuery, feedOptionsQuery, feedQuery } from '~/client/queries/feed'
-import { currencyParam, searchParams, text as textOf, textParam } from '~/client/search'
+import { currencyParam, oneOf, searchParams, text as textOf, textParam } from '~/client/search'
 import { Button } from '~/client/ui/button'
 import { CurrencySelect } from '~/client/ui/currency-select'
 import { DisclosureSummary } from '~/client/ui/disclosure'
 import { Input } from '~/client/ui/input'
 import { NativeSelect } from '~/client/ui/native-select'
-import type { FeedFilter, FeedItem } from '~/shared/api'
+import type { FeedFilter, FeedItem, FeedScope } from '~/shared/api'
 import { isCalendarDate } from '~/shared/dates'
 import { LIMITS } from '~/shared/limits'
+import { EXPENSE_KINDS } from '~/shared/vocabulary'
 import { DashboardBalance } from './-dashboard-balance'
 
 // Every filter stays as the URL has it, so a value the feed cannot use shows a message (toFilter).
@@ -71,6 +72,9 @@ function Landing() {
 }
 
 const text = (value: string | number | undefined) => textOf(value) ?? ''
+/** The Group select's choices that are a scope rather than one group; 'all' filters nothing. */
+const scopeParam = oneOf(['grouped', 'ungrouped'] as const satisfies ReadonlyArray<typeof FeedScope.Type>)
+const kindParam = oneOf(EXPENSE_KINDS)
 
 /** The URL's filters as a feed filter, or the message to show instead of the list. */
 function toFilter(s: SearchParams, search: string): { filter: typeof FeedFilter.Type } | { error: string } {
@@ -78,7 +82,8 @@ function toFilter(s: SearchParams, search: string): { filter: typeof FeedFilter.
   const currency = text(s.currency)
   const currencyCode = currencyParam(currency)
   const category = text(s.category)
-  const type = text(s.type)
+  const kind = kindParam(text(s.type))
+  const scope = scopeParam(group)
   const [from, to] = [text(s.from), text(s.to)]
   if (currency && !currencyCode) return { error: 'Choose a supported currency.' }
   if (category && !/^\d+$/.test(category)) return { error: 'Choose a category from the list.' }
@@ -87,13 +92,13 @@ function toFilter(s: SearchParams, search: string): { filter: typeof FeedFilter.
   return {
     filter: {
       involvingMe: text(s.view) !== 'all',
-      ...(group === 'grouped' || group === 'ungrouped' ? { scope: group } : group !== 'all' ? { groupId: group } : {}),
+      ...(scope ? { scope } : group !== 'all' ? { groupId: group } : {}),
       ...(search.trim() ? { search: search.trim().slice(0, LIMITS.searchMax) } : {}),
       ...(text(s.person) ? { personUserId: text(s.person) } : {}),
       ...(text(s.payer) ? { payerUserId: text(s.payer) } : {}),
       ...(currencyCode ? { currency: currencyCode } : {}),
       ...(category ? { categoryId: Number(category) } : {}),
-      ...(type === 'expense' || type === 'payment' ? { kind: type } : {}),
+      ...(kind ? { kind } : {}),
       ...(from ? { from } : {}),
       ...(to ? { to } : {}),
     },

@@ -32,6 +32,13 @@ type ReferenceData = typeof Reference.Type
 
 const SPLIT_OPTIONS = SPLIT_MODES.map((mode) => ({ value: mode, label: SPLIT_MODE_LABELS[mode] }))
 const RECURRENCE_OPTIONS = RECURRENCES.map((rule) => ({ value: rule, label: RECURRENCE_LABELS[rule] }))
+/** Each split mode's weight input: what it asks for, and the unit beside it (null: the currency's symbol). Evenly has none. */
+const WEIGHT_INPUTS = {
+  evenly: null,
+  shares: { noun: 'shares', unit: 'share(s)' },
+  percentage: { noun: 'percentage', unit: '%' },
+  amount: { noun: 'amount', unit: null },
+} as const satisfies Record<SplitMode, { noun: string; unit: string | null } | null>
 
 function Field(props: { id: string; label: ReactNode; error?: string | undefined; children: ReactNode; hint?: ReactNode }) {
   return (
@@ -84,6 +91,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
   const rowError = (list: 'shares' | 'payers', id: string) => (submitted || touched.has(list) ? issues.find((i) => i.row?.list === list && i.row.participantId === id)?.message : undefined)
   const auto = state.splitMode === 'amount' ? autoAmounts(state, order) : new Map<string, string>()
   const allSelected = order.every((id) => state.selected[id])
+  const weightInput = WEIGHT_INPUTS[state.splitMode]
   const category = reference.categories.find((c) => c.id === state.categoryId)
   const headingVerb = props.mode === 'create' ? 'Add' : 'Edit'
 
@@ -277,10 +285,10 @@ export function ExpenseForm(props: ExpenseFormProps) {
                         {money(preview.get(p.id) ?? '0', state.currency)}
                       </span>
                     )}
-                    {state.splitMode !== 'evenly' && (
+                    {weightInput && (
                       <div className="flex items-center gap-1">
                         <Input
-                          aria-label={`${p.name} ${state.splitMode === 'amount' ? 'amount' : state.splitMode === 'percentage' ? 'percentage' : 'shares'}`}
+                          aria-label={`${p.name} ${weightInput.noun}`}
                           inputMode="decimal"
                           disabled={!selected}
                           className="w-24 text-right"
@@ -297,7 +305,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
                           onBlur={() => touch('shares')}
                         />
                         <span className="w-14 text-xs text-muted-foreground">
-                          {state.splitMode === 'shares' ? 'share(s)' : state.splitMode === 'percentage' ? '%' : CURRENCIES[state.currency].symbol}
+                          {weightInput.unit ?? CURRENCIES[state.currency].symbol}
                         </span>
                       </div>
                     )}
