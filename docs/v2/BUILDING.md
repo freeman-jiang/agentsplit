@@ -134,4 +134,4 @@ The Workers Free CPU limit no longer applies (DECISIONS.md, "Hosting changes to 
 
 ## What only the lead does
 
-Deploying, anything on Coolify, the Oracle host or `apps-pg`, Cloudflare or GitHub settings, production, and merging branches.
+Deploying, anything on Coolify or the Oracle host, Cloudflare or GitHub settings, production, and merging branches.
