@@ -29,7 +29,7 @@ import { FeedHandlers } from '../handlers/feed'
 import { GroupsHandlers } from '../handlers/groups'
 import { HistoryHandlers } from '../handlers/history'
 import { StorageHandlers } from '../handlers/storage'
-import { secured } from '../headers'
+import { secured, securityHeaders } from '../headers'
 import { jsonError } from '../core/errors'
 import { maintenanceResponse } from '../maintenance'
 import { handleMcp } from '../mcp/endpoint'
@@ -57,6 +57,8 @@ export function createApp(platform: Platform) {
   const { config, bucket } = platform
   const { baseUrl, secret } = config
   const mcpSettings: McpSettings = { baseUrl, bucket }
+  const { receiptDownloads } = config
+  const headers = securityHeaders({ receiptOrigin: receiptDownloads.mode === 'redirect' ? receiptDownloads.origin : undefined })
 
   // Built once: the RPC server's shared fiber must not belong to any one
   // request. Per-request state (the database connection) arrives in each
@@ -158,7 +160,7 @@ export function createApp(platform: Platform) {
       // Not withConnection: the image streams from the bucket after the database work is done, with its own headers.
       if (request.method === 'GET')
         return withDb(async (db) =>
-          downloadReceipt({ db, bucket, url, reader: await readerOf({ request, signIn: 'Authentication required' })(db) }),
+          downloadReceipt({ db, bucket, url, reader: await readerOf({ request, signIn: 'Authentication required' })(db), downloads: receiptDownloads.mode }),
         )
       if (request.method === 'POST') {
         // An upload is a cookie-authorized write: other origins are refused before any database work, as for RPC.
@@ -202,7 +204,7 @@ export function createApp(platform: Platform) {
         console.error('Request failed', { path: new URL(request.url).pathname }, error)
         response = jsonError({ status: 503, message: 'AgentSplit is temporarily unavailable. Try again in a moment.', headers: { 'Retry-After': '5' } })
       }
-      return secured(response)
+      return secured({ response, headers })
     },
     /**
      * The hourly job (server.ts schedules it). It creates due

@@ -1,6 +1,11 @@
 // An in-memory receipts bucket (src/server/bucket.ts). Like Garage, put reads
 // a stream to its end and reports the stored size, and get can read a byte range.
+// presignGet writes the query parameters of Bun's S3 client (s3.ts) with no
+// signature, because the tests run on Node; nothing serves its URLs.
 import type { Bucket } from '../../src/server/bucket'
+
+/** The origin of the fake bucket's presigned URLs. */
+export const FAKE_BUCKET_ORIGIN = 'https://bucket.test'
 
 type Stored = { bytes: Uint8Array<ArrayBuffer>; contentType: string }
 
@@ -31,6 +36,11 @@ export function fakeBucket() {
         calls.push(`delete ${key}`)
         objects.delete(key)
       }
+    },
+    presignGet(k, options) {
+      calls.push(`presign ${k}`)
+      const query = new URLSearchParams({ 'X-Amz-Expires': String(options.expiresIn), 'response-content-disposition': options.contentDisposition, 'response-content-type': options.contentType })
+      return `${FAKE_BUCKET_ORIGIN}/agentsplit-receipts/${k}?${query}`
     },
   }
   return { bucket, objects, calls }

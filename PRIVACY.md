@@ -35,7 +35,7 @@ AgentSplit v2 runs a Bun server, PostgreSQL and Garage on the operator's Coolify
 ## Receipts
 
 - Garage is private. The anonymous website endpoint is not routed, and the old unauthenticated upload-signing endpoint (`/api/s3-upload`) answers 410.
-- Receipts are served only through the authenticated `/api/receipts`. It checks membership before it reads storage, on every request. It accepts a browser session, an API key or an OAuth token.
+- Receipts are served only through the authenticated `/api/receipts`. It checks membership before it reads storage, on every request. It accepts a browser session, an API key or an OAuth token. Where storage is Cloudflare R2, it then redirects to a storage link for that one image, which works for 5 minutes.
 - Browsers upload through the authenticated app, from the app's own origin only.
 - Agents upload through a single-use target URL on the app that expires after 300 seconds. The server checks the real image format and size before it attaches the image. No URL can write over a stored receipt.
 - Storage credentials never reach the browser or the agent.

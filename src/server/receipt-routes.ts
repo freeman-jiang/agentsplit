@@ -22,12 +22,24 @@ import { zipStream, type ZipEntry } from './zip'
 const ENVELOPE_BYTES = 64 * 1024
 
 /**
+ * How long a receipt's presigned URL works. The reader follows the redirect at
+ * once, so a few seconds would do; 5 minutes also covers a slow network and
+ * clock skew between the server and storage. A URL that leaks (from a log, a
+ * copied address bar or browser history) reads only this one image, and only
+ * until then. A removed member or a deleted receipt also loses access at most
+ * this late, for a URL already handed out.
+ */
+const PRESIGNED_SECONDS = 5 * 60
+
+/**
  * GET /api/receipts?groupId=&url=. `reader` is the caller (httpReader): an
  * agent's API key or OAuth token, as for MCP (P-RECEIPT-22, P-TOOL-GETEXP-06),
  * else the web session. A receipt deleted for good answers 410 Gone, with who
- * deleted it and when.
+ * deleted it and when. After the checks, `downloads` (RECEIPT_DOWNLOADS)
+ * decides: `stream` sends the image from here, `redirect` sends the reader to
+ * storage.
  */
-export async function downloadReceipt(data: { db: Db; bucket: Bucket; url: URL; reader: Reader }): Promise<Response> {
+export async function downloadReceipt(data: { db: Db; bucket: Bucket; url: URL; reader: Reader; downloads: 'stream' | 'redirect' }): Promise<Response> {
   const groupId = data.url.searchParams.get('groupId')
   const url = data.url.searchParams.get('url')
   if (!groupId || !url) return jsonError({ status: 400, message: 'Receipt reference is required' })
@@ -40,6 +52,7 @@ export async function downloadReceipt(data: { db: Db; bucket: Bucket; url: URL; 
   }
   // The current app's 410 names the UTC day of the deletion.
   if ('deleted' in receipt) return jsonError({ status: 410, message: `Receipt deleted by ${receipt.deleted.by} on ${receipt.deleted.at.slice(0, 10)}` })
+  // In redirect mode only the object's metadata is read here, never its bytes.
   let object: StoredObject | null
   try {
     object = await data.bucket.get(receipt.key)
@@ -47,10 +60,24 @@ export async function downloadReceipt(data: { db: Db; bucket: Bucket; url: URL; 
     return domainErrorResponse(storageUnavailable({ what: 'Reading a receipt', error }))
   }
   if (!object) return domainErrorResponse(new NotFound({ entity: 'receipt', id: url }))
+  // Only a receipt type is ever served, whatever the stored object claims.
+  const contentType = RECEIPT_CONTENT_TYPES.find((type) => type === object.contentType) ?? 'image/jpeg'
+  if (data.downloads === 'redirect') {
+    // The bytes go from storage (R2) to the reader, not through this server,
+    // so they cost no data out from the VM. The presigned URL is on storage's
+    // own origin, not the app's: a hostile file that a browser renders there
+    // has no access to the app's cookies, pages or API. Storage sends the
+    // allowed type and `inline` from the signed query, whatever the object
+    // holds. 307 keeps the method, which the signature covers. Clients drop
+    // Authorization and cookies on a redirect to another origin, but they send
+    // X-API-Key on to storage, which ignores it: the signature in the URL is
+    // the only credential storage reads.
+    const location = data.bucket.presignGet(receipt.key, { expiresIn: PRESIGNED_SECONDS, contentType, contentDisposition: 'inline' })
+    return new Response(null, { status: 307, headers: { Location: location, 'Cache-Control': 'private, no-store' } })
+  }
   return new Response(object.stream(), {
     headers: {
-      // Only a receipt type is ever served, whatever the stored object claims.
-      'Content-Type': RECEIPT_CONTENT_TYPES.find((type) => type === object.contentType) ?? 'image/jpeg',
+      'Content-Type': contentType,
       'Cache-Control': 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "default-src 'none'; sandbox",
