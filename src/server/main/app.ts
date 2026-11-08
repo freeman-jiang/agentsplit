@@ -194,7 +194,15 @@ export function createApp(platform: Platform) {
 
   return {
     async fetch(request: Request): Promise<Response> {
-      return secured(await (config.perfInstrumentation ? withPerfHeaders(() => route(request)) : route(request)))
+      let response: Response
+      try {
+        response = await (config.perfInstrumentation ? withPerfHeaders(() => route(request)) : route(request))
+      } catch (error) {
+        // A failure before a call's own error handling, such as no free pooled connection within its timeout.
+        console.error('Request failed', { path: new URL(request.url).pathname }, error)
+        response = jsonError({ status: 503, message: 'AgentSplit is temporarily unavailable. Try again in a moment.', headers: { 'Retry-After': '5' } })
+      }
+      return secured(response)
     },
     /**
      * The hourly job (server.ts schedules it). It creates due
