@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { brotliCompressSync, gunzipSync } from 'node:zlib'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { assetHandler, loadAssets } from '~/server/assets'
-import { compressed } from '~/server/compression'
+import { compressed, gzipWithTail } from '~/server/compression'
 import { png } from '../kit/images'
 import { receiptUpload } from '../kit/upload'
 import { BASE, startHarness, testApp, type Harness } from './harness'
@@ -96,3 +96,18 @@ describe('origin compression', () => {
     }
   })
 })
+
+describe('gzip with a changing tail', () => {
+  it('makes one gzip member that decodes to the head and each tail', () => {
+    const encoder = new TextEncoder()
+    for (const size of [0, 1, 1000, 70_000, 200_000]) {
+      const head = encoder.encode(JSON.stringify({ result: { text: 'tool '.repeat(size / 5) }, jsonrpc: '2.0' }).slice(0, -1) + ',"id":')
+      const gzip = gzipWithTail(head)
+      for (const tail of ['1}', '"a-long-request-id-0123456789"}', '}']) {
+        const out = gzip(encoder.encode(tail))
+        expect(Buffer.from(gunzipSync(out)).equals(Buffer.concat([head, encoder.encode(tail)]))).toBe(true)
+      }
+    }
+  })
+})
+
