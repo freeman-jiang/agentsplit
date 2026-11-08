@@ -7,6 +7,7 @@ import { writeFileSync } from 'node:fs'
 import pg from 'pg'
 import { makeDb, serializable } from '../src/server/core/db'
 import { createExpense } from '../src/server/ledger'
+import { unsafeDatabase } from '../test/kit/database'
 import { draft } from '../test/kit/drafts'
 import { seedHousehold } from '../test/kit/seed'
 import { signIn } from '../test/kit/session'
@@ -17,8 +18,8 @@ const secret = process.env['BETTER_AUTH_SECRET']
 const cookieFile = process.argv[2]
 if (!url || !baseUrl || !secret || !cookieFile) throw new Error('Usage: DATABASE_URL=... BASE_URL=... BETTER_AUTH_SECRET=... bun scripts/seed-synthetic.ts <cookie-file>')
 const database = new URL(url).pathname.slice(1)
-// The names that db-reset (flake.nix) accepts: only disposable databases.
-if (!/test|e2e|perf|dev/.test(database)) throw new Error(`Refusing to seed ${database}: synthetic data goes only to test or dev databases`)
+const unsafe = unsafeDatabase(database)
+if (unsafe) throw new Error(`Refusing to seed ${database}: ${unsafe}`)
 
 const pool = new pg.Pool({ connectionString: url, max: 1 })
 const client = await pool.connect()

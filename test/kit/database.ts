@@ -1,18 +1,33 @@
 // The test databases. The global setup (global-setup.ts) migrates the database
 // of TEST_DATABASE_URL once, and that database is the template: each test file
 // works on its own copy, so the files run in parallel. Only a loopback database
-// whose name contains "test" is ever dropped.
+// whose name contains "test" is ever dropped, and never a database the lead uses.
 import pg from 'pg'
 import { runMigrations } from '../../db/migrate'
+import LOCAL_DATABASES from '../../db/local-databases.json'
 import { makeDb, serializable, type Db } from '../../src/server/core/db'
 
+/**
+ * Why a local database must not be dropped or seeded, or null when it may be:
+ * its name must be disposable, as db-reset (flake.nix) requires, and must not
+ * be one that the lead uses (docs/v2/BUILDING.md).
+ */
+export function unsafeDatabase(name: string): string | null {
+  if (LOCAL_DATABASES.protected.includes(name)) return `${name} is a database the lead uses`
+  if (!LOCAL_DATABASES.disposable.some((part) => name.includes(part))) return `${name} is not a disposable database (its name has none of ${LOCAL_DATABASES.disposable.join(', ')})`
+  return null
+}
+
+type Env = Readonly<Record<string, string | undefined>>
+
 /** TEST_DATABASE_URL, or agentsplit_test on the dev shell's PostgreSQL (PGHOST, PGPORT, PGUSER). */
-export function templateUrl(): URL {
-  const env = process.env
+export function templateUrl(env: Env = process.env): URL {
   const url = new URL(env['TEST_DATABASE_URL'] ?? `postgresql://${env['PGUSER'] ?? 'postgres'}@${env['PGHOST'] ?? '127.0.0.1'}:${env['PGPORT'] ?? '5437'}/agentsplit_test`)
   const name = url.pathname.slice(1)
   if (!['127.0.0.1', 'localhost'].includes(url.hostname) || !name.includes('test'))
     throw new Error(`Refusing to use ${url.hostname}/${name}: tests need a loopback database named *test*`)
+  const unsafe = unsafeDatabase(name)
+  if (unsafe) throw new Error(`Refusing to use ${name}: ${unsafe}`)
   // PostgreSQL names have at most 63 bytes, and a copy adds 10.
   if (name.length > 53) throw new Error(`Use a test database name of at most 53 characters, not ${name}`)
   return url

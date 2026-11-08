@@ -28,7 +28,7 @@ Run every command inside the dev shell, from the repository root: `direnv exec .
 - One PostgreSQL 18 server runs for the whole machine at `127.0.0.1:5437`, started with `db-start` from the main checkout (`~/projects/agentsplit`). Do not run `db-start` in a worktree: a second server would fight for the port. If it is not running, report that.
 - Use your own database names, so parallel work does not collide: `agentsplit_test_<area>` for tests (the name must contain `test`) and `agentsplit_dev_<area>` for a dev server.
 - `db-reset <name>` drops and recreates a database whose name contains `test`, `e2e`, `perf` or `dev`.
-- Never touch `agentsplit_dev` or `agentsplit_restore_test`; the lead uses them.
+- Never touch `agentsplit_dev` or `agentsplit_restore_test`; the lead uses them. `db/local-databases.json` lists them with the disposable name parts, and `db-reset`, the test kit and `scripts/seed-synthetic.ts` refuse them (`test/local-databases.test.ts`). A new database to protect goes there.
 - Use synthetic data only (`scripts/seed-synthetic.ts`, or the test kit in `test/kit/`). Never copy the production backups.
 
 ## Dev server
