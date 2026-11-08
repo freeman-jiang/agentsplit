@@ -105,7 +105,8 @@ export function errorText(error: DeclaredError): string {
     case 'NotFound':
       return NOT_FOUND_MESSAGES[error.entity]
     case 'Conflict':
-      return error.message ?? REVISION_CONFLICT
+      // A Conflict made without a message has Error's empty one, and sends it as "".
+      return error.message || REVISION_CONFLICT
     default:
       return error.message
   }
