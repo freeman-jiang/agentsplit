@@ -17,16 +17,16 @@ function Connections() {
   return (
     <main className="mx-auto w-full max-w-3xl space-y-6 px-4 py-8 sm:px-8">
       <Link className="text-sm underline" to="/settings">
-        Account settings
+        ← Account
       </Link>
       <h1 className="font-display text-3xl">Connected apps</h1>
       <p className="text-sm text-muted-foreground">
-        Apps authorized through sign-in, such as ChatGPT. Revoking one stops its access and refresh tokens immediately. Your API keys
-        are managed separately.
+        Apps you connected with OAuth, such as ChatGPT or Claude. Revoking an app ends its access at once. API keys are on the Account
+        page.
       </p>
       <div className="space-y-4">
         {account.connections.length === 0 ? (
-          <p>No connected apps yet.</p>
+          <p>No connected apps.</p>
         ) : (
           <ul className="divide-y rounded-2xl border bg-card px-5">
             {account.connections.map((c) => (

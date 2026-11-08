@@ -51,8 +51,8 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
       <div className="max-w-3xl space-y-10 lg:space-y-8">
         <header className="space-y-6">
           <div>
-            <h1 className="font-display text-3xl">Set up your agent</h1>
-            <p className="mt-2 text-sm text-muted-foreground">Choose one way to connect. Both use your AgentSplit account and current group permissions.</p>
+            <h1 className="font-display text-3xl">Connect an agent</h1>
+            <p className="mt-2 text-sm text-muted-foreground">Choose one way to connect. Both act as you, with your group permissions.</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <a href="#oauth" className="relative space-y-2 rounded-2xl border bg-card p-4 transition-colors hover:bg-accent">
@@ -74,10 +74,10 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
 
         <div className="flex items-center gap-3 rounded-2xl border bg-card p-4">
           <div className="min-w-0 flex-1">
-            <p className="mb-1 text-xs text-muted-foreground">MCP server URL · Use this for either method</p>
+            <p className="mb-1 text-xs text-muted-foreground">MCP server URL · for both ways to connect</p>
             <code className="break-all text-sm">{endpoint}</code>
           </div>
-          <CopyButton text={endpoint} title="Copy MCP endpoint" />
+          <CopyButton text={endpoint} title="Copy MCP server URL" />
         </div>
 
         <section id="oauth" className="scroll-mt-6 space-y-4" aria-labelledby="oauth-title">
@@ -85,7 +85,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
             <h2 id="oauth-title" className="font-display text-xl">
               Connect with OAuth
             </h2>
-            <p className="text-sm text-muted-foreground">No API key needed. Your first Google sign-in creates your account automatically.</p>
+            <p className="text-sm text-muted-foreground">No API key needed. You sign in with Google.</p>
           </div>
           <div className="divide-y border-y">
             <details className="py-1">
@@ -274,13 +274,13 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
               Start with your groups
             </h2>
             <p className="text-sm text-muted-foreground">
-              Ask: “Show my AgentSplit groups and balances.” If you’re new, ask your agent to create a group or accept your invitation link.
-              Invitations must match your Google email; you can accept before or after connecting.
+              Ask: “Show my AgentSplit groups and balances.” Your agent can also create a group or accept an invitation link. An invitation
+              works only for the Google email it was sent to.
             </p>
           </div>
           <div className="divide-y border-y">
             <details className="py-1">
-              <DisclosureSummary>Detailed agent instructions</DisclosureSummary>
+              <DisclosureSummary>Agent instructions</DisclosureSummary>
               <div className="space-y-3 pt-2 pb-4">
                 <CopyButton text={instructions} title="Copy agent instructions" />
                 <p className="whitespace-pre-wrap text-sm leading-relaxed">{instructions}</p>

@@ -11,7 +11,7 @@ export const Route = createFileRoute('/settings/connections/consent')({
   component: Consent,
 })
 
-const UNAUTHORIZED = 'Unable to authorize this connection'
+const UNAUTHORIZED = 'Could not connect the app. Start again from the app.'
 
 type Request = { clientId: string; redirectHost: string; scopes: string[]; claims: string[] }
 
@@ -99,11 +99,11 @@ function ConsentScreen(props: { request: Request; clientName: string | null }) {
     <main className="mx-auto max-w-lg space-y-6 px-4 py-12">
       <h1 className="break-words font-display text-3xl">Connect {props.clientName ?? 'this app'} to AgentSplit</h1>
       <p className="text-sm text-muted-foreground">Signed in as {me?.email}</p>
-      <p className="break-all text-xs text-muted-foreground">Client identity: {props.request.clientId}</p>
+      <p className="break-all text-xs text-muted-foreground">Client ID: {props.request.clientId}</p>
       <p className="break-all text-sm">Returns to: {props.request.redirectHost}</p>
       <p className="text-xs text-muted-foreground">
-        The app supplies its name. Only approve if you started this connection and recognize the destination. For a localhost
-        destination, this is an app running on your computer.
+        The app chooses its own name. Approve only if you started this connection and you know the destination. A localhost
+        destination is an app on your computer.
       </p>
       <div className="space-y-6">
         <div className="space-y-4 rounded-2xl border bg-card p-5">
@@ -111,7 +111,7 @@ function ConsentScreen(props: { request: Request; clientName: string | null }) {
           <ul className="list-disc space-y-3 ps-5 text-sm">
             {Object.entries(SCOPE_TEXT).map(([scope, text]) => scopes.includes(scope) && <li key={scope}>{text}</li>)}
           </ul>
-          {claims.length > 0 && <p className="break-words text-sm">Additional requested profile fields: {claims.join(', ')}.</p>}
+          {claims.length > 0 && <p className="break-words text-sm">Other profile fields: {claims.join(', ')}.</p>}
           {scopes.includes(OAUTH_WRITE_SCOPE) && (
             <label className="flex items-start gap-3 text-sm">
               <input type="checkbox" className="mt-1" checked={allowWrite} onChange={(event) => setAllowWrite(event.target.checked)} />
@@ -123,8 +123,8 @@ function ConsentScreen(props: { request: Request; clientName: string | null }) {
           )}
         </div>
         <p className="text-sm text-muted-foreground">
-          Access follows your current group memberships and roles, including groups you join later. Your Google password and Google
-          tokens are never shared with this app. Revoke access at any time in Account settings.
+          Access follows your group memberships and roles, also in groups you join later. This app never gets your Google password or
+          Google tokens. You can revoke access at any time in Account, under Connected apps.
         </p>
         {error && (
           <p role="alert" className="text-sm text-destructive">
