@@ -431,17 +431,6 @@ async function applyAccess(
   const log = (entry: { type: 'join_group' | 'leave_group' | 'update_group'; data: string; participantId?: string | null }) =>
     recordGroupEvent(tx, { groupId, principal: me, ...entry })
 
-  if (group.kind === 'private') {
-    if (input.action === 'remove_member' || input.action === 'set_role') throw new Forbidden({ message: 'Private expense membership cannot be reassigned.' })
-    if (input.action === 'invite' || input.action === 'bind_member') {
-      const [person] = await tx.execute<{ email: string }>(
-        sql`SELECT email FROM private_people WHERE group_id = ${groupId} AND participant_id = ${input.participantId}`,
-      ).then((r) => r.rows)
-      if (!person || person.email !== normalizeEmail(input.email))
-        throw new Forbidden({ message: 'Only the original people may access this private expense.' })
-    }
-  }
-
   if (input.action === 'join') {
     const invitation = pendingInvitation
     if (!invitation) throw groupAccessDenied()
@@ -472,6 +461,16 @@ async function applyAccess(
   }
 
   if (!membership?.active) throw groupAccessDenied()
+  if (group.kind === 'private') {
+    if (input.action === 'remove_member' || input.action === 'set_role') throw new Forbidden({ message: 'Private expense membership cannot be reassigned.' })
+    if (input.action === 'invite' || input.action === 'bind_member') {
+      const [person] = await tx.execute<{ email: string }>(
+        sql`SELECT email FROM private_people WHERE group_id = ${groupId} AND participant_id = ${input.participantId}`,
+      ).then((r) => r.rows)
+      if (!person || person.email !== normalizeEmail(input.email))
+        throw new Forbidden({ message: 'Only the original people may access this private expense.' })
+    }
+  }
   if (input.action !== 'leave' && membership.role !== 'admin') throw new Forbidden({ message: 'Only group admins can manage access' })
 
   if (input.action === 'invite' || input.action === 'bind_member') {

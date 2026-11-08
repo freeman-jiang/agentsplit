@@ -21,6 +21,7 @@ import { listActivities } from '~/server/history'
 import { createExpense, getGroup } from '~/server/ledger'
 import { requireMember, type Principal } from '~/server/core/access'
 import { statsOverview } from '~/server/stats'
+import { GROUP_DENIED } from '~/shared/errors'
 import { LIMITS } from '~/shared/limits'
 import { testDatabase, type TestDatabase } from '../kit/database'
 import { draft } from '../kit/drafts'
@@ -518,5 +519,12 @@ describe('roles, removal and leaving', () => {
     await database.tx((db) => db.insert(activities).values({ id: `${g.id}-v1`, groupId: g.id, type: 'update_group', data: 'Invitation created: mom@example.com', actorUserId: alice.userId, actorName: 'Alice', source: 'web' }))
     const page = await database.tx((db) => listActivities(db, { principal: alice, groupId: g.id, limit: 10 }))
     expect(page.activities.filter((a) => a.type === 'update_group').map((a) => a.data)).toEqual(['Invitation created', 'Invitation created for Mom: Jane'])
+  })
+
+  it('answers a non-member of a private context with the group denial, before its own rules', async () => {
+    const context = await privateContext(alice, `private-denied-${alice.userId}`)
+    const friend = (await details(alice, context)).people.find((p) => p.name === 'Friend')!
+    await expect(access(mallory, { action: 'remove_member', groupId: context, userId: alice.userId })).rejects.toMatchObject({ message: GROUP_DENIED })
+    await expect(access(mallory, { action: 'invite', groupId: context, email: 'mallory@example.com', participantId: friend.id })).rejects.toMatchObject({ message: GROUP_DENIED })
   })
 })
