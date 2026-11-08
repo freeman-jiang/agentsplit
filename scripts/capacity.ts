@@ -20,7 +20,12 @@
 //   --cores, --page-cache-mb, --disk-gb, --read-iops, --write-iops, --free-egress-gb,
 //   --egress-price, --peak-factor, --packet-overhead, --backup-pulls, --dumps-kept,
 //   --dumps-per-month     the target and the assumptions of the report
+//   --idle-settle, --idle-seconds
+//                         the wait after the warm-up and the idle time measured (default 30, 60)
 //   --skip-build          reuse dist/ from an earlier `bun run build`
+//   --cpu-prof DIR        write the server's CPU profile (Bun's --cpu-prof, with its
+//                         Markdown summary) to DIR; the sampler costs CPU, so its
+//                         numbers are not the capacity
 // It creates the database agentsplit_capacity in its own PostgreSQL instance in a
 // temporary directory, and removes the instance, the server and the directory
 // at the end, also when it fails.
@@ -72,7 +77,8 @@ const FLAGS = {
   'backup-pulls': number(0),
   'dumps-kept': number(0),
   'dumps-per-month': number(0),
-  'idle-seconds': number(20),
+  'idle-settle': number(30),
+  'idle-seconds': number(60),
 } as const
 
 /** The month of one person. Each flag of USAGE overrides its value. */
@@ -96,6 +102,7 @@ const parsed = parseArgs({
     profile: { type: 'string', default: 'heavy' },
     calibrate: { type: 'boolean', default: false },
     'skip-build': { type: 'boolean', default: false },
+    'cpu-prof': { type: 'string' },
     help: { type: 'boolean', default: false },
   },
   strict: true,
@@ -104,7 +111,7 @@ const parsed = parseArgs({
 if (parsed.values.help) {
   console.log(
     [
-      'bun scripts/capacity.ts [--calibrate] [--skip-build] [--profile heavy|typical]',
+      'bun scripts/capacity.ts [--calibrate] [--skip-build] [--profile heavy|typical] [--cpu-prof <dir>]',
       ...Object.keys(USAGE).map((name) => `  --${name} <number>  (heavy ${PROFILES.heavy[name as Usage]}, typical ${PROFILES.typical[name as Usage]})`),
       ...Object.entries(FLAGS).map(([name, f]) => `  --${name} <number>  (default ${f.default})`),
     ].join('\n'),
@@ -366,7 +373,9 @@ try {
   log('Starting the server (bun --no-install dist/server/server.js)')
   serverLog = join(work, 'server.log')
   const out = openSync(serverLog, 'w')
-  const server = Bun.spawn(['bun', '--no-install', 'dist/server/server.js'], {
+  const cpuProfDir = parsed.values['cpu-prof']
+  const profiler = cpuProfDir ? ['--cpu-prof', '--cpu-prof-md', `--cpu-prof-dir=${resolve(cpuProfDir)}`] : []
+  const server = Bun.spawn(['bun', '--no-install', ...profiler, 'dist/server/server.js'], {
     env: {
       PATH: process.env['PATH'],
       ...host.serverEnvironment,
@@ -440,7 +449,10 @@ try {
   // Compact the tables, so the sizes before and after count live rows, not the dead ones of the seed.
   // ANALYZE leaves autovacuum nothing to do for the seed's rows during the idle time.
   await admin.query('VACUUM (FULL, ANALYZE)')
-  await Bun.sleep(5000)
+  // The server's collector and JIT stay busy after the warm-up. That tail belongs to the warm-up, so the idle time
+  // starts after it: a 20-second window 5 seconds after the warm-up measured from 3.5 to 6.5 ms/s for the same code.
+  log(`Letting the server settle for ${flag('idle-settle')} s`)
+  await Bun.sleep(flag('idle-settle') * 1000)
 
   const counters = (): Counters => ({ server: processCpuSeconds(server.pid), postgres: instanceCpuSeconds(instance.postmaster), at: performance.now(), exchanges: edge.exchanges.length })
   let peakPostgres = 0
