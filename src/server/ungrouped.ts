@@ -7,7 +7,7 @@ import { and, eq } from 'drizzle-orm'
 import { expenses, groups, memberships, participants, privateContexts, privatePeople } from '../../db/schema/app'
 import { Conflict, Forbidden, Invalid, Unauthorized, type PrivatePerson as PrivatePersonSchema } from '../shared/api'
 import type { ExpenseDraft } from '../shared/expense-rules'
-import { EMAIL, normalizeEmail, trimmedName } from '../shared/groups'
+import { EMAIL, normalizeEmail, participantNameOf, trimmedName } from '../shared/groups'
 import { LIMITS, participantLimitMessage } from '../shared/limits'
 import { requireMember, type Principal } from './core/access'
 import { groupSnapshot, PRIVATE_CONTEXT_TEXT, PRIVATE_INVITATION_RENEWED, recordGroupEvent } from './activity'
@@ -49,14 +49,14 @@ export async function createUngroupedExpense(
     if (person.kind === 'account') {
       const account = known.find((c) => c.id === person.userId)
       if (!account) throw new Invalid({ message: 'Choose an existing contact or invite someone by email.', field: 'people' })
-      return { localId: person.id, name: account.name, email: normalizeEmail(account.email), userId: account.id as string | null }
+      return { localId: person.id, name: participantNameOf(account.name), email: normalizeEmail(account.email), userId: account.id as string | null }
     }
     const name = trimmedName(person.name)
     const email = normalizeEmail(person.email)
     if (name === null || !EMAIL.test(email)) throw new Invalid({ message: 'Enter a name and a valid email address.', field: 'people' })
     // An email that belongs to a known contact links that account; nobody needs an invitation then.
     const account = known.find((c) => normalizeEmail(c.email) === email)
-    return { localId: person.id, name: account?.name ?? name, email, userId: account?.id ?? null }
+    return { localId: person.id, name: account ? participantNameOf(account.name) : name, email, userId: account?.id ?? null }
   })
   // A common prefix keeps the people's local order and makes reusable labels ("me", "friend") unique.
   const stored = people.map((p) => ({ ...p, id: `${data.expenseId}_${p.localId}` }))

@@ -68,6 +68,9 @@ export const trimmedName = (text: string) => {
   return name.length >= 1 && name.length <= LIMITS.nameMax ? name : null
 }
 
+/** The participant name taken from an account's name: trimmed and cut to LIMITS.nameMax, or "Member" when empty (P-GROUP-27, -30). */
+export const participantNameOf = (accountName: string) => accountName.trim().slice(0, LIMITS.nameMax) || 'Member'
+
 /** An invitation email: something@something.something, without spaces. */
 export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 /** The form of an email that invitations and accounts compare: trimmed and lowercase. */
