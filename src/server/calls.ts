@@ -4,10 +4,10 @@
 // into a declared answer. The cause of a failure that is not an answer is
 // logged here and never sent.
 import { Conflict, Invalid, Unavailable } from '../shared/api'
-import { UNAVAILABLE } from '../shared/errors'
+import { BUSY, UNAVAILABLE } from '../shared/errors'
 import { tooManyWritesMessage } from '../shared/limits'
 import type { Principal } from './core/access'
-import { serializable, sqlState, type Db } from './core/db'
+import { retryable, serializable, sqlState, type Db } from './core/db'
 import { isDomainError, type DomainError } from './core/errors'
 import { takeWrite } from './rate-limit'
 
@@ -41,6 +41,11 @@ export function answerOf(error: unknown, call: CallName): CallError {
   if (refused) {
     console.warn(`${call.name}: the database refused the request`, { requestId: call.requestId }, error)
     return refused()
+  }
+  // serializable (core/db.ts) used all its attempts: the write rolled back, so the caller can send it again.
+  if (retryable(error)) {
+    console.warn(`${call.name}: concurrent writes conflicted on every attempt`, { requestId: call.requestId }, error)
+    return new Invalid({ message: BUSY, reason: 'busy' })
   }
   console.error(`${call.name} failed`, { requestId: call.requestId }, error)
   return new Unavailable({ message: UNAVAILABLE })
