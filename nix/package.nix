@@ -131,8 +131,12 @@ stdenvNoCC.mkDerivation {
     mkdir -p "$out/share/agentsplit" "$out/bin"
     cp -R dist/server dist/client dist/migrations "$out/share/agentsplit/"
     # The settings that the Dockerfile sets; the service adds the rest.
+    # --no-install: the bundle leaves optional imports to runtime, such as Better
+    # Auth's import("@opentelemetry/api") in a try/catch. With no node_modules,
+    # Bun would install them, and on the service's read-only file system that
+    # stops the process ("bun is unable to write files: ReadOnlyFileSystem").
     makeWrapper ${lib.getExe bun} "$out/bin/agentsplit-server" \
-      --add-flags "$out/share/agentsplit/server/server.js" \
+      --add-flags "--no-install $out/share/agentsplit/server/server.js" \
       --set-default NODE_ENV production \
       --set-default TZ UTC \
       --set-default CLIENT_DIR "$out/share/agentsplit/client" \
