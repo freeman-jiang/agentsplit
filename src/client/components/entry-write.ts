@@ -57,7 +57,7 @@ export type EntryTarget = {
 export type GroupEntryTarget = EntryTarget & { readonly groupId: string }
 
 /** A write whose answer was lost may have happened; the form keeps its key, so a retry cannot save twice. */
-const UNCONFIRMED = 'The server did not confirm the change. Try again: a retry cannot save it twice.'
+const UNCONFIRMED = 'The server did not confirm the change. Try again. It will not be saved twice.'
 
 /** Creates or updates an entry of an existing group or private context. */
 const saveInGroup =

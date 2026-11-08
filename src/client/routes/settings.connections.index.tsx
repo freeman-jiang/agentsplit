@@ -42,8 +42,9 @@ function Connections() {
                       Revoke access
                     </Button>
                   }
-                  title="Revoke this app’s access to AgentSplit?"
-                  description="It must connect again to regain access."
+                  title="Revoke this app’s access?"
+                  description="To use it again, connect it again."
+                  confirm="Revoke access"
                   pending="Revoking…"
                   onConfirm={async () => {
                     await rpc((api) => api('account.revokeConnection', { clientId: c.clientId }))

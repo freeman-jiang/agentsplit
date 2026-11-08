@@ -147,7 +147,7 @@ test('a tab that fails to load shows the group error under the tabs, with a refe
   const logged: string[] = []
   page.on('console', (message) => void (message.type() === 'error' && logged.push(message.text())))
   await page.getByRole('link', { name: 'Stats', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Couldn’t load this group' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Could not load this group' })).toBeVisible()
   // A short reference to quote, which the console line with the error repeats (P-PWA-36).
   const reference = (await page.getByTestId('error-reference').innerText()).replace('Reference: ', '')
   expect(reference).toMatch(/^[0-9a-f]{8}$/)
@@ -157,14 +157,14 @@ test('a tab that fails to load shows the group error under the tabs, with a refe
   // Retry loads again once the server answers.
   await page.unroute('**/api/rpc')
   await page.getByRole('button', { name: 'Try again' }).click()
-  await expect(page.getByRole('heading', { name: 'Couldn’t load this group' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Could not load this group' })).toHaveCount(0)
 })
 
 test('a failure the server answered shows the server’s request ID as the reference (P-PWA-36)', async ({ page, context, baseURL }) => {
   const h = await seedHousehold(context, baseURL ?? '')
   const answered = page.waitForResponse((response) => response.url().endsWith('/api/rpc') && (response.request().postData() ?? '').includes('"expenses.detail"'))
   await page.goto(`/${h.slug}/expenses/${h.groupId}-missing/edit`)
-  await expect(page.getByRole('heading', { name: 'Couldn’t load this group' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Could not load this group' })).toBeVisible()
   const requestId = (await answered).headers()['x-request-id'] ?? ''
   expect(requestId).toMatch(/^[0-9a-f-]{36}$/)
   await expect(page.getByTestId('error-reference')).toHaveText(`Reference: ${requestId}`)

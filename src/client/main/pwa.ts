@@ -17,7 +17,7 @@ export async function registerServiceWorker() {
   })
   const promptUpdate = (worker: ServiceWorker) =>
     toast('Update available', {
-      description: 'A new version of AgentSplit is available.',
+      description: 'Reload to use the new version.',
       duration: Infinity,
       action: { label: 'Reload', onClick: () => worker.postMessage('SKIP_WAITING') },
     })

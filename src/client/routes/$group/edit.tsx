@@ -368,7 +368,8 @@ function People({ details, onPeopleSaved }: { details: Details; onPeopleSaved: P
                     </Button>
                   }
                   title={`Permanently link ${member.email} to ${people.find((p) => p.id === bindings[member.userId])?.name}?`}
-                  description="This identity cannot be switched later."
+                  description="You cannot change this later."
+                  confirm="Link"
                   pending="Linking…"
                   onConfirm={async () => {
                     const participantId = bindings[member.userId]
@@ -420,6 +421,7 @@ function People({ details, onPeopleSaved }: { details: Details; onPeopleSaved: P
           }
           title="Leave this group?"
           description="You will need a new invitation to return."
+          confirm="Leave group"
           pending="Leaving…"
           onConfirm={() => actions.confirmed.access({ action: 'leave', groupId: details.id })}
         />
@@ -428,7 +430,8 @@ function People({ details, onPeopleSaved }: { details: Details; onPeopleSaved: P
         open={removing !== null}
         onOpenChange={(open) => !open && setRemoving(null)}
         title={`Remove ${removing?.name ?? ''}'s access?`}
-        description="Their expenses will remain."
+        description="Their expenses stay in the group."
+        confirm="Remove access"
         pending="Removing…"
         onConfirm={async () => {
           if (removing) await actions.confirmed.access({ action: 'remove_member', groupId: details.id, userId: removing.userId })
