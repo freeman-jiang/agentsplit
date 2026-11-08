@@ -8,6 +8,7 @@ import { Category } from './expenses'
 import { CurrencyCodeSchema, DecimalOutput } from '../money'
 import {
   CalendarDate,
+  CallerTotals,
   CategoryId,
   EmailInput,
   Expense,
@@ -102,8 +103,8 @@ export const AccountBalances = Schema.Struct({
       amount: DecimalOutput,
     }),
   ),
-  /** The rows summed per currency, sorted by code. Currencies are never added together. */
-  totals: Schema.Array(Schema.Struct({ currency: CurrencyCodeSchema, amount: DecimalOutput })),
+  /** The rows summed per currency. */
+  totals: CallerTotals,
   /** Groups where the caller has no linked participant; the totals leave them out. */
   unboundGroupIds: Schema.Array(Schema.String),
 })

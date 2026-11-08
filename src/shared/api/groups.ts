@@ -6,8 +6,8 @@ import { Rpc, RpcGroup } from 'effect/rpc'
 import { EMAIL } from '../groups'
 import { SECRET_TOKEN } from '../ids'
 import { LIMITS } from '../limits'
-import { CurrencyCodeSchema, DecimalOutput } from '../money'
-import { EmailInput, GroupKindSchema, Id, IdempotencyKey, Offset, ReadError, Timestamp, RoleSchema, WriteError } from './core'
+import { CurrencyCodeSchema } from '../money'
+import { CallerTotals, EmailInput, GroupKindSchema, Id, IdempotencyKey, Offset, ReadError, Timestamp, RoleSchema, WriteError } from './core'
 
 export const GroupName = Schema.String.check(Schema.isTrimmed(), Schema.isBetweenLength(LIMITS.groupNameMin, LIMITS.nameMax))
 export const Information = Schema.String.check(Schema.isMaxLength(LIMITS.informationMax))
@@ -33,7 +33,7 @@ export const Directory = Schema.Struct({
   /** Pass back as `offset` for the next page; null at the end. */
   nextOffset: Schema.NullOr(Schema.Number),
   /** The caller's net balance per currency across every group where they have a participant. */
-  totals: Schema.Array(Schema.Struct({ currency: CurrencyCodeSchema, net: DecimalOutput })),
+  totals: CallerTotals,
   /** Groups the caller belongs to without a linked participant; their balances are not in `totals`. */
   unboundGroupCount: Schema.Number,
 })

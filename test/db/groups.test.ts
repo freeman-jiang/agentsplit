@@ -321,7 +321,7 @@ describe('directory', () => {
     expect(dir.unboundGroupCount).toBe(0)
     // The directory card and the dashboard card show the same total (P-BAL-106).
     const account = await database.tx((db) => accountBalances(db, { principal: owner }))
-    expect(account.totals.map((t) => ({ currency: t.currency, net: t.amount }))).toEqual(dir.totals)
+    expect(account.totals).toEqual(dir.totals)
     expect(account.unboundGroupIds).toHaveLength(dir.unboundGroupCount)
     expect(dir.nextOffset).toBeNull()
   })
