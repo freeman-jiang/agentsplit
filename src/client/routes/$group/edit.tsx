@@ -30,6 +30,9 @@ export const Route = createFileRoute('/$group/edit')({
 
 type Details = typeof GroupDetails.Type
 
+/** A people change saved on this page: the revision it expected, and the one it made. */
+type PeopleSaved = (saved: { expected: number; revision: number }) => void
+
 function Settings() {
   const { group } = Route.useParams()
   const { groupId } = Route.useRouteContext()
@@ -37,30 +40,52 @@ function Settings() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const refresh = () => afterWrite({ queryClient, scope: 'group', groupId })
+  // The settings as the form opened them, and the revision its save names. A
+  // refetch replaces neither, so a typed draft stays, and a save after someone
+  // else's change answers with the conflict text. A people change on this page
+  // moves the revision on without reopening the form.
+  const [state, setState] = useState({ details: data, revision: data.revision })
+  // Another group's settings on the same route open as they are now.
+  const opened = state.details.id === data.id ? state : { details: data, revision: data.revision }
+  if (opened !== state) setState(opened)
+  const reopen = (details: Details) => setState({ details, revision: details.revision })
+  const reload = async () => {
+    try {
+      reopen(await queryClient.fetchQuery(groupDetailsQuery(groupId)))
+    } catch (cause) {
+      toast.error(describeError(cause).message)
+    }
+  }
+  const settings = opened.details
   return (
     <div className="space-y-6">
       {/* Only admins can change settings, so members see only the People section (P-GROUP-59). */}
       {data.role === 'admin' && (
         <GroupForm
-          key={data.revision}
+          key={`${settings.id}:${settings.revision}`}
           mode="edit"
-          initial={{ name: data.name, slug: data.slug ?? '', information: data.information, defaultCurrency: data.defaultCurrency }}
+          initial={{ name: settings.name, slug: settings.slug ?? '', information: settings.information, defaultCurrency: settings.defaultCurrency }}
           onSubmit={async (values) => {
             const result = await rpc((api) =>
               api('groups.update', {
                 groupId: data.id,
-                expectedRevision: data.revision,
+                expectedRevision: opened.revision,
                 idempotencyKey: newIdempotencyKey(),
                 changes: { ...values, slug: values.slug.trim() || null },
               }),
             ).finally(refresh)
+            // The form opens the saved settings as the server stored them; if that read failed, it keeps the values just saved.
+            const fresh = queryClient.getQueryData(groupDetailsQuery(groupId).queryKey)
+            if (fresh && fresh.revision >= result.revision) reopen(fresh)
+            else setState((o) => ({ ...o, revision: result.revision }))
             toast.success('Group settings saved')
             // A new or removed slug changes the page's URL (P-GROUP-104).
             if (groupRef(result) !== group) await navigate({ to: '/$group/edit', params: { group: groupRef(result) }, replace: true })
           }}
+          onReload={() => void reload()}
         />
       )}
-      <People details={data} />
+      <People details={data} onPeopleSaved={(saved) => setState((o) => (o.revision === saved.expected ? { ...o, revision: saved.revision } : o))} />
     </div>
   )
 }
@@ -70,7 +95,7 @@ function Settings() {
  * the top of the section; a confirmed action (`confirmed`) rejects instead, so
  * its dialog stays open and says why.
  */
-function useActions(details: Details) {
+function useActions(details: Details, onPeopleSaved: PeopleSaved) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
@@ -100,8 +125,12 @@ function useActions(details: Details) {
     return result
   }
   const accessScope = (result: { joined: boolean }): WriteScope => (result.joined ? group : { scope: 'left', groupId: details.id })
-  const savePeople = (participants: NonNullable<(typeof GroupChanges.Type)['participants']>) => () =>
-    rpc((api) => api('groups.update', { groupId: details.id, expectedRevision: details.revision, idempotencyKey: newIdempotencyKey(), changes: { participants } }))
+  const savePeople = (participants: NonNullable<(typeof GroupChanges.Type)['participants']>) => async () => {
+    const expected = details.revision
+    const result = await rpc((api) => api('groups.update', { groupId: details.id, expectedRevision: expected, idempotencyKey: newIdempotencyKey(), changes: { participants } }))
+    onPeopleSaved({ expected, revision: result.revision })
+    return result
+  }
   return {
     busy,
     error,
@@ -114,8 +143,8 @@ function useActions(details: Details) {
   }
 }
 
-function People({ details }: { details: Details }) {
-  const actions = useActions(details)
+function People({ details, onPeopleSaved }: { details: Details; onPeopleSaved: PeopleSaved }) {
+  const actions = useActions(details, onPeopleSaved)
   const admin = details.role === 'admin'
   const busy = actions.busy
   const [inviting, setInviting] = useState<string | null>(null)
