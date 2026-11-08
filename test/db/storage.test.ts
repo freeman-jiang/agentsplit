@@ -13,6 +13,7 @@ import { downloadReceipt } from '~/server/receipt-routes'
 import { NEW_URL_PREFIX } from '~/server/receipts'
 import { deleteReceipts, purgeDeletedReceipts } from '~/server/storage'
 import { LIMITS, storageFullMessage } from '~/shared/limits'
+import { receiptDownloadPath } from '~/shared/paths'
 import { draft, mcpExpense } from '../kit/drafts'
 import { counter } from '../kit/ids'
 import { png } from '../kit/images'
@@ -206,5 +207,16 @@ describe('permanent receipt deletion', () => {
     expect(h.storage.objects.has(keyOf(uploaded.url))).toBe(false)
     const purged = await h.withDb(async (db) => (await db.execute<{ purged: boolean }>(sql`SELECT purged_at IS NOT NULL AS purged FROM deleted_receipts WHERE receipt_id = ${uploaded.id}`)).rows[0])
     expect(purged).toEqual({ purged: true })
+  })
+})
+
+describe('receipt downloads', () => {
+  it('refuses a download without a session or an API key before reading storage', async () => {
+    const g = await groupOf('ursula')
+    const uploaded = (await (await upload({ userId: 'ursula', groupId: g })).json()) as { url: string }
+    const reads = h.storage.calls.length
+    const anonymous = await h.fetch(new Request(`${BASE}${receiptDownloadPath({ groupId: g, url: uploaded.url })}`))
+    expect(anonymous.status).toBe(401)
+    expect(h.storage.calls.slice(reads)).toEqual([])
   })
 })

@@ -4,7 +4,10 @@
 // items are named in docs/v2/parity/mcp.md.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { ExpenseCreateArgument } from '~/server/mcp/tools/expenses'
+import { exportCsv, exportJson } from '~/server/export'
+import { CURRENCY_CODES } from '~/shared/currencies'
 import { mcpExpense } from '../kit/drafts'
+import { principal } from '../kit/people'
 import { id21 } from '../kit/ids'
 import { checked as checkedCall, failure, type Harness, startHarness } from './harness'
 
@@ -438,12 +441,14 @@ describe('stats, export, reference data and recurrence', () => {
     expect(plain).not.toHaveProperty('totalParticipantSpendings')
   })
 
-  it('exports the group as the export RPC does', async () => {
+  it('exports the group with the content of the web exports', async () => {
+    const web = { principal: principal('alice'), groupId: 'g1' }
     const json = await checked('export_group', { groupId: 'g1' })
     expect(json).toMatchObject({ filename: 'agentsplit-g1.json', contentType: 'application/json' })
-    expect(JSON.parse(json['content'] as string)).toMatchObject({ id: 'g1', name: 'Home' })
+    expect(JSON.parse(json['content'] as string)).toEqual(JSON.parse((await h.withDb((db) => exportJson(db, web))).content))
     const csv = await checked('export_group', { groupId: 'g1', format: 'csv' })
     expect(csv).toMatchObject({ filename: 'agentsplit-g1.csv', contentType: 'text/csv' })
+    expect(csv['content']).toBe((await h.withDb((db) => exportCsv(db, web))).content)
     expect((await failure(h, { name: 'export_group', args: { groupId: 'g2' }, headers: alice })).code).toBe('FORBIDDEN')
   })
 
@@ -452,7 +457,7 @@ describe('stats, export, reference data and recurrence', () => {
     expect(reference['splitModes']).toEqual(['EVENLY', 'BY_SHARES', 'BY_PERCENTAGE', 'BY_AMOUNT'])
     expect(reference['recurrenceRules']).toEqual(['NONE', 'DAILY', 'WEEKLY', 'MONTHLY'])
     expect((reference['currencies'] as { code: string; decimalPlaces: number }[]).find((c) => c.code === 'JPY')?.decimalPlaces).toBe(0)
-    expect(reference['currencies']).toHaveLength(34)
+    expect(reference['currencies']).toHaveLength(CURRENCY_CODES.length)
   })
 
   it('creates due occurrences only in the given group, once', async () => {
@@ -460,13 +465,20 @@ describe('stats, export, reference data and recurrence', () => {
     const { groupId, pa } = hh
     const headers = hh.owner.headers
     const start = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10)
-    await create({ groupId, headers, expense: mcpExpense({ paidBy: pa, people: [pa], title: 'Coffee', expenseDate: start, amount: '3', recurrenceRule: 'DAILY' }) })
-    const before = await checked('list_expenses', { groupId, filter: 'Coffee' }, headers)
-    expect(before['expenses']).toHaveLength(1)
+    const coffee = (data: { groupId: string; payer: string }) =>
+      create({ groupId: data.groupId, headers, expense: mcpExpense({ paidBy: data.payer, people: [data.payer], title: 'Coffee', expenseDate: start, amount: '3', recurrenceRule: 'DAILY' }) })
+    const coffees = async (id: string) => ((await checked('list_expenses', { groupId: id, filter: 'Coffee' }, headers))['expenses'] as unknown[]).length
+    // The same owner's other group has a series that is due too.
+    const other = `${groupId}-other`
+    await h.group({ id: other, people: [`${other}-pa`], members: [[hh.owner.userId, `${other}-pa`, 'admin']] })
+    await coffee({ groupId, payer: pa })
+    await coffee({ groupId: other, payer: `${other}-pa` })
+    expect(await coffees(groupId)).toBe(1)
     const denied = await failure(h, { name: 'process_recurring_expenses', args: { groupId: 'g2' }, headers })
     expect(denied.code).toBe('FORBIDDEN')
     const processed = await checked('process_recurring_expenses', { groupId }, headers)
     expect(processed['createdExpenseIds']).toHaveLength(2)
     expect(await checked('process_recurring_expenses', { groupId }, headers)).toEqual({ createdExpenseIds: [] })
+    expect(await coffees(other)).toBe(1)
   })
 })

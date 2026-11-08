@@ -11,7 +11,6 @@ import { LIMITS } from '~/shared/limits'
 import { listBalances } from '~/server/balances'
 import { makeDb, sqlState } from '~/server/core/db'
 import type { Principal } from '~/server/core/access'
-import { jsonError } from '~/server/core/errors'
 import type { StoredDocument } from '~/server/expense-read'
 import { locateExpense, getExpenseDetail, listCategories } from '~/server/expenses'
 import { createExpense, deleteExpense, getGroup, listExpenses, updateExpense } from '~/server/ledger'
@@ -347,16 +346,13 @@ describe('recurring expenses', () => {
 })
 
 describe('receipt endpoints', () => {
-  /** The caller as app.ts reads it (httpReader); without a principal, its 401. */
-  const as = (principal: Principal | null) => (principal ? { principal } : { response: jsonError({ status: 401, message: 'Authentication required' }) })
   const get = (params: Record<string, string>) => new URL(`${BASE}/api/receipts?${new URLSearchParams(params)}`)
 
-  it('checks the reference, the session and the membership before reading storage', async () => {
+  it('checks the reference and the membership before reading storage', async () => {
     const { bucket, calls } = fakeBucket()
     await database.withDb(async (db) => {
-      const download = (reader: Principal | null, params: Record<string, string>) => downloadReceipt({ db, bucket, reader: as(reader), url: get(params) })
+      const download = (reader: Principal, params: Record<string, string>) => downloadReceipt({ db, bucket, reader: { principal: reader }, url: get(params) })
       expect((await download(alice, { groupId: home.groupId })).status).toBe(400)
-      expect((await download(null, { groupId: home.groupId, url: doc1.url })).status).toBe(401)
       const denied = await download(mallory, { groupId: home.groupId, url: doc1.url })
       expect(denied.status).toBe(403)
       expect(denied.headers.get('cache-control')).toBe('no-store')
@@ -402,7 +398,7 @@ describe('receipt endpoints', () => {
       // The detected type wins over the declared image/jpeg.
       expect([...objects.values()].map((o) => o.contentType)).toEqual(['image/png'])
 
-      const image = await downloadReceipt({ db, bucket, reader: as(bob), url: get({ groupId: home.groupId, url: stored.url }) })
+      const image = await downloadReceipt({ db, bucket, reader: { principal: bob }, url: get({ groupId: home.groupId, url: stored.url }) })
       expect(image.status).toBe(200)
       expect(Object.fromEntries(image.headers)).toMatchObject({
         'content-type': 'image/png',
@@ -423,7 +419,7 @@ describe('receipt endpoints', () => {
     await h.remove({ expenseId, expectedRevision: 1 })
     const { bucket, objects } = fakeBucket()
     objects.set(`receipts/${id21('deleted', 1)}.jpg`, { bytes: new Uint8Array([1]), contentType: 'image/jpeg' })
-    const response = await database.withDb((db) => downloadReceipt({ db, bucket, reader: as(bob), url: get({ groupId: h.groupId, url: doc.url }) }))
+    const response = await database.withDb((db) => downloadReceipt({ db, bucket, reader: { principal: bob }, url: get({ groupId: h.groupId, url: doc.url }) }))
     expect(response.status).toBe(200)
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1]))
   })
