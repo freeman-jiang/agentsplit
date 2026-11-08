@@ -1,13 +1,13 @@
 // The fair-use limits other than receipt storage, against a real database. A
 // broken write budget, sign-up cap, key cap or registration limit fails
 // silently until someone abuses it, so each has a test.
-import { APIError } from 'better-call'
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { user } from '../../db/schema/auth'
-import { checkSignUpCap } from '~/server/auth/auth'
+import { createAuth } from '~/server/auth/auth'
 import { takeWrite } from '~/server/rate-limit'
 import { apiKeyLimitMessage, LIMITS, SIGN_UP_LIMIT_CODE } from '~/shared/limits'
+import { testSettings } from '../kit/config'
 import { BASE, failure, startHarness, type Harness } from './harness'
 
 let h: Harness
@@ -45,15 +45,19 @@ describe('other limits', () => {
     expect(row?.name).toBe('ines')
   })
 
-  it('caps new accounts per 24 hours, and older accounts do not count', async () => {
+  it('caps new accounts per 24 hours when Better Auth creates one, and older accounts do not count', async () => {
     const recent = await h.withDb(async (db) => (await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM "user" WHERE created_at > now() - interval '24 hours'`)).rows[0]?.n ?? 0)
-    await expect(h.withDb((db) => checkSignUpCap(db, recent + 1))).resolves.toBeUndefined()
-    const refused = await h.withDb((db) => checkSignUpCap(db, recent)).catch((error: unknown) => error)
-    expect(refused).toBeInstanceOf(APIError)
-    expect(refused).toMatchObject({ body: { code: SIGN_UP_LIMIT_CODE } })
-    const old = new Date(Date.now() - 2 * 86_400_000)
-    await h.withDb((db) => db.insert(user).values({ id: 'old-user', name: 'Old', email: 'old@example.com', emailVerified: true, createdAt: old, updatedAt: old }))
-    await expect(h.withDb((db) => checkSignUpCap(db, recent + 1))).resolves.toBeUndefined()
+    /** A sign-up as Better Auth makes it, through its database hooks, with room for one more account than there is now. */
+    const signUp = (email: string) =>
+      h.withDb(async (db) => {
+        const auth = createAuth({ ...testSettings({ signUpDailyLimit: recent + 1 }), db })
+        return (await auth.$context).internalAdapter.createUser({ email, name: 'New', emailVerified: true }, { method: 'oauth' })
+      })
+    await expect(signUp('first-new@example.com')).resolves.toMatchObject({ email: 'first-new@example.com' })
+    await expect(signUp('second-new@example.com')).rejects.toMatchObject({ body: { code: SIGN_UP_LIMIT_CODE } })
+    // The first account, created two days ago instead, no longer counts.
+    await h.withDb((db) => db.update(user).set({ createdAt: new Date(Date.now() - 2 * 86_400_000) }).where(eq(user.email, 'first-new@example.com')))
+    await expect(signUp('second-new@example.com')).resolves.toMatchObject({ email: 'second-new@example.com' })
   })
 
   it('caps API keys per account, also for keys made by a server call', async () => {

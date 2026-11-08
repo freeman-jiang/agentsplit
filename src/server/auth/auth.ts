@@ -35,7 +35,7 @@ const cimdFetch: ClientMetadataResourceFetch = async (input, init) => {
  * Better Auth creates a user, so existing accounts always sign in. Concurrent
  * sign-ups at the cap can pass it by a few; it is a brake on abuse, not a quota.
  */
-export async function checkSignUpCap(db: Db, limit: number) {
+async function checkSignUpCap(db: Db, limit: number) {
   const result = await db.execute<{ count: number }>(sql`SELECT count(*)::int AS count FROM "user" WHERE created_at > now() - interval '24 hours'`)
   if ((result.rows[0]?.count ?? 0) >= limit) throw new APIError('FORBIDDEN', { code: SIGN_UP_LIMIT_CODE, message: signUpLimitMessage })
 }
