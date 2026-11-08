@@ -12,3 +12,7 @@ it('reserves the first segment of every root route of the client', () => {
   expect(segments.size).toBeGreaterThan(0)
   for (const segment of segments) expect(slugProblem(segment), segment).toBe('This URL is reserved.')
 })
+
+it('reserves the client build’s chunk folder, which the server answers itself', () => {
+  expect(slugProblem('assets')).toBe('This URL is reserved.')
+})
