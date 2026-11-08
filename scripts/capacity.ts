@@ -7,7 +7,7 @@
 // and the latest results.
 //
 // Run it inside the dev shell (it needs initdb, db-reset, nix and Chromium):
-//   direnv exec . bun scripts/capacity.ts [--users 60] [--target-score <score>]
+//   direnv exec . bun scripts/capacity.ts [--profile heavy|typical] [--users 60] [--target-score <score>]
 // --calibrate prints this machine's CPU score and exits; it touches no network
 // and no database. Run the same calibration on the target and pass its score
 // as --target-score (or the ratio of the two scores as --cpu-scale):
@@ -55,11 +55,6 @@ const FLAGS = {
   users: number(60),
   concurrency: number(6),
   seed: number(42),
-  opens: number(30),
-  'web-expenses': number(5),
-  'agent-sessions': number(10),
-  'agent-reads': number(30),
-  'agent-expenses': number(10),
   'cpu-scale': number(0),
   'target-score': number(0),
   cores: number(0.25),
@@ -72,15 +67,33 @@ const FLAGS = {
   'egress-price': number(0.12),
   'peak-factor': number(3),
   'packet-overhead': number(64),
-  'backup-pulls': number(30),
-  'dumps-kept': number(72),
-  'dumps-per-month': number(720),
+  // Backups are the operator's choice, so the default is the free tier alone.
+  // The production host's schedule: --backup-pulls 30 --dumps-kept 72 --dumps-per-month 720.
+  'backup-pulls': number(0),
+  'dumps-kept': number(0),
+  'dumps-per-month': number(0),
   'idle-seconds': number(20),
+} as const
+
+/** The month of one person. Each flag of USAGE overrides its value. */
+const PROFILES = {
+  heavy: { opens: 30, 'web-expenses': 5, 'agent-sessions': 10, 'agent-reads': 30, 'agent-expenses': 10 },
+  typical: { opens: 8, 'web-expenses': 1, 'agent-sessions': 2, 'agent-reads': 6, 'agent-expenses': 2 },
+} as const
+type Usage = keyof (typeof PROFILES)['heavy']
+const USAGE = {
+  opens: { type: 'string' },
+  'web-expenses': { type: 'string' },
+  'agent-sessions': { type: 'string' },
+  'agent-reads': { type: 'string' },
+  'agent-expenses': { type: 'string' },
 } as const
 
 const parsed = parseArgs({
   options: {
     ...FLAGS,
+    ...USAGE,
+    profile: { type: 'string', default: 'heavy' },
     calibrate: { type: 'boolean', default: false },
     'skip-build': { type: 'boolean', default: false },
     help: { type: 'boolean', default: false },
@@ -89,7 +102,13 @@ const parsed = parseArgs({
 })
 
 if (parsed.values.help) {
-  console.log(['bun scripts/capacity.ts [--calibrate] [--skip-build]', ...Object.entries(FLAGS).map(([name, f]) => `  --${name} <number>  (default ${f.default})`)].join('\n'))
+  console.log(
+    [
+      'bun scripts/capacity.ts [--calibrate] [--skip-build] [--profile heavy|typical]',
+      ...Object.keys(USAGE).map((name) => `  --${name} <number>  (heavy ${PROFILES.heavy[name as Usage]}, typical ${PROFILES.typical[name as Usage]})`),
+      ...Object.entries(FLAGS).map(([name, f]) => `  --${name} <number>  (default ${f.default})`),
+    ].join('\n'),
+  )
   process.exit(0)
 }
 
@@ -106,12 +125,23 @@ function flag(name: keyof typeof FLAGS): number {
   return result
 }
 
+const profileArg = parsed.values.profile
+if (profileArg !== 'heavy' && profileArg !== 'typical') throw new Error(`--profile is heavy or typical, not ${String(profileArg)}`)
+const profileName: keyof typeof PROFILES = profileArg
+/** A usage flag, or the profile's value for it. */
+function usage(name: Usage): number {
+  const value = parsed.values[name]
+  if (value === undefined) return PROFILES[profileName][name]
+  const result = Number(value)
+  if (!Number.isFinite(result) || result < 0) throw new Error(`--${name} takes a number of at least 0, not ${value}`)
+  return result
+}
 const profile = {
-  opens: flag('opens'),
-  webExpenses: flag('web-expenses'),
-  agentSessions: flag('agent-sessions'),
-  agentReads: flag('agent-reads'),
-  agentExpenses: flag('agent-expenses'),
+  opens: usage('opens'),
+  webExpenses: usage('web-expenses'),
+  agentSessions: usage('agent-sessions'),
+  agentReads: usage('agent-reads'),
+  agentExpenses: usage('agent-expenses'),
 }
 if (profile.webExpenses > profile.opens) throw new Error('--web-expenses counts app opens, so it must not exceed --opens')
 const userCount = flag('users')
@@ -492,7 +522,7 @@ try {
   )
   say()
 
-  say('The month of one person (assumed; flags change it):')
+  say(`The month of one person, profile "${profileName}" (assumed; flags change it):`)
   say(`  ${profile.opens} app opens (dashboard, Groups, the group's expenses), ${profile.webExpenses} of them add an expense in the form`)
   say(`  ${profile.agentSessions} agent sessions (initialize, initialized, GET stream, tools/list), ${profile.agentReads} reads (${READ_TOOLS.join(', ')} in turn), ${profile.agentExpenses} create_expense`)
   say(`  ${profile.webExpenses + profile.agentExpenses} new expenses, text notes only, no receipts`)
@@ -641,7 +671,8 @@ try {
   say()
   say(`Binding limit: ${binding.name}, at about ${whole(binding.users)} monthly active people.`)
   if (bindingVm !== binding) say(`Binding limit of the VM itself (data out paid past the free allowance): ${bindingVm.name}, at about ${whole(bindingVm.users)}.`)
-  say(`Free data out without the backup pulls (if the dev box's pull is not billed): about ${whole(freeEgress / wireBytes)} people.`)
+  if (backupPerUser > 0) say(`Free data out without the backup pulls (if the dev box's pull is not billed): about ${whole(freeEgress / wireBytes)} people.`)
+  else say('Backups: none counted (the default). Pass the host schedule to count them: --backup-pulls 30 --dumps-kept 72 --dumps-per-month 720.')
   say(`Paid data out at $${price}/GB above ${flag('free-egress-gb')} GB: $${fixed(cost(10_000), 2)}/month for 10,000 people, $${fixed(cost(100_000), 2)}/month for 100,000.`)
   say(
     `Memory at ${concurrency} parallel clients: Bun peak RSS ${mb(peakServer)} (MemoryHigh ${host.serverMemoryHigh}, MemoryMax ${host.serverMemoryMax}); PostgreSQL peak Pss ${mb(peakPostgres)} (MemoryHigh ${host.postgresqlMemoryHigh}, MemoryMax ${host.postgresqlMemoryMax}); ${flag('memory-mb')} MB in the VM. JavaScriptCore sizes its heap from this machine's memory, so the server's peak here does not predict its peak on the target.`,
