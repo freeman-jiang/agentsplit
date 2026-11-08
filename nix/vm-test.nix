@@ -75,7 +75,7 @@ pkgs.testers.runNixOSTest {
     host.succeed("sudo -u postgres pg_restore --list /tmp/latest.dump | grep -q 'TABLE public groups'")
     host.fail("sudo -u agentsplit-backup psql -d agentsplit -c 'select 1'")
 
-    # The restore of DEPLOYMENT.md ("Move the data from Oracle"): a dump into a
+    # The restore of DEPLOYMENT.md ("Restore a dump on the host"): a dump into a
     # new database, as the server's role, and a start without new migrations.
     host.succeed("systemctl stop agentsplit.service")
     host.succeed("sudo -u postgres dropdb agentsplit")

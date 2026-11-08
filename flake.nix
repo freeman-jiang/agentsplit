@@ -76,7 +76,7 @@
 
       nixosModules.default = agentsplitModule;
 
-      # The production host (DEPLOYMENT.md, "NixOS host"): an e2-micro on GCE.
+      # The production host (DEPLOYMENT.md, "The host"): an e2-micro on GCE.
       nixosConfigurations.agentsplit = mkHost {
         system = "x86_64-linux";
         profile = {
@@ -161,7 +161,7 @@
           };
 
           # Builds the host on this machine and switches the host to it over
-          # Tailscale SSH (DEPLOYMENT.md, "NixOS host"). The new system first
+          # Tailscale SSH (DEPLOYMENT.md, "Deploy"). The new system first
           # runs without becoming the boot default; it becomes the default only
           # after the health check passes, so a reboot undoes a bad deploy.
           deploy-host = pkgs.writeShellApplication {
