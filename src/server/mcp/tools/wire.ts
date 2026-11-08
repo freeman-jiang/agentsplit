@@ -8,7 +8,6 @@ import { RecordedTime as ContractRecordedTime } from '../../../shared/api/histor
 import { CURRENCIES, isCurrencyCode, type CurrencyCode } from '../../../shared/currencies'
 import { legacyDateTime } from '../../../shared/dates'
 import type { SavedExpense, SavedState } from '../../../shared/history'
-import { formatMinor, minor } from '../../../shared/minor'
 import { mainPayer, weightText } from '../../../shared/split'
 import { ACTIVITY_TYPE_LIST, RECURRENCE_LIST, RECURRENCE_NAMES, SPLIT_MODE_LIST, SPLIT_MODE_NAMES } from '../../../shared/vocabulary'
 import type { attributionOf } from '../../activity'
@@ -37,9 +36,6 @@ export const RecordedTime = ContractRecordedTime.annotate({
 export const SplitModeName = Schema.Literals(SPLIT_MODE_LIST)
 export const RecurrenceName = Schema.Literals(RECURRENCE_LIST)
 export const ActivityTypeName = Schema.Literals(ACTIVITY_TYPE_LIST)
-
-/** Stored minor units as decimal text at the currency's full precision. */
-export const money = (amount: string, currency: string) => (isCurrencyCode(currency) ? formatMinor({ amount: minor(BigInt(amount)), currency }) : amount)
 
 /** The current app's `currency` field: the symbol. v2 stores only the code. */
 export const symbolOf = (code: string) => (isCurrencyCode(code) ? CURRENCIES[code].symbol : code)
