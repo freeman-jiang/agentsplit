@@ -41,6 +41,8 @@
   --animate-pop-out: pop-out 150ms var(--ease-out-strong);
   --animate-fade-in: fade-in 200ms var(--ease-out-strong);
   --animate-fade-out: fade-out 150ms var(--ease-out-strong);
+  --animate-menu-in: pop-in 150ms var(--ease-out-strong);
+  --animate-menu-out: pop-out 120ms var(--ease-out-strong);
 }
 
 /* A surface grows from 96% and fades in, around its transform-origin. */
