@@ -152,7 +152,7 @@ function Groups() {
   const archived = data.groups.filter((g) => marks.archived.includes(g.id) && !marks.starred.includes(g.id))
   const recent = data.groups.filter((g) => !starred.includes(g) && !archived.includes(g))
   const list = (groups: Group[]) => (
-    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {groups.map((g) => (
         <GroupCard key={g.id} group={g} starred={marks.starred.includes(g.id)} archived={marks.archived.includes(g.id)} marks={marks} />
       ))}
