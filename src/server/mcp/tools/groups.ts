@@ -4,7 +4,7 @@
 // and ungrouped services, which check access and write the log.
 import { Result, Schema } from 'effect'
 import { Id as IdInput, Invalid, NewId } from '../../../shared/api'
-import { AccessRequest, Email, GroupName, Information, PersonName, ShareUrl, SlugInput, type GroupChanges, type GroupCreateInput } from '../../../shared/api/groups'
+import { AccessRequest, Email, GROUP_NAME_LENGTH, GroupName, Information, PERSON_NAME_LENGTH, PersonName, ShareUrl, SlugInput, type GroupChanges, type GroupCreateInput } from '../../../shared/api/groups'
 import { CURRENCIES, CURRENCY_CODES, isCurrencyCode, type CurrencyCode } from '../../../shared/currencies'
 import { groupPath } from '../../../shared/groups'
 import { absoluteUrl, expensePagePath, exportPath } from '../../../shared/paths'
@@ -127,9 +127,9 @@ function currencyOf(data: { currency: string | undefined; currencyCode: string |
 }
 
 // Names are trimmed, as the current app's z.string().trim() did; the contract checks the trimmed text.
-const Name = trimmed(PersonName, { min: 1, max: LIMITS.nameMax })
+const Name = trimmed(PersonName, PERSON_NAME_LENGTH)
 const GroupInputFields = {
-  name: trimmed(GroupName, { min: LIMITS.groupNameMin, max: LIMITS.nameMax }),
+  name: trimmed(GroupName, GROUP_NAME_LENGTH),
   slug: SlugInput.annotate({ description: 'Optional unique group URL slug, e.g. macademia. Set null or empty string to remove it.' }),
   information: Information,
   currency: Schema.String.check(Schema.isBetweenLength(1, 5)),
