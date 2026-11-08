@@ -24,7 +24,7 @@ export function StorageLimits() {
         <h2 id="storage-heading" className="text-xl font-medium">
           Storage and limits
         </h2>
-        <p className="text-sm text-muted-foreground">AgentSplit is free, with no paid plan. {FAIR_USE}</p>
+        <p className="text-sm text-muted-foreground">{FAIR_USE} There is no paid plan.</p>
       </div>
       <div className="space-y-2">
         <div className="flex items-baseline justify-between gap-3 text-sm">
@@ -53,7 +53,7 @@ export function StorageLimits() {
         </p>
         {elsewhereBytes > 0 && (
           <p className="text-sm text-muted-foreground">
-            {megabytes(elsewhereBytes)} of this is in groups you have left. An admin of such a group can delete those receipts.
+            {megabytes(elsewhereBytes)} of this is in groups you left. An admin of those groups can delete these receipts.
           </p>
         )}
       </div>
@@ -104,7 +104,7 @@ function Receipts() {
           Could not load your receipts.
         </p>
       ) : receipts.length === 0 ? (
-        <p className="text-sm text-muted-foreground">You have not uploaded any receipts.</p>
+        <p className="text-sm text-muted-foreground">No receipts.</p>
       ) : (
         <ul className="divide-y border-y">
           {receipts.map((receipt) => (
@@ -114,7 +114,7 @@ function Receipts() {
                   {receipt.expense ? `${receipt.expense.deleted ? 'Deleted expense: ' : ''}${receipt.expense.title}` : 'Not on an expense'}
                 </p>
                 <p className="text-muted-foreground">
-                  {receipt.groupName ?? 'Ungrouped expense'} · <span className="tabular-nums">{megabytes(receipt.bytes)}</span> · {formatMoment.date(receipt.createdAt)}
+                  {receipt.groupName ?? 'No group'} · <span className="tabular-nums">{megabytes(receipt.bytes)}</span> · {formatMoment.date(receipt.createdAt)}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -129,8 +129,8 @@ function Receipts() {
                       Delete
                     </Button>
                   }
-                  title="Delete this receipt for good?"
-                  description={`It frees ${megabytes(receipt.bytes)}. The image is removed for everyone in ${receipt.groupName ?? 'this expense'}, from the expense and from its history, which will show who deleted it and when. This cannot be undone.`}
+                  title="Delete this receipt permanently?"
+                  description={`This frees ${megabytes(receipt.bytes)}. The image is removed for everyone in ${receipt.groupName ?? 'this expense'}, also from the log. The log shows who deleted it and when. You cannot undo this.`}
                   onConfirm={async () => {
                     await rpc((api) => api('storage.deleteReceipts', { receiptIds: [receipt.id] }))
                     // The expense has a new revision too, in any group.
