@@ -27,4 +27,6 @@ EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=6 \
   CMD ["bun", "-e", "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 # The image's entrypoint is bun.
-CMD ["dist/server/server.js"]
+# --no-install: an optional import that the bundle leaves to runtime (Better
+# Auth's @opentelemetry/api) must fail and fall back, not be installed from npm.
+CMD ["--no-install", "dist/server/server.js"]
