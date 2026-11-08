@@ -509,4 +509,14 @@ describe('roles, removal and leaving', () => {
       message: 'That account is already tied to a different participant.',
     })
   })
+
+  it('shows an access change without its target, and an invitation text in full (P-ACCESS-30)', async () => {
+    const g = await create(alice, { participants: ['Mom: Jane'] })
+    const mom = (await details(alice, g.id)).people.find((p) => p.name === 'Mom: Jane')!
+    await access(alice, { action: 'invite', groupId: g.id, email: 'mom@example.com', participantId: mom.id })
+    // A row as the current app wrote it, with the invited email as the target.
+    await database.tx((db) => db.insert(activities).values({ id: `${g.id}-v1`, groupId: g.id, type: 'update_group', data: 'Invitation created: mom@example.com', actorUserId: alice.userId, actorName: 'Alice', source: 'web' }))
+    const page = await database.tx((db) => listActivities(db, { principal: alice, groupId: g.id, limit: 10 }))
+    expect(page.activities.filter((a) => a.type === 'update_group').map((a) => a.data)).toEqual(['Invitation created', 'Invitation created for Mom: Jane'])
+  })
 })

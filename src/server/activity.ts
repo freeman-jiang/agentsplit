@@ -3,6 +3,7 @@
 // readers also understand every format the current app and earlier v2 wrote.
 import { sql, type SQL } from 'drizzle-orm'
 import { activities } from '../../db/schema/app'
+import type { AccessRequest } from '../shared/api'
 import type { CurrencyCode } from '../shared/currencies'
 import { titleWithVendor } from '../shared/history'
 import type { V2ExpenseSnapshot, V2GroupSnapshot } from '../shared/snapshots'
@@ -102,17 +103,32 @@ export function attributionOf(data: { events: readonly AttributionEvent[]; viewe
 
 // ---------- texts ----------
 
+type AccessAction = (typeof AccessRequest.Type)['action'] | 'Member identity bound' | 'Invitation created'
+
+/**
+ * The actions an access text starts with: the access requests, and the two
+ * that the current app wrote as words (its group-access.ts log calls).
+ */
+const ACCESS_ACTIONS = {
+  join: true,
+  leave: true,
+  invite: true,
+  revoke_invitation: true,
+  remove_member: true,
+  set_role: true,
+  bind_member: true,
+  'Member identity bound': true,
+  'Invitation created': true,
+} as const satisfies Record<AccessAction, true>
+
 /**
  * The text of an access change: "<action>: <whom>". The current app stored
  * user IDs and email addresses as `whom`, so readers show only the action
  * (P-ACCESS-30, P-EXPORT-14); v2 stores names there, in the same form.
  */
-export const accessText = (data: { action: string; whom: string }) => `${data.action}: ${data.whom}`
+export const accessText = (data: { action: AccessAction; whom: string }) => `${data.action}: ${data.whom}`
 
-/**
- * The text of an invitation change. It names the participant, never the
- * email, and has no ": ", so readers show it in full.
- */
+/** The text of an invitation change. It names the participant, never the email, so readers show it in full. */
 export const invitationText = (data: { action: 'created' | 'revoked'; participantName: string | null }) =>
   `Invitation ${data.action}${data.participantName ? ` for ${data.participantName}` : ''}`
 
@@ -148,7 +164,8 @@ export function activityText(data: { type: ActivityType; data: string | null; sa
   if (data.data === null) return data.saved ? titleWithVendor(data.saved) : null
   if (!ACCESS_TYPES.has(data.type)) return data.data
   const at = data.data.indexOf(': ')
-  return at === -1 ? data.data : data.data.slice(0, at)
+  const action = at === -1 ? null : data.data.slice(0, at)
+  return action !== null && Object.hasOwn(ACCESS_ACTIONS, action) ? action : data.data
 }
 
 // ---------- snapshots ----------
