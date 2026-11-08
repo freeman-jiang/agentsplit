@@ -151,11 +151,20 @@ async function inParallel<A>(items: readonly A[], limit: number, work: (item: A,
   if (failure) throw failure
 }
 
-/** Each person's `count` units, in turns: person 1's first, person 2's first, ..., then everyone's second. Spreads each person's requests over the phase. */
+/**
+ * Each person's `count` units, in turns: everyone's first unit, then everyone's
+ * second. That spreads each person's requests over the phase. Within a turn
+ * the groups alternate (the first person of each group, then the second of
+ * each), so the parallel clients rarely write to the same group at once. The
+ * people of a group seldom write in the same few milliseconds, and parallel
+ * writes to one group conflict under SERIALIZABLE (docs/CAPACITY.md).
+ */
 function turns(users: readonly SyntheticUser[], count: (u: SyntheticUser) => number): { user: SyntheticUser; turn: number }[] {
+  const rank = (u: SyntheticUser) => u.home.members.indexOf(u.userId)
+  const ordered = users.map((user, index) => ({ user, index })).sort((a, b) => rank(a.user) - rank(b.user) || a.index - b.index)
   const most = Math.max(0, ...users.map(count))
   const items: { user: SyntheticUser; turn: number }[] = []
-  for (let turn = 0; turn < most; turn++) for (const user of users) if (turn < count(user)) items.push({ user, turn })
+  for (let turn = 0; turn < most; turn++) for (const { user } of ordered) if (turn < count(user)) items.push({ user, turn })
   return items
 }
 
