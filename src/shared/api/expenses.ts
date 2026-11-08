@@ -6,7 +6,7 @@ import { Rpc, RpcGroup } from 'effect/rpc'
 import { FAIR_USE_LIMITS } from '../limits'
 import { CurrencyCodeSchema } from '../money'
 import { RECEIPT_CONTENT_TYPES } from '../vocabulary'
-import { Balance, CalendarDateOutput, Expense, ExpenseKindSchema, Id, NotFound, ReadError, RecurrenceSchema, SplitModeSchema, Transfer, Unavailable, WriteError } from './core'
+import { Balance, CalendarDateOutput, Expense, ExpenseKindSchema, Id, ReadError, RecurrenceSchema, SplitModeSchema, Transfer, Unavailable, WriteError } from './core'
 import { ReceiptTombstone } from './storage'
 
 export const Category = Schema.Struct({ id: Schema.Number, grouping: Schema.String, name: Schema.String })
@@ -64,7 +64,7 @@ export class ExpensesApi extends RpcGroup.make(
   Rpc.make('expenses.locate', {
     payload: { expenseId: Id },
     success: Schema.Struct({ groupId: Schema.String, slug: Schema.NullOr(Schema.String), kind: ExpenseKindSchema, title: Schema.String }),
-    error: Schema.Union([ReadError, NotFound]),
+    error: ReadError,
   }),
   Rpc.make('balances.list', {
     payload: { groupId: Id, currency: Schema.optionalKey(CurrencyCodeSchema) },
