@@ -30,15 +30,16 @@ export type Harness = Awaited<ReturnType<typeof startHarness>>
 
 /**
  * The whole app on `pool`, as main/server.ts builds it, with the in-memory
- * bucket and a stand-in SPA page. `connect` replaces the pool's connections.
+ * bucket and a stand-in SPA page. `connect` replaces the pool's connections,
+ * and `assets` the SPA page.
  */
-export function testApp(data: { pool: Pool; settings?: AppSettings; bucket?: Bucket; connect?: () => Promise<PoolClient> }) {
+export function testApp(data: { pool: Pool; settings?: AppSettings; bucket?: Bucket; connect?: () => Promise<PoolClient>; assets?: (request: Request) => Promise<Response> }) {
   return createApp({
     config: data.settings ?? testSettings(),
     connect: data.connect ?? (() => data.pool.connect()),
     pool: makeDb(data.pool),
     bucket: data.bucket ?? fakeBucket().bucket,
-    assets: async () => new Response('SPA page', { headers: { 'Content-Type': 'text/html' } }),
+    assets: data.assets ?? (async () => new Response('SPA page', { headers: { 'Content-Type': 'text/html' } })),
   })
 }
 
