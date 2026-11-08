@@ -207,11 +207,11 @@ export async function attachUploads(
  * the hourly job. The current app left unattached pending-receipts objects in the bucket.
  */
 export async function removeStaleUploads(data: { db: Db; bucket: Bucket }) {
-  // An hour past the attach window, so no attach can be running on them.
+  // An hour past the last attach window: a PUT at the end of the target's time, then the attach time.
   const stale = await data.db
     .select({ id: receiptUploads.id, key: receiptUploads.key, state: receiptUploads.state })
     .from(receiptUploads)
-    .where(sql`${receiptUploads.createdAt} < now() - make_interval(hours => ${LIMITS.uploadAttachHours + 1})`)
+    .where(sql`${receiptUploads.createdAt} < now() - make_interval(secs => ${LIMITS.uploadTargetSeconds + (LIMITS.uploadAttachHours + 1) * 3600})`)
   if (stale.length === 0) return 0
   // The objects go first: if storage fails, the rows stay and the next run tries again.
   await data.bucket.delete(stale.filter((r) => r.state !== 'pending').map((r) => r.key))
