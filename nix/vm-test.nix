@@ -1,6 +1,9 @@
-# Boots the host configuration in a VM of the host's size, without the tunnel
-# and Tailscale, and checks that PostgreSQL and the server start, the
-# migrations apply, the health check answers, and the dumps work.
+# Boots the host configuration in a VM of the host's size, without the
+# tunnel, and checks that PostgreSQL and the server start, the migrations
+# apply, the health check answers, the dumps work, and the first join polls
+# the GCE metadata for the Tailscale auth key without a trace of the key on
+# disk or in the journal. Tailscale runs, but it cannot log in without a
+# network.
 #   nix build .#checks.aarch64-linux.host
 {
   pkgs,
@@ -18,7 +21,6 @@ pkgs.testers.runNixOSTest {
     {
       imports = hostModules;
       services.agentsplit.tunnel.enable = lib.mkForce false;
-      services.tailscale.enable = lib.mkForce false;
       # The test VM's root is a whole disk without a partition to grow.
       boot.growPartition = lib.mkForce false;
       # The e2-micro: 1 GB and 2 shared CPUs.
@@ -85,7 +87,31 @@ pkgs.testers.runNixOSTest {
     assert int(owner) == 0, f"{owner.strip()} tables not owned by agentsplit after the restore"
 
     # The memory budget of DEPLOYMENT.md, for the record.
-    print(host.succeed("systemctl show -p Id -p MemoryCurrent -p MemoryPeak agentsplit.service postgresql.service; free -m"))
+    print(host.succeed("systemctl show -p Id -p MemoryCurrent -p MemoryPeak agentsplit.service postgresql.service systemd-journald.service tailscaled.service; free -m"))
 
+    # When memory runs out, the kernel stops the server before PostgreSQL and the journal.
+    def oom_score_adj(unit):
+        pid = host.succeed(f"systemctl show -p MainPID --value {unit}").strip()
+        return int(host.succeed(f"cat /proc/{pid}/oom_score_adj"))
+    server, database, journal = (oom_score_adj(u) for u in ["agentsplit", "postgresql", "systemd-journald"])
+    assert server > database and server > journal, (server, database, journal)
+
+    # The first join (nix/host/gce.nix), with a stand-in metadata server:
+    # the unit polls while Tailscale needs a login, and passes a key to
+    # `tailscale up` without writing it anywhere.
+    host.wait_until_succeeds("tailscale status --json --peers=false | jq -e '.BackendState == \"NeedsLogin\"'", timeout=60)
+    host.succeed("systemctl is-active agentsplit-tailscale-join.service")
+    attributes = "/tmp/metadata/computeMetadata/v1/instance/attributes"
+    host.succeed(f"ip addr add 169.254.169.254/32 dev lo && mkdir -p {attributes}")
+    host.succeed("${pkgs.busybox}/bin/busybox httpd -p 169.254.169.254:80 -h /tmp/metadata")
+    # A restart starts the pauses again from 5 seconds.
+    host.succeed("systemctl restart agentsplit-tailscale-join.service")
+    host.wait_until_succeeds("journalctl -b -u agentsplit-tailscale-join | grep -q 'no auth key in the metadata yet (404)'", timeout=60)
+    host.succeed(f"printf tskey-vm-test-c4f1e2 > {attributes}/tailscale-auth-key")
+    host.wait_until_succeeds("journalctl -b -u agentsplit-tailscale-join | grep -q 'tailscale up failed'", timeout=180)
+    print(host.succeed("journalctl -b -u agentsplit-tailscale-join --no-pager -o cat"))
+    host.succeed("systemctl is-active agentsplit-tailscale-join.service")
+    host.fail("journalctl -b --no-pager | grep -F tskey-vm-test-c4f1e2")
+    host.fail("grep -rlF tskey-vm-test-c4f1e2 /etc /var /root /run 2>/dev/null")
   '';
 }

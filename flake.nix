@@ -48,26 +48,53 @@
         agentsplitModule
         ./nix/host
       ];
-      hostArgs = { inherit agentsplitRev hostNixpkgs; };
+      hostArgs = { inherit agentsplitRev; };
+      # The host on one provider: its system and its hardware profile.
+      mkHost =
+        { system, profile }:
+        nixpkgs-host.lib.nixosSystem {
+          modules = hostModules ++ [
+            profile
+            { nixpkgs.hostPlatform = system; }
+          ];
+          specialArgs = hostArgs;
+        };
     in
     {
-      packages = forAllSystems (pkgs: {
-        agentsplit = pkgs.callPackage ./nix/package.nix { };
-        default = self.packages.${pkgs.stdenv.hostPlatform.system}.agentsplit;
-      });
+      packages =
+        nixpkgs.lib.recursiveUpdate
+          (forAllSystems (pkgs: {
+            agentsplit = pkgs.callPackage ./nix/package.nix { };
+            default = self.packages.${pkgs.stdenv.hostPlatform.system}.agentsplit;
+          }))
+          {
+            # The boot image of the production host, which the dots side
+            # imports into GCE (DEPLOYMENT.md, "First install").
+            x86_64-linux.agentsplit-gce-image =
+              self.nixosConfigurations.agentsplit.config.system.build.googleComputeImage;
+          };
 
       nixosModules.default = agentsplitModule;
 
-      # The production host (DEPLOYMENT.md, "NixOS host"): a t4g.small on EC2.
-      nixosConfigurations.agentsplit = nixpkgs-host.lib.nixosSystem {
-        modules = hostModules ++ [ { nixpkgs.hostPlatform = "aarch64-linux"; } ];
-        specialArgs = hostArgs;
+      # The production host (DEPLOYMENT.md, "NixOS host"): an e2-micro on GCE.
+      nixosConfigurations.agentsplit = mkHost {
+        system = "x86_64-linux";
+        profile = ./nix/host/gce.nix;
+      };
+      # The same host on EC2 (a t4g.small), the documented alternative.
+      nixosConfigurations.agentsplit-ec2 = mkHost {
+        system = "aarch64-linux";
+        profile = ./nix/host/ec2.nix;
       };
 
-      # The host configuration in a VM, without the tunnel and Tailscale.
+      # The production host's modules in a VM, without the tunnel. It runs on
+      # aarch64, the dev box's system, because an x86_64 VM there has no KVM
+      # and would emulate every instruction. Only the platform differs from
+      # production.
       checks.aarch64-linux.host = import ./nix/vm-test.nix {
         pkgs = nixpkgs-host.legacyPackages.aarch64-linux;
-        inherit hostModules hostArgs;
+        hostModules = hostModules ++ [ ./nix/host/gce.nix ];
+        inherit hostArgs;
       };
 
       devShells = forAllSystems (
