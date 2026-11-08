@@ -34,8 +34,11 @@ export const receiptUploadTokenOf = (pathname: string) => {
   return token && !token.includes('/') ? token : null
 }
 
-/** The group downloads: the CSV and JSON exports and the ZIP file of every receipt. */
-export const EXPORT_FORMATS = ['csv', 'json', 'receipts'] as const
+/** The group exports as one file, JSON (the default) or CSV. */
+export const FILE_EXPORT_FORMATS = ['json', 'csv'] as const
+export type FileExportFormat = (typeof FILE_EXPORT_FORMATS)[number]
+/** The group downloads: the file exports and the ZIP file of every receipt. */
+export const EXPORT_FORMATS = [...FILE_EXPORT_FORMATS, 'receipts'] as const
 export type ExportFormat = (typeof EXPORT_FORMATS)[number]
 
 /** A group download, under the group's path (groupPath, or segmentPath on the client). */
