@@ -20,6 +20,8 @@
 //   --cores, --page-cache-mb, --disk-gb, --read-iops, --write-iops, --free-egress-gb,
 //   --egress-price, --peak-factor, --packet-overhead, --backup-pulls, --dumps-kept,
 //   --dumps-per-month     the target and the assumptions of the report
+//   --idle-settle, --idle-seconds
+//                         the wait after the warm-up and the idle time measured (default 30, 60)
 //   --skip-build          reuse dist/ from an earlier `bun run build`
 //   --cpu-prof DIR        write the server's CPU profile (Bun's --cpu-prof, with its
 //                         Markdown summary) to DIR; the sampler costs CPU, so its
@@ -75,7 +77,8 @@ const FLAGS = {
   'backup-pulls': number(0),
   'dumps-kept': number(0),
   'dumps-per-month': number(0),
-  'idle-seconds': number(20),
+  'idle-settle': number(30),
+  'idle-seconds': number(60),
 } as const
 
 /** The month of one person. Each flag of USAGE overrides its value. */
@@ -446,7 +449,10 @@ try {
   // Compact the tables, so the sizes before and after count live rows, not the dead ones of the seed.
   // ANALYZE leaves autovacuum nothing to do for the seed's rows during the idle time.
   await admin.query('VACUUM (FULL, ANALYZE)')
-  await Bun.sleep(5000)
+  // The server's collector and JIT stay busy after the warm-up. That tail belongs to the warm-up, so the idle time
+  // starts after it: a 20-second window 5 seconds after the warm-up measured from 3.5 to 6.5 ms/s for the same code.
+  log(`Letting the server settle for ${flag('idle-settle')} s`)
+  await Bun.sleep(flag('idle-settle') * 1000)
 
   const counters = (): Counters => ({ server: processCpuSeconds(server.pid), postgres: instanceCpuSeconds(instance.postmaster), at: performance.now(), exchanges: edge.exchanges.length })
   let peakPostgres = 0
