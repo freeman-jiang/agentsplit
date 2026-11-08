@@ -78,13 +78,32 @@ if [ "$(ssh_target 'readlink -f /run/current-system /nix/var/nix/profiles/system
 fi
 
 echo "deploy-host: copying $system to $target"
-nix copy --substitute-on-destination --to "ssh-ng://$target" "$system"
+# The host's Nix accepts only paths signed by cache.nixos.org. The paths built
+# here are unsigned, so the copy skips the signature check, which Nix allows
+# for root on the target: the dev box is the host's deploy authority anyway.
+nix copy --no-check-sigs --substitute-on-destination --to "ssh-ng://$target" "$system"
 
-# The activation runs in its own unit, as nixos-rebuild does it: a restart of
-# tailscaled ends this SSH session, but not the activation.
+# The activation runs in its own unit and writes to the journal, not to this
+# SSH session. A restart of tailscaled ends the session; with the output piped
+# into it, switch-to-configuration died on the broken pipe halfway (exit 101),
+# after it had stopped AgentSplit. So the unit starts without waiting, and this
+# script polls its state, reconnecting when the session drops.
 activate() {
-  ssh_target systemd-run --collect --no-ask-password --pipe --quiet --wait \
-    --service-type=exec --unit=agentsplit-deploy "$system/bin/switch-to-configuration" "$1"
+  local unit="agentsplit-deploy-$1" state="" result="" invocation="" _
+  ssh_target "systemctl stop $unit 2>/dev/null; systemctl reset-failed $unit 2>/dev/null; true"
+  ssh_target systemd-run --no-ask-password --no-block --quiet --unit="$unit" \
+    --property=Type=oneshot --property=RemainAfterExit=yes \
+    "$system/bin/switch-to-configuration" "$1"
+  for _ in $(seq 1 120); do
+    sleep 5
+    state="$(ssh_target "systemctl show --property=ActiveState --value $unit" 2>/dev/null)" || continue
+    case "$state" in active | failed) break ;; esac
+  done
+  invocation="$(ssh_target "systemctl show --property=InvocationID --value $unit")"
+  ssh_target "journalctl --no-pager --output=cat _SYSTEMD_INVOCATION_ID=$invocation" || true
+  result="$(ssh_target "systemctl show --property=Result --value $unit")"
+  ssh_target "systemctl stop $unit; systemctl reset-failed $unit 2>/dev/null; true"
+  [ "$state" = active ] && [ "$result" = success ]
 }
 
 echo "deploy-host: activating without changing the boot default"
@@ -94,8 +113,8 @@ activate test || activated=""
 healthy=""
 wait_healthy 30 && healthy=1
 if [ -z "$activated" ]; then
-  echo "deploy-host: the activation failed, or the connection dropped during it. The boot default did not change." >&2
-  echo "deploy-host: see: ssh $target journalctl -u agentsplit-deploy -n 100. After a dropped connection, run deploy-host again." >&2
+  echo "deploy-host: the activation failed (its log is above). The boot default did not change." >&2
+  echo "deploy-host: go back with: ssh $target /nix/var/nix/profiles/system/bin/switch-to-configuration switch" >&2
   exit 1
 fi
 if [ -z "$healthy" ]; then
