@@ -5,7 +5,7 @@
 // src/lib/ungrouped-access.ts; the write rules are in private-context.ts.
 import { and, eq } from 'drizzle-orm'
 import { expenses, groups, memberships, participants, privateContexts, privatePeople } from '../../db/schema/app'
-import { Conflict, Forbidden, Invalid, Unauthorized, type PrivatePerson as PrivatePersonSchema } from '../shared/api'
+import { Conflict, Forbidden, Invalid, type PrivatePerson as PrivatePersonSchema } from '../shared/api'
 import { PEOPLE_RULE, type ExpenseDraft } from '../shared/expense-rules'
 import { INVITED_PERSON_PROBLEM, invitedPerson, normalizeEmail, participantNameOf } from '../shared/groups'
 import { LIMITS, participantLimitMessage } from '../shared/limits'
@@ -42,8 +42,6 @@ export async function createUngroupedExpense(
   },
 ) {
   const known = await contacts(tx, { userId: data.principal.userId })
-  // contactsSql lists the caller only while their email is verified, as every credential requires (src/server/auth/), so a caller missing here lost it after signing in.
-  if (!known.some((c) => c.id === data.principal.userId)) throw new Unauthorized()
   if (data.people.length > LIMITS.participantsPerGroup) throw new Invalid({ message: participantLimitMessage, field: 'people' })
   const people = data.people.map((person) => {
     if (person.kind === 'account') {
