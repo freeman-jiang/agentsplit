@@ -1,7 +1,7 @@
 // The test databases. The global setup (global-setup.ts) migrates the database
 // of TEST_DATABASE_URL once, and that database is the template: each test file
 // works on its own copy, so the files run in parallel. Only a loopback database
-// whose name contains "test" is ever dropped, and never a database the lead uses.
+// whose name contains "test" is ever dropped, and never a database the maintainer uses.
 import pg from 'pg'
 import { runMigrations } from '../../db/migrate'
 import LOCAL_DATABASES from '../../db/local-databases.json'
@@ -10,10 +10,10 @@ import { makeDb, serializable, type Db } from '../../src/server/core/db'
 /**
  * Why a local database must not be dropped or seeded, or null when it may be:
  * its name must be disposable, as db-reset (flake.nix) requires, and must not
- * be one that the lead uses (docs/v2/BUILDING.md).
+ * be one that the maintainer uses (docs/BUILDING.md).
  */
 export function unsafeDatabase(name: string): string | null {
-  if (LOCAL_DATABASES.protected.includes(name)) return `${name} is a database the lead uses`
+  if (LOCAL_DATABASES.protected.includes(name)) return `${name} is a database the maintainer uses`
   if (!LOCAL_DATABASES.disposable.some((part) => name.includes(part))) return `${name} is not a disposable database (its name has none of ${LOCAL_DATABASES.disposable.join(', ')})`
   return null
 }

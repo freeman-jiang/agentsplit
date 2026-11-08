@@ -1,7 +1,7 @@
 // The second pass of MCP tools, over HTTP in process, against a real
 // database: the feed, profile, group and access writes, balances, history,
 // stats, export, reference data, recurrence and ungrouped creates. Parity
-// items are named in docs/v2/parity/mcp.md.
+// items are named in docs/history/v2/parity/mcp.md.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { SDK_INPUT_REFUSED } from '../kit/mcp'
 import type { ExpenseCreateArgument } from '~/server/mcp/tools/expenses'

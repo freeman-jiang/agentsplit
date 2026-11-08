@@ -110,7 +110,7 @@ const NO_CUSTOM_CURRENCY = 'Set currencyCode to a supported currency code, such 
 /**
  * The group currency from the current app's pair: currencyCode, else a
  * `currency` that is a code or the symbol of exactly one currency. v2 has no
- * custom symbols (docs/v2/parity/groups.md, P-GROUP-23).
+ * custom symbols (docs/history/v2/parity/groups.md, P-GROUP-23).
  */
 function currencyOf(data: { currency: string | undefined; currencyCode: string | null | undefined }): CurrencyCode {
   if (data.currencyCode) {
@@ -130,7 +130,7 @@ function currencyOf(data: { currency: string | undefined; currencyCode: string |
 const Name = trimmed(PersonName, PERSON_NAME_LENGTH)
 const GroupInputFields = {
   name: trimmed(GroupName, GROUP_NAME_LENGTH),
-  slug: SlugInput.annotate({ description: 'Optional unique group URL slug, e.g. macademia. Set null or empty string to remove it.' }),
+  slug: SlugInput.annotate({ description: 'Optional unique group URL slug, e.g. our-flat. Set null or empty string to remove it.' }),
   information: Information,
   currency: Schema.String.check(Schema.isBetweenLength(1, 5)),
   currencyCode: Schema.Union([Schema.NullOr(Schema.String.check(Schema.isBetweenLength(3, 3))), Schema.Literal('')]),
@@ -267,7 +267,7 @@ export const manageGroupAccess = defineTool({
     const i = result.invitation
     return {
       groupId: result.groupId,
-      // The current app answered true for every action but leave; v2 answers true only after a join (DECISIONS.md group C, P-TOOL-ACCESS-28).
+      // The current app answered true for every action but leave; v2 answers true only after a join (docs/history/v2/DECISIONS.md group C, P-TOOL-ACCESS-28).
       joined: input.action === 'join',
       ...(i && i.url && i.participantId ? { invitation: { id: i.id, email: i.email, expiresAt: i.expiresAt, url: i.url, participantId: i.participantId, participantName: i.participantName ?? '' } } : {}),
     }

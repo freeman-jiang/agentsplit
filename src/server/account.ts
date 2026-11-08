@@ -1,6 +1,6 @@
 // The signed-in user's account: profile, API keys and connected apps. This
 // module does not import Better Auth: the RPC handlers do not call Better Auth
-// (docs/v2/BUILDING.md).
+// (docs/BUILDING.md).
 import { and, eq, sql } from 'drizzle-orm'
 import * as authSchema from '../../db/schema/auth'
 import { Forbidden, Invalid, NotFound } from '../shared/api'

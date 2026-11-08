@@ -1,7 +1,7 @@
 # services.agentsplit: the AgentSplit server as a hardened systemd service, its
 # PostgreSQL 18 database on the same host (Unix socket only), the dumps of that
 # database, and the Cloudflare Tunnel connector that brings the public traffic
-# in. DEPLOYMENT.md ("NixOS host") is the runbook.
+# in. DEPLOYMENT.md ("The host") is the runbook.
 #
 # Secrets never enter the Nix store. The server and the connector each read one
 # root-only environment file, which is copied onto the host over Tailscale SSH

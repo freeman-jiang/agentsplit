@@ -35,7 +35,7 @@ The endpoint also checks that `Host` (and `Origin`, when sent) match the app ori
 2. In Claude Code, run `/mcp`, select `agentsplit`, and authenticate.
 3. Sign in with Google and click **Allow access**. Clear **Allow changes** for read-only access.
 
-Claude Code registers through its Client ID Metadata Document (CIMD), so it needs no client ID. With `offline_access` it gets a refresh token and stays connected after the 300-second access token expires ([docs/v2/OAUTH-CLAUDE-CODE.md](docs/v2/OAUTH-CLAUDE-CODE.md)).
+Claude Code registers through its Client ID Metadata Document (CIMD), so it needs no client ID. With `offline_access` it gets a refresh token and stays connected after the 300-second access token expires ([docs/history/v2/OAUTH-CLAUDE-CODE.md](docs/history/v2/OAUTH-CLAUDE-CODE.md)).
 
 ### Claude Code with an API key
 

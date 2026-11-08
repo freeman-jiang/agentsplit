@@ -102,11 +102,11 @@ The shared `Conflict` error means "the revision changed" and carries `currentRev
 | P-GROUP-97 | Done | "resolves slugs case-insensitively…" |
 | P-GROUP-98 | Changed: the canonical path is `/<slug>`, else `/<id>` (the v2 router's `$group` segment) | — |
 | P-GROUP-99 | Done | Browser |
-| P-GROUP-100 | Changed: the SPA redirects `/groups/<id>/<tab>` to `/<id>/<tab>` and then to `/<slug>/<tab>`, keeping the query and hash. It is a client redirect, not a 307: the Worker serves the SPA for every non-API path | Browser (`/groups/<id>/information?x=1` → `/macademia/information?x=1`) |
+| P-GROUP-100 | Changed: the SPA redirects `/groups/<id>/<tab>` to `/<id>/<tab>` and then to `/<slug>/<tab>`, keeping the query and hash. It is a client redirect, not a 307: the Worker serves the SPA for every non-API path | Browser (`/groups/<id>/information?x=1` → `/our-flat/information?x=1`) |
 | P-GROUP-101, -102 | Not applicable: the Worker handles `/api/*` before the SPA, and the SPA has no POST pages | — |
 | P-GROUP-103 | Done | "does not grant access through a slug" |
 | P-GROUP-104 | Done | Browser (`/ski-cabin/edit` → `/cabin/edit`) |
-| P-GROUP-105 | Fixed: slugs match in any case and the URL moves to the lowercase slug | "resolves slugs case-insensitively…"; browser (`/Macademia/edit`) |
+| P-GROUP-105 | Fixed: slugs match in any case and the URL moves to the lowercase slug | "resolves slugs case-insensitively…"; browser (`/Our-Flat/edit`) |
 | P-GROUP-106 | Fixed: `group_slug_history` keeps old slugs; an old slug opens the group and the URL moves to the current slug. A slug that another group claims later goes to that group | "resolves slugs case-insensitively…"; browser (`/ski-cabin/information` → `/cabin/information`) |
 
 ## Invitations and access
@@ -151,7 +151,7 @@ The shared `Conflict` error means "the revision changed" and carries `currentRev
 | P-ACCESS-37 | Done: "View a private expense" for a private context | Code; the private expenses area must test it |
 | P-ACCESS-38 | Done: the preview reveals nothing about an unavailable invitation | "refuses the wrong email, revoked and expired invitations"; browser |
 | P-ACCESS-39 | Done: signs out through `/api/auth/sign-out`, then opens `/sign-in?next=…`; a failure shows "Unable to sign out. Please try again." | Code; not run in the browser, because it ends the dev session |
-| P-ACCESS-40, -41 | Done | Browser (Cara joined as Eli and landed on `/macademia/expenses`); "binds the joiner…" |
+| P-ACCESS-40, -41 | Done | Browser (Cara joined as Eli and landed on `/our-flat/expenses`); "binds the joiner…" |
 
 ### Join rules
 

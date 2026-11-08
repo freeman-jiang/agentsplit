@@ -1,6 +1,6 @@
 // OAuth on the MCP endpoint, in process: Better Auth's real authorization
 // server and the v2 MCP endpoint on one database. The first block emulates
-// Claude Code step by step, as docs/v2/OAUTH-CLAUDE-CODE.md reproduced it.
+// Claude Code step by step, as docs/history/v2/OAUTH-CLAUDE-CODE.md reproduced it.
 // Each test connects its own account, because a consent, a revocation or a
 // membership change applies to every token of that account.
 import { and, eq, sql } from 'drizzle-orm'

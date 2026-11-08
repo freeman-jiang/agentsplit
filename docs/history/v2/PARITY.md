@@ -206,7 +206,7 @@ Items that end with `QUESTION:` look like bugs or doubtful behavior, so a person
 - [ ] P-GROUP-102: Slug routing does not apply to `/api/`, `/_next/` or paths that contain a dot (source: src/proxy.ts:45)
 - [ ] P-GROUP-103: A slug URL does not grant access: signed-out users go to `/sign-in`, non-members to `/groups?access=denied`, and its export returns 403 to non-members (source: src/proxy.ts:5, e2e/group-slug-vendor.spec.ts)
 - [ ] P-GROUP-104: After a slug change, the settings page reloads under `/<new-slug>/edit`, and after slug removal under `/groups/<id>/edit` (source: src/app/groups/[groupId]/edit/edit-group.tsx:39, e2e/group-slug-vendor.spec.ts)
-- [ ] P-GROUP-105: A path with uppercase letters, such as `/Macademia`, does not resolve to the group (source: src/proxy.ts:30) QUESTION: v2 may want a redirect to the lowercase slug
+- [ ] P-GROUP-105: A path with uppercase letters, such as `/Our-Flat`, does not resolve to the group (source: src/proxy.ts:30) QUESTION: v2 may want a redirect to the lowercase slug
 - [ ] P-GROUP-106: An old slug stops working at once after a slug change; there is no redirect from it (source: src/proxy.ts:32) QUESTION: shared or bookmarked links break silently
 
 ## Expenses
@@ -1335,7 +1335,7 @@ AgentSplit ledger API. Verified people have one global User display name across 
 - [ ] P-MCP-115: After Google sign-in, the callback redirects to `/settings/connections/consent` and approval returns the code with the original `state` (source: src/lib/auth.ts:48, test-mcp-oauth "Google sign-in callback resumes OAuth consent", mcp-oauth.spec)
 - [ ] P-MCP-116: A first Google sign-in through the OAuth flow creates a verified AgentSplit user with no groups (source: test-mcp-oauth "Google sign-in callback resumes OAuth consent")
 - [ ] P-MCP-117: Consent denial returns `error=access_denied` to the client and issues no tokens (source: test-mcp-oauth "consent denial returns access_denied", mcp-oauth.spec "browser can deny consent")
-- [ ] P-MCP-118: The authorize request needs `sec-fetch-mode: navigate` to behave as a browser navigation (source: verify-live-oauth:200, docs/v2/PLAN.md) QUESTION: confirm whether non-navigate requests get JSON `{url}` instead of a redirect, and keep that behavior.
+- [ ] P-MCP-118: The authorize request needs `sec-fetch-mode: navigate` to behave as a browser navigation (source: verify-live-oauth:200, docs/history/v2/PLAN.md) QUESTION: confirm whether non-navigate requests get JSON `{url}` instead of a redirect, and keep that behavior.
 
 ### Client registration and CIMD
 
@@ -1880,14 +1880,14 @@ M = `prisma/migrations`. TEH = `scripts/test-expense-history.ts`, THM = `scripts
 - [ ] P-DB-137: Bootstrap runs once: an `AuthBootstrap` row with ID `private-groups-v1` blocks later runs, under advisory lock 170031011 (source: src/lib/auth-bootstrap.ts:16-30,64-66, TPA "bootstrap imports only captured groups and old keys once")
 - [ ] P-DB-138: Bootstrap imports legacy `MCP_ACCESS_GRANTS` keys as `Apikey` rows with the base64url SHA-256 hash, a 60 s window and a limit of 120 (source: src/lib/auth-bootstrap.ts:42-62, TPA)
 - [ ] P-DB-139: Bootstrap fails when legacy grants have several users and `AUTH_BOOTSTRAP_LEGACY_USER_ID` is unset (source: src/lib/auth-bootstrap.ts:47-50)
-- [ ] P-DB-140: The importer must keep participant IDs, expense IDs, revisions, activity IDs, sequence values and snapshots byte-for-byte (source: DEPLOYMENT.md:81, docs/v2/PLAN.md)
+- [ ] P-DB-140: The importer must keep participant IDs, expense IDs, revisions, activity IDs, sequence values and snapshots byte-for-byte (source: DEPLOYMENT.md:81, docs/history/v2/PLAN.md)
 
 ### Runtime, migration and data-preservation rules
 
 - [ ] P-DB-141: The container runs `prisma migrate deploy` before it starts the server (source: scripts/container-entrypoint.sh)
 - [ ] P-DB-142: Migrate uses `POSTGRES_URL_NON_POOLING` and falls back to `POSTGRES_PRISMA_URL`; the app uses the pooled URL through `@prisma/adapter-pg` (source: prisma.config.ts, src/lib/prisma.ts:12-15)
 - [ ] P-DB-143: The app sets no explicit transaction isolation level, so PostgreSQL READ COMMITTED applies and correctness rests on row and advisory locks (source: src/lib/prisma.ts, src/lib/expense-history.ts:150-166)
-- [ ] P-DB-144: The integration tests need a PostgreSQL server in UTC; the app sets no session time zone (source: docs/v2/PLAN.md, src/lib/prisma.ts) QUESTION: DATE and TIMESTAMP(3) columns have no time zone, so a non-UTC server can shift dates.
+- [ ] P-DB-144: The integration tests need a PostgreSQL server in UTC; the app sets no session time zone (source: docs/history/v2/PLAN.md, src/lib/prisma.ts) QUESTION: DATE and TIMESTAMP(3) columns have no time zone, so a non-UTC server can shift dates.
 - [ ] P-DB-145: Timestamps are `TIMESTAMP(3)` without time zone throughout (source: prisma/migrations) QUESTION: PLAN.md invariant 9 wants `timestamptz`.
 - [ ] P-DB-146: `src/scripts/migrate.ts` imports legacy Spliit groups, skips existing group IDs, assigns new random participant and expense IDs, uses category 1, and skips deleted legacy expenses (source: src/scripts/migrate.ts:19-111) QUESTION: it writes `amount` as cents and leaves `currencyCode` and `revision` unset, so it fails against the current schema; v2 can drop it.
 - [ ] P-DB-147: Production data is never reset, truncated, reseeded, destructively migrated or deleted during development, deployment or tests (source: DEPLOYMENT.md:81)

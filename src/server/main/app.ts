@@ -154,7 +154,7 @@ export function createApp(platform: Platform) {
     }
     if (url.pathname === MCP_PATH) return withConnection(request, (db) => handleMcp(request, { db, settings: mcpSettings }))
     // The server serves the protected-resource metadata itself: Better Auth's MCP plugin drops
-    // offline_access from it, which left Claude Code without refresh tokens (OAUTH-CLAUDE-CODE.md).
+    // offline_access from it, which left Claude Code without refresh tokens (docs/history/v2/OAUTH-CLAUDE-CODE.md).
     if (METADATA_PATHS.has(url.pathname)) return protectedResourceMetadata(request, baseUrl)
     // OAuth discovery: Better Auth serves the authorization-server metadata.
     if (url.pathname.startsWith(`${AUTH_PATH}/`) || url.pathname.startsWith('/.well-known/')) return authHandler(request)
@@ -213,7 +213,7 @@ export function createApp(platform: Platform) {
     },
     /**
      * The hourly job (server.ts schedules it). It creates due
-     * recurring expenses, so reads never have to (DECISIONS.md, P-BAL-30 and
+     * recurring expenses, so reads never have to (docs/history/v2/DECISIONS.md, P-BAL-30 and
      * P-RECUR-08). A failed occurrence is logged and skipped, the other links
      * go on, and the next run tries it again.
      * It also removes stale upload targets, the objects of deleted receipts

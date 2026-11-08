@@ -27,7 +27,7 @@ function receiptLink(data: { groupId: string; url: string }) {
   return receiptDownloadPath(data)
 }
 
-/** Who recorded the change, without user IDs (DECISIONS.md, P-HIST-75). */
+/** Who recorded the change, without user IDs (docs/history/v2/DECISIONS.md, P-HIST-75). */
 function author(activity: ActivityItem) {
   if (isBaseline(activity)) return 'The log starts here. The expense existed before.'
   if (activity.source === 'system') return 'Created by the recurring schedule'

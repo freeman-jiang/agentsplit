@@ -1,6 +1,6 @@
 # Speed baseline of the current app
 
-Measured on 2026-11-05 in the T3 browser, with a signed-in member of the largest real group. The current app ran as a production build (`tooling` branch, `next build` and the standalone server) on the dev box, against a local restore of the production dump. The network was loopback, so the times below are a lower bound: production adds about 100 ms per round trip to Oracle.
+Measured on 2026-11-05 in the T3 browser, with a signed-in group member. The current app ran as a production build (`tooling` branch, `next build` and the standalone server) on the dev box, against a local restore of production data. The network was loopback, so the times below are a lower bound: production adds about 100 ms per round trip to Oracle.
 
 ## Signed-in screens (cold page load)
 

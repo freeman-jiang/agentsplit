@@ -3,7 +3,7 @@
 // contract's schemas of the same shapes are in src/shared/api/history.ts: the
 // RPC handlers and the client's revision panel make the compiler check that
 // each fits the other.
-// No Effect import: the client bundle uses this module (BUILDING.md).
+// No Effect import: the client bundle uses this module (docs/BUILDING.md).
 import { CURRENCIES, isCurrencyCode, type CurrencyCode } from './currencies'
 import { groupDigits, type DecimalString } from './minor'
 import { RECURRENCE_LABELS, type ExpenseKind, type Recurrence, type SplitMode } from './vocabulary'

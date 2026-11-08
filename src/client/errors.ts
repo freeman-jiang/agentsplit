@@ -1,6 +1,6 @@
 // The one text for a failed call. Declared errors read as src/shared/errors.ts
 // words them for every transport; a revision conflict never looks like any
-// other failure (DECISIONS.md group C, P-EXP-52 and P-EXP-53).
+// other failure (docs/history/v2/DECISIONS.md group C, P-EXP-52 and P-EXP-53).
 import { errorText } from '~/shared/errors'
 import { RpcFailure, rpcError } from './rpc'
 

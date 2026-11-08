@@ -1,6 +1,6 @@
 // The Stats tab: every figure from one statement that also checks membership.
 // Reads only: unlike the current app, loading stats never creates due
-// recurring expenses (DECISIONS.md, P-STATS-44).
+// recurring expenses (docs/history/v2/DECISIONS.md, P-STATS-44).
 import { sql } from 'drizzle-orm'
 import type { CurrencyCode } from '../shared/currencies'
 import { todayUtc } from '../shared/dates'
