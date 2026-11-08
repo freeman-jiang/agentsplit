@@ -1,9 +1,9 @@
 // Generates db/schema/auth.ts from Better Auth's own table definitions for the
-// plugin set in src/server/auth/auth-options.ts. Run after upgrading Better Auth:
+// options in src/server/auth/auth-options.ts. Run after upgrading Better Auth:
 //   bun scripts/gen-auth-schema.ts
 import { writeFileSync } from 'node:fs'
 import { getSchema } from 'better-auth/db'
-import { authPlugins } from '../src/server/auth/auth-options'
+import { AUTH_RATE_LIMIT, authPlugins } from '../src/server/auth/auth-options'
 
 type Field = {
   type: string | string[]
@@ -16,7 +16,7 @@ type Field = {
   bigint?: boolean
 }
 
-const schema = getSchema({ plugins: authPlugins(), rateLimit: { storage: 'database' } }) as Record<
+const schema = getSchema({ plugins: authPlugins(), rateLimit: AUTH_RATE_LIMIT }) as Record<
   string,
   { fields: Record<string, Field> }
 >
