@@ -57,6 +57,21 @@ export async function dropCopies(): Promise<void> {
   })
 }
 
+/** A new empty database beside the template, with no migration applied, for a test of the migrations themselves. Its name is a copy's, so dropCopies removes it too. */
+export async function emptyDatabase(): Promise<{ readonly pool: pg.Pool; readonly close: () => Promise<void> }> {
+  const url = templateUrl()
+  const name = copyName(nameOf(url))
+  await asAdmin(async (admin) => void (await admin.query(`CREATE DATABASE "${name}"`)))
+  const pool = new pg.Pool({ connectionString: new URL(`/${name}`, url).href, max: 2 })
+  return {
+    pool,
+    close: async () => {
+      await pool.end()
+      await asAdmin(async (admin) => void (await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`)))
+    },
+  }
+}
+
 /** Recreates the template database with every migration applied. */
 export async function migrateTemplate(): Promise<void> {
   const url = templateUrl()
