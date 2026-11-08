@@ -382,16 +382,21 @@ describe('ungrouped expenses', () => {
     const erin = principal('u-erin', { name: 'Erin' })
     await tx(async (db) => {
       await db.insert(user).values(userRows([dana, erin], { verified: true }))
-      await db.insert(groups).values({ id: 'dana-house', kind: 'named', name: 'Dana house', defaultCurrency: 'USD' })
-      await db.insert(participants).values([
-        { id: 'd-dana', groupId: 'dana-house', name: 'Dana' },
-        { id: 'd-erin', groupId: 'dana-house', name: 'Erin' },
-        { id: 'd-fay', groupId: 'dana-house', name: 'Fay' },
-      ])
-      await db.insert(memberships).values([
-        { userId: dana.userId, groupId: 'dana-house', role: 'admin', participantId: 'd-dana' },
-        { userId: erin.userId, groupId: 'dana-house', participantId: 'd-erin' },
-      ])
+      await seedGroup(db, {
+        groupId: 'dana-house',
+        slug: null,
+        name: 'Dana house',
+        people: [
+          { id: 'd-dana', name: 'Dana' },
+          { id: 'd-erin', name: 'Erin' },
+          { id: 'd-fay', name: 'Fay' },
+        ],
+        creator: dana,
+        members: [
+          { userId: dana.userId, role: 'admin', participantId: 'd-dana' },
+          { userId: erin.userId, role: 'member', participantId: 'd-erin' },
+        ],
+      })
     })
     await tx((db) => createExpense(db, { principal: dana, groupId: 'dana-house', expenseId: randomId(), idempotencyKey: key(), expense: meal({ payer: 'd-dana', people: ['d-dana', 'd-erin', 'd-fay'] }) }))
     const repaid = await privateDinner({ owner: dana, friend: erin })

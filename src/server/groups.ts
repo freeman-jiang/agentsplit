@@ -252,7 +252,7 @@ async function claimSlug(tx: Db, data: { slug: string; groupId: string }) {
 }
 
 /** The group and its participants as they are now, for a history snapshot. */
-export async function currentSnapshot(tx: Db, groupId: string) {
+async function currentSnapshot(tx: Db, groupId: string) {
   const [group] = await tx.select().from(groups).where(eq(groups.id, groupId))
   if (!group) throw new NotFound({ entity: 'group', id: groupId })
   const people = await tx.execute<{ id: string; name: string }>(sql`${displayNames(sql`${groupId}`)} ORDER BY p.created_at, p.id`)
@@ -277,21 +277,37 @@ export async function createGroup(
       throw new Invalid({ message: 'The creator is added automatically. Give each other participant a distinct name.', field: 'participants' })
     const slug = checkedSlug(data.group.slug)
     if (slug) await claimSlug(tx, { slug, groupId })
-    await tx.insert(groups).values({
-      id: groupId,
-      kind: 'named',
-      slug,
-      name: data.group.name,
-      information: data.group.information,
-      defaultCurrency: data.group.defaultCurrency,
-      revision: 1,
+    await writeNewGroup(tx, {
+      group: { id: groupId, slug, name: data.group.name, information: data.group.information, defaultCurrency: data.group.defaultCurrency },
+      people,
+      members: [{ userId: data.principal.userId, participantId: creator.id, role: 'admin' }],
+      creator: data.principal,
     })
-    // One statement per row keeps created_at in insertion order, so the creator is listed first.
-    for (const person of people) await tx.insert(participants).values({ ...person, groupId, createdAt: sql`clock_timestamp()` })
-    await tx.insert(memberships).values({ userId: data.principal.userId, groupId, role: 'admin', participantId: creator.id })
-    await recordGroupEvent(tx, { groupId, type: 'create_group', principal: data.principal, groupRevision: 1, data: data.group.name, snapshot: await currentSnapshot(tx, groupId) })
     return { id: groupId, slug, revision: 1 }
   })
+}
+
+/**
+ * The rows of a new named group at revision 1: the group, its people in the
+ * given order, the memberships and the create_group event of `creator`.
+ * createGroup writes them after its checks; the test kit's seedGroup writes
+ * them with fixed IDs.
+ */
+export async function writeNewGroup(
+  tx: Db,
+  data: {
+    group: { id: string; slug: string | null; name: string; information: string; defaultCurrency: CurrencyCode }
+    people: readonly { id: string; name: string }[]
+    members: readonly { userId: string; participantId: string | null; role: Role }[]
+    creator: Principal
+  },
+): Promise<void> {
+  const groupId = data.group.id
+  await tx.insert(groups).values({ ...data.group, kind: 'named', revision: 1 })
+  // One statement per row keeps created_at in insertion order, so the creator is listed first.
+  for (const person of data.people) await tx.insert(participants).values({ ...person, groupId, createdAt: sql`clock_timestamp()` })
+  if (data.members.length) await tx.insert(memberships).values(data.members.map((m) => ({ ...m, groupId })))
+  await recordGroupEvent(tx, { groupId, type: 'create_group', principal: data.creator, groupRevision: 1, data: data.group.name, snapshot: await currentSnapshot(tx, groupId) })
 }
 
 async function lockGroup(tx: Db, groupId: string) {
