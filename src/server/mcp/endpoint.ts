@@ -10,6 +10,7 @@ import { challenge } from '../auth/challenge'
 import { OAUTH_WRITE_SCOPE } from '../../shared/account'
 import { originAllowed } from '../auth/origin'
 import { takeMcpRequest } from '../rate-limit'
+import { staticAnswer } from './answers'
 import { createServer, isWriteTool, type McpSettings } from './server'
 
 /** The SDK's own default request limit, applied here because this module reads the body itself. */
@@ -76,15 +77,23 @@ export async function handleMcp(request: Request, data: { db: Db; settings: McpS
     return Response.json({ jsonrpc: '2.0', id, error: { code: -32020, message: 'MCP-Protocol-Version is required' } }, { status: 400, headers: noStore })
   }
 
-  const handler = createMcpHandler(() => createServer({ db, principal, settings }), { responseMode: 'json' })
+  // initialize, tools/list and notifications/initialized are the same for every caller (answers.ts).
+  const response = await staticAnswer({ request, body, serve: () => serve({ request, text, body, db, principal, settings }) })
+  const headers = new Headers(response.headers)
+  headers.set('Cache-Control', 'no-store')
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+}
+
+/** The SDK's answer to the request, read in full. */
+async function serve(data: { request: Request; text: string; body: unknown; db: Db; principal: McpPrincipal; settings: McpSettings }): Promise<Response> {
+  const { request, text, body } = data
+  const handler = createMcpHandler(() => createServer({ db: data.db, principal: data.principal, settings: data.settings }), { responseMode: 'json' })
   try {
     const forward = request.method === 'POST' ? new Request(request.url, { method: 'POST', headers: request.headers, body: text }) : request
     const response = await handler.fetch(forward, body === undefined ? {} : { parsedBody: body })
     // Read the whole body before close() ends the exchange.
     const payload = await response.arrayBuffer()
-    const headers = new Headers(response.headers)
-    headers.set('Cache-Control', 'no-store')
-    return new Response(payload, { status: response.status, statusText: response.statusText, headers })
+    return new Response(payload, { status: response.status, statusText: response.statusText, headers: response.headers })
   } finally {
     await handler.close()
   }
