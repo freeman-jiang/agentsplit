@@ -85,11 +85,6 @@ test('the rail tells the viewer what they owe, and refreshes to "Settled up" (P-
   await expect(page).toHaveURL(new RegExp(`/${h.slug}/balances$`))
 })
 
-test('a signed-out visitor is sent to sign-in', async ({ page }) => {
-  await page.goto('/groups')
-  await expect(page).toHaveURL(/\/sign-in/)
-})
-
 test('a signed-out visitor returns to the page they asked for after sign-in (P-AUTH-49)', async ({ page }) => {
   await page.goto('/groups')
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fgroups/)
