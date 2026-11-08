@@ -6,7 +6,7 @@
 import { sql, type SQL } from 'drizzle-orm'
 import { Invalid, NotFound, type FeedCursor as FeedCursorSchema, type FeedFilter as FeedFilterSchema } from '../shared/api'
 import type { GroupKind, Role } from '../shared/vocabulary'
-import { groupIdOf, myMemberships, type Principal } from './core/access'
+import { groupIdOfInput, myMemberships, type Principal } from './core/access'
 import { attributionOf } from './activity'
 import { balanceSums, settlementsOf, type BalanceSum } from './balances'
 import type { Db } from './core/db'
@@ -43,7 +43,7 @@ export async function listFeed(db: Db, data: { principal: Principal; filter: Fee
   if (f.scope === 'grouped') where.push(sql`g.kind = 'named'`)
   if (f.scope === 'ungrouped') where.push(sql`g.kind = 'private'`)
   // Any group or context the caller belongs to, private ones included (DECISIONS.md, P-FEED-18).
-  if (f.groupId) where.push(sql`g.id = ${groupIdOf(sql`${f.groupId}`)}`)
+  if (f.groupId) where.push(sql`g.id = ${groupIdOfInput(f.groupId)}`)
   const search = f.search?.trim()
   if (search) {
     const term = escapeLike(search)

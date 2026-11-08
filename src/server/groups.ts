@@ -14,7 +14,7 @@ import type { GroupKind, Role } from '../shared/vocabulary'
 import { randomId } from '../shared/ids'
 import type { Db } from './core/db'
 import { createInvitation, findInvitation, invitationProblem, listedInvitation, openInvitation, revokeInvitations, tokenOfLink } from './invitations'
-import { groupIdOf, memberCte, myMemberships, requireActive, requireMember, type Principal } from './core/access'
+import { groupIdOf, groupIdOfInput, groupRef, memberCte, myMemberships, requireActive, requireMember, type Principal } from './core/access'
 import { accessText, groupSnapshot, invitationText, recordGroupEvent } from './activity'
 import { formatTotals, netsCte, totalsJson } from './balances'
 import { idempotent } from './idempotency'
@@ -96,7 +96,7 @@ type PageRow = {
  * names (IDs or slugs), and one that is not the caller's denies the whole read.
  */
 export async function listGroupPage(db: Db, data: { principal: Principal; offset: number; limit: number; groupIds?: readonly string[] }) {
-  const requested = data.groupIds ? [...new Set(data.groupIds)] : undefined
+  const requested = data.groupIds ? [...new Set(data.groupIds.map(groupRef))] : undefined
   if (requested?.length === 0) return { groups: [], hasMore: false }
   const refs = requested && sql`unnest(ARRAY[${textList(requested)}]::text[]) AS r(ref)`
   if (refs) {
@@ -550,7 +550,7 @@ async function applyAccess(
 }
 
 async function resolveGroup(tx: Db, ref: string) {
-  const result = await tx.execute<{ id: string | null }>(sql`SELECT ${groupIdOf(sql`${ref}`)} AS id`)
+  const result = await tx.execute<{ id: string | null }>(sql`SELECT ${groupIdOfInput(ref)} AS id`)
   return result.rows[0]?.id ?? null
 }
 
