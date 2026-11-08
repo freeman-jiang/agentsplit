@@ -1,7 +1,7 @@
 // Agent receipt uploads against a real database and the in-memory bucket: a
 // target from create_expense, the one PUT, the attach through update_expense,
 // and the download through /api/receipts with the same API key. Parity items
-// are named in docs/v2/parity/mcp.md.
+// are named in docs/history/v2/parity/mcp.md.
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { receipts, receiptUploads } from '../../db/schema/app'

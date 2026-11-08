@@ -131,7 +131,7 @@ describe('ungrouped expenses', () => {
     expect(mine.expenses.map((e) => e.id)).toContain('supplies')
     expect(mine.expenses.find((e) => e.id === privateId)?.group).toBeNull()
     expect(mine.expenses.map((e) => e.id)).not.toContain('only-bob')
-    // The default is "involving me", in the UI and for agents (DECISIONS.md, P-FEED-19).
+    // The default is "involving me", in the UI and for agents (docs/history/v2/DECISIONS.md, P-FEED-19).
     expect(await feedIds({ principal: alice })).toEqual(mine.expenses.map((e) => e.id))
     expect(await feedIds({ principal: alice, filter: { involvingMe: false } })).toContain('only-bob')
   })
@@ -152,7 +152,7 @@ describe('ungrouped expenses', () => {
       })
       await expect(tx((db) => listExpenses(db, { principal: peer, groupId: privateId, filter: {}, cursor: null, limit: 10 }))).rejects.toMatchObject({ _tag: 'Forbidden' })
     }
-    // Its own people can filter by the private context's ID (DECISIONS.md, P-FEED-18).
+    // Its own people can filter by the private context's ID (docs/history/v2/DECISIONS.md, P-FEED-18).
     expect(await feedIds({ principal: bob, filter: { groupId: privateId } })).toEqual([privateId])
   })
 

@@ -285,7 +285,7 @@ function draftOf(input: ExpenseInputs): ExpenseDraft {
     title: input.title,
     vendor: input.vendor ?? null,
     notes: input.notes ?? '',
-    // Payments store Payment on every path (DECISIONS.md, P-BAL-92).
+    // Payments store Payment on every path (docs/history/v2/DECISIONS.md, P-BAL-92).
     categoryId: input.category ?? (input.isReimbursement ? CATEGORY.payment : CATEGORY.general),
     expenseDate: input.expenseDate,
     currency: input.currencyCode,

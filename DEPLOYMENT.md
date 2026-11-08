@@ -1,6 +1,6 @@
 # AgentSplit on Coolify
 
-AgentSplit v2 runs on Coolify on the Oracle host, at https://agentsplit.freemanjiang.com. It has served production since 2026-11-05 at 18:00:48 UTC. The cutover record and its checks are in [docs/v2/CUTOVER.md](docs/v2/CUTOVER.md).
+AgentSplit v2 runs on Coolify on the Oracle host, at https://agentsplit.freemanjiang.com. It has served production since 2026-11-05 at 18:00:48 UTC. The cutover record and its checks are in [docs/history/v2/CUTOVER.md](docs/history/v2/CUTOVER.md).
 
 ## Production data preservation
 
@@ -115,7 +115,7 @@ Keep the `postgres-data` volume until Freeman says otherwise. Never delete a vol
 
 ## Preview
 
-There is no preview deployment. Freeman approved removing the Coolify preview on 2026-11-07. Review changes on a local dev server with synthetic data ("Dev server" in [docs/v2/BUILDING.md](docs/v2/BUILDING.md)).
+There is no preview deployment. Freeman approved removing the Coolify preview on 2026-11-07. Review changes on a local dev server with synthetic data ("Dev server" in [docs/BUILDING.md](docs/BUILDING.md)).
 
 ## NixOS host
 

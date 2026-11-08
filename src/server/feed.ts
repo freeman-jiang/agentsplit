@@ -42,7 +42,7 @@ export async function listFeed(db: Db, data: { principal: Principal; filter: Fee
   const where: SQL[] = [sql`e.deleted_at IS NULL`]
   if (f.scope === 'grouped') where.push(sql`g.kind = 'named'`)
   if (f.scope === 'ungrouped') where.push(sql`g.kind = 'private'`)
-  // Any group or context the caller belongs to, private ones included (DECISIONS.md, P-FEED-18).
+  // Any group or context the caller belongs to, private ones included (docs/history/v2/DECISIONS.md, P-FEED-18).
   if (f.groupId) where.push(sql`g.id = ${groupIdOfInput(f.groupId)}`)
   const search = f.search?.trim()
   if (search) {
@@ -51,7 +51,7 @@ export async function listFeed(db: Db, data: { principal: Principal; filter: Fee
   }
   const { currency, categoryId, kind, from, to } = f
   where.push(...filterConditions({ currency, categoryId, kind, from, to }))
-  // One default for the UI and for agents (DECISIONS.md, P-FEED-19).
+  // One default for the UI and for agents (docs/history/v2/DECISIONS.md, P-FEED-19).
   if (f.involvingMe ?? true) where.push(sql`m.participant_id IS NOT NULL AND ${involves(sql`m.participant_id`)}`)
   if (f.personUserId)
     where.push(sql`EXISTS (SELECT 1 FROM memberships pm WHERE pm.user_id = ${f.personUserId} AND pm.group_id = e.group_id

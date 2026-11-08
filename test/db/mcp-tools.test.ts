@@ -1,6 +1,6 @@
 // The MCP endpoint, the tool advertisement, and the group and expense tools,
 // over HTTP in process, against a real database. Parity items are named in
-// docs/v2/parity/mcp.md.
+// docs/history/v2/parity/mcp.md.
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { GROUP_DENIED, REVISION_CONFLICT } from '~/shared/errors'
@@ -200,7 +200,7 @@ describe('tool advertisement', () => {
 
   /**
    * The output fields of v1's schema that v2 leaves out on purpose: a saved
-   * revision keeps no receipt size and no group revision (docs/v2/parity/mcp.md, list_activity 06).
+   * revision keeps no receipt size and no group revision (docs/history/v2/parity/mcp.md, list_activity 06).
    */
   const leftOut = (path: string) => (/napshot\.expense\.documents\[\]$/.test(path) ? ['width', 'height'] : /napshot\.group$/.test(path) ? ['revision'] : [])
 

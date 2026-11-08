@@ -20,7 +20,7 @@ type Transfer = { from: string; to: string; amount: Minor }
 
 /**
  * The current app's public balances: built from the suggested repayments, not
- * from raw sums (P-TOOL-BALANCES-05, kept in DECISIONS.md group D). A person
+ * from raw sums (P-TOOL-BALANCES-05, kept in docs/history/v2/DECISIONS.md group D). A person
  * who pays receives `paidFor`; a person who is paid receives `paid`.
  */
 function publicBalances(data: { transfers: readonly Transfer[]; currency: CurrencyCode }) {

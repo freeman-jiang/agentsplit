@@ -1,7 +1,7 @@
 // The value lists of the ledger, in one place. The contract schemas, the
 // Drizzle enums and CHECKs, the MCP tools and the client derive from these;
 // test/db/database-rules.test.ts compares them with the database's CHECKs.
-// No Effect import: the client bundle uses this module (BUILDING.md).
+// No Effect import: the client bundle uses this module (docs/BUILDING.md).
 
 export const EXPENSE_KINDS = ['expense', 'payment'] as const
 export type ExpenseKind = (typeof EXPENSE_KINDS)[number]
@@ -26,7 +26,7 @@ export const RECURRENCE_LABELS = { none: 'None', daily: 'Daily', weekly: 'Weekly
 
 /**
  * The fixed categories that code names, from db/migrations/0002_categories.sql.
- * General is the default; payments store Payment on every path (DECISIONS.md, P-BAL-92).
+ * General is the default; payments store Payment on every path (docs/history/v2/DECISIONS.md, P-BAL-92).
  */
 export const CATEGORY = { general: 0, payment: 1 } as const
 
