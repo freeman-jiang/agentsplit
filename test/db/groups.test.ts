@@ -5,7 +5,6 @@ import { activities, groups, invitations, memberships } from '../../db/schema/ap
 import { user } from '../../db/schema/auth'
 import { eq, sql } from 'drizzle-orm'
 import { accountBalances, listBalances } from '~/server/balances'
-import { sqlState } from '~/server/core/db'
 import { sha256Hex } from '~/server/core/ids'
 import {
   changeAccess,
@@ -232,12 +231,6 @@ describe('settings', () => {
     expect(currencies.find((c) => c.currency === 'USD')?.balances.map((b) => b.net).sort()).toEqual(['-5.00', '5.00'])
   })
 
-  it('refuses a group edit without its activity, at the database (P-DB-73)', async () => {
-    const g = await create(alice)
-    const edit = (changes: { name: string; revision?: number }) => database.tx((db) => db.update(groups).set(changes).where(eq(groups.id, g.id)))
-    await expect(edit({ name: 'Sneaky', revision: 2 }).catch(sqlState)).resolves.toBe('23514')
-    await expect(edit({ name: 'Sneaky' }).catch(sqlState)).resolves.toBe('23514')
-  })
 })
 
 describe('people', () => {

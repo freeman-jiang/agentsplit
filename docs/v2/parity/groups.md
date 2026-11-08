@@ -76,7 +76,7 @@ The shared `Conflict` error means "the revision changed" and carries `currentRev
 | P-GROUP-71 | Done | "refuses renaming or removing bound or invited people" |
 | P-GROUP-73 | Done: 1 to 100 entries in `participants` | Contract |
 | P-GROUP-74 | Done | "refuses settings edits of a private expense context" |
-| P-GROUP-75 | Done, and enforced by the database: a groups row changes only as the next revision with its `update_group` activity (P-DB-73) | "applies partial changes…", "refuses a group edit without its activity, at the database" |
+| P-GROUP-75 | Done, and enforced by the database: a groups row changes only as the next revision with its `update_group` activity (P-DB-73) | "applies partial changes…"; database-rules.test.ts "0004: group audit" |
 | P-GROUP-76 | Fixed: "<name> is part of expenses, so they cannot be removed." | "refuses to remove a person in an expense…" |
 | P-GROUP-77 | Partly: `groups.details` returns `kind`, the group, the caller's role and participant, people with status, emails, `inExpenses` and `reserved`, unbound members and invitations. Share, CSV and JSON links are deferred to the export and MCP areas; `groupRef` gives the path | — |
 | P-GROUP-78 | Changed: a missing group is `Forbidden` "Group access denied", the same as a group the caller cannot see | "does not grant access through a slug" |
