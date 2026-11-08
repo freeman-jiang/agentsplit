@@ -3,7 +3,7 @@
 // (access, scope, "involving me", the cursor) are in src/server/feed.ts; this
 // file only maps names.
 import { Schema } from 'effect'
-import { CategoryId, Id as IdInput, SearchText } from '../../../shared/api'
+import { CategoryId, FeedScope, Id as IdInput, SearchText } from '../../../shared/api'
 import { FeedCursor } from '../../../shared/api/feed'
 import { legacyDateTime } from '../../../shared/dates'
 import { LIMITS } from '../../../shared/limits'
@@ -30,7 +30,7 @@ export const listAllExpenses = defineTool({
   input: Schema.Struct({
     cursor: optional(Schema.NullOr(Cursor)),
     limit: optional(PageLimit(LIMITS.expensePage)),
-    scope: optional(Schema.Literals(['all', 'grouped', 'ungrouped']).annotate({ default: 'all' })),
+    scope: optional(FeedScope.annotate({ default: 'all' })),
     groupId: optional(IdInput),
     filter: optional(SearchText),
     involvingMe: optional(

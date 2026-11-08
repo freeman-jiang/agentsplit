@@ -36,9 +36,11 @@ export const FeedCursor = Schema.Struct({
   id: Id,
 })
 
+/** 'grouped' keeps named groups only; 'ungrouped' keeps private expenses only. Default 'all'. */
+export const FeedScope = Schema.Literals(['all', 'grouped', 'ungrouped'])
+
 export const FeedFilter = Schema.Struct({
-  /** 'grouped' keeps named groups only; 'ungrouped' keeps private expenses only. Default 'all'. */
-  scope: Schema.optionalKey(Schema.Literals(['all', 'grouped', 'ungrouped'])),
+  scope: Schema.optionalKey(FeedScope),
   /** One named group or one private context. */
   groupId: Schema.optionalKey(Id),
   /** Case-insensitive substring of the title or the vendor. */
