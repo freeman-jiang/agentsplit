@@ -12,6 +12,7 @@ import { removeOrphans, storageUnavailable, type Bucket } from './bucket'
 import type { Db } from './core/db'
 import { requireMember, type Principal } from './core/access'
 import { spaceFor } from './receipt-quota'
+import { iso } from './sql'
 import type { Tombstone } from './expense-read'
 
 /**
@@ -84,7 +85,7 @@ async function receiptInGroup(db: Db, data: { groupId: string; url: string }) {
   const result = await db.execute<{ found: boolean; deleted: Tombstone | null }>(sql`
     SELECT EXISTS (SELECT 1 FROM receipts WHERE group_id = ${data.groupId} AND url = ${data.url})
       OR EXISTS (SELECT 1 FROM expense_documents d JOIN expenses e ON e.id = d.expense_id WHERE e.group_id = ${data.groupId} AND d.url = ${data.url}) AS found,
-      (SELECT json_build_object('by', u.name, 'at', to_char(dr.deleted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD'))
+      (SELECT json_build_object('by', u.name, 'at', ${iso(sql`dr.deleted_at`)})
         FROM receipts r JOIN deleted_receipts dr ON dr.receipt_id = r.id JOIN "user" u ON u.id = dr.deleted_by
         WHERE r.group_id = ${data.groupId} AND r.url = ${data.url}) AS deleted
   `)
