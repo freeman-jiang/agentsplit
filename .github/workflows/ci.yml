@@ -21,6 +21,8 @@ jobs:
         run: nix develop --command db-start
       - name: Install dependencies
         run: nix develop --command bun install --frozen-lockfile --ignore-scripts
+      - name: One Bun version in the dev shell, the image and @types/bun
+        run: nix develop --command bun scripts/check-bun-version.ts
       # The build also generates the route tree (src/client/routeTree.gen.ts) that the type check needs.
       - name: Production build
         run: nix develop --command bun run build
