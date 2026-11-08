@@ -567,14 +567,15 @@ describe('API keys on the endpoint', () => {
 })
 
 describe('rate limit', () => {
-  it('takes 120 requests a minute per user, refilled two a second, at a fixed clock', async () => {
+  it('takes LIMITS.mcpRequestsPerMinute requests a minute per user, refilled evenly over the minute, at a fixed clock', async () => {
     const at = new Date('2026-11-05T12:00:00.000Z')
     const take = (userId: string, time: Date) => h.withDb((db) => takeMcpRequest(db, { userId, at: time }))
     for (let i = 0; i < LIMITS.mcpRequestsPerMinute; i++) expect(await take('erin', at)).toBe(0)
     expect(await take('erin', at)).toBe(1)
-    const half = new Date(at.getTime() + 500)
-    expect(await take('erin', half)).toBe(0)
-    expect(await take('erin', half)).toBe(1)
+    // One refill later exactly one more request fits.
+    const later = new Date(at.getTime() + 60_000 / LIMITS.mcpRequestsPerMinute)
+    expect(await take('erin', later)).toBe(0)
+    expect(await take('erin', later)).toBe(1)
     expect(await take('frank', at)).toBe(0)
   })
 

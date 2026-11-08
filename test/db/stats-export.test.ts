@@ -8,6 +8,7 @@ import { contentDisposition } from '~/server/headers'
 import { createExpense, deleteExpense } from '~/server/ledger'
 import { statsExpenses, statsOverview } from '~/server/stats'
 import type { ExpenseDraft } from '~/shared/expense-rules'
+import { CATEGORY } from '~/shared/vocabulary'
 import { insertImportedExpense } from './history-fixtures'
 import { testDatabase, type TestDatabase } from '../kit/database'
 import { draft } from '../kit/drafts'
@@ -64,7 +65,7 @@ async function seedFlat(data: { groupId: string; slug: string; prefix: string })
   await create({ name: 'groceries', vendor: 'Costco', title: '=Groceries' })
   await create({ name: 'rent', categoryId: 18, amount: '1200.00', expenseDate: '2026-03-01', payers: [{ participantId: pa, amount: '700.00' }, { participantId: pb, amount: '500.00' }], recurrence: 'monthly' })
   await create({ name: 'refund', categoryId: 18, amount: '-50.00', expenseDate: '2026-03-02', payers: [{ participantId: pb, amount: '-50.00' }] })
-  await create({ name: 'payback', kind: 'payment', categoryId: 1, amount: '20.00', expenseDate: '2026-03-03', payers: [{ participantId: pb, amount: '20.00' }], splitMode: 'amount', shares: [{ participantId: pa, weight: '20.00' }] })
+  await create({ name: 'payback', kind: 'payment', categoryId: CATEGORY.payment, amount: '20.00', expenseDate: '2026-03-03', payers: [{ participantId: pb, amount: '20.00' }], splitMode: 'amount', shares: [{ participantId: pa, weight: '20.00' }] })
   await create({ name: 'ramen', currency: 'JPY', amount: '1500', expenseDate: '2026-02-01', categoryId: 8 })
   await create({ name: 'gone', amount: '999.00' })
   await tx((db) => deleteExpense(db, { principal: alice, groupId, expenseId: `${prefix}gone`, expectedRevision: 1, idempotencyKey: key() }))

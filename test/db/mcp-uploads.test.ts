@@ -68,7 +68,7 @@ describe('agent receipt uploads', () => {
     if (!target || !unused) throw new Error('no targets')
     expect(target).toMatchObject({ filename: 'receipt.png', method: 'PUT', headers: { 'Content-Type': 'image/png', 'Content-Length': String(image.length) } })
     expect(target.url).toMatch(new RegExp(`^${BASE}/api/receipt-uploads/[A-Za-z0-9_-]{43}$`))
-    expect(Date.parse(target.expiresAt) - Date.now()).toBeGreaterThan(290_000)
+    expect(Date.parse(target.expiresAt) - Date.now()).toBeGreaterThan((LIMITS.uploadTargetSeconds - 10) * 1000)
     // A target alone saves nothing.
     expect(await revisionOf(1)).toBe(1)
 
@@ -148,7 +148,7 @@ describe('agent receipt uploads', () => {
     expect(await revisionOf(2)).toBe(2)
   })
 
-  it('refuses a stored upload after 24 hours, or with content of another type', async () => {
+  it('refuses a stored upload after its attach window, or with content of another type', async () => {
     const image = png(10, 10)
     const [old, mislabeled] = await create(3, [
       { filename: 'old.png', contentType: 'image/png', bytes: image.length },
@@ -157,7 +157,7 @@ describe('agent receipt uploads', () => {
     if (!old || !mislabeled) throw new Error('no targets')
     expect((await put(old, image)).status).toBe(200)
     expect((await put(mislabeled, jpeg)).status).toBe(200)
-    await h.withDb((db) => db.update(receiptUploads).set({ uploadedAt: sql`now() - interval '25 hours'` }).where(eq(receiptUploads.id, old.uploadId)))
+    await h.withDb((db) => db.update(receiptUploads).set({ uploadedAt: sql`now() - make_interval(hours => ${LIMITS.uploadAttachHours + 1})` }).where(eq(receiptUploads.id, old.uploadId)))
     const expired = await failure(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(3), expectedRevision: 1, attachUploadIds: [old.uploadId] }, headers: alice })
     expect(expired).toMatchObject({ code: 'BAD_REQUEST', message: 'Upload is too large or expired' })
     const wrong = await failure(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21(3), expectedRevision: 1, attachUploadIds: [mislabeled.uploadId] }, headers: alice })
@@ -206,7 +206,7 @@ describe('agent receipt uploads', () => {
     expect((await put(stale, image)).status).toBe(200)
     const [row] = await h.withDb((db) => db.select({ key: receiptUploads.key }).from(receiptUploads).where(eq(receiptUploads.id, stale.uploadId)))
     expect(h.storage.objects.has(row?.key ?? '')).toBe(true)
-    await h.withDb((db) => db.update(receiptUploads).set({ createdAt: sql`now() - interval '26 hours'` }).where(eq(receiptUploads.id, stale.uploadId)))
+    await h.withDb((db) => db.update(receiptUploads).set({ createdAt: sql`now() - make_interval(hours => ${LIMITS.uploadAttachHours + 2})` }).where(eq(receiptUploads.id, stale.uploadId)))
     expect(await h.withDb((db) => removeStaleUploads({ db, bucket: h.storage.bucket }))).toBe(1)
     expect(h.storage.objects.has(row?.key ?? '')).toBe(false)
   })
