@@ -1,4 +1,4 @@
-// The upload check reads the image header itself (the current app used sharp).
+// The upload check reads the image header itself (v1 used sharp).
 import { expect, it } from 'vitest'
 import { imageInfo, receiptKey } from '~/server/receipts'
 import { JPEG as jpeg, png as pngOf } from './kit/images'

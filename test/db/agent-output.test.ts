@@ -149,7 +149,7 @@ describe('agent writes and their history', () => {
     ])
   })
 
-  it('stores "<vendor> — <title>" on every expense event, as the current app (P-EXP-107)', async () => {
+  it('stores "<vendor> — <title>" on every expense event, as v1 did (P-EXP-107)', async () => {
     const created = await create({ id: 2, title: 'Pizza' })
     await ok(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id21('a', 2), expectedRevision: created['revision'], changes: { vendor: 'Luigi' } }, headers: alice })
     await ok(h, { name: 'delete_expense', args: { groupId: 'g1', expenseId: id21('a', 2), expectedRevision: 2 }, headers: alice })

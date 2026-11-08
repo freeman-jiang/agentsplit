@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { afterAll, describe, expect, it } from 'vitest'
 import { assetHandler, loadAssets } from '../src/server/assets'
+import { readSettings } from '../src/server/core/config'
 import { nextRun } from '../src/server/hourly'
 
 describe('static files', () => {
@@ -70,8 +71,7 @@ describe('settings', () => {
     S3_UPLOAD_SECRET: 'secret',
   }
   // A bad setting must stop the start, not the first sign-in hours later.
-  it('refuses a short secret, a missing setting and a malformed number at start', async () => {
-    const { readSettings } = await import('~/server/core/config')
+  it('refuses a short secret, a missing setting and a malformed number at start', () => {
     // The base settings start; each case below changes one of them.
     expect(readSettings(env).app.baseUrl).toBe('https://a.example')
     expect(() => readSettings({ ...env, BETTER_AUTH_SECRET: 'short' })).toThrow('Set BETTER_AUTH_SECRET to at least 32 characters')

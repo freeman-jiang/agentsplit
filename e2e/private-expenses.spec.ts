@@ -20,7 +20,7 @@ test('an ungrouped expense uses the full expense form with the private options, 
 
   // The live share preview of the full form: 30.00 evenly between two people.
   await expect(page.getByTestId('share-preview')).toHaveText(['$15.00', '$15.00'])
-  // The current app's privateExpense options.
+  // v1's privateExpense options.
   await expect(page.getByLabel('Expense Recurrence')).toBeDisabled()
   await expect(page.getByLabel('This is a payment')).toHaveCount(0)
   await expect(page.getByLabel('Save as default splitting options')).toHaveCount(0)

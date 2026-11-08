@@ -260,7 +260,7 @@ describe('0009: references, value lists, unique keys and permanent receipts', ()
     await refuses('23001', `DELETE FROM "user" WHERE id = $1`, [member])
   })
 
-  it('refuses an unknown split mode, recurrence, activity type or role, such as the current app’s enum names', async () => {
+  it('refuses an unknown split mode, recurrence, activity type or role, such as v1’s enum names', async () => {
     const g = await newGroup()
     const insert = (column: 'split_mode' | 'recurrence', value: string) =>
       run(`INSERT INTO expenses (id, group_id, kind, title, expense_date, currency, amount, split_mode, recurrence) VALUES ($1, $2, 'expense', 'x', '2026-11-05', 'USD', 1, $3, $4)`, [
