@@ -1,7 +1,7 @@
 // The Stats tab and the exports against a real database.
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { activities, groups, memberships, participants } from '../../db/schema/app'
+import { activities } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
 import { exportCsv, exportJson } from '~/server/export'
 import { contentDisposition } from '~/server/headers'
@@ -13,6 +13,7 @@ import { testDatabase, type TestDatabase } from '../kit/database'
 import { draft } from '../kit/drafts'
 import { counter } from '../kit/ids'
 import { principal, userRows } from '../kit/people'
+import { seedGroup } from '../kit/seed'
 
 let database: TestDatabase
 const alice = principal('u-alice', { name: 'Alice' })
@@ -30,18 +31,23 @@ const key = counter('key-stats')
 async function seedFlat(data: { groupId: string; slug: string; prefix: string }) {
   const { groupId, prefix } = data
   const [pa, pb, pc] = [`${prefix}pa`, `${prefix}pb`, `${prefix}pc`]
-  await tx(async (db) => {
-    await db.insert(groups).values({ id: groupId, kind: 'named', slug: data.slug, name: 'Flat · Zürich', defaultCurrency: 'USD' })
-    await db.insert(participants).values([
-      { id: pa, groupId, name: 'Alice' },
-      { id: pb, groupId, name: 'Bob' },
-      { id: pc, groupId, name: '=Cara' },
-    ])
-    await db.insert(memberships).values([
-      { userId: alice.userId, groupId, role: 'admin', participantId: pa },
-      { userId: unbound.userId, groupId, role: 'member', participantId: null },
-    ])
-  })
+  await tx((db) =>
+    seedGroup(db, {
+      groupId,
+      slug: data.slug,
+      name: 'Flat · Zürich',
+      people: [
+        { id: pa, name: 'Alice' },
+        { id: pb, name: 'Bob' },
+        { id: pc, name: '=Cara' },
+      ],
+      creator: alice,
+      members: [
+        { userId: alice.userId, role: 'admin', participantId: pa },
+        { userId: unbound.userId, role: 'member', participantId: null },
+      ],
+    }),
+  )
   const create = (expense: { name: string } & Partial<ExpenseDraft>) => {
     const { name, ...over } = expense
     return tx((db) =>
@@ -153,9 +159,7 @@ describe('participant names', () => {
     const dana = principal('u-dana', { name: 'Dana' })
     await tx(async (db) => {
       await db.insert(user).values(userRows([dana], { verified: true }))
-      await db.insert(groups).values({ id: 'g-names', kind: 'named', slug: null, name: 'Names', defaultCurrency: 'USD' })
-      await db.insert(participants).values([{ id: 'n-dana', groupId: 'g-names', name: 'Placeholder' }])
-      await db.insert(memberships).values({ userId: dana.userId, groupId: 'g-names', role: 'admin', participantId: 'n-dana' })
+      await seedGroup(db, { groupId: 'g-names', slug: null, name: 'Names', people: [{ id: 'n-dana', name: 'Placeholder' }], creator: dana, members: [{ userId: dana.userId, role: 'admin', participantId: 'n-dana' }] })
     })
     const expense = draft({ payer: 'n-dana', people: ['n-dana'], title: 'Lunch', amount: '10.00' })
     await tx((db) => createExpense(db, { principal: dana, groupId: 'g-names', expenseId: 'n-lunch', idempotencyKey: key(), expense }))

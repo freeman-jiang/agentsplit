@@ -1,12 +1,11 @@
 // Synthetic groups and private contexts, written as the app writes them. The
 // database tests, the end-to-end fixtures and scripts/seed-synthetic.ts share them.
-import { sql } from 'drizzle-orm'
-import { groups, memberships, participants } from '../../db/schema/app'
+import { eq } from 'drizzle-orm'
+import { groups } from '../../db/schema/app'
 import { user } from '../../db/schema/auth'
-import { recordGroupEvent } from '../../src/server/activity'
 import type { Principal } from '../../src/server/core/access'
 import type { Db } from '../../src/server/core/db'
-import { currentSnapshot } from '../../src/server/groups'
+import { writeNewGroup } from '../../src/server/groups'
 import { createUngroupedExpense } from '../../src/server/ungrouped'
 import type { CurrencyCode } from '../../src/shared/currencies'
 import type { Role } from '../../src/shared/vocabulary'
@@ -17,10 +16,10 @@ import { principal } from './people'
 export type Member = { readonly userId: string; readonly participantId: string | null; readonly role: Role }
 
 /**
- * A named group at revision 1, written as createGroup writes it: the group,
- * its participants in the given order, the memberships, and the create_group
- * event of `creator`, its first member and an admin. The member accounts must
- * exist. A second run changes nothing.
+ * A named group at revision 1, written by writeNewGroup as createGroup writes
+ * it, with fixed IDs: the group, its participants in the given order, the
+ * memberships, and the create_group event of `creator`, its first member and
+ * an admin. The member accounts must exist. A second run changes nothing.
  */
 export async function seedGroup(
   db: Db,
@@ -34,16 +33,14 @@ export async function seedGroup(
     members: readonly [Member & { role: 'admin' }, ...Member[]]
   },
 ): Promise<void> {
-  const { groupId } = data
-  const created = await db
-    .insert(groups)
-    .values({ id: groupId, kind: 'named', slug: data.slug, name: data.name, defaultCurrency: data.currency ?? 'USD', revision: 1 })
-    .onConflictDoNothing()
-    .returning({ id: groups.id })
-  if (!created.length) return
-  for (const p of data.people) await db.insert(participants).values({ id: p.id, groupId, name: p.name, createdAt: sql`clock_timestamp()` })
-  await db.insert(memberships).values(data.members.map((m) => ({ ...m, groupId })))
-  await recordGroupEvent(db, { groupId, type: 'create_group', principal: data.creator, groupRevision: 1, data: data.name, snapshot: await currentSnapshot(db, groupId) })
+  const [existing] = await db.select({ id: groups.id }).from(groups).where(eq(groups.id, data.groupId))
+  if (existing) return
+  await writeNewGroup(db, {
+    group: { id: data.groupId, slug: data.slug, name: data.name, information: '', defaultCurrency: data.currency ?? 'USD' },
+    people: data.people,
+    members: data.members,
+    creator: data.creator,
+  })
 }
 
 /** A participant, and the verified account bound to it when `userId` is set. */
