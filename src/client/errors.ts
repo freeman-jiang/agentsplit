@@ -24,7 +24,8 @@ export function describeError(cause: unknown, unanswered: string = NO_ANSWER): F
   const error = rpcError(cause)
   switch (error._tag) {
     case 'Conflict':
-      return { kind: 'conflict', message: error.message ?? CONFLICT }
+      // A revision conflict arrives with an empty message (errorText in src/shared/errors.ts).
+      return { kind: 'conflict', message: error.message || CONFLICT }
     case 'NotFound':
     case 'Invalid':
     case 'Forbidden':

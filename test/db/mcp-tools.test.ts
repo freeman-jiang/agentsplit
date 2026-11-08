@@ -3,7 +3,7 @@
 // docs/v2/parity/mcp.md.
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { GROUP_DENIED } from '~/shared/errors'
+import { GROUP_DENIED, REVISION_CONFLICT } from '~/shared/errors'
 import { activities, expenses, mcpRateLimits, memberships } from '../../db/schema/app'
 import { MCP_TOOLS } from '~/server/mcp/tools'
 import { takeMcpRequest } from '~/server/rate-limit'
@@ -357,7 +357,7 @@ describe('expense writes and reads', () => {
     expect(read).toMatchObject({ title: 'Dinner', vendor: 'Nopa', notes: 'Includes tip', amount: '45.00', revision: 2, paidById: 'pa', splitMode: 'EVENLY' })
     expect(read['attribution']).toMatchObject({ updatedBy: { userId: 'alice', source: 'agent' } })
     const stale = await h.mcp.failure({ name: 'update_expense', args: { groupId: 'g1', expenseId: id, expectedRevision: 1, changes: { title: 'Lunch' } }, headers: alice })
-    expect(stale).toMatchObject({ code: 'CONFLICT', recovery: 'read_current_revision', outcomeUnknown: false })
+    expect(stale).toMatchObject({ code: 'CONFLICT', message: REVISION_CONFLICT, recovery: 'read_current_revision', outcomeUnknown: false })
     const noop = await checked('update_expense', { groupId: 'g1', expenseId: id, expectedRevision: 2 })
     expect(noop['revision']).toBe(2)
     const missing = await h.mcp.failure({ name: 'update_expense', args: { groupId: 'g1', expenseId: id, changes: {} }, headers: alice })
