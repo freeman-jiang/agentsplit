@@ -6,7 +6,7 @@ import { ErrorState } from '../components/error-state'
 import { groupUrls } from './group-urls'
 import { addAppleSplashImages, registerServiceWorker } from './pwa'
 import { routeTree } from '../routeTree.gen'
-import { AUTH_PATH } from '~/shared/paths'
+import { refreshSession } from '../queries/session'
 // Geist, self-hosted: the browser fetches only the subsets a page uses (Latin is 29 KB).
 import '@fontsource-variable/geist'
 import '@fontsource-variable/geist-mono'
@@ -33,8 +33,7 @@ declare module '@tanstack/react-router' {
   }
 }
 
-// Better Auth refreshes the session's expiry here; RPC calls only read the session.
-void fetch(`${AUTH_PATH}/get-session`, { credentials: 'same-origin' }).catch((error: unknown) => console.error('Session refresh failed', error))
+refreshSession()
 void registerServiceWorker().catch((error: unknown) => console.error('Service worker registration failed', error))
 
 const root = document.getElementById('root')

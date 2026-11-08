@@ -7,6 +7,9 @@ export const OAUTH_WRITE_SCOPE = 'agentsplit:write'
 export const OAUTH_SCOPES = ['openid', 'profile', 'email', 'offline_access', OAUTH_READ_SCOPE, OAUTH_WRITE_SCOPE] as const
 export type OAuthScope = (typeof OAUTH_SCOPES)[number]
 
+/** Where a browser keeps the time of its last session refresh (refreshSession in src/client/queries/session.ts). */
+export const SESSION_REFRESH_KEY = 'agentsplit.session-refreshed-at'
+
 export const isInvitationPath = (path: string) => invitationTokenOfPath(path) !== null
 
 /**
