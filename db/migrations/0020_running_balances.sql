@@ -26,9 +26,41 @@ ALTER TABLE "expense_shares" ADD COLUMN "currency" text;
 --> statement-breakpoint
 ALTER TABLE "expense_shares" ADD COLUMN "live" boolean;
 --> statement-breakpoint
+-- The rule of 0001 that the rows of a deleted expense never change would refuse
+-- the cascade of a delete, which sets "live" to false. It now lets through an
+-- update that changes only "currency" and "live": expense_state_fk keeps them
+-- equal to the expense, and the amounts, weights and people stay as they were.
+CREATE OR REPLACE FUNCTION agentsplit_check_part_allocation() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND (OLD."expense_id", OLD."group_id", OLD."participant_id", OLD."amount", OLD."weight")
+    IS NOT DISTINCT FROM (NEW."expense_id", NEW."group_id", NEW."participant_id", NEW."amount", NEW."weight") THEN
+    RETURN NULL;
+  END IF;
+  IF TG_OP IN ('UPDATE', 'DELETE') THEN
+    IF EXISTS (SELECT 1 FROM "expenses" WHERE "id" = OLD."expense_id" AND "deleted_at" IS NOT NULL) THEN
+      RAISE EXCEPTION 'A deleted expense cannot change' USING ERRCODE = '23514';
+    END IF;
+    PERFORM agentsplit_check_allocation(OLD."expense_id");
+  END IF;
+  IF TG_OP IN ('INSERT', 'UPDATE') THEN
+    PERFORM agentsplit_check_allocation(NEW."expense_id");
+  END IF;
+  RETURN NULL;
+END;
+$$;
+--> statement-breakpoint
+
+-- The backfill updates every payer and share row, which queues the checks of
+-- 0001 and 0005 that run at commit; ALTER TABLE refuses a table with queued
+-- checks. So they run at the end of each statement here, then go back to the
+-- end of the transaction (every deferrable rule is INITIALLY DEFERRED).
+SET CONSTRAINTS ALL IMMEDIATE;
+--> statement-breakpoint
 UPDATE "expense_payers" p SET "currency" = e."currency", "live" = e."live" FROM "expenses" e WHERE e."id" = p."expense_id";
 --> statement-breakpoint
 UPDATE "expense_shares" s SET "currency" = e."currency", "live" = e."live" FROM "expenses" e WHERE e."id" = s."expense_id";
+--> statement-breakpoint
+SET CONSTRAINTS ALL DEFERRED;
 --> statement-breakpoint
 ALTER TABLE "expense_payers" ALTER COLUMN "currency" SET NOT NULL;
 --> statement-breakpoint
@@ -75,30 +107,6 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'balance_totals is out of step with the payers and shares of group % (participant %, currency %)', g, p, c;
   END IF;
-END;
-$$;
---> statement-breakpoint
-
--- The rule of 0001 that the rows of a deleted expense never change would refuse
--- the cascade of a delete, which sets "live" to false. It now lets through an
--- update that changes only "currency" and "live": expense_state_fk keeps them
--- equal to the expense, and the amounts, weights and people stay as they were.
-CREATE OR REPLACE FUNCTION agentsplit_check_part_allocation() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  IF TG_OP = 'UPDATE' AND (OLD."expense_id", OLD."group_id", OLD."participant_id", OLD."amount", OLD."weight")
-    IS NOT DISTINCT FROM (NEW."expense_id", NEW."group_id", NEW."participant_id", NEW."amount", NEW."weight") THEN
-    RETURN NULL;
-  END IF;
-  IF TG_OP IN ('UPDATE', 'DELETE') THEN
-    IF EXISTS (SELECT 1 FROM "expenses" WHERE "id" = OLD."expense_id" AND "deleted_at" IS NOT NULL) THEN
-      RAISE EXCEPTION 'A deleted expense cannot change' USING ERRCODE = '23514';
-    END IF;
-    PERFORM agentsplit_check_allocation(OLD."expense_id");
-  END IF;
-  IF TG_OP IN ('INSERT', 'UPDATE') THEN
-    PERFORM agentsplit_check_allocation(NEW."expense_id");
-  END IF;
-  RETURN NULL;
 END;
 $$;
 --> statement-breakpoint
