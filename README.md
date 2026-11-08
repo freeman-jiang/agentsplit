@@ -6,7 +6,7 @@ AgentSplit is a fork of [Spliit](https://github.com/spliit-app/spliit). People s
 
 - [MCP.md](MCP.md): the agent API.
 - [AUTH.md](AUTH.md): sign-in, API keys and OAuth.
-- [DEPLOYMENT.md](DEPLOYMENT.md): production on Coolify, backups and rollback, and the NixOS host that replaces Coolify.
+- [DEPLOYMENT.md](DEPLOYMENT.md): production on the NixOS host, deploys, backups, and the Coolify stack kept for a rollback.
 - [PRIVACY.md](PRIVACY.md): what is stored, where, and who can see it.
 
 ## Repository layout
@@ -25,7 +25,7 @@ The app is a rewrite (v2) of the Next.js and Prisma app it replaced in productio
 - Effect RPC (`/api/rpc`) connects the client to the server, with Effect Schema as the shared contract.
 - TanStack Router and TanStack Query run the client, built with Vite and React.
 - Drizzle and PostgreSQL 18 store the ledger. Money is integer minor units. Database triggers check that shares and payers add up to the amount and that history stays append-only.
-- Garage stores the receipts. The app serves them only through `/api/receipts`, which checks access on every request. With `RECEIPT_DOWNLOADS=redirect` it then redirects to a presigned storage URL (DEPLOYMENT.md).
+- An S3 bucket stores the receipts: Cloudflare R2 in production, Garage in the end-to-end tests. The app serves them only through `/api/receipts`, which checks access on every request. With `RECEIPT_DOWNLOADS=redirect` it then redirects to a presigned storage URL (DEPLOYMENT.md).
 - Better Auth handles Google sign-in, API keys and the OAuth provider for agents.
 
 ## Develop

@@ -1,5 +1,7 @@
-# AgentSplit on Coolify. Coolify's standard Traefik proxy and external
-# `coolify` network are required; Coolify routes the app's domain to `app`.
+# AgentSplit on Coolify, kept in maintenance mode only for a rollback to it
+# (DEPLOYMENT.md, "Previous hosting: Coolify"). Coolify's standard Traefik
+# proxy and external `coolify` network are required; Coolify routes the app's
+# domain to `app`.
 # Set the variables in coolify.env.example in the resource's environment settings.
 #
 # `db2` holds the ledger and `garage` the receipts. `db` is the pre-cutover
@@ -120,6 +122,8 @@ services:
       traefik.enable: 'true'
       traefik.docker.network: coolify
 
+      # The host names below are the maintainer's production domains: the S3
+      # API of this Garage and the app's origin. Another deployment sets its own.
       # Preserve the signed Host and full path for authenticated S3 uploads.
       traefik.http.routers.agentsplit-s3.rule: Host(`agentsplit-receipts.freemanjiang.com`)
       traefik.http.routers.agentsplit-s3.entrypoints: https

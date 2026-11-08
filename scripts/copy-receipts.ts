@@ -1,6 +1,6 @@
 // Copies every object of one S3 bucket into another, with its content type:
-// the receipts from Garage on Coolify to Cloudflare R2 for the NixOS host
-// (DEPLOYMENT.md, "Move the data from Oracle"). An object that the target
+// the receipts between Garage on Coolify and Cloudflare R2 on the NixOS host
+// (DEPLOYMENT.md, "Roll back to Coolify"). An object that the target
 // already holds with the same size and type is skipped, so a second run copies
 // only the new objects. Each copy is read back and compared. It never deletes.
 //   SOURCE_S3_ENDPOINT=... SOURCE_S3_REGION=garage SOURCE_S3_BUCKET=... SOURCE_S3_KEY=... SOURCE_S3_SECRET=... \
