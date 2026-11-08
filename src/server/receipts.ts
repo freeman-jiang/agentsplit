@@ -118,9 +118,9 @@ export const RECEIPT_REFUSED = `Could not upload receipt. Use a JPEG or PNG imag
  * is stored first and registered to the group after; if the registration
  * fails, the object is removed. The uploader's storage quota is checked before
  * the upload and again, under the uploader's quota lock, when the receipt is
- * registered; a full quota is a precondition Invalid.
+ * registered; a full quota is a precondition Invalid. The answer of POST
+ * /api/receipts is the stored receipt as an expense attaches it.
  */
-/** The answer of POST /api/receipts is the stored receipt as an expense attaches it. */
 export async function storeReceipt(db: Db, data: { bucket: Bucket; principal: Principal; groupId: string; file: Blob }): Promise<typeof DocumentInput.Type> {
   const { groupId } = await requireMember(db, data)
   const bytes = new Uint8Array(await data.file.arrayBuffer())

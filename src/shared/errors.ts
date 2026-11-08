@@ -26,7 +26,6 @@ export const NOT_FOUND_MESSAGES = {
 
 export type NotFoundEntity = keyof typeof NOT_FOUND_MESSAGES
 export const NOT_FOUND_ENTITIES = Object.keys(NOT_FOUND_MESSAGES) as [NotFoundEntity, ...NotFoundEntity[]]
-export const isNotFoundEntity = (value: unknown): value is NotFoundEntity => typeof value === 'string' && Object.hasOwn(NOT_FOUND_MESSAGES, value)
 
 /**
  * Why an Invalid request cannot apply, when it is not the arguments:
