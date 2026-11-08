@@ -62,5 +62,3 @@ export function mcpClient(data: { baseUrl: string; send: (request: Request) => P
 
   return { url, rpc, callTool, ok, failure }
 }
-
-export type McpClient = ReturnType<typeof mcpClient>
