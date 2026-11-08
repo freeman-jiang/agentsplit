@@ -329,6 +329,21 @@ describe('0012: receipt sizes and deletions', () => {
   })
 })
 
+describe('0015: a private context’s expense, checked at commit', () => {
+  it('accepts the context before its expense in the transaction, and refuses it at commit if the expense never comes', async () => {
+    const g = await newGroup()
+    const c = await database.pool.connect()
+    try {
+      await c.query('BEGIN')
+      await c.query(`INSERT INTO private_contexts (group_id, expense_id) VALUES ($1, 'missing')`, [g.group])
+      await expect(c.query('COMMIT')).rejects.toMatchObject({ code: '23503' })
+    } finally {
+      await c.query('ROLLBACK').catch(() => {})
+      c.release()
+    }
+  })
+})
+
 describe('0017: signed amount split weights', () => {
   it('accepts a negative amount split by amount, with each share’s signed amount as its weight', async () => {
     const g = await newGroup()
