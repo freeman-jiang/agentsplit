@@ -114,4 +114,4 @@ Keep the `postgres-data` volume until Freeman says otherwise. Never delete a vol
 
 ## Preview
 
-There is no preview deployment. Freeman approved removing the Coolify preview on 2026-11-07. Review changes on a local dev server with synthetic data (README.md).
+There is no preview deployment. Freeman approved removing the Coolify preview on 2026-11-07. Review changes on a local dev server with synthetic data ("Dev server" in [docs/v2/BUILDING.md](docs/v2/BUILDING.md)).
