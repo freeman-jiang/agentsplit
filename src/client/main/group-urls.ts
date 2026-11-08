@@ -3,14 +3,13 @@
 // (src/server/group-urls.ts); this map only keeps each URL as it is.
 import type { LocationRewrite } from '@tanstack/react-router'
 import { isIdSegment, normalizeSlug, slugProblem } from '~/shared/groups'
-import { GROUP_ID } from '~/shared/ids'
 
 export const groupUrls: LocationRewrite = {
   /** From the address bar to the routes. */
   input: ({ url }) => {
     const [, first, second, ...rest] = url.pathname.split('/')
-    // A group without a slug lives at /groups/<id>/…, as the server reads it (src/server/group-urls.ts); other /groups/… paths are routes.
-    if (first === 'groups' && second !== undefined && GROUP_ID.test(second)) {
+    // A group without a slug lives at /groups/<id>/…, the inverse of `output`; a slug-shaped /groups/… path, such as /groups/create, is a route.
+    if (first === 'groups' && second !== undefined && isIdSegment(second)) {
       url.pathname = `/${[second, ...rest].join('/')}`
       return url
     }
