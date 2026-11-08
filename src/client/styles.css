@@ -175,6 +175,34 @@
   }
 }
 
+/* A <details> panel grows and fades open, and shrinks closed, where the browser
+   can animate to auto. Other browsers open it at once. With less motion it
+   only fades. The clip margin keeps focus rings at the panel's edge visible. */
+@supports (interpolate-size: allow-keywords) {
+  details::details-content {
+    interpolate-size: allow-keywords;
+    block-size: 0;
+    opacity: 0;
+    overflow: clip;
+    overflow-clip-margin: 0.5rem;
+    transition:
+      block-size 200ms var(--ease-out-strong),
+      opacity 200ms var(--ease-out-strong),
+      content-visibility 200ms allow-discrete;
+  }
+  details[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    details::details-content {
+      transition:
+        opacity 150ms ease,
+        content-visibility 150ms allow-discrete;
+    }
+  }
+}
+
 /* Press feedback for a control: it shrinks a little while pressed, and a long
    press does not select its label or open a callout. Not for text fields. */
 @utility press {
