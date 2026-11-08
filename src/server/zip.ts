@@ -3,6 +3,7 @@
 // carries the size and CRC-32, so every unzip tool can read the file. One
 // entry is in memory at a time; a receipt is at most 5 MiB. ZIP64 is not
 // written: the archive stops with an error before it passes 4 GiB.
+import { crc32 } from 'node:zlib'
 
 export type ZipEntry = { readonly name: string; readonly time: Date; readonly bytes: Uint8Array }
 
@@ -89,7 +90,7 @@ export function zipStream(entries: AsyncIterable<ZipEntry | null>): ReadableStre
         const name = encoder.encode(entry.name)
         if (written.length >= MAX_ENTRIES || offset + 30 + name.length + entry.bytes.length > ZIP32_MAX)
           throw new Error('The receipt download would exceed the ZIP format limits')
-        const record: Written = { name, crc: Bun.hash.crc32(entry.bytes) >>> 0, size: entry.bytes.length, offset, ...dosTime(entry.time) }
+        const record: Written = { name, crc: crc32(entry.bytes), size: entry.bytes.length, offset, ...dosTime(entry.time) }
         const header = localHeader(record)
         controller.enqueue(header)
         controller.enqueue(entry.bytes)
