@@ -20,6 +20,13 @@ export const absoluteUrl = (data: { baseUrl: string; path: string }) => `${new U
 /** GET (download) and POST (upload) of one receipt image. */
 export const RECEIPTS_PATH = '/api/receipts'
 
+/**
+ * The stored URL of a receipt that v2 uploaded: this prefix and the object key.
+ * The name is from the time v2 stored receipts in R2. The current app's
+ * objects and v2's share one bucket and one key scheme.
+ */
+export const RECEIPT_URL_PREFIX = 'r2://agentsplit-receipts/'
+
 /** Where the browser or an agent reads a receipt; access is checked on every read (P-RECEIPT-07). */
 export const receiptDownloadPath = (data: { groupId: string; url: string }) => `${RECEIPTS_PATH}?${new URLSearchParams({ groupId: data.groupId, url: data.url })}`
 
