@@ -47,6 +47,10 @@ db-stop
 
 [docs/v2/BUILDING.md](docs/v2/BUILDING.md) holds the commands (install, build, type check, tests, end-to-end tests, image, migrations), the local database, the dev server with synthetic sign-in, and the rules for adding to the app. Every command runs inside the flake's dev shell (`nix develop`, or `direnv exec .`). Use synthetic data only. Never copy the production backups.
 
+## Security
+
+Report a vulnerability privately, as [SECURITY.md](SECURITY.md) says. Do not open a public issue for it.
+
 ## License
 
 MIT, see [LICENSE](./LICENSE). Spliit's attribution and license are kept.
