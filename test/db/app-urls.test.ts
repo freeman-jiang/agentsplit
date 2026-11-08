@@ -61,17 +61,9 @@ describe('group URLs', () => {
   })
 })
 
-/** Node, which runs the tests, needs `duplex` to send a streamed body. Bun, which runs the server, does not. */
-class StreamingRequest extends Request {
-  constructor(input: RequestInfo | URL, init?: RequestInit) {
-    super(input, init?.body ? Object.assign({}, init, { duplex: 'half' }) : init)
-  }
-}
-
 describe('RPC request IDs', () => {
   it('returns the request ID in a header and logs a failed call with it', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    vi.stubGlobal('Request', StreamingRequest)
     try {
       const response = await h.fetch(
         new Request(`${BASE}/api/rpc`, {
@@ -87,7 +79,6 @@ describe('RPC request IDs', () => {
       expect(JSON.stringify(await response.json())).toContain('Unauthorized')
       expect(warn).toHaveBeenCalledWith('RPC groups.directory answered Unauthorized', { requestId: id })
     } finally {
-      vi.unstubAllGlobals()
       warn.mockRestore()
     }
   })
