@@ -11,3 +11,9 @@ playwright-report/
 # Dev shell
 .direnv/
 .pg/
+# nix build links (for example the host image, DEPLOYMENT.md)
+result
+result-*
+# Database dumps and host secret folders that DEPLOYMENT.md writes to the working folder
+*.dump
+/etc/
