@@ -70,12 +70,35 @@ let
       done
     '';
   };
+
+  # The image builds in a QEMU VM that reads the store through virtiofsd.
+  # On the aarch64 dev box, x86_64 programs run under QEMU's user-mode
+  # emulation, which is too slow for a QEMU VM inside it, and virtiofsd
+  # finds no mount IDs there. So when imageBuildPackages is set, the VM and
+  # virtiofsd come from the build machine's own packages: an x86_64 VM in
+  # native QEMU (TCG). The derivation then builds only on that system.
+  buildMachine = config.agentsplit.imageBuildPackages;
+  imageVmTools =
+    if buildMachine == null then
+      pkgs.vmTools
+    else
+      pkgs.vmTools.override {
+        customQemu = "${buildMachine.qemu}/bin/qemu-system-x86_64 -machine accel=tcg -cpu max";
+        inherit (buildMachine) virtiofsd;
+      };
 in
 {
   imports = [
     # The virtio drivers in the initrd: the disk (virtio_scsi on E2), the
     # network, and the entropy source.
     "${modulesPath}/profiles/qemu-guest.nix"
+    {
+      options.agentsplit.imageBuildPackages = lib.mkOption {
+        type = lib.types.nullOr lib.types.raw;
+        default = null;
+        description = "The nixpkgs of the machine that builds the image, when its system is not x86_64-linux (see imageVmTools).";
+      };
+    }
   ];
 
   # Other machine types (C3, N4) attach the boot disk as NVMe.
@@ -143,7 +166,10 @@ in
   # takes. GCE boots it with UEFI (guest OS feature UEFI_COMPATIBLE) and with
   # Secure Boot off, because the GRUB of NixOS is not signed.
   system.build.googleComputeImage = import "${modulesPath}/../lib/make-disk-image.nix" {
-    inherit config lib pkgs;
+    inherit config lib;
+    pkgs = pkgs // {
+      vmTools = imageVmTools;
+    };
     name = "agentsplit-gce-image";
     partitionTableType = "efi";
     # The size of disk.nix's ESP, for the kernels of 10 generations.
