@@ -4,7 +4,7 @@ import { ChevronRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '~/client/cn'
 import { ActivityRevision } from '~/client/components/log/revision'
-import { formatMoment } from '~/client/dates'
+import { formatMoment, WEEK_STARTS_ON } from '~/client/dates'
 import { editorLink } from '~/client/editor-link'
 import { describeError } from '~/client/errors'
 import { useInfiniteScroll } from '~/client/hooks'
@@ -36,12 +36,9 @@ const DATE_GROUPS = [
 ] as const
 type DateGroup = (typeof DATE_GROUPS)[number][0]
 
-/** The Log's weeks start as the app's locale (en-US) starts them: on Sunday. */
-const WEEK_START = 0
-
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
 const addDays = (d: Date, days: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + days)
-const startOfWeek = (d: Date) => addDays(startOfDay(d), -((d.getDay() - WEEK_START + 7) % 7))
+const startOfWeek = (d: Date) => addDays(startOfDay(d), -((d.getDay() - WEEK_STARTS_ON + 7) % 7))
 const sameDay = (a: Date, b: Date) => startOfDay(a).getTime() === startOfDay(b).getTime()
 const monthIndex = (d: Date) => d.getFullYear() * 12 + d.getMonth()
 

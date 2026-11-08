@@ -1,6 +1,7 @@
 // The expense list's date headings, ported from the current app's
 // src/lib/date-groups.ts. Dates are calendar days (YYYY-MM-DD), compared as
 // days, so the stored day is used in every time zone (P-EXP-17).
+import { WEEK_STARTS_ON } from '~/client/dates'
 
 export const DATE_GROUPS = [
   ['upcoming', 'Upcoming'],
@@ -18,12 +19,12 @@ const parts = (date: string) => {
   return { y, m, d, day: Date.UTC(y, m - 1, d) / 86_400_000 }
 }
 
-export function dateGroup(data: { date: string; today: string; weekStartsOn: number }): DateGroup {
+export function dateGroup(data: { date: string; today: string }): DateGroup {
   const date = parts(data.date)
   const today = parts(data.today)
   if (date.day > today.day) return 'upcoming'
   // Day 0 of the epoch was a Thursday (weekday 4).
-  const weekStart = (day: number) => day - ((((day + 4) % 7) - data.weekStartsOn + 7) % 7)
+  const weekStart = (day: number) => day - ((((day + 4) % 7) - WEEK_STARTS_ON + 7) % 7)
   // The week check runs before the month check (P-EXP-16).
   if (weekStart(date.day) === weekStart(today.day)) return 'thisWeek'
   if (date.y === today.y && date.m === today.m) return 'earlierThisMonth'
@@ -35,10 +36,10 @@ export function dateGroup(data: { date: string; today: string; weekStartsOn: num
 }
 
 /** Expenses under their headings, in heading order; empty headings are left out (P-EXP-13). */
-export function groupByDate<T extends { expenseDate: string }>(data: { expenses: readonly T[]; today: string; weekStartsOn: number }) {
+export function groupByDate<T extends { expenseDate: string }>(data: { expenses: readonly T[]; today: string }) {
   const buckets = new Map<DateGroup, T[]>()
   for (const expense of data.expenses) {
-    const group = dateGroup({ date: expense.expenseDate, today: data.today, weekStartsOn: data.weekStartsOn })
+    const group = dateGroup({ date: expense.expenseDate, today: data.today })
     buckets.set(group, [...(buckets.get(group) ?? []), expense])
   }
   return DATE_GROUPS.flatMap(([key, label]) => {

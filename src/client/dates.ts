@@ -50,14 +50,5 @@ export const formatMoment = {
   full: (iso: string) => fullFormat.format(new Date(iso)),
 }
 
-/** The locale's first day of the week (0 = Sunday), with Monday as the fallback (P-EXP-15). */
-export function weekStartsOn(locale: string): number {
-  try {
-    const info = new Intl.Locale(locale) as Intl.Locale & { getWeekInfo?: () => { firstDay: number }; weekInfo?: { firstDay: number } }
-    const firstDay = info.getWeekInfo?.().firstDay ?? info.weekInfo?.firstDay
-    if (firstDay) return firstDay % 7
-  } catch {
-    // An unsupported locale or no week data: use the fallback.
-  }
-  return 1
-}
+/** The first day of the week (0 = Sunday): the app's en-US week, as in the current app (P-EXP-15, P-HIST-66). */
+export const WEEK_STARTS_ON = 0
