@@ -40,7 +40,11 @@ afterAll(async () => {
 const signed = async (token: string, key = SECRET, name = 'better-auth.session_token') =>
   (await serializeSignedCookie(name, token, key)).split(';')[0] ?? ''
 
-it.each(['http://localhost', 'https://agentsplit.example'])('accepts and rejects the same cookies as Better Auth on %s', async (baseUrl) => {
+// Each origin accepts one cookie name, so the parity loop below also checks a real acceptance.
+it.each([
+  { baseUrl: 'http://localhost', accepts: ['valid'] },
+  { baseUrl: 'https://agentsplit.example', accepts: ['secureName'] },
+])('accepts and rejects the same cookies as Better Auth on $baseUrl', async ({ baseUrl, accepts }) => {
   const auth = createAuth({ ...testSettings({ baseUrl }), db })
   const cases: Record<string, string | null> = {
     valid: await signed('token-valid'),
@@ -53,11 +57,14 @@ it.each(['http://localhost', 'https://agentsplit.example'])('accepts and rejects
     unsigned: 'better-auth.session_token=token-valid',
     none: null,
   }
+  const accepted: string[] = []
   for (const [name, cookie] of Object.entries(cases)) {
     const theirs = await auth.api.getSession({ headers: new Headers(cookie ? { cookie } : {}) })
     const ours = await sessionPrincipal(db, { cookie, secret: SECRET, baseUrl })
     // Better Auth returns unverified accounts too; AgentSplit then refuses them, as v1 did.
     const expected = theirs?.user.emailVerified ? theirs.user.id : null
     expect({ name, user: ours?.userId ?? null }).toEqual({ name, user: expected })
+    if (ours) accepted.push(name)
   }
+  expect(accepted).toEqual(accepts)
 })
