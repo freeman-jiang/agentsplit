@@ -9,6 +9,7 @@ import { MCP_TOOLS } from '~/server/mcp/tools'
 import { takeMcpRequest } from '~/server/rate-limit'
 import { LIMITS } from '~/shared/limits'
 import { mcpExpense, type McpExpenseChanges } from '../kit/drafts'
+import { SDK_INPUT_REFUSED } from '../kit/mcp'
 import { id21 } from '../kit/ids'
 import current from './fixtures/current-mcp-tools.json'
 import { BASE, callTool, checked as checkedCall, failure, type Harness, MCP_URL, rpc, startHarness } from './harness'
@@ -306,31 +307,36 @@ describe('expense writes and reads', () => {
   it('refuses invalid money, dates, splits, people and unknown keys without writing', async () => {
     const { groupId, a, headers, expense: draft } = await household('invalid')
     const written = async () => (await h.withDb((db) => db.select().from(expenses).where(eq(expenses.groupId, groupId)))).length
-    for (const bad of [
-      { ...draft(), amount: 10 },
-      draft({ amount: '12.345' }),
-      draft({ amount: ' 1' }),
-      draft({ amount: '1e3' }),
-      draft({ amount: '0' }),
-      draft({ amount: '10000000.01' }),
-      draft({ currencyCode: 'JPY', amount: '10.1' }),
-      draft({ expenseDate: 'not-a-date' }),
-      draft({ expenseDate: '2026-02-29' }),
-      draft({ title: 'x' }),
-      draft({ splitMode: 'BY_PERCENTAGE', paidFor: [{ participant: a, shares: '50' }] }),
-      draft({ splitMode: 'BY_AMOUNT', paidFor: [{ participant: a, shares: '10' }] }),
-      draft({ paidFor: [{ participant: a, shares: '1' }, { participant: a, shares: '1' }] }),
+    // The input schema refuses malformed values before the tool runs; the ledger rules refuse the rest as BAD_REQUEST.
+    const cases: [expense: object, code: string, message: string][] = [
+      [{ ...draft(), amount: 10 }, SDK_INPUT_REFUSED, 'Expected string'],
+      [draft({ amount: '12.345' }), 'BAD_REQUEST', 'USD amounts allow at most 2 decimal places'],
+      [draft({ amount: ' 1' }), SDK_INPUT_REFUSED, 'Expected a string matching'],
+      [draft({ amount: '1e3' }), SDK_INPUT_REFUSED, 'Expected a string matching'],
+      [draft({ amount: '0' }), 'BAD_REQUEST', 'The amount must not be zero.'],
+      [draft({ amount: '10000000.01' }), 'BAD_REQUEST', 'The amount must be at most 10,000,000.'],
+      [draft({ currencyCode: 'JPY', amount: '10.1' }), 'BAD_REQUEST', 'JPY amounts allow at most 0 decimal places'],
+      [draft({ expenseDate: 'not-a-date' }), SDK_INPUT_REFUSED, 'Expected a string matching'],
+      [draft({ expenseDate: '2026-02-29' }), SDK_INPUT_REFUSED, 'Invalid calendar date'],
+      [draft({ title: 'x' }), SDK_INPUT_REFUSED, 'Expected a value with a length between'],
+      [draft({ splitMode: 'BY_PERCENTAGE', paidFor: [{ participant: a, shares: '50' }] }), 'BAD_REQUEST', 'The percentages add up to 50%'],
+      [draft({ splitMode: 'BY_AMOUNT', paidFor: [{ participant: a, shares: '10' }] }), 'BAD_REQUEST', 'The amounts add up to 10.00'],
+      [draft({ paidFor: [{ participant: a, shares: '1' }, { participant: a, shares: '1' }] }), 'BAD_REQUEST', 'Duplicate beneficiary'],
       // A participant of another group.
-      draft({ paidBy: 'qa' }),
-      { ...draft(), originalAmount: '5' },
-      draft({ documents: [{ id: 'd', url: 'https://x.example/r.png', width: 1, height: 1 }] }),
-    ]) {
-      const refused = await failure(h, { name: 'create_expense', args: { groupId, expense: bad }, headers })
-      expect(['BAD_REQUEST', 'VALIDATION']).toContain(refused.code)
-      expect(refused.outcomeUnknown).toBe(false)
+      [draft({ paidBy: 'qa' }), 'BAD_REQUEST', 'The payer is not in this group'],
+      [{ ...draft(), originalAmount: '5' }, SDK_INPUT_REFUSED, 'Unrecognized key "originalAmount"'],
+      [draft({ documents: [{ id: 'd', url: 'https://x.example/r.png', width: 1, height: 1 }] }), 'BAD_REQUEST', 'Attach only receipts uploaded to this group'],
+    ]
+    for (const [expense, code, message] of cases) {
+      const refused = await failure(h, { name: 'create_expense', args: { groupId, expense }, headers })
+      expect({ code: refused.code, message: refused.message.includes(message), outcomeUnknown: refused.outcomeUnknown }, JSON.stringify(expense)).toEqual({
+        code,
+        message: true,
+        outcomeUnknown: false,
+      })
     }
     const extra = await failure(h, { name: 'create_expense', args: { groupId, expense: draft(), participantId: a }, headers })
-    expect(extra.code).toBe('VALIDATION')
+    expect(extra.code).toBe(SDK_INPUT_REFUSED)
     expect(await written()).toBe(0)
   })
 
@@ -338,7 +344,7 @@ describe('expense writes and reads', () => {
     const denied = await failure(h, { name: 'create_expense', args: { groupId: 'g3', expense: mcpExpense({ paidBy: 'rb', people: ['rb'] }) }, headers: alice })
     expect(denied).toEqual({ code: 'FORBIDDEN', message: GROUP_DENIED, outcomeUnknown: false, recovery: 'correct_arguments' })
     const people = await failure(h, { name: 'create_expense', args: { groupId: 'g1', people: [], expense: expense() }, headers: alice })
-    expect(people.code).toBe('VALIDATION')
+    expect(people.code).toBe(SDK_INPUT_REFUSED)
     const none = await failure(h, { name: 'create_expense', args: { expense: expense() }, headers: alice })
     expect(none.message).toBe('Supply groupId for a group expense, or people for an ungrouped expense.')
   })
@@ -356,7 +362,7 @@ describe('expense writes and reads', () => {
     const noop = await checked('update_expense', { groupId: 'g1', expenseId: id, expectedRevision: 2 })
     expect(noop['revision']).toBe(2)
     const missing = await failure(h, { name: 'update_expense', args: { groupId: 'g1', expenseId: id, changes: {} }, headers: alice })
-    expect(missing.code).toBe('VALIDATION')
+    expect(missing.code).toBe(SDK_INPUT_REFUSED)
     const cleared = await checked('update_expense', { groupId: 'g1', expenseId: id, expectedRevision: 2, changes: { vendor: null } })
     expect(cleared['revision']).toBe(3)
     expect(((await checked('get_expense', { groupId: 'g1', expenseId: id }))['expense'] as { vendor: unknown }).vendor).toBeNull()
@@ -412,7 +418,7 @@ describe('expense writes and reads', () => {
   it('refuses bad list bounds and history selections before reading', async () => {
     for (const args of [{ limit: 0 }, { from: '2026-09-31' }, { from: '2026-02-29' }, { to: '2026-11-01T00:00:00Z' }, { from: '2026-11-02', to: '2026-11-01' }]) {
       const refused = await failure(h, { name: 'list_expenses', args: { groupId: 'g1', ...args }, headers: alice })
-      expect(refused.code).toBe('VALIDATION')
+      expect(refused.code).toBe(SDK_INPUT_REFUSED)
     }
     const history = await failure(h, { name: 'list_expenses', args: { groupId: 'g1', asOf: '2026-11-01T00:00:00Z', atActivityId: 'a1' }, headers: alice })
     expect(history.code).toBe('BAD_REQUEST')
