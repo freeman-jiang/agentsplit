@@ -59,6 +59,9 @@ export type MoneyDraft = Pick<ExpenseDraft, 'currency' | 'amount' | 'payers' | '
 type ResolvedMoney = Pick<ResolvedExpense, 'amount' | 'payers' | 'shares'>
 type MoneyCheck = { readonly ok: true; readonly value: ResolvedMoney } | { readonly ok: false; readonly issues: ReadonlyArray<ExpenseIssue> }
 
+/** The problem of a category that does not exist; the server also gives it for an ID that no category has. */
+export const UNKNOWN_CATEGORY = 'Unknown category'
+
 /**
  * Checks a draft against the rules and the group's participants, and resolves
  * every amount into minor units. Returns every issue it finds, not only the first.
@@ -78,7 +81,7 @@ export function validateExpense(data: {
   const vendor = draft.vendor?.trim() || null
   if (vendor && vendor.length > LIMITS.vendorMax) issue('vendor', `Enter at most ${numberText(LIMITS.vendorMax)} characters.`)
   if (draft.notes.length > LIMITS.notesMax) issue('notes', `Enter at most ${numberText(LIMITS.notesMax)} characters.`)
-  if (!Number.isInteger(draft.categoryId) || draft.categoryId < 0) issue('categoryId', 'Unknown category')
+  if (!Number.isInteger(draft.categoryId) || draft.categoryId < 0) issue('categoryId', UNKNOWN_CATEGORY)
   if (!isCalendarDate(draft.expenseDate)) issue('expenseDate', 'Use a real calendar date, YYYY-MM-DD')
 
   const money = checkMoney({ money: draft, participantIds: data.participantIds })
