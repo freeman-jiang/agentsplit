@@ -206,7 +206,7 @@ Items that end with `QUESTION:` look like bugs or doubtful behavior, so a person
 - [ ] P-GROUP-102: Slug routing does not apply to `/api/`, `/_next/` or paths that contain a dot (source: src/proxy.ts:45)
 - [ ] P-GROUP-103: A slug URL does not grant access: signed-out users go to `/sign-in`, non-members to `/groups?access=denied`, and its export returns 403 to non-members (source: src/proxy.ts:5, e2e/group-slug-vendor.spec.ts)
 - [ ] P-GROUP-104: After a slug change, the settings page reloads under `/<new-slug>/edit`, and after slug removal under `/groups/<id>/edit` (source: src/app/groups/[groupId]/edit/edit-group.tsx:39, e2e/group-slug-vendor.spec.ts)
-- [ ] P-GROUP-105: A path with uppercase letters, such as `/Maple`, does not resolve to the group (source: src/proxy.ts:30) QUESTION: v2 may want a redirect to the lowercase slug
+- [ ] P-GROUP-105: A path with uppercase letters, such as `/Our-Flat`, does not resolve to the group (source: src/proxy.ts:30) QUESTION: v2 may want a redirect to the lowercase slug
 - [ ] P-GROUP-106: An old slug stops working at once after a slug change; there is no redirect from it (source: src/proxy.ts:32) QUESTION: shared or bookmarked links break silently
 
 ## Expenses

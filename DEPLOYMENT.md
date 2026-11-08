@@ -73,7 +73,7 @@ Better Auth limits sign-in and client registration per IP address from `X-Forwar
 
 ### Receipt sizes before migration 0012
 
-Migration 0012 adds `receipts.bytes`. The receipts stored before it keep 0, so they count against no quota. They were 13 objects, about 10 MB, in November 2026. The receipts trigger refuses every change to a receipt row, so their sizes are not filled in later.
+Migration 0012 adds `receipts.bytes`. The receipts stored before it keep 0, so they count against no quota. The receipts trigger refuses every change to a receipt row, so their sizes are not filled in later.
 
 ## Maintenance switch
 
@@ -103,7 +103,7 @@ The old app runs on `db`, which the import only read. A rollback loses every wri
 4. Set the application's commit to `bb26b78`, the `main` commit before the cutover merge. Coolify otherwise deploys the head of `main`.
 5. Set the post-deployment command back to the value below, with container `app`. The cutover cleared it, because it runs `node`, which the v2 image does not have.
 6. Deploy.
-7. Check the old app, its sign-in and the Maple group.
+7. Check the old app, its sign-in and a household group.
 
 The old post-deployment command (it opens Garage's bucket for receipt reads; it contains no secret values):
 
