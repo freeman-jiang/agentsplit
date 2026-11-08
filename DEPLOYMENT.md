@@ -116,3 +116,237 @@ Keep the `postgres-data` volume until Freeman says otherwise. Never delete a vol
 ## Preview
 
 There is no preview deployment. Freeman approved removing the Coolify preview on 2026-11-07. Review changes on a local dev server with synthetic data ("Dev server" in [docs/v2/BUILDING.md](docs/v2/BUILDING.md)).
+
+## NixOS host
+
+Freeman approved a move of AgentSplit from Coolify on the shared Oracle host to its own VM. On 2026-11-08 he approved the target: a GCE e2-micro (x86_64, 2 shared vCPUs at about a quarter of a core sustained, 1 GB of memory, a 30 GB pd-standard disk) in us-west1, in GCP's free tier, that runs NixOS from this flake. The VM runs only AgentSplit, so a compromised or overloaded AgentSplit touches no other app. The same flake builds the host for EC2 (`agentsplit-ec2`, a t4g.small) and installs on any cloud VM, so a move to another provider is a reinstall and a restore (below).
+
+The host is not live yet. Production stays on Coolify until the cutover below. The dots repository creates the VM, its network, its tailnet access, the tunnel and the R2 bucket; this repository holds everything that runs on the host.
+
+### What runs on the host
+
+The host has no open inbound port. Cloudflare Tunnel brings the public traffic in, and Tailscale SSH is the only admin path.
+
+| Unit | What it does |
+| --- | --- |
+| `agentsplit.service` | The server (`nix/package.nix`, the same build as the Dockerfile) on `127.0.0.1:3000`. It applies new migrations at start and runs the hourly job in-process at minute 7, as on Coolify. A dynamic user `agentsplit`, a read-only file system, no capabilities, a pool of 5 database connections, 256 MB before reclaim, 320 MB at most, 1.5 CPUs, 128 tasks. It restarts on failure, at most 5 times in 10 minutes. |
+| `postgresql.service` | PostgreSQL 18 from nixpkgs, on the Unix socket `/run/postgresql` only. The role `agentsplit` owns the database `agentsplit` and signs in by peer authentication. Tuned for 1 GB: 64 MB of shared buffers, 16 connections, no parallel queries; 256 MB at most. |
+| `agentsplit-db-dump.timer` | A `pg_dump` at minute 37 of each hour into `/var/backup/agentsplit/`, checked with `pg_restore --list`, kept 3 days. `latest.dump` links to the newest one. |
+| `agentsplit-tunnel.service` | `cloudflared` for a remotely managed tunnel. Cloudflare holds the tunnel's routes. 128 MB at most. |
+| `tailscaled.service` | Tailscale with Tailscale SSH. The tailnet policy decides who reaches the host. |
+| `agentsplit-tailscale-join.service` | On GCE: the first join to the tailnet, with the auth key from the instance metadata ("First install"). It stops once the node is logged in. |
+
+The host does not update itself. An evaluation of the flake needs about 600 MB, which 1 GB cannot spare, so the dev box builds every change ("Weekly update").
+
+The files: `nix/package.nix` (the build), `nix/module.nix` (`services.agentsplit`), `nix/host/default.nix` (the host), `nix/host/gce.nix` (the GCE hardware, the first join and the image), `nix/host/ec2.nix` (the EC2 hardware), `nix/host/disk.nix` (the disk layout for nixos-anywhere installs), `nix/vm-test.nix` (the VM test) and `nix/deploy-host.sh` (the deploy command). `flake.nix` puts the host and one hardware profile together (`mkHost`): `nixosConfigurations.agentsplit` is the GCE host, and `nixosConfigurations.agentsplit-ec2` is the EC2 host.
+
+### Memory budget
+
+The e2-micro has 1 GB, of which the kernel leaves about 940 MB. The VM test (`nix/vm-test.nix`) boots the host's modules in a VM of 1 GB and prints the use after the migrations, a dump and a restore.
+
+| Part | Measured (VM test) | Limit |
+| --- | --- | --- |
+| `agentsplit.service` | 90 MiB, 134 MiB at its peak | 256 MB before reclaim, 320 MB at most, 128 MB of swap |
+| `postgresql.service` (with its page cache) | 115 MiB | 192 MB before reclaim, 256 MB at most |
+| `systemd-journald.service` | 11 MiB | 16 MB kept from reclaim |
+| `tailscaled.service` | 36 MiB (logged out) | 48 MB kept from reclaim |
+| `agentsplit-tunnel.service` | not in the test (about 30 MB) | 128 MB at most |
+| The whole VM | 307 MiB used, 631 MiB available of 939 MiB | |
+
+The limits of the server, PostgreSQL and the connector add up to 704 MB, so the system, Tailscale, the page cache and a deploy keep at least 230 MB when all three are at their limits. zram adds compressed swap of up to half the memory for idle pages.
+
+When memory runs out, the kernel stops processes in this order: a deploy's `nix-daemon` (`OOMScoreAdjust` 800), a dump (600), the server (500), the connector (300); then PostgreSQL (-500), `tailscaled` and `systemd-journald` (-900) last. systemd restarts the server and the connector. The server's pool of 5 connections, the dump, an admin session and PostgreSQL's 3 superuser slots fit in `max_connections` = 16; `nix/module.nix` refuses a pool that does not fit. Do not set `DATABASE_POOL_SIZE` in `agentsplit.env`: the module sets it.
+
+### Secrets on the host
+
+The secrets are root-only files in `/etc/agentsplit/`. They are never in the Nix store, in the image or in Git. systemd reads each file as root before it starts the service.
+
+| File | Holds | Read by |
+| --- | --- | --- |
+| `agentsplit.env` | The server's settings (below) | `agentsplit.service` |
+| `cloudflared.env` | `TUNNEL_TOKEN=<the tunnel token>` | `agentsplit-tunnel.service` |
+| `root-password-hash` | Optional. A `mkpasswd` hash for the provider's serial console, the way in when Tailscale fails | the root account |
+| `tailscale-auth-key` | Only for a nixos-anywhere install (not GCE). A one-time auth key | `tailscaled-autoconnect.service`, only when the node is not logged in |
+
+On GCE, the first join takes its auth key from the instance metadata, not from a file ("First install").
+
+`agentsplit.env` holds `BASE_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_REGION`, `S3_UPLOAD_BUCKET`, `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET`, `RECEIPT_DOWNLOADS=redirect`, and the optional `AUTH_BOOTSTRAP_EMAIL`, `AGENTSPLIT_MAINTENANCE` and `SIGN_UP_DAILY_LIMIT` ("Environment variables" above). Do not set `DATABASE_URL`, `DATABASE_POOL_SIZE`, `HOST` or `PORT` in it: the module sets them, and the file would override them.
+
+The source of each file is a sops file in the dots repository, which the dev box decrypts. The copy goes over Tailscale SSH, through stdin:
+
+| File on the host | Source in dots |
+| --- | --- |
+| `agentsplit.env` | `secrets/agentsplit.env` |
+| `cloudflared.env` | `secrets/agentsplit-cloudflared.env` |
+| `root-password-hash` | the key `root_password_hash` in `secrets/agentsplit-host.yaml` |
+
+```sh
+sops -d secrets/agentsplit.env | ssh root@agentsplit 'install -D -m 0400 /dev/stdin /etc/agentsplit/agentsplit.env'
+sops -d secrets/agentsplit-cloudflared.env | ssh root@agentsplit 'install -D -m 0400 /dev/stdin /etc/agentsplit/cloudflared.env'
+sops -d --extract '["root_password_hash"]' secrets/agentsplit-host.yaml | ssh root@agentsplit 'install -D -m 0400 /dev/stdin /etc/agentsplit/root-password-hash'
+ssh root@agentsplit systemctl restart agentsplit agentsplit-tunnel
+```
+
+We chose a copied file over sops-nix. sops-nix needs a decryption key on the host, a recipient for each host in dots, and a new flake input. A copied file needs none of these, works on every provider, and has the same exposure on the host: a root-only file on its disk. To change a secret, change it in dots, copy the file again, and restart the service.
+
+### Network, DNS and time on GCE
+
+The dots side gives the VM its own VPC with no ingress rule. Egress is open only on TCP 443, TCP and UDP 7844 (cloudflared), UDP 3478 and UDP 41641 (Tailscale). The GCE metadata server, `169.254.169.254`, is the DNS resolver that DHCP gives and the time server (`nix/host/gce.nix`); the VPC firewall does not filter traffic to it. The host keeps that resolver (`--accept-dns=false`): the firewall allows no DNS to the internet, so a resolver from the tailnet would break name lookups. The VM's service account has no roles: the host reads only its own metadata, which needs none. The instance metadata sets `serial-port-enable=TRUE` and `block-project-ssh-keys=TRUE`; the host runs no sshd and no guest agent, so no SSH key in the metadata opens a way in.
+
+### Receipts on R2
+
+On the NixOS host the receipts move from Garage to Cloudflare R2: off the VM, with 10 GB free and no charge for data out. Bun's S3 client signs with SigV4 and uses path-style URLs (`src/server/s3.ts`), which both Garage and R2 accept. Only the settings differ:
+
+| Setting | Garage (Coolify) | R2 (NixOS host) |
+| --- | --- | --- |
+| `S3_UPLOAD_ENDPOINT` | `http://agentsplit-garage:3900` | `https://<account ID>.r2.cloudflarestorage.com` |
+| `S3_UPLOAD_REGION` | `garage` | `auto` |
+| `S3_UPLOAD_BUCKET` | `agentsplit-receipts` | `agentsplit-receipts` |
+| `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET` | The Garage key | An R2 API token with Object Read and Write on this bucket only |
+| `RECEIPT_DOWNLOADS` | empty (`stream`) | `redirect` |
+
+With `redirect`, the app checks access and then sends the reader to a presigned R2 URL that works for 5 minutes, so the receipt bytes do not leave the VM, where data out over 1 GB a month is billed. The bucket needs no public access and no CORS rule: browsers load receipts only through `<img>` and links, which follow the redirect. The group ZIP download still streams through the server. `scripts/copy-receipts.ts` copies the objects from Garage with their content types (below).
+
+### First install
+
+On GCE, the VM boots the host directly from an image of this flake, so nothing installs on the 1 GB machine. The image mounts the file systems by the labels `nixos` and `ESP`, as `nix/host/default.nix` does, and grows the root to the size of the boot disk at its first boot.
+
+1. On the dev box, in a clean checkout of a pushed commit, build the image. The dev box needs x86_64 emulation (dots). The build VM runs the dev box's own QEMU (`agentsplit.imageBuildPackages` in `flake.nix`), so the image builds only on aarch64-linux, in about 3 minutes.
+
+   ```sh
+   direnv exec . nix build .#packages.x86_64-linux.agentsplit-gce-image
+   ```
+
+   The image is `result/agentsplit-gce.raw.tar.gz`: one sparse `disk.raw` of 8 GiB in a gzip tar, the form that `google_compute_image` (`raw_disk`) takes. It holds no secret.
+2. The dots side uploads the file to a temporary GCS bucket, makes a custom image with the guest OS feature `UEFI_COMPATIBLE`, and creates the e2-micro from it: 30 GB pd-standard boot disk, Shielded VM with Secure Boot off (the GRUB of NixOS is not signed) and vTPM and integrity monitoring on, the network above, and a service account with no roles.
+3. The dots side sets the instance metadata attribute `tailscale-auth-key` to a single-use auth key that is valid for ten minutes, from the dev box (`infra/bin/tailscale-auth-key`). Never put the key in OpenTofu, its state or a file.
+4. At boot, `agentsplit-tailscale-join.service` sees that Tailscale needs a login, and reads `http://metadata.google.internal/computeMetadata/v1/instance/attributes/tailscale-auth-key` with the header `Metadata-Flavor: Google`. It polls with a growing pause up to 60 seconds until the attribute exists. Then it runs `tailscale up --auth-key=file:/dev/stdin --ssh --hostname=agentsplit --advertise-tags=tag:app --accept-dns=false` with the key on stdin. The key never goes to the disk or the journal. The unit stops once the node is logged in.
+5. Under Tailnet Lock, sign the new node key on the dev box: `sudo tailscale lock sign nodekey:<key>`.
+6. The dots side removes the `tailscale-auth-key` attribute. If the key expired before the join, set a new one; the unit still polls.
+7. Check the access: `ssh root@agentsplit true`.
+8. Copy `agentsplit.env`, `cloudflared.env` and `root-password-hash` (above). Set `AGENTSPLIT_MAINTENANCE=1` until the cutover.
+9. Run `direnv exec . deploy-host` (below). It moves the host to the newest `nixos-26.05` and makes the commit the boot default.
+10. Check that no unit failed: `ssh root@agentsplit systemctl --failed`.
+
+If the join fails, read the boot on the serial port (`gcloud compute instances get-serial-port-output`). Before step 8 root has no password, so the interactive serial console does not log in; delete the VM and create it again from the image, because it holds no data yet. After step 8, the way in when Tailscale fails is the serial console, as root with the password in `secrets/agentsplit-host.yaml`.
+
+On EC2 (`nixosConfigurations.agentsplit-ec2`, aarch64):
+
+1. Create the instance from the official NixOS 26.05 aarch64 image, which writes the same labels, with no inbound rule, IMDSv2 only, and a 20 GB gp3 volume.
+2. Join it to the tailnet as `agentsplit` with `--advertise-tags=tag:app --hostname=agentsplit --ssh --accept-dns=false`.
+3. Copy the files (above), and run `HOST_CONFIG=agentsplit-ec2 direnv exec . deploy-host`. The first deploy stops the image's sshd, SSM agent and user-data service. The EC2 serial console is then the way in when Tailscale fails. The security group allows the same egress as on GCE; DNS goes to the VPC resolver and time to `169.254.169.123` (`nix/host/ec2.nix`).
+
+On another provider:
+
+1. Write a hardware profile for the provider (a copy of `nix/host/gce.nix` or `nix/host/ec2.nix` with its disk and network drivers and its console), and add a configuration with it to `flake.nix` (`mkHost`). If its disk is not `/dev/nvme0n1`, set `disko.devices.disk.main.device` in the profile.
+2. Create a VM with UEFI, at least 1 GB of memory and a 20 GB disk, with any Linux and root SSH access from the dev box for the install only. nixos-anywhere boots an installer with kexec, which needs about 1 GB free; on a smaller VM, use the provider's image path as on GCE.
+3. Put the secret files in a local folder at `etc/agentsplit/`, with a one-time Tailscale auth key from `infra/bin/tailscale-auth-key` in dots as `tailscale-auth-key`.
+4. Run `nix run --inputs-from . nixpkgs#nixos-anywhere -- --flake .#<configuration> --extra-files <folder> root@<address>`.
+5. Under Tailnet Lock, sign the new node key on the dev box: `sudo tailscale lock sign nodekey:<key>`.
+6. Close the temporary SSH access, and delete `/etc/agentsplit/tailscale-auth-key` on the host.
+7. Check that the modes of the files in `/etc/agentsplit/` are `0400`.
+
+### Deploy
+
+1. Get Freeman's approval for the deploy.
+2. Take a verified backup (below).
+3. Rehearse new migrations on the backup, as in "Deploy" above.
+4. Merge the change into `main` and push it.
+5. In a clean checkout of `main` on the dev box, run `direnv exec . deploy-host`.
+
+`deploy-host` refuses a tree with uncommitted changes and a commit that is not on GitHub: the host records the deployed commit, and the weekly update rebuilds it. It builds the host on the dev box with `nixpkgs-host` at the head of `nixos-26.05`, copies it over Tailscale SSH, and activates it without making it the boot default. The host fetches what it can from the NixOS binary cache. When `agentsplit.service` runs and `/api/health` answers, it makes the new system the boot default. If the health check fails, a reboot or this command returns to the previous system:
+
+```sh
+ssh root@agentsplit /nix/var/nix/profiles/system/bin/switch-to-configuration switch
+```
+
+To go back after a completed deploy, use `nix-env --profile /nix/var/nix/profiles/system --rollback`, then the same command. A rollback does not undo migrations.
+
+The GCE host is x86_64 and the dev box is aarch64. Nix builds the host under emulation (`boot.binfmt.emulatedSystems` in dots), and most paths come from the binary cache; the app's build is the slow part. Without emulation, `deploy-host` stops at once with the message `this machine cannot build x86_64-linux`. A new kernel takes effect at the next boot; `deploy-host` says so, and the weekly update reboots for it.
+
+The maintenance switch on the host: set `AGENTSPLIT_MAINTENANCE=1` in `agentsplit.env` and run `systemctl restart agentsplit`. The tunnel and the health checks stay up.
+
+### Weekly update
+
+The host's operating system follows `nixos-26.05`, a release branch that gets only backports and security fixes. The dev box updates it once a week:
+
+```sh
+direnv exec . deploy-host --update
+```
+
+`--update` reads the commit that the host runs (`nixos-version --configuration-revision`), and builds that commit with `nixpkgs-host` at the head of `nixos-26.05`. The app, its Bun and its dependencies come from the locked `nixpkgs` input, so they stay as deployed, and a commit on `main` that is not deployed does not go live. The update needs no approval, because it changes no app code. It activates the new system and checks the health as a deploy does. If the kernel changed, it reboots the host and waits up to 5 minutes for `/api/health`. If nothing changed, it stops.
+
+The dots side runs it from a systemd timer on the dev box, once a week at a quiet time (for example Tuesday 09:20 UTC), in `~/projects/agentsplit`, and reports a failure. The checkout's own state does not matter: `--update` builds from Git.
+
+NixOS 26.05 ends its support at the end of December 2026. Before then, move `hostNixpkgs` in `flake.nix` and the `nixpkgs-host` input to the next release, run the VM test, and deploy.
+
+### Backups of the host
+
+The host dumps the database every hour into `/var/backup/agentsplit/` and keeps 3 days. The user `agentsplit-backup` can read the dumps and nothing else: it has no database role. The dev box pulls the newest dump as that user:
+
+```sh
+ssh agentsplit-backup@agentsplit agentsplit-latest-dump > agentsplit.dump
+```
+
+`agentsplit-latest-dump` fails when the newest dump is older than 150 minutes, so a stopped timer fails the pull. The receipts are in R2; the dev box reads them with its own read-only R2 token. The test restore stays on the dev box, as in "Backups" above.
+
+### Move the data from Oracle
+
+Keep `BASE_URL` at `https://agentsplit.freemanjiang.com` for the move. The OAuth issuer, every agent's tokens, the session cookies and the Google redirect URI depend on it. A change of domain (for example to `agentsplit.net`) is a separate step with its own plan: every agent must connect again, and every person must sign in again.
+
+Before the window:
+
+1. Install and deploy the host with `AGENTSPLIT_MAINTENANCE=1` and the R2 settings.
+2. Copy the receipts once while Coolify serves (the first copy takes the longest). Run it on the dev box. Give it the Garage key from Coolify and the R2 key as the environment variables `SOURCE_S3_KEY`, `SOURCE_S3_SECRET`, `TARGET_S3_KEY` and `TARGET_S3_SECRET`, for example with `sops exec-env`. Never type them on a command line.
+
+   ```sh
+   SOURCE_S3_ENDPOINT=https://agentsplit-receipts.freemanjiang.com SOURCE_S3_REGION=garage SOURCE_S3_BUCKET=agentsplit-receipts \
+   TARGET_S3_ENDPOINT=https://<account ID>.r2.cloudflarestorage.com TARGET_S3_REGION=auto TARGET_S3_BUCKET=agentsplit-receipts \
+   bun scripts/copy-receipts.ts
+   ```
+
+3. Route a test hostname through the tunnel, and check `/api/health` on it.
+
+In the window:
+
+1. Get Freeman's approval.
+2. Turn on the maintenance switch on Coolify ("Maintenance switch" above). Nothing writes from now on.
+3. Run the dev box backup (`systemctl --user start agentsplit-backup.service`) and check that it passed.
+4. Run `scripts/copy-receipts.ts` again, then with `--check`. It must report every object.
+5. Stop the server on the host: `ssh root@agentsplit systemctl stop agentsplit`.
+6. Make an empty database on the host. It holds no production data yet: `ssh root@agentsplit 'sudo -u postgres dropdb agentsplit && sudo -u postgres createdb --owner=agentsplit agentsplit'`.
+7. Restore the backup's dump into it as the server's role:
+
+   ```sh
+   ssh root@agentsplit 'sudo -u postgres pg_restore --no-owner --no-acl --role=agentsplit --exit-on-error --dbname=agentsplit' < ~/backups/agentsplit/<UTC date>/agentsplit.dump
+   ```
+
+8. Compare the counts of `groups`, `expenses`, `activities` and `expense_payers` on the host with the backup's log line.
+9. Clear `AGENTSPLIT_MAINTENANCE` in the host's `agentsplit.env`, and start the server: `ssh root@agentsplit systemctl start agentsplit`.
+10. Point the production hostname at the tunnel (the dots side: a proxied CNAME to `<tunnel ID>.cfargotunnel.com` and the tunnel's route to `http://127.0.0.1:3000`).
+11. Check `/api/health`, the home page, a sign-in, an old receipt, and an MCP write in the group **AgentSplit test**.
+12. Move the dev box backup to the host (the dots side).
+
+Keep the Coolify stack in maintenance and keep its volumes until Freeman says otherwise.
+
+### Roll back to Coolify
+
+1. Get Freeman's approval.
+2. Turn on the maintenance switch on the host.
+3. If the host took writes, carry them back: run `systemctl start agentsplit-db-dump` on the host, pull `agentsplit-latest-dump`, restore it into `db2` on Coolify with `pg_restore --clean --if-exists --no-owner --no-acl`, and run `scripts/copy-receipts.ts` from R2 to Garage (SOURCE and TARGET swapped).
+4. Point the production hostname back at Oracle.
+5. Turn off the maintenance switch on Coolify and deploy.
+6. Check the app as in "Deploy" above.
+
+### Move to another cloud
+
+R2 holds the receipts, and the tunnel does not depend on an address, so a move copies only the database. It takes about an hour. EC2 is the documented alternative (`agentsplit-ec2`, "First install").
+
+1. Install the new VM as in "First install", with `AGENTSPLIT_MAINTENANCE=1`. Tailscale names it `agentsplit-1` while the old host exists, so give that name to each command, for example `HOST_CONFIG=agentsplit-ec2 deploy-host root@agentsplit-1`.
+2. Get Freeman's approval, and turn on the maintenance switch on the old host.
+3. Run `systemctl start agentsplit-db-dump` on the old host, and pull the dump.
+4. Restore it on the new host, as in steps 5 to 8 of the window above.
+5. Stop the tunnel on the old host: `systemctl stop agentsplit-tunnel`. Two connectors of one tunnel share the traffic, so both hosts must never serve at the same time.
+6. Clear the maintenance switch on the new host, and start its server.
+7. Check the app as in step 11 of the window above.
+8. Delete the old VM after Freeman's approval, and rename the new node to `agentsplit` in Tailscale.
