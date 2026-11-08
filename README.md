@@ -30,7 +30,22 @@ The app is a rewrite (v2) of the Next.js and Prisma app it replaced in productio
 
 ## Develop
 
-[docs/v2/BUILDING.md](docs/v2/BUILDING.md) holds the commands (install, build, type check, tests, end-to-end tests, image, migrations), the local database, the dev server with synthetic sign-in, and the rules for adding to the app. Every command runs inside the flake's dev shell (`direnv exec .`). Use synthetic data only. Never copy the production backups.
+You need Linux (x86_64 or aarch64) with [Nix](https://nixos.org/download/) and flakes. The dev shell of `flake.nix` holds Bun, Node.js, PostgreSQL 18 and Chromium. It does not build on macOS, because nixpkgs has no Chromium for macOS. The end-to-end tests also need Docker or Podman, which run Garage.
+
+From a fresh clone:
+
+```sh
+nix develop                     # or use direnv: direnv allow
+bun install --frozen-lockfile
+db-start                        # PostgreSQL 18 on 127.0.0.1:5437, data in .pg/
+bun run build                   # also generates the route tree that the type check needs
+bun run check-types
+bun run test                    # makes its own test database, agentsplit_test
+./scripts/e2e.sh                # needs Docker or Podman
+db-stop
+```
+
+[docs/v2/BUILDING.md](docs/v2/BUILDING.md) holds the commands (install, build, type check, tests, end-to-end tests, image, migrations), the local database, the dev server with synthetic sign-in, and the rules for adding to the app. Every command runs inside the flake's dev shell (`nix develop`, or `direnv exec .`). Use synthetic data only. Never copy the production backups.
 
 ## License
 
