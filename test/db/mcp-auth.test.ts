@@ -2,7 +2,7 @@
 // hold it to Better Auth's own answers on the same rows.
 import { createDpopReplayStore, DPOP_SIGNING_ALGORITHMS } from 'better-auth/oauth2'
 import { eq } from 'drizzle-orm'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { apikey, jwks } from '../../db/schema/auth'
 import { verifyApiKey } from '~/server/auth/api-key'
 import { readApiKey } from '~/server/auth/authenticate'
@@ -10,14 +10,10 @@ import { DPOP_ALGORITHMS, protectedResourceMetadata } from '~/server/auth/challe
 import { createAuth } from '~/server/auth/auth'
 import { loadJwks, replayStore } from '~/server/auth/oauth'
 import { sha256Base64url } from '~/server/core/ids'
+import { LIMITS } from '~/shared/limits'
 import { testSettings } from '../kit/config'
+import { counter } from '../kit/ids'
 import { BASE, startHarness, type Harness } from './harness'
-
-// These tests create many API keys for one account; the fair-use cap has its own test (test/db/limits.test.ts).
-vi.mock('~/shared/limits', async (original) => {
-  const limits = await original<typeof import('~/shared/limits')>()
-  return { ...limits, LIMITS: { ...limits.LIMITS, apiKeys: 1000 } }
-})
 
 let h: Harness
 beforeAll(async () => {
@@ -112,9 +108,11 @@ describe('API key headers', () => {
 })
 
 describe('API key verification', () => {
-  /** Two keys with the same row state: Better Auth verifies one, the MCP path the other. */
+  const owners = counter('key-owner')
+  /** Two keys with the same row state, of a new account so the key cap never applies: Better Auth verifies one, the MCP path the other. */
   async function twins(state: Partial<typeof apikey.$inferInsert>) {
-    const created = await h.authApi(async (api) => [await api.createApiKey({ body: { userId: 'alice' } }), await api.createApiKey({ body: { userId: 'alice' } })])
+    const { id: userId } = await h.account(owners())
+    const created = await h.authApi(async (api) => [await api.createApiKey({ body: { userId } }), await api.createApiKey({ body: { userId } })])
     if (Object.keys(state).length) for (const k of created) await h.withDb((db) => db.update(apikey).set(state).where(eq(apikey.id, k.id)))
     return { theirs: created[0]!, ours: created[1]! }
   }
@@ -131,15 +129,17 @@ describe('API key verification', () => {
 
   const now = () => new Date()
   const ago = (ms: number) => new Date(Date.now() - ms)
+  /** The window of LIMITS.apiKeyRequestsPerMinute. */
+  const MINUTE = 60_000
   const cases: [string, Partial<typeof apikey.$inferInsert>][] = [
     ['a new key', {}],
     ['a disabled key', { enabled: false }],
     ['an expired key', { expiresAt: ago(1000) }],
     ['a key that expires later', { expiresAt: new Date(Date.now() + 3_600_000) }],
     ['a key inside its window', { lastRequest: ago(5_000), requestCount: 7 }],
-    ['a key at its limit', { lastRequest: ago(5_000), requestCount: 120 }],
-    ['a key whose window has passed', { lastRequest: ago(61_000), requestCount: 120 }],
-    ['a key without rate limiting', { rateLimitEnabled: false, lastRequest: ago(5_000), requestCount: 500 }],
+    ['a key at its limit', { lastRequest: ago(5_000), requestCount: LIMITS.apiKeyRequestsPerMinute }],
+    ['a key whose window has passed', { lastRequest: ago(MINUTE + 1_000), requestCount: LIMITS.apiKeyRequestsPerMinute }],
+    ['a key without rate limiting', { rateLimitEnabled: false, lastRequest: ago(5_000), requestCount: 2 * LIMITS.apiKeyRequestsPerMinute }],
     ['a key without a limit window', { rateLimitTimeWindow: null }],
     ['a key with quota left', { remaining: 2 }],
     ['a key with no quota and no refill', { remaining: 0 }],
@@ -170,9 +170,9 @@ describe('API key verification', () => {
   })
 
   it('says how long a rate-limited key waits', async () => {
-    const { ours } = await twins({ lastRequest: ago(20_000), requestCount: 120 })
+    const { ours } = await twins({ lastRequest: ago(20_000), requestCount: LIMITS.apiKeyRequestsPerMinute })
     const result = await h.withDb((db) => verifyApiKey(db, ours.key))
     expect(result).toMatchObject({ valid: false, code: 'RATE_LIMITED' })
-    if (!result.valid && result.code === 'RATE_LIMITED') expect(result.tryAgainInMs).toBeGreaterThan(39_000)
+    if (!result.valid && result.code === 'RATE_LIMITED') expect(result.tryAgainInMs).toBeGreaterThan(MINUTE - 21_000)
   })
 })
