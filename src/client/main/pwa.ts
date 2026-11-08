@@ -35,42 +35,69 @@ export async function registerServiceWorker() {
 }
 
 /**
+ * The brand mark of public/brand-mark.svg, drawn with the same paths on a
+ * 100-unit square of `size` pixels: the frame, the coin and the two dots, cut
+ * by the diagonal split. Paths, not the SVG file, so no image load can fail.
+ */
+function brandMark(data: { size: number; ink: string }) {
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = Math.ceil(data.size)
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('No 2D canvas for the brand mark')
+  context.scale(data.size / 100, data.size / 100)
+  context.strokeStyle = data.ink
+  context.lineWidth = 6
+  context.stroke(new Path2D('M5 20H95V80H5Z'))
+  context.stroke(new Path2D('M17 31V41M83 59V69'))
+  context.beginPath()
+  context.arc(50, 50, 16, 0, 2 * Math.PI)
+  context.stroke()
+  context.globalCompositeOperation = 'destination-out'
+  context.fill(new Path2D('M62 0H73L38 100H27Z'))
+  return canvas
+}
+
+/**
  * iOS startup images for the home-screen app (P-PWA-04), ported from the
  * current app's apple-pwa-splash.tsx (ios-pwa-splash by Avadhesh B., MIT).
- * It draws the logo on the brand color at the screen's own size, in portrait
- * and in landscape. Only iOS reads these links, and only iOS has
- * `navigator.standalone`, so other browsers skip the canvas work.
+ * It draws the brand mark and the name in the app's ink on its background, at
+ * the screen's own size, in portrait and in landscape, as the header shows
+ * them. Only iOS reads these links, and only iOS has `navigator.standalone`,
+ * so other browsers skip the canvas work.
  */
-export function addAppleSplashImages(data: { icon: string; color: string }) {
+export async function addAppleSplashImages(data: { background: string; ink: string }) {
   if (!('standalone' in navigator)) return
-  const image = new Image()
-  image.addEventListener('load', () => {
-    const ratio = window.devicePixelRatio || 1
-    const width = image.width / (3 / ratio)
-    const height = image.height / (3 / ratio)
-    const draw = (canvasWidth: number, canvasHeight: number) => {
-      const canvas = document.createElement('canvas')
-      canvas.width = canvasWidth
-      canvas.height = canvasHeight
-      const context = canvas.getContext('2d')
-      if (!context) throw new Error('No 2D canvas for the splash image')
-      context.fillStyle = data.color
-      context.fillRect(0, 0, canvasWidth, canvasHeight)
-      context.drawImage(image, (canvasWidth - width) / 2, (canvasHeight - height) / 2, width, height)
-      return canvas.toDataURL('image/png')
-    }
-    const portrait = { width: screen.width * ratio, height: screen.height * ratio }
-    for (const [orientation, href] of [
-      ['portrait', draw(portrait.width, portrait.height)],
-      ['landscape', draw(portrait.height, portrait.width)],
-    ] as const) {
-      const link = document.createElement('link')
-      link.rel = 'apple-touch-startup-image'
-      link.media = `screen and (orientation: ${orientation})`
-      link.href = href
-      document.head.appendChild(link)
-    }
-  })
-  image.addEventListener('error', () => console.error('Splash icon failed to load', data.icon))
-  image.src = data.icon
+  const ratio = window.devicePixelRatio || 1
+  const font = `600 ${32 * ratio}px "Geist Variable", ui-sans-serif, system-ui, sans-serif`
+  await document.fonts.load(font)
+  const mark = brandMark({ size: 40 * ratio, ink: data.ink })
+  const gap = 8 * ratio
+  const draw = (canvasWidth: number, canvasHeight: number) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvasWidth
+    canvas.height = canvasHeight
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('No 2D canvas for the splash image')
+    context.fillStyle = data.background
+    context.fillRect(0, 0, canvasWidth, canvasHeight)
+    context.font = font
+    context.letterSpacing = `${-0.02 * 32 * ratio}px`
+    context.textBaseline = 'middle'
+    const left = (canvasWidth - (mark.width + gap + context.measureText('AgentSplit').width)) / 2
+    context.drawImage(mark, left, (canvasHeight - mark.height) / 2)
+    context.fillStyle = data.ink
+    context.fillText('AgentSplit', left + mark.width + gap, canvasHeight / 2)
+    return canvas.toDataURL('image/png')
+  }
+  const portrait = { width: screen.width * ratio, height: screen.height * ratio }
+  for (const [orientation, href] of [
+    ['portrait', draw(portrait.width, portrait.height)],
+    ['landscape', draw(portrait.height, portrait.width)],
+  ] as const) {
+    const link = document.createElement('link')
+    link.rel = 'apple-touch-startup-image'
+    link.media = `screen and (orientation: ${orientation})`
+    link.href = href
+    document.head.appendChild(link)
+  }
 }
