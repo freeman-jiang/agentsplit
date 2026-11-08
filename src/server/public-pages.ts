@@ -20,8 +20,10 @@ export const sitemapXml = (baseUrl: string) =>
     { headers: { ...TEXT, 'Content-Type': 'application/xml; charset=utf-8' } },
   )
 
-/** The health paths. Maintenance mode lets them through (maintenance.ts). */
-export const HEALTH_PATHS = new Set(['/api/health', '/api/health/readiness', '/api/health/liveness'])
+/** The health path that answers without the database. */
+export const LIVENESS_PATH = '/api/health/liveness'
+/** The health paths; the others check the database. Maintenance mode lets them through (maintenance.ts). */
+export const HEALTH_PATHS = new Set(['/api/health', '/api/health/readiness', LIVENESS_PATH])
 
 const HEALTH_HEADERS = { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
 

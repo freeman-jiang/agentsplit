@@ -35,7 +35,7 @@ import { maintenanceResponse } from '../maintenance'
 import { handleMcp } from '../mcp/endpoint'
 import type { McpSettings } from '../mcp/server'
 import { withPerfHeaders } from '../perf'
-import { HEALTH_PATHS, livenessResponse, readinessResponse, robotsTxt, sitemapXml } from '../public-pages'
+import { HEALTH_PATHS, LIVENESS_PATH, livenessResponse, readinessResponse, robotsTxt, sitemapXml } from '../public-pages'
 import { downloadReceipt, downloadReceiptArchive, putUpload, uploadReceipt } from '../receipt-routes'
 import { removeStaleUploads } from '../receipt-uploads'
 import { materializeDue } from '../recurring'
@@ -62,7 +62,7 @@ export function createApp(platform: Platform) {
   // request. Per-request state (the database connection) arrives in each
   // request's context instead, which the RPC server passes to every call.
   const rpcHandler = HttpRouter.toWebHandler(
-    RpcServer.layerHttp({ group: Api, path: '/api/rpc', protocol: 'http' }).pipe(
+    RpcServer.layerHttp({ group: Api, path: RPC_PATH, protocol: 'http' }).pipe(
       Layer.provide(Layer.mergeAll(CoreHandlers, GroupsHandlers, FeedHandlers, AccountHandlers, ExpensesHandlers, HistoryHandlers, StorageHandlers)),
       Layer.provide(AuthMiddlewareLive),
       Layer.provide(RpcSerialization.layerJson),
@@ -148,7 +148,7 @@ export function createApp(platform: Platform) {
     if (METADATA_PATHS.has(url.pathname)) return protectedResourceMetadata(request, baseUrl)
     // OAuth discovery: Better Auth serves the authorization-server metadata.
     if (url.pathname.startsWith(`${AUTH_PATH}/`) || url.pathname.startsWith('/.well-known/')) return authHandler(request)
-    if (HEALTH_PATHS.has(url.pathname)) return url.pathname === '/api/health/liveness' ? livenessResponse() : readinessResponse(checkDatabase)
+    if (HEALTH_PATHS.has(url.pathname)) return url.pathname === LIVENESS_PATH ? livenessResponse() : readinessResponse(checkDatabase)
     if (url.pathname === ROBOTS_PATH) return robotsTxt(baseUrl)
     if (url.pathname === SITEMAP_PATH) return sitemapXml(baseUrl)
     if (url.pathname === RECEIPTS_PATH) {
