@@ -1,14 +1,13 @@
 // The one text for a failed call. Declared errors read as src/shared/errors.ts
 // words them for every transport; a revision conflict never looks like any
 // other failure (DECISIONS.md group C, P-EXP-52 and P-EXP-53).
-import { errorText, withoutField } from '~/shared/errors'
+import { errorText } from '~/shared/errors'
 import { RpcFailure, rpcError } from './rpc'
 
 export type Failure = {
-  /** `conflict`: someone saved first; `gone`: deleted or hidden; `invalid`: refused; `unknown`: no answer, so a write may or may not have happened. */
-  readonly kind: 'conflict' | 'gone' | 'invalid' | 'unknown'
+  /** `conflict`: someone saved first; `refused`: the server answered no; `unknown`: no answer, so a write may or may not have happened. */
+  readonly kind: 'conflict' | 'refused' | 'unknown'
   readonly message: string
-  readonly field?: string
 }
 
 const CONFLICT = 'Someone changed this after you opened it. Load the latest version, then make your change again.'
@@ -27,12 +26,10 @@ export function describeError(cause: unknown, unanswered: string = NO_ANSWER): F
     case 'Conflict':
       return { kind: 'conflict', message: error.message ?? CONFLICT }
     case 'NotFound':
-      return { kind: 'gone', message: errorText(error) }
     case 'Invalid':
-      return { kind: 'invalid', message: withoutField({ message: errorText(error), field: error.field }), ...(error.field ? { field: error.field } : {}) }
     case 'Forbidden':
     case 'Unauthorized':
-      return { kind: 'invalid', message: errorText(error) }
+      return { kind: 'refused', message: errorText(error) }
     case 'Unavailable':
     case 'RpcFailure':
       return { kind: 'unknown', message: unanswered }

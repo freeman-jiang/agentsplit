@@ -94,10 +94,6 @@ export const errorKind = (error: DeclaredError): ErrorKind =>
 export const fieldProblemsText = (problems: ReadonlyArray<{ readonly field: string; readonly message: string }>) =>
   problems.map((p) => `${p.field}: ${p.message}`).join('; ')
 
-/** An Invalid text without the "<field>: " that fieldProblemsText puts before its first problem, for a form that marks the field itself. */
-export const withoutField = (data: { message: string; field: string | undefined }) =>
-  data.field !== undefined && data.message.startsWith(`${data.field}: `) ? data.message.slice(data.field.length + 2) : data.message
-
 /** The JSON body of a refused request on a plain HTTP route (receipts, uploads, exports). */
 export type HttpErrorBody = { readonly error: string }
 
