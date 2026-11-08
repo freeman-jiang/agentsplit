@@ -1,15 +1,20 @@
 // The receipt storage quota (LIMITS.receiptStorageBytes). A receipt counts
 // against the account that uploaded it until it is deleted for good. Receipts
 // without a known uploader (imported from before accounts) count against no one.
-import { sql } from 'drizzle-orm'
+import { sql, type SQL } from 'drizzle-orm'
 import { LIMITS, storageFullMessage } from '../shared/limits'
 import { ADVISORY_LOCKS, type Db } from './core/db'
+
+/** Whether receipt row `r` was deleted for good. */
+export const deletedForGood = (r: SQL) => sql`EXISTS (SELECT 1 FROM deleted_receipts d WHERE d.receipt_id = ${r}.id)`
+
+/** The condition on receipt row `r` that it counts against `userId`. */
+export const countsAgainst = (userId: string) => sql`r.created_by = ${userId} AND NOT ${deletedForGood(sql`r`)}`
 
 /** The bytes that count against `userId`. */
 export async function receiptUsage(db: Db, userId: string): Promise<number> {
   const result = await db.execute<{ bytes: string }>(sql`
-    SELECT coalesce(sum(r.bytes), 0)::text AS bytes FROM receipts r
-    WHERE r.created_by = ${userId} AND NOT EXISTS (SELECT 1 FROM deleted_receipts d WHERE d.receipt_id = r.id)
+    SELECT coalesce(sum(r.bytes), 0)::text AS bytes FROM receipts r WHERE ${countsAgainst(userId)}
   `)
   return Number(result.rows[0]?.bytes ?? 0)
 }
