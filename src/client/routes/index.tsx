@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Search } from 'lucide-react'
+import { AgentDemo } from '~/client/components/agent-demo'
 import { LoginButton } from '~/client/components/login-button'
 import { attributionLine } from '~/client/components/expense-row/figures'
 import { ExpenseRow } from '~/client/components/expense-row/row'
@@ -68,9 +69,12 @@ function Landing() {
             Split expenses <strong className="block font-semibold text-muted-foreground">using your agent.</strong>
           </h1>
           <p className="max-w-lg leading-normal text-pretty text-muted-foreground sm:text-xl sm:leading-8">
-            Record shared expenses and payments, and see who owes whom. Use the website or your AI agent.
+            Tell Claude or ChatGPT what you paid. AgentSplit splits it and keeps track of who owes whom.
           </p>
           <LoginButton selectAccount={false} callbackURL="/" errorCallbackURL="/sign-in" />
+          <div className="mt-6 flex w-full justify-center">
+            <AgentDemo />
+          </div>
         </div>
       </section>
     </main>
