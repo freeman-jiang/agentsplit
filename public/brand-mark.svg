@@ -5,7 +5,7 @@
       <path d="M62 0H73L38 100H27Z" fill="black"/>
     </mask>
   </defs>
-  <g fill="none" stroke="#526044" stroke-width="6" mask="url(#split)">
+  <g fill="none" stroke="#0d0d0d" stroke-width="6" mask="url(#split)">
     <path d="M5 20H95V80H5Z"/>
     <circle cx="50" cy="50" r="16"/>
     <path d="M17 31V41M83 59V69"/>

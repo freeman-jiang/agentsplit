@@ -115,6 +115,11 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+  /* Tailwind 4 gives buttons the default cursor; a pointer shows they act. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 /* Headings use the body face with more weight and tighter tracking. */
