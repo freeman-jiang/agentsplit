@@ -24,7 +24,7 @@ export function LandingFeatures() {
       <div className="mx-auto max-w-2xl text-center">
         <h2 id="features-heading" className="font-display text-3xl leading-tight text-balance sm:text-4xl">
           Everything you need to share costs.
-          <span className="block font-serif text-muted-foreground">Your agent can do all of it.</span>
+          <span className="block text-muted-foreground">Your agent can do all of it.</span>
         </h2>
         <p className="mt-4 text-pretty text-muted-foreground sm:text-lg">
           Connect Claude, ChatGPT or any MCP client. It uses the same tools as the website, and you can give it read-only access.
