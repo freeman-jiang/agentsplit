@@ -77,6 +77,14 @@ export async function handleMcp(request: Request, data: { db: Db; settings: McpS
     return Response.json({ jsonrpc: '2.0', id, error: { code: -32020, message: 'MCP-Protocol-Version is required' } }, { status: 400, headers: noStore })
   }
 
+  // AgentSplit sends no notifications: its tools never change, and it has no resources or prompts.
+  // The SDK would answer subscriptions/listen with an event stream that ends only when the client
+  // leaves, and the request would keep its database connection until then (test/db/mcp-listen.test.ts).
+  if (isObject(body) && body['method'] === 'subscriptions/listen') {
+    const id = typeof body['id'] === 'string' || typeof body['id'] === 'number' ? body['id'] : null
+    return Response.json({ jsonrpc: '2.0', id, error: { code: -32601, message: 'Method not found: AgentSplit sends no notifications' } }, { status: 404, headers: noStore })
+  }
+
   // initialize, tools/list and notifications/initialized are the same for every caller (answers.ts).
   const response = await staticAnswer({ request, body, serve: () => serve({ request, text, body, db, principal, settings }) })
   const headers = new Headers(response.headers)
