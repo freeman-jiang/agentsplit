@@ -36,8 +36,8 @@ export async function registerServiceWorker() {
 
 /**
  * The brand mark of public/brand-mark.svg, drawn with the same paths on a
- * 100-unit square of `size` pixels: the frame, the coin and the two dots, cut
- * by the diagonal split. Paths, not the SVG file, so no image load can fail.
+ * 100-unit square of `size` pixels: the temple's pediment, its four columns
+ * and its base. Paths, not the SVG file, so no image load can fail.
  */
 function brandMark(data: { size: number; ink: string }) {
   const canvas = document.createElement('canvas')
@@ -47,15 +47,13 @@ function brandMark(data: { size: number; ink: string }) {
   context.scale(data.size / 100, data.size / 100)
   context.strokeStyle = data.ink
   context.lineWidth = 6
-  context.stroke(new Path2D('M5 20H95V80H5Z'))
-  context.stroke(new Path2D('M17 31V41M83 59V69'))
-  context.beginPath()
-  context.arc(50, 50, 16, 0, 2 * Math.PI)
-  context.stroke()
-  context.globalCompositeOperation = 'destination-out'
-  context.fill(new Path2D('M62 0H73L38 100H27Z'))
+  context.miterLimit = 2.5
+  for (const path of MARK_PATHS) context.stroke(new Path2D(path))
   return canvas
 }
+
+/** The paths of public/brand-mark.svg. */
+const MARK_PATHS = ['M10 36L50 12L90 36Z', 'M22 46V76M40 46V76M60 46V76M78 46V76', 'M8 86H92'] as const
 
 /**
  * iOS startup images for the home-screen app (P-PWA-04), ported from the
@@ -68,7 +66,7 @@ function brandMark(data: { size: number; ink: string }) {
 export async function addAppleSplashImages(data: { background: string; ink: string }) {
   if (!('standalone' in navigator)) return
   const ratio = window.devicePixelRatio || 1
-  const font = `600 ${32 * ratio}px "Geist Variable", ui-sans-serif, system-ui, sans-serif`
+  const font = `400 ${32 * ratio}px "Geist Serif", ui-serif, Georgia, serif`
   await document.fonts.load(font)
   const mark = brandMark({ size: 40 * ratio, ink: data.ink })
   const gap = 8 * ratio
@@ -81,7 +79,7 @@ export async function addAppleSplashImages(data: { background: string; ink: stri
     context.fillStyle = data.background
     context.fillRect(0, 0, canvasWidth, canvasHeight)
     context.font = font
-    context.letterSpacing = `${-0.02 * 32 * ratio}px`
+    context.letterSpacing = `${-0.01 * 32 * ratio}px`
     context.textBaseline = 'middle'
     const left = (canvasWidth - (mark.width + gap + context.measureText('AgentSplit').width)) / 2
     context.drawImage(mark, left, (canvasHeight - mark.height) / 2)
