@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowDown } from 'lucide-react'
+import { Fragment, type ReactNode } from 'react'
 import { requireSignedIn } from '~/client/queries/session'
 import { Button } from '~/client/ui/button'
 import { CopyButton } from '~/client/ui/copy-button'
@@ -29,12 +30,37 @@ function Configuration(props: { title: string; description: string; code: string
   )
 }
 
+/** The values to enter in a client's form, in the order the form asks for them. */
+function Fields(props: { rows: ReadonlyArray<readonly [label: string, value: ReactNode]> }) {
+  return (
+    <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 rounded-2xl border bg-card p-3">
+      {props.rows.map(([label, value]) => (
+        <Fragment key={label}>
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className="flex min-w-0 items-center gap-2">{value}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  )
+}
+
 /** A tool name in the text, checked against the server's tools. */
 const tool = (name: McpToolName) => name
 
 function AgentSetup() {
   // The SPA is served only from BASE_URL, so this page's origin is the MCP origin.
   const endpoint = new URL(MCP_PATH, window.location.origin).href
+  const endpointValue = (
+    <>
+      <code className="min-w-0 break-all">{endpoint}</code>
+      <CopyButton text={endpoint} title="Copy MCP server URL" variant="outline" className="size-7 shrink-0" />
+    </>
+  )
+  // Claude's documented install link opens Add custom connector with the name and URL filled in
+  // (claude.com/docs/connectors/building/directory-vs-custom). The user still reviews and confirms.
+  const claudeQuery = new URLSearchParams({ modal: 'add-custom-connector', connectorName: 'AgentSplit', connectorUrl: endpoint })
+  const claudeInstall = `https://claude.ai/customize/connectors?${claudeQuery}`
+  const claudeOrganizationInstall = `https://claude.ai/admin-settings/connectors?${claudeQuery}`
   const codex = `[mcp_servers.agentsplit]\nurl = ${JSON.stringify(endpoint)}\nenv_http_headers = { ${JSON.stringify(API_KEY_HEADER)} = "AGENTSPLIT_API_KEY" }`
   const claude = JSON.stringify(
     { mcpServers: { agentsplit: { type: 'http', url: endpoint, headers: { [API_KEY_HEADER]: '${AGENTSPLIT_API_KEY}' } } } },
@@ -101,16 +127,14 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
                   </li>
                   <li>
                     Fill in these fields:
-                    <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 rounded-2xl border bg-card p-3">
-                      <dt className="text-muted-foreground">Name</dt>
-                      <dd>AgentSplit</dd>
-                      <dt className="text-muted-foreground">Description</dt>
-                      <dd>Shared expenses, payments and balances.</dd>
-                      <dt className="text-muted-foreground">Server URL</dt>
-                      <dd>The MCP server URL above</dd>
-                      <dt className="text-muted-foreground">Authentication</dt>
-                      <dd>OAuth</dd>
-                    </dl>
+                    <Fields
+                      rows={[
+                        ['Name', 'AgentSplit'],
+                        ['Description', 'Shared expenses, payments and balances.'],
+                        ['Server URL', endpointValue],
+                        ['Authentication', 'OAuth'],
+                      ]}
+                    />
                   </li>
                   <li>
                     In <strong>Advanced OAuth settings</strong>, keep the detected <strong>CIMD</strong> registration method. Set{' '}
@@ -140,28 +164,32 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
               <div className="space-y-4 pt-2 pb-4 text-sm leading-relaxed">
                 <ol className="list-decimal space-y-3 ps-5">
                   <li>
-                    Open <strong>Customize → Connectors → + Add → Add custom connector</strong>.
+                    On Claude web, open{' '}
+                    <a href={claudeInstall} className="underline">
+                      Add custom connector
+                    </a>
+                    . The link fills in the name and the URL. You can also open <strong>Customize → Connectors → + → Add custom connector</strong>.
                   </li>
                   <li>
-                    Enter <strong>AgentSplit</strong> for <strong>Name</strong> and paste the URL above into <strong>MCP server URL</strong>.
-                    Click <strong>Continue</strong>.
+                    Check these fields, then click <strong>Continue</strong>:
+                    <Fields
+                      rows={[
+                        ['Name', 'AgentSplit'],
+                        ['MCP server URL', endpointValue],
+                      ]}
+                    />
                   </li>
                   <li>
                     Use these authentication settings, then click <strong>Add</strong>:
-                    <dl className="mt-2 space-y-2 rounded-2xl border bg-card p-3">
-                      <div>
-                        <dt className="text-muted-foreground">Authentication</dt>
-                        <dd>Sign in now</dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted-foreground">OAuth client</dt>
-                        <dd>Use Claude’s published identity (Recommended)</dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted-foreground">Client ID, client secret and request headers</dt>
-                        <dd>Leave empty</dd>
-                      </div>
-                    </dl>
+                    <Fields
+                      rows={[
+                        ['Authentication', 'Sign in now'],
+                        ['OAuth client', 'Use Claude’s published identity (Recommended)'],
+                        ['Client ID', 'Leave empty'],
+                        ['Client secret', 'Leave empty'],
+                        ['Request headers', 'Leave empty'],
+                      ]}
+                    />
                   </li>
                   <li>
                     Click <strong>Connect</strong> if prompted. Sign in with Google, review the permissions, and click{' '}
@@ -173,7 +201,11 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
                 </ol>
                 <p className="text-muted-foreground">
                   If you see the older one-page dialog, enter the name and URL, leave Advanced OAuth credentials empty, and click Add. For Team
-                  or Enterprise, an owner first adds the connector in Organization settings → Connectors.
+                  or Enterprise, an owner first adds the connector in{' '}
+                  <a href={claudeOrganizationInstall} className="underline">
+                    Organization settings → Connectors
+                  </a>
+                  .
                 </p>
                 <a
                   className="inline-block text-muted-foreground underline"
@@ -206,7 +238,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
             <Link to="/settings">Create an API key</Link>
           </Button>
           <p className="text-sm">
-            Add the MCP server URL above. Under <strong>Headers</strong>, enter:
+            Add the MCP server URL, <code className="break-all">{endpoint}</code>. Under <strong>Headers</strong>, enter:
           </p>
           <div className="space-y-3 rounded-2xl border bg-card p-4 text-sm">
             <div className="flex items-center justify-between gap-3">
@@ -230,7 +262,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
                   Open <strong>Plugins → MCPs</strong> and add an HTTP MCP server.
                 </li>
                 <li>
-                  Enter <strong>agentsplit</strong> as the name and paste the MCP server URL into <strong>URL</strong>.
+                  Enter <strong>agentsplit</strong> as the name and <code className="break-all">{endpoint}</code> as the <strong>URL</strong>.
                 </li>
                 <li>
                   Under <strong>Headers</strong>, add <code>{API_KEY_HEADER}</code> with your key as its value. No prefix, quotes, or environment
