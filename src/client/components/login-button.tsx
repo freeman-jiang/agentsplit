@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { authCall, authClient } from '~/client/auth-client'
-import { Button } from '~/client/ui/button'
 
 const FAILED = 'Could not start Google sign-in. Try again.'
 
+/** Google's own button artwork (public/google), unchanged, as its branding guidelines require: the pill shape, light and dark. */
+const artwork = (theme: 'light' | 'dark') => ({ src: `/google/sign-in-${theme}@2x.png`, srcSet: `/google/sign-in-${theme}@2x.png 2x, /google/sign-in-${theme}@4x.png 4x` })
+
 /** Starts Google sign-in at once, as the current app's login button does (P-AUTH-59, P-AUTH-60). */
-export function LoginButton(props: { label: string; selectAccount: boolean; callbackURL: string; errorCallbackURL: string }) {
+export function LoginButton(props: { selectAccount: boolean; callbackURL: string; errorCallbackURL: string }) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   async function start() {
@@ -30,9 +32,17 @@ export function LoginButton(props: { label: string; selectAccount: boolean; call
   }
   return (
     <div className="space-y-3">
-      <Button size="lg" disabled={pending} onClick={() => void start()}>
-        {pending ? 'Opening Google…' : props.label}
-      </Button>
+      <button
+        type="button"
+        aria-label="Sign in with Google"
+        aria-busy={pending}
+        disabled={pending}
+        onClick={() => void start()}
+        className="block rounded-full transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background disabled:opacity-60"
+      >
+        <img {...artwork('light')} alt="" width={180} height={40} className="dark:hidden" />
+        <img {...artwork('dark')} alt="" width={180} height={40} className="hidden dark:block" />
+      </button>
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

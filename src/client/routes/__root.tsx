@@ -5,6 +5,7 @@ import { Toaster } from 'sonner'
 import { AccountMenu } from '~/client/components/account-menu'
 import { Brand } from '~/client/components/brand'
 import { useDocumentTitle } from '~/client/components/page-title'
+import { ThemeToggle } from '~/client/components/theme-toggle'
 import { meQuery } from '~/client/queries/session'
 import { cn } from '~/client/cn'
 import { Button } from '~/client/ui/button'
@@ -27,29 +28,28 @@ function Root() {
             <Brand />
           </Link>
           {me && (
-            <>
-              <nav aria-label="Workspace" className="col-span-full row-start-2 flex flex-wrap gap-1 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:justify-end">
-                <Button variant="ghost" size="sm" asChild>
-                  <Link to="/" activeOptions={{ exact: true }} activeProps={{ className: 'bg-accent text-accent-foreground' }}>
-                    Dashboard
-                  </Link>
-                </Button>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link to="/groups" className={cn(inGroup && 'bg-accent text-accent-foreground')} activeProps={{ className: 'bg-accent text-accent-foreground' }}>
-                    Groups
-                  </Link>
-                </Button>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link to="/agents" activeProps={{ className: 'bg-accent text-accent-foreground' }}>
-                    Agents
-                  </Link>
-                </Button>
-              </nav>
-              <div className="col-start-2 row-start-1 flex justify-end sm:col-start-3">
-                <AccountMenu name={me.name} />
-              </div>
-            </>
+            <nav aria-label="Workspace" className="col-span-full row-start-2 flex flex-wrap gap-1 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:justify-end">
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/" activeOptions={{ exact: true }} activeProps={{ className: 'bg-accent text-accent-foreground' }}>
+                  Dashboard
+                </Link>
+              </Button>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/groups" className={cn(inGroup && 'bg-accent text-accent-foreground')} activeProps={{ className: 'bg-accent text-accent-foreground' }}>
+                  Groups
+                </Link>
+              </Button>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/agents" activeProps={{ className: 'bg-accent text-accent-foreground' }}>
+                  Agents
+                </Link>
+              </Button>
+            </nav>
           )}
+          <div className="col-start-2 row-start-1 flex items-center justify-end gap-2 sm:col-start-3">
+            <ThemeToggle />
+            {me && <AccountMenu name={me.name} />}
+          </div>
         </div>
       </header>
       <div className="flex flex-1 flex-col safe-px-0">
