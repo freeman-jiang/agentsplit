@@ -173,3 +173,10 @@
   -webkit-mask: url('/brand-mark.svg') center / contain no-repeat;
 }
 
+
+/* The theme switch's cross-fade (components/theme-toggle.tsx): short, and off when motion is reduced. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 200ms;
+  animation-timing-function: ease-out;
+}
