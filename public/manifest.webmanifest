@@ -1,7 +1,7 @@
 {
   "name": "AgentSplit",
   "short_name": "AgentSplit",
-  "description": "Split expenses with people and agents.",
+  "description": "Split expenses using your agent.",
   "start_url": "/",
   "id": "/groups",
   "display": "standalone",

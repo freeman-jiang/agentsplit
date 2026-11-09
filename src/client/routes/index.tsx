@@ -65,7 +65,7 @@ function Landing() {
       <section className="w-full py-16">
         <div className="mx-auto flex w-full max-w-screen-md flex-col items-center gap-6 px-4 text-center">
           <h1 className="py-2 font-display text-4xl leading-none! sm:text-5xl md:text-6xl">
-            Split expenses <strong className="block font-semibold text-muted-foreground">with people and agents.</strong>
+            Split expenses <strong className="block font-semibold text-muted-foreground">using your agent.</strong>
           </h1>
           <p className="max-w-lg leading-normal text-pretty text-muted-foreground sm:text-xl sm:leading-8">
             Record shared expenses and payments, and see who owes whom. Use the website or your AI agent.
