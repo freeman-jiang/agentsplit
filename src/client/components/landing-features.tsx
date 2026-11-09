@@ -24,7 +24,7 @@ export function LandingFeatures() {
       <div className="mx-auto max-w-2xl text-center">
         <h2 id="features-heading" className="font-display text-3xl leading-tight text-balance sm:text-4xl">
           Everything you need to share costs.
-          <span className="block text-muted-foreground">Your agent can do all of it.</span>
+          <span className="block font-serif text-muted-foreground">Your agent can do all of it.</span>
         </h2>
         <p className="mt-4 text-pretty text-muted-foreground sm:text-lg">
           Connect Claude, ChatGPT or any MCP client. It uses the same tools as the website, and you can give it read-only access.
@@ -41,12 +41,6 @@ export function LandingFeatures() {
           </li>
         ))}
       </ul>
-      <p className="mt-16 text-center text-sm text-muted-foreground">
-        Free and open source. No ads and no paid plan.{' '}
-        <a href="https://github.com/freeman-jiang/agentsplit" className="text-foreground underline underline-offset-4">
-          See the code
-        </a>
-      </p>
     </section>
   )
 }
