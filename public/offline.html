@@ -8,6 +8,12 @@
     <title>Offline · AgentSplit</title>
     <link rel="icon" href="/favicon.ico" />
     <style>
+      @font-face {
+        font-family: 'Geist Serif';
+        src: url('/fonts/GeistSerif-Regular.woff2') format('woff2');
+        font-weight: 400;
+        font-display: swap;
+      }
       /* The app's monochrome tokens (src/client/styles.css), repeated here because
          this page loads none of the app's files. */
       :root {
@@ -53,12 +59,14 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
+        font-family: 'Geist Serif', ui-serif, Georgia, serif;
         font-size: 1.5rem;
-        font-weight: 600;
-        letter-spacing: -0.02em;
+        font-weight: 400;
+        letter-spacing: -0.01em;
+        font-synthesis: none;
       }
       .brand span {
-        width: 2.5rem;
+        width: 2rem;
         height: 2rem;
         background: currentColor;
         mask: url('/brand-mark.svg') center / contain no-repeat;
