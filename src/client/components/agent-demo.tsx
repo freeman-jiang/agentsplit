@@ -44,7 +44,7 @@ const TURNS: ReadonlyArray<Turn> = [
 ]
 
 /** Milliseconds: per typed character, per streamed word, and the pauses between the steps of a turn. */
-const PACE = { char: 8, word: 20, send: 150, think: 500, tool: 400, between: 80, hold: 1500 }
+const PACE = { char: 22, word: 20, send: 250, think: 500, tool: 400, between: 80, hold: 2600 }
 
 type Item =
   | { readonly kind: 'ask'; readonly id: number; readonly text: string }

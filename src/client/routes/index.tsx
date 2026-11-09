@@ -3,6 +3,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { Search } from 'lucide-react'
 import { AgentDemo } from '~/client/components/agent-demo'
 import { LandingFeatures } from '~/client/components/landing-features'
+import { LandingFree } from '~/client/components/landing-free'
 import { LoginButton } from '~/client/components/login-button'
 import { attributionLine } from '~/client/components/expense-row/figures'
 import { ExpenseRow } from '~/client/components/expense-row/row'
@@ -66,8 +67,11 @@ function Landing() {
     <main className="flex flex-1 flex-col">
       <section className="w-full py-16 sm:py-24">
         <div className="mx-auto flex w-full max-w-screen-md flex-col items-center gap-6 px-4 text-center">
+          <a href="#free" className="rounded-full border px-3 py-1 text-xs text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground">
+            Free forever · Open source
+          </a>
           <h1 className="py-2 font-display text-4xl leading-none! sm:text-5xl md:text-6xl">
-            Split expenses <strong className="block font-semibold text-muted-foreground">using your agent.</strong>
+            Split expenses <span className="block font-serif text-muted-foreground">using your agent.</span>
           </h1>
           <p className="max-w-lg leading-normal text-pretty text-muted-foreground sm:text-xl sm:leading-8">
             Tell Claude or ChatGPT what you paid. AgentSplit splits it and keeps track of who owes whom.
@@ -79,6 +83,7 @@ function Landing() {
         </div>
       </section>
       <LandingFeatures />
+      <LandingFree />
     </main>
   )
 }
