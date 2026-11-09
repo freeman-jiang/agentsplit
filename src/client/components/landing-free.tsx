@@ -23,9 +23,6 @@ export function LandingFree() {
           <Button asChild variant="outline">
             <a href={`${REPOSITORY}/blob/main/DEPLOYMENT.md`}>Host it yourself</a>
           </Button>
-          <Button asChild variant="ghost">
-            <a href={`${REPOSITORY}/blob/main/docs/CAPACITY.md`}>See the math</a>
-          </Button>
         </div>
         <p className="mt-10 text-sm text-muted-foreground">
           Created by{' '}
