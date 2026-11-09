@@ -5,7 +5,7 @@ AgentSplit v2 uses self-hosted Better Auth with Google as the only identity prov
 ## Google sign-in
 
 - Google sign-in asks only for `openid`, `email` and `profile`. Account linking is off.
-- The Google client is a Google Auth Platform **Web application** client. Its redirect URI is `https://<app host>/api/auth/callback/google`. The domain did not change at the cutover, so the redirect URI did not change.
+- The Google client is a Google Auth Platform **Web application** client. Its redirect URI is `https://<app host>/api/auth/callback/google`, now `https://agentsplit.net/api/auth/callback/google` (DEPLOYMENT.md, "Domain").
 - The server needs `BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `BETTER_AUTH_SECRET` (at least 32 characters). Without them, the server does not start. Set them only in the production host's settings file (DEPLOYMENT.md).
 - Only a verified Google email gives access. A session of an unverified account is refused.
 - The sign-in page keeps the requested page in `next`. The server accepts only same-origin callback paths, so a link such as `/\evil.example` is refused.
