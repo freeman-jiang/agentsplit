@@ -1,6 +1,6 @@
 # Deploying AgentSplit
 
-AgentSplit runs at https://agentsplit.freemanjiang.com on its own NixOS host: a GCE e2-micro in GCP's free tier, behind a Cloudflare Tunnel, with the receipts in Cloudflare R2. It has served production there since 2026-11-08. `deploy-host` deploys it, and the dev box pulls its backups. The previous Coolify stack on the Oracle host stays in maintenance mode, only for a rollback ("Previous hosting: Coolify (rollback only)" below). The v2 cutover of 2026-11-05 is recorded in [docs/history/v2/CUTOVER.md](docs/history/v2/CUTOVER.md).
+AgentSplit runs at https://agentsplit.net on its own NixOS host: a GCE e2-micro in GCP's free tier, behind a Cloudflare Tunnel, with the receipts in Cloudflare R2. It has served production there since 2026-11-08. `deploy-host` deploys it, and the dev box pulls its backups. The previous Coolify stack on the Oracle host stays in maintenance mode, only for a rollback ("Previous hosting: Coolify (rollback only)" below). The v2 cutover of 2026-11-05 is recorded in [docs/history/v2/CUTOVER.md](docs/history/v2/CUTOVER.md).
 
 ## Production data preservation
 
@@ -237,7 +237,11 @@ On another provider:
 
 ## Move to another cloud
 
-R2 holds the receipts, and the tunnel does not depend on an address, so a move copies only the database. It takes about an hour. EC2 is the documented alternative (`agentsplit-ec2`, "First install"). Keep `BASE_URL` at `https://agentsplit.freemanjiang.com`: the OAuth issuer, every agent's tokens, the session cookies and the Google redirect URI depend on it. A change of domain is a separate step with its own plan, because every agent must connect again and every person must sign in again.
+R2 holds the receipts, and the tunnel does not depend on an address, so a move copies only the database. It takes about an hour. EC2 is the documented alternative (`agentsplit-ec2`, "First install"). Keep `BASE_URL` at `https://agentsplit.net`: the OAuth issuer, every agent's tokens, the session cookies and the Google redirect URI depend on it. A change of domain is a separate step with its own plan, because every agent must connect again and every person must sign in again.
+
+## Domain
+
+`BASE_URL` is `https://agentsplit.net` since 2026-11-09. Before that it was `https://agentsplit.freemanjiang.com`, which now answers a 308 to the same path on agentsplit.net, and `www.agentsplit.net` answers a 301 to the apex. The change made every person sign in again, because session cookies belong to one host, and every OAuth agent connect again, because the token audience is `<BASE_URL>/api/mcp`. API keys kept working once the agent used the new URL. The tunnel, DNS and redirect rules are in `infra/cloudflare` in dots.
 
 1. Install the new VM as in "First install", with `AGENTSPLIT_MAINTENANCE=1`. Tailscale names it `agentsplit-1` while the old host exists, so give that name to each command, for example `HOST_CONFIG=agentsplit-ec2 deploy-host root@agentsplit-1`.
 2. Get Freeman's approval, and turn on the maintenance switch on the old host.

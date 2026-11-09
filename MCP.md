@@ -3,7 +3,7 @@
 AgentSplit serves its ledger to agents at one MCP Streamable HTTP endpoint:
 
 ```text
-https://agentsplit.freemanjiang.com/api/mcp
+https://agentsplit.net/api/mcp
 ```
 
 The endpoint is stateless and answers with JSON. It accepts 2025 clients and 2026-07-28 requests; a modern request must send `MCP-Protocol-Version`. The tools call the same domain services as the web app, so membership, validation, splits and history are the same for people and agents. The code is in `src/server/mcp/`.
@@ -20,7 +20,7 @@ Each request needs one credential. Both kinds act as the same AgentSplit account
 A request without a valid credential gets HTTP 401:
 
 ```text
-WWW-Authenticate: Bearer resource_metadata="https://agentsplit.freemanjiang.com/.well-known/oauth-protected-resource/api/mcp", scope="agentsplit:read agentsplit:write offline_access"
+WWW-Authenticate: Bearer resource_metadata="https://agentsplit.net/.well-known/oauth-protected-resource/api/mcp", scope="agentsplit:read agentsplit:write offline_access"
 ```
 
 The challenge always asks for all three scopes. The user can still clear **Allow changes** on the consent page. A token without `agentsplit:write` that calls a write tool gets HTTP 403 with the same header plus `error="insufficient_scope"`, before the call runs. A token whose read access was withdrawn also gets 403. A client then authorizes again. Every write also checks again, inside its transaction, that the OAuth connection is live and still allows changes.
@@ -31,7 +31,7 @@ The endpoint also checks that `Host` (and `Origin`, when sent) match the app ori
 
 ### Claude Code with OAuth
 
-1. Add the server: `claude mcp add --transport http agentsplit https://agentsplit.freemanjiang.com/api/mcp`.
+1. Add the server: `claude mcp add --transport http agentsplit https://agentsplit.net/api/mcp`.
 2. In Claude Code, run `/mcp`, select `agentsplit`, and authenticate.
 3. Sign in with Google and click **Allow access**. Clear **Allow changes** for read-only access.
 
@@ -46,7 +46,7 @@ Claude Code registers through its Client ID Metadata Document (CIMD), so it need
      "mcpServers": {
        "agentsplit": {
          "type": "http",
-         "url": "https://agentsplit.freemanjiang.com/api/mcp",
+         "url": "https://agentsplit.net/api/mcp",
          "headers": { "X-API-Key": "${AGENTSPLIT_API_KEY}" }
        }
      }
@@ -62,7 +62,7 @@ Add this to the private `~/.codex/config.toml`, and set `AGENTSPLIT_API_KEY` as 
 
 ```toml
 [mcp_servers.agentsplit]
-url = "https://agentsplit.freemanjiang.com/api/mcp"
+url = "https://agentsplit.net/api/mcp"
 env_http_headers = { "X-API-Key" = "AGENTSPLIT_API_KEY" }
 ```
 
@@ -169,7 +169,7 @@ Receipts are JPEG or PNG, at most 5 MiB each, at most 10 per request. Uploads ar
      "uploadId": "UPLOAD_ID",
      "filename": "receipt.png",
      "method": "PUT",
-     "url": "https://agentsplit.freemanjiang.com/api/receipt-uploads/SECRET",
+     "url": "https://agentsplit.net/api/receipt-uploads/SECRET",
      "headers": { "Content-Type": "image/png", "Content-Length": "12345" },
      "expiresAt": "ISO_TIMESTAMP"
    }
