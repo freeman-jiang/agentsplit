@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /* Geist Serif, Vercel's serif companion to Geist (geist@1.9.0, fonts/OFL.txt). It
-   has one weight, so it is used only at 400, for display lines on the landing page. */
+   has one weight, so font-display sets it at 400 with synthesis off. */
 @font-face {
   font-family: 'Geist Serif';
   src: url('./fonts/GeistSerif-Regular.woff2') format('woff2');
@@ -135,11 +135,6 @@
   p {
     text-wrap: pretty;
   }
-  /* The serif has one weight: never let the browser fake a bold or an italic. */
-  .font-serif {
-    font-weight: 400;
-    font-synthesis: none;
-  }
   /* Tailwind 4 gives buttons the default cursor; a pointer shows they act. */
   button:not(:disabled),
   [role='button']:not(:disabled) {
@@ -147,10 +142,12 @@
   }
 }
 
-/* Headings use the body face with more weight and tighter tracking. */
+/* Titles and the wordmark are set in Geist Serif, at its one weight. */
 @utility font-display {
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  font-synthesis: none;
 }
 
 /* The one section label: small, uppercase and muted. The section container owns the gap above it. */

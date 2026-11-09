@@ -71,7 +71,7 @@ function ExpensesTab() {
   return (
     <section>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-display text-xl">Expenses</h2>
+        <h2 className="text-xl font-semibold tracking-tight">Expenses</h2>
         <Button asChild>
           <Link to="/$group/expenses/create" params={{ group }}>
             Add expense

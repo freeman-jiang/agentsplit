@@ -114,7 +114,7 @@ export function PaymentForm(
         void submit()
       }}
     >
-      <h2 className="font-display text-xl">{props.mode === 'create' ? 'Record payment' : 'Edit payment'}</h2>
+      <h2 className="text-xl font-semibold tracking-tight">{props.mode === 'create' ? 'Record payment' : 'Edit payment'}</h2>
       {props.mode === 'edit' && <EntryAttribution attribution={props.detail.attribution} createdAt={props.detail.expense.createdAt} />}
       <div className="grid gap-4 sm:grid-cols-2">
         {select('from', 'From', from, setFrom)}
