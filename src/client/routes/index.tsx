@@ -2,6 +2,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Search } from 'lucide-react'
 import { AgentDemo } from '~/client/components/agent-demo'
+import { LandingFeatures } from '~/client/components/landing-features'
 import { LoginButton } from '~/client/components/login-button'
 import { attributionLine } from '~/client/components/expense-row/figures'
 import { ExpenseRow } from '~/client/components/expense-row/row'
@@ -62,8 +63,8 @@ function Home() {
 
 function Landing() {
   return (
-    <main className="flex flex-1 items-center">
-      <section className="w-full py-16">
+    <main className="flex flex-1 flex-col">
+      <section className="w-full py-16 sm:py-24">
         <div className="mx-auto flex w-full max-w-screen-md flex-col items-center gap-6 px-4 text-center">
           <h1 className="py-2 font-display text-4xl leading-none! sm:text-5xl md:text-6xl">
             Split expenses <strong className="block font-semibold text-muted-foreground">using your agent.</strong>
@@ -77,6 +78,7 @@ function Landing() {
           </div>
         </div>
       </section>
+      <LandingFeatures />
     </main>
   )
 }
