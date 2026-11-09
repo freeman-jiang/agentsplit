@@ -3,11 +3,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Geist Serif, Vercel's serif companion to Geist (geist@1.9.0, fonts/OFL.txt). It
+/* Geist Serif, Vercel's serif companion to Geist (geist@1.9.0, public/fonts/OFL.txt). It
    has one weight, so font-display sets it at 400 with synthesis off. */
 @font-face {
   font-family: 'Geist Serif';
-  src: url('./fonts/GeistSerif-Regular.woff2') format('woff2');
+  src: url('/fonts/GeistSerif-Regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
