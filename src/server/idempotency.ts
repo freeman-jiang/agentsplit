@@ -6,6 +6,13 @@ import type { Principal } from './core/access'
 import type { Db } from './core/db'
 import { sha256Hex } from './core/ids'
 
+/**
+ * Days a used key is kept. A client retries a write within minutes, so a key
+ * older than this is history that only takes disk. The hourly job removes
+ * them (removeExpiredIdempotencyKeys).
+ */
+export const IDEMPOTENCY_KEY_DAYS = 7
+
 /** The principal column of a key: a person on the web and each of their agent credentials keep separate keys. */
 const idempotencyPrincipal = (principal: Principal) => `${principal.userId}:${principal.agentKeyId ?? 'web'}`
 
@@ -44,4 +51,10 @@ export async function idempotent<A>(
   const result = await write()
   await tx.insert(idempotencyKeys).values({ principal, key: data.key, requestHash, response: result as object })
   return result
+}
+
+/** Deletes the keys used more than IDEMPOTENCY_KEY_DAYS ago. Runs from the hourly job; returns the number of rows deleted. */
+export async function removeExpiredIdempotencyKeys(db: Db): Promise<number> {
+  const result = await db.execute(sql`DELETE FROM idempotency_keys WHERE created_at < now() - make_interval(days => ${IDEMPOTENCY_KEY_DAYS})`)
+  return result.rowCount ?? 0
 }

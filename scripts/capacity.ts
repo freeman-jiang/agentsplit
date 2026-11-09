@@ -39,6 +39,7 @@ import { chromium } from '@playwright/test'
 import pg from 'pg'
 import { runMigrations } from '../db/migrate'
 import { makeDb } from '../src/server/core/db'
+import { IDEMPOTENCY_KEY_DAYS } from '../src/server/idempotency'
 import { LIMITS } from '../src/shared/limits'
 import { testSettings } from '../test/kit/config'
 import { calibrate, calibrationText } from './capacity/calibrate'
@@ -53,6 +54,8 @@ const DATABASE = 'agentsplit_capacity'
 const PART_TABLES = ['public.expenses', 'public.expense_payers', 'public.expense_shares'] as const
 /** What every balance reads in full for its group: one row per participant and currency (db/migrations/0020). */
 const HOT_TABLE = 'public.balance_totals'
+/** Tables whose rows the hourly job removes after this many days, so they hold that many days of growth, not a year of it. */
+const EXPIRING_TABLES: Readonly<Record<string, number>> = { 'public.idempotency_keys': IDEMPOTENCY_KEY_DAYS }
 const SECONDS_PER_MONTH = 30 * 86_400
 const MB = 1024 * 1024
 const GB = 1024 * MB
@@ -601,7 +604,9 @@ try {
   const growth = (after.tables - before.sizes.tables) / U
   const rawGrowth = (rawAfter.tables - before.sizes.tables) / U
   const expensesPerMonth = profile.webExpenses + profile.agentExpenses
-  const yearData = 12 * growth
+  const tableGrowth = (name: string) => ((after.byTable.get(name) ?? 0) - (before.sizes.byTable.get(name) ?? 0)) / U
+  // A month holds about 30 days of an expiring table's rows; after a year it still holds only its days of them.
+  const yearData = Object.entries(EXPIRING_TABLES).reduce((sum, [name, days]) => sum - 12 * tableGrowth(name) + (tableGrowth(name) * days) / 30, 12 * growth)
   // A balance reads its group's rows of balance_totals, one per participant and currency, so that table must stay
   // in memory. It grows with people and currencies, not with expenses. The expense lists, the activity log and the
   // idempotency keys are read by page or by key through indexes.
@@ -669,7 +674,7 @@ try {
       basis: `${flag('free-egress-gb')} GB/month; ${kb(wireBytes)} of traffic + ${kb(backupPerUser)} of backup pulls (${flag('backup-pulls')} dumps/month of a year of data) per person`,
       binding: true,
     },
-    { name: 'Disk, after one year', users: diskUsers, basis: `${flag('disk-gb')} GB usable (assumed); ${kb(yearData)} of data + ${dumpsKept} dumps (${fixed(dumpRatio * 100, 0)}% each) per person-year`, binding: true },
+    { name: 'Disk, after one year', users: diskUsers, basis: `${flag('disk-gb')} GB usable (assumed); ${kb(yearData)} of data (idempotency keys for ${IDEMPOTENCY_KEY_DAYS} days only) + ${dumpsKept} dumps (${fixed(dumpRatio * 100, 0)}% each) per person-year`, binding: true },
     {
       name: 'Page cache, after one year',
       users: cacheUsers,
