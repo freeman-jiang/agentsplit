@@ -101,7 +101,7 @@ function PrivateRepayments({ data }: { data: Context }) {
   return (
     <section className="space-y-4 border-t pt-6" aria-label="Payments for this expense">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-2xl">Payments for this expense</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">Payments for this expense</h2>
         <Button variant="outline" asChild>
           <Link to="/expenses/$expenseId/payments/create" params={{ expenseId: context.expenseId }}>
             Record payment

@@ -82,7 +82,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
 
         <section id="oauth" className="scroll-mt-6 space-y-4" aria-labelledby="oauth-title">
           <div className="space-y-1.5">
-            <h2 id="oauth-title" className="font-display text-xl">
+            <h2 id="oauth-title" className="text-xl font-semibold tracking-tight">
               Connect with OAuth
             </h2>
             <p className="text-sm text-muted-foreground">No API key needed. You sign in with Google.</p>
@@ -195,7 +195,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
 
         <section id="api-key" className="scroll-mt-6 space-y-4" aria-labelledby="key-title">
           <div className="space-y-1.5">
-            <h2 id="key-title" className="font-display text-xl">
+            <h2 id="key-title" className="text-xl font-semibold tracking-tight">
               Connect with an API key
             </h2>
             <p className="text-sm text-muted-foreground">
@@ -270,7 +270,7 @@ Use exact decimal strings for money and keep currencies separate. Read the curre
 
         <section className="space-y-4" aria-labelledby="start-title">
           <div className="space-y-1.5">
-            <h2 id="start-title" className="font-display text-xl">
+            <h2 id="start-title" className="text-xl font-semibold tracking-tight">
               Start with your groups
             </h2>
             <p className="text-sm text-muted-foreground">

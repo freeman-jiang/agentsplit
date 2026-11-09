@@ -71,7 +71,7 @@ function Landing() {
             Free forever · Open source
           </a>
           <h1 className="py-2 font-display text-4xl leading-none! sm:text-5xl md:text-6xl">
-            Split expenses <span className="block font-serif text-muted-foreground">using your agent.</span>
+            Split expenses <span className="block text-muted-foreground">using your agent.</span>
           </h1>
           <p className="max-w-lg leading-normal text-pretty text-muted-foreground sm:text-xl sm:leading-8">
             Tell Claude or ChatGPT what you paid. AgentSplit splits it and keeps track of who owes whom.
@@ -158,7 +158,7 @@ function Dashboard() {
         </div>
         <DashboardBalance />
         <div className="flex items-baseline justify-between gap-3">
-          <h2 className="font-display text-xl">Expenses</h2>
+          <h2 className="text-xl font-semibold tracking-tight">Expenses</h2>
           <p className="text-xs text-muted-foreground">Newest expense date first</p>
         </div>
         <section aria-label="Filter expenses" className="space-y-3">
@@ -261,7 +261,7 @@ function Dashboard() {
           <p role="status">Loading expenses…</p>
         ) : expenses.length === 0 ? (
           <div className="rounded-2xl border border-dashed px-6 py-12 text-center">
-            <h2 className="font-display text-xl">No expenses</h2>
+            <h2 className="text-xl font-semibold tracking-tight">No expenses</h2>
             <p className="mt-2 text-sm text-muted-foreground">Add an expense or change the filters.</p>
           </div>
         ) : (
