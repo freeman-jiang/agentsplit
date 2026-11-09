@@ -132,7 +132,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
       }}
       className="space-y-4"
     >
-      <h2 className="font-display text-xl">
+      <h2 className="text-xl font-semibold tracking-tight">
         {headingVerb} {noun}
       </h2>
       {props.mode === 'edit' && <EntryAttribution attribution={props.detail.attribution} createdAt={props.detail.expense.createdAt} />}

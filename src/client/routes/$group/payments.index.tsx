@@ -23,7 +23,7 @@ function PaymentsTab() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-display text-xl">Payments</h2>
+        <h2 className="text-xl font-semibold tracking-tight">Payments</h2>
         <Button asChild>
           <Link to="/$group/payments/create" params={{ group }}>
             Record payment

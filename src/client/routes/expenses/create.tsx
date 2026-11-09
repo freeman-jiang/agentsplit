@@ -122,7 +122,7 @@ function ExpenseSetup({ options }: { options: Options }) {
       </label>
       {!groupId && (
         <section className="space-y-4" aria-label="People">
-          <h2 className="font-display text-xl">People</h2>
+          <h2 className="text-xl font-semibold tracking-tight">People</h2>
           <ul className="divide-y overflow-hidden rounded-2xl border px-4">
             {people.map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-4 py-3">
