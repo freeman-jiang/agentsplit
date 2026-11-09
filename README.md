@@ -1,6 +1,6 @@
 # AgentSplit
 
-Self-hosted shared expenses for people and their agents.
+Split expenses using your agent. Free and open source.
 
 AgentSplit is a fork of [Spliit](https://github.com/spliit-app/spliit). People sign in with Google and keep private groups. Each group has expenses, payments, balances per currency, recurring expenses, receipts, statistics, an activity history and CSV or JSON exports. Expenses without a group are private to the people in them. An expense can have several payers. Agents use the same ledger through the [MCP API](MCP.md).
 
