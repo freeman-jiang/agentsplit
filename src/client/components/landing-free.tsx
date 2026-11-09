@@ -13,7 +13,7 @@ export function LandingFree() {
           <span className="block text-muted-foreground">For everyone.</span>
         </h2>
         <p className="mt-6 text-muted-foreground sm:text-lg sm:leading-8">
-          I did the math: one server on Google Cloud’s free tier can run AgentSplit for about 145,000 people. So it has no ads and no paid plan, and it never will. I don’t think anyone should ever pay for this.
+          I did the math: one server on Google Cloud’s free tier can run AgentSplit for about 145,000 people. So it has no ads and no paid plan, and it never will. I don’t think anyone should ever have to pay for this kind of software.
         </p>
         <p className="mt-4 text-muted-foreground sm:text-lg sm:leading-8">The code is open source under the MIT license. Read it, change it, or run your own copy.</p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
