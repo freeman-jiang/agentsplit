@@ -70,7 +70,7 @@ function Landing() {
           <p className="max-w-lg leading-normal text-pretty text-muted-foreground sm:text-xl sm:leading-8">
             Record shared expenses and payments, and see who owes whom. Use the website or your AI agent.
           </p>
-          <LoginButton label="Sign in with Google" selectAccount={false} callbackURL="/" errorCallbackURL="/sign-in" />
+          <LoginButton selectAccount={false} callbackURL="/" errorCallbackURL="/sign-in" />
         </div>
       </section>
     </main>
