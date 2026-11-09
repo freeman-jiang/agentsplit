@@ -58,7 +58,6 @@ function SignIn() {
         </p>
       )}
       <LoginButton
-        label={invitation ? 'Continue with Google' : 'Sign in with Google'}
         selectAccount={invitation}
         callbackURL={destination ?? '/'}
         errorCallbackURL={errorReturnPath()}
