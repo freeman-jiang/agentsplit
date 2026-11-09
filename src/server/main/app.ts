@@ -32,6 +32,7 @@ import { StorageHandlers } from '../handlers/storage'
 import { compressed } from '../compression'
 import { API_HEADERS, documentHeaders, isHtml, secured } from '../headers'
 import { jsonError } from '../core/errors'
+import { removeExpiredIdempotencyKeys } from '../idempotency'
 import { maintenanceResponse } from '../maintenance'
 import { handleMcp } from '../mcp/endpoint'
 import type { McpSettings } from '../mcp/server'
@@ -222,7 +223,8 @@ export function createApp(platform: Platform) {
      * P-RECUR-08). A failed occurrence is logged and skipped, the other links
      * go on, and the next run tries it again.
      * It also removes stale upload targets, the objects of deleted receipts
-     * that are still in storage, and expired DPoP replay rows. Each step runs
+     * that are still in storage, expired DPoP replay rows and expired
+     * idempotency keys. Each step runs
      * on its own, so one that fails is logged and the others still run. It
      * pauses in maintenance, so nothing writes then.
      */
@@ -242,6 +244,7 @@ export function createApp(platform: Platform) {
         ['stale receipt upload targets removed', (db) => removeStaleUploads({ db, bucket })],
         ['deleted receipts removed from storage', (db) => purgeDeletedReceipts({ db, bucket })],
         ['expired DPoP replay rows removed', removeExpiredDpopProofs],
+        ['expired idempotency keys removed', removeExpiredIdempotencyKeys],
       ]
       for (const [what, step] of steps) {
         try {
