@@ -3,6 +3,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Geist Serif, Vercel's serif companion to Geist (geist@1.9.0, fonts/OFL.txt). It
+   has one weight, so it is used only at 400, for display lines on the landing page. */
+@font-face {
+  font-family: 'Geist Serif';
+  src: url('./fonts/GeistSerif-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* The utilities read the color tokens below, so one token changes every screen. */
 @theme inline {
   --color-border: hsl(var(--border));
@@ -31,6 +41,7 @@
   --radius-lg: var(--radius);
   --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-serif: 'Geist Serif', ui-serif, Georgia, serif;
 }
 
 /* Motion: dialogs and menus fade, and nothing else moves. */
@@ -114,6 +125,20 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+  }
+  /* Headings wrap to even lines, and paragraphs avoid a last line of one word. */
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  /* The serif has one weight: never let the browser fake a bold or an italic. */
+  .font-serif {
+    font-weight: 400;
+    font-synthesis: none;
   }
   /* Tailwind 4 gives buttons the default cursor; a pointer shows they act. */
   button:not(:disabled),
