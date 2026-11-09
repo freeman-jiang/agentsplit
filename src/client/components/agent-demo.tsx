@@ -1,5 +1,6 @@
 import { Check, CornerDownLeft } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { cn } from '~/client/cn'
 
 // The landing page's example of an agent using AgentSplit: a request is typed,
 // the agent calls the MCP tools in turn (their real names), and it answers.
@@ -62,12 +63,14 @@ export function AgentDemo() {
         <div className="ml-auto w-fit max-w-[90%] rounded-2xl bg-secondary px-3.5 py-2">
           {REQUEST.slice(0, frame.typed)}
           {typing && <span className="ml-px inline-block h-4 w-px translate-y-0.5 animate-pulse bg-foreground" />}
+          {/* The untyped rest keeps its space, so the card never changes size and the page never moves. */}
+          <span className="invisible">{REQUEST.slice(frame.typed)}</span>
           {!typing && frame.steps === 0 && <CornerDownLeft className="ml-1.5 inline size-3.5 text-muted-foreground" />}
         </div>
         <ol className="space-y-2 font-mono text-xs">
-          {STEPS.slice(0, frame.steps).map((step) => {
+          {STEPS.map((step, i) => {
             return (
-              <li key={step.tool} className="animate-fade-in rounded-lg border px-3 py-2">
+              <li key={step.tool} className={cn('rounded-lg border px-3 py-2', i < frame.steps ? 'animate-fade-in' : 'invisible')}>
                 <div className="flex items-center gap-2">
                   <Check className="size-3.5 shrink-0 text-owed" />
                   <span className="font-medium text-foreground">{step.tool}</span>
@@ -78,7 +81,7 @@ export function AgentDemo() {
             )
           })}
         </ol>
-        {frame.reply && <p className="animate-fade-in">{REPLY}</p>}
+        <p className={frame.reply ? 'animate-fade-in' : 'invisible'}>{REPLY}</p>
       </div>
     </figure>
   )
