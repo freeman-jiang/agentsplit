@@ -185,3 +185,22 @@
   animation-duration: 200ms;
   animation-timing-function: ease-out;
 }
+
+/* The agent demo's "Thinking" (components/agent-demo.tsx): a light that moves across the text. */
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@utility text-shimmer {
+  background: linear-gradient(90deg, hsl(var(--muted-foreground)) 30%, hsl(var(--foreground)) 50%, hsl(var(--muted-foreground)) 70%) 0 0 / 200% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 1.6s linear infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
