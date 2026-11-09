@@ -4,6 +4,7 @@ import { createRootRouteWithContext, Link, Outlet, useRouterState } from '@tanst
 import { Toaster } from 'sonner'
 import { AccountMenu } from '~/client/components/account-menu'
 import { Brand } from '~/client/components/brand'
+import { AUTHOR } from '~/client/components/landing-free'
 import { useDocumentTitle } from '~/client/components/page-title'
 import { ThemeToggle } from '~/client/components/theme-toggle'
 import { meQuery } from '~/client/queries/session'
@@ -60,7 +61,11 @@ function Root() {
           <span className="font-medium text-foreground">AgentSplit</span> ·{' '}
           <Link to="/privacy" className="underline underline-offset-4">
             Privacy
-          </Link>
+          </Link>{' '}
+          · Created by{' '}
+          <a href={AUTHOR.url} className="underline underline-offset-4">
+            {AUTHOR.name}
+          </a>
         </p>
       </footer>
       {/* On phones the toasts sit above the home indicator. */}
