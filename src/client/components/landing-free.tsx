@@ -1,6 +1,7 @@
 import { Button } from '~/client/ui/button'
 
 const REPOSITORY = 'https://github.com/freeman-jiang/agentsplit'
+const COFFEE = 'https://buymeacoffee.com/freemanjiang'
 export const AUTHOR = { name: 'Freeman Jiang', url: 'https://freemanjiang.com' }
 
 /** GitHub's mark (Octicons mark-github, MIT), in the button's text color. */
@@ -24,7 +25,13 @@ export function LandingFree() {
         <p className="mt-6 text-muted-foreground sm:text-lg sm:leading-8">
           I did the math: one server on Google Cloud’s free tier can run AgentSplit for about 145,000 people. So it has no ads and no paid plan, and it never will. I don’t think anyone should ever have to pay for this kind of software.
         </p>
-        <p className="mt-4 text-muted-foreground sm:text-lg sm:leading-8">The code is open source under the MIT license. Read it, change it, or run your own copy.</p>
+        <p className="mt-4 text-muted-foreground sm:text-lg sm:leading-8">
+          The code is open source under the MIT license. Read it, change it, or run your own copy. If it saved you an awkward money conversation, you can{' '}
+          <a href={COFFEE} className="text-foreground underline underline-offset-4">
+            buy me a coffee
+          </a>
+          .
+        </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Button asChild className="gap-2">
             <a href={REPOSITORY}>
