@@ -1,6 +1,6 @@
 # Deploying AgentSplit
 
-AgentSplit runs at https://agentsplit.net on its own NixOS host: a GCE e2-micro in GCP's free tier, behind a Cloudflare Tunnel, with the receipts in Cloudflare R2. It has served production there since 2026-11-08. `deploy-host` deploys it, and the dev box pulls its backups. The previous Coolify stack on the Oracle host stays in maintenance mode, only for a rollback ("Previous hosting: Coolify (rollback only)" below). The v2 cutover of 2026-11-05 is recorded in [docs/history/v2/CUTOVER.md](docs/history/v2/CUTOVER.md).
+AgentSplit runs at https://agentsplit.net on its own NixOS host: a GCE e2-micro in GCP's free tier, behind a Cloudflare Tunnel, with the receipts in Cloudflare R2. It has served production there since 2026-11-08. `deploy-host` deploys it, and the dev box pulls its backups. The previous Coolify stack on the Oracle host was removed on 2026-11-16 ("Previous hosting: Coolify (removed)" below). The v2 cutover of 2026-11-05 is recorded in [docs/history/v2/CUTOVER.md](docs/history/v2/CUTOVER.md).
 
 ## Production data preservation
 
@@ -84,9 +84,9 @@ The dots side gives the VM its own VPC with no ingress rule. The VM has an inter
 
 ### Receipts on R2
 
-The host keeps the receipts in Cloudflare R2: off the VM, with 10 GB free and no charge for data out. Bun's S3 client signs with SigV4 and uses path-style URLs (`src/server/s3.ts`), which both R2 and the Garage of the Coolify stack accept. Only the settings differ:
+The host keeps the receipts in Cloudflare R2: off the VM, with 10 GB free and no charge for data out. Bun's S3 client signs with SigV4 and uses path-style URLs (`src/server/s3.ts`), which both R2 and the Garage of the end-to-end tests (`compose.coolify.yaml`) accept. Only the settings differ:
 
-| Setting | R2 (the host) | Garage (Coolify) |
+| Setting | R2 (the host) | Garage (end-to-end tests) |
 | --- | --- | --- |
 | `S3_UPLOAD_ENDPOINT` | `https://<account ID>.r2.cloudflarestorage.com` | `http://agentsplit-garage:3900` |
 | `S3_UPLOAD_REGION` | `auto` | `garage` |
@@ -94,7 +94,7 @@ The host keeps the receipts in Cloudflare R2: off the VM, with 10 GB free and no
 | `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET` | An R2 API token with Object Read and Write on this bucket only | The Garage key |
 | `RECEIPT_DOWNLOADS` | `redirect` | empty (`stream`) |
 
-With `redirect`, the app checks access and then sends the reader to a presigned R2 URL that works for 5 minutes, so the receipt bytes do not leave the VM, where data out over 1 GB a month is billed. The bucket needs no public access and no CORS rule: browsers load receipts only through `<img>` and links, which follow the redirect. The group ZIP download still streams through the server. `scripts/copy-receipts.ts` copies the objects between two buckets with their content types ("Roll back to Coolify" below).
+With `redirect`, the app checks access and then sends the reader to a presigned R2 URL that works for 5 minutes, so the receipt bytes do not leave the VM, where data out over 1 GB a month is billed. The bucket needs no public access and no CORS rule: browsers load receipts only through `<img>` and links, which follow the redirect. The group ZIP download still streams through the server. `scripts/copy-receipts.ts` copies the objects between two buckets with their content types.
 
 ## Environment variables
 
@@ -256,36 +256,14 @@ R2 holds the receipts, and the tunnel does not depend on an address, so a move c
 
 There is no preview deployment. Freeman approved removing the Coolify preview on 2026-11-07. Review changes on a local dev server with synthetic data ("Dev server" in [docs/BUILDING.md](docs/BUILDING.md)).
 
-## Previous hosting: Coolify (rollback only)
+## Previous hosting: Coolify (removed)
 
-From 2026-11-05 to 2026-11-08, production ran on Coolify on the shared Oracle host, built from `compose.coolify.yaml` with the Docker Compose build pack. The stack stays in maintenance mode with its volumes until Freeman says otherwise, only for a rollback. Never delete a volume. The Coolify application ID and API address are in the maintainer's private infrastructure repository. Deploy it from the Coolify dashboard or the `coolify_oracle` MCP server.
+From 2026-11-05 to 2026-11-08, production ran on Coolify on the shared Oracle host, built from `compose.coolify.yaml` with the Docker Compose build pack. Freeman approved its removal on 2026-11-09, after a week of clean production on the NixOS host. On 2026-11-16 the Coolify application was deleted with its containers, volumes, networks and images. There is no rollback to Coolify. The rollback runbooks are in the Git history of this file.
 
-The services of `compose.coolify.yaml`:
+The final copy of the stack is on the dev box, in `~/backups/agentsplit/coolify-final/`. Its `README.md` says how to restore it:
 
-- `app`: the server, built from `Dockerfile`. Bun's distroless image runs the server bundle as user 65532 on port 3000. Coolify's Traefik ends TLS and routes the domain to it.
-- `db2`: PostgreSQL 18 with the volume `postgres18-data`, network alias `agentsplit-db2`.
-- `garage`: Garage v2.4.1 with the volumes `garage-meta` and `garage-data`, bucket `agentsplit-receipts`, network alias `agentsplit-garage`. Its Traefik labels route the authenticated S3 API at `agentsplit-receipts.freemanjiang.com`, which `scripts/copy-receipts.ts` uses.
-- `db`: the PostgreSQL 17 of the app before v2, with the volume `postgres-data`. Freeman approved the removal of the service for 2026-11-13. The volume stays.
+- A `pg_dump` of the database `agentsplit` from the PostgreSQL 18 `db2`: the data at the move to the NixOS host on 2026-11-08.
+- A `pg_dump` of the database `agentsplit` from the PostgreSQL 17 `db` of the app before v2: the data at the cutover on 2026-11-05.
+- Every receipt object of the Garage bucket, with a manifest of sizes and SHA-256 hashes. The 13 objects are the same as production's in R2.
 
-The app reaches `db2` and Garage only by the unique aliases, because on Coolify's shared `coolify` network a plain service name can resolve to another stack. Coolify keeps `/etc/garage.toml` as a file storage of this resource; a new resource would get a directory there, and Garage would not start. All images are pinned by digest.
-
-On Coolify, the Compose file builds `DATABASE_URL` from `DB2_PASSWORD`, and sets the receipt bucket to Garage ("Receipts on R2" above). Leave `RECEIPT_DOWNLOADS` empty there, because browsers cannot reach Garage. `POSTGRES_PASSWORD`, `GARAGE_RPC_SECRET`, `STORAGE_HOST`, `MCP_ACCESS_GRANTS`, `AUTH_BOOTSTRAP_LEGACY_USER_ID` and `BETTER_AUTH_TELEMETRY` stay in the Coolify resource for the stack and for older rollbacks; the app does not read the last four.
-
-### Roll back to Coolify
-
-1. Get Freeman's approval.
-2. Turn on the maintenance switch on the host.
-3. If the host took writes, carry them back: run `systemctl start agentsplit-db-dump` on the host, pull `agentsplit-latest-dump`, restore it into `db2` on Coolify with `pg_restore --clean --if-exists --no-owner --no-acl`, and run `scripts/copy-receipts.ts` from R2 to Garage. Give it the keys as the environment variables `SOURCE_S3_KEY`, `SOURCE_S3_SECRET`, `TARGET_S3_KEY` and `TARGET_S3_SECRET`, for example with `sops exec-env`. Never type them on a command line.
-
-   ```sh
-   SOURCE_S3_ENDPOINT=https://<account ID>.r2.cloudflarestorage.com SOURCE_S3_REGION=auto SOURCE_S3_BUCKET=agentsplit-receipts \
-   TARGET_S3_ENDPOINT=https://agentsplit-receipts.freemanjiang.com TARGET_S3_REGION=garage TARGET_S3_BUCKET=agentsplit-receipts \
-   bun scripts/copy-receipts.ts
-   ```
-
-   Then run it again with `--check`. It must report every object.
-4. Point the production hostname back at Oracle (the dots side).
-5. Clear `AGENTSPLIT_MAINTENANCE` on the Coolify application, and deploy.
-6. Check `/api/health`, the home page, a sign-in, an old receipt, and an MCP write in the group **AgentSplit test**.
-
-A rollback past v2, to the app before 2026-11-05, is in the Git history of this file (before the move to the NixOS host).
+`compose.coolify.yaml` and `Dockerfile` remain only for the end-to-end tests (`scripts/e2e.sh`, and `--compose` in CI).
