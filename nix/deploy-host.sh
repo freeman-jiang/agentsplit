@@ -68,9 +68,13 @@ if [ "$host_system" != "$(nix config show system)" ] && [ -z "$(nix config show 
 fi
 
 echo "deploy-host: building $rev ($config, $host_system)"
-system="$(nix build --no-link --print-out-paths --no-write-lock-file \
+# Overriding an input makes Nix clear self.rev. Carry the selected Git commit
+# into the evaluated host, so the next --update can rebuild the same app.
+drv="$(nix eval --raw --no-write-lock-file \
   --override-input nixpkgs-host '@hostNixpkgs@' \
-  "$flake#nixosConfigurations.$config.config.system.build.toplevel")"
+  "$flake#nixosConfigurations.$config" \
+  --apply "host: (host.extendModules { modules = [ ({ lib, ... }: { system.configurationRevision = lib.mkForce \"$rev\"; }) ]; }).config.system.build.toplevel.drvPath")"
+system="$(nix build --no-link --print-out-paths "$drv^*")"
 
 if [ "$(ssh_target 'readlink -f /run/current-system /nix/var/nix/profiles/system')" = "$system"$'\n'"$system" ]; then
   echo "deploy-host: $target already runs and boots $system"
