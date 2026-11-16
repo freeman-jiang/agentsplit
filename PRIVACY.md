@@ -20,7 +20,7 @@ AgentSplit v2 runs a Bun server and PostgreSQL on the operator's own NixOS host,
 - PostgreSQL 18 on the NixOS host (a GCE VM in us-west1) holds everything except the receipt images. The host keeps hourly dumps for 3 days.
 - Cloudflare R2 holds the receipt images, in the private bucket `agentsplit-receipts`.
 - Every request reaches the host through Cloudflare (a Cloudflare Tunnel). Cloudflare ends TLS at its edge, so requests and responses pass through Cloudflare in transit. The edge caches only the static files of the app, and Cloudflare adds no scripts to the pages.
-- The previous Coolify stack on the Oracle host still holds the data as it was at the move on 2026-11-08 (PostgreSQL `db2` and Garage), and the old app's PostgreSQL (`db`) holds the data as it was at the cutover on 2026-11-05, both for a rollback.
+- The previous Coolify stack on the Oracle host was deleted on 2026-11-16. Its final database dumps (the data at 2026-11-05 and at 2026-11-08) and its receipt objects are kept with the backups on the dev box, in `~/backups/agentsplit/coolify-final/`.
 - The nightly backup copies a database dump and every receipt object to the dev box (`~/backups/agentsplit/`), where restic backs it up (DEPLOYMENT.md).
 
 ## Who can see what

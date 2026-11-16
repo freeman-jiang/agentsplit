@@ -1,5 +1,6 @@
-# AgentSplit on Coolify, kept in maintenance mode only for a rollback to it
-# (DEPLOYMENT.md, "Previous hosting: Coolify"). Coolify's standard Traefik
+# AgentSplit on Coolify. The Coolify stack was removed on 2026-11-16
+# (DEPLOYMENT.md, "Previous hosting: Coolify (removed)"); the end-to-end
+# tests (scripts/e2e.sh) still run this file. Coolify's standard Traefik
 # proxy and external `coolify` network are required; Coolify routes the app's
 # domain to `app`.
 # Set the variables in coolify.env.example in the resource's environment settings.
