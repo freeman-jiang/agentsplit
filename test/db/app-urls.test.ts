@@ -117,7 +117,7 @@ describe('the hourly job', () => {
 })
 
 describe('maintenance', () => {
-  // The cutover relies on this: users and agents get 503, Coolify's health check passes, and nothing writes.
+  // The cutover relies on this: users and agents get 503, the health check passes, and nothing writes.
   it('answers 503 to pages, RPC, MCP and uploads, lets the health checks through, and pauses the hourly job', async () => {
     const paused = await startHarness({ maintenance: true })
     try {

@@ -67,7 +67,7 @@ export function readSettings(env: Env): ServerSettings {
   const secret = required('BETTER_AUTH_SECRET')
   if (secret.length < 32) throw new Error('Set BETTER_AUTH_SECRET to at least 32 characters')
   const endpoint = required('S3_UPLOAD_ENDPOINT')
-  // Streaming stays the default: Garage on Coolify has an internal address that browsers cannot reach.
+  // Streaming stays the default: it works when browsers cannot reach the storage, such as a Garage on an internal network.
   const downloads = optional('RECEIPT_DOWNLOADS') ?? 'stream'
   if (downloads !== 'stream' && downloads !== 'redirect') throw new Error('Set RECEIPT_DOWNLOADS to stream or redirect')
   if (downloads === 'redirect' && !URL.canParse(endpoint)) throw new Error('Set S3_UPLOAD_ENDPOINT to the URL of the S3 API, such as https://<account ID>.r2.cloudflarestorage.com')

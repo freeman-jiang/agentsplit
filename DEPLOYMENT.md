@@ -20,7 +20,7 @@ The host has no open inbound port. Cloudflare Tunnel brings the public traffic i
 
 | Unit | What it does |
 | --- | --- |
-| `agentsplit.service` | The server (`nix/package.nix`, the same build as the Dockerfile) on `127.0.0.1:3000`. It applies new migrations at start and runs the hourly job in-process at minute 7. A dynamic user `agentsplit`, a read-only file system, no capabilities, a pool of 5 database connections, 256 MB before reclaim, 320 MB at most, 1.5 CPUs, 128 tasks. It restarts on failure, at most 5 times in 10 minutes. |
+| `agentsplit.service` | The server (`nix/package.nix`) on `127.0.0.1:3000`. It applies new migrations at start and runs the hourly job in-process at minute 7. A dynamic user `agentsplit`, a read-only file system, no capabilities, a pool of 5 database connections, 256 MB before reclaim, 320 MB at most, 1.5 CPUs, 128 tasks. It restarts on failure, at most 5 times in 10 minutes. |
 | `postgresql.service` | PostgreSQL 18 from nixpkgs, on the Unix socket `/run/postgresql` only. The role `agentsplit` owns the database `agentsplit` and signs in by peer authentication. Tuned for 1 GB: 64 MB of shared buffers, 16 connections, no parallel queries; 256 MB at most. |
 | `agentsplit-db-dump.timer` | A `pg_dump` at minute 37 of each hour into `/var/backup/agentsplit/`, checked with `pg_restore --list`, kept 3 days. `latest.dump` links to the newest one. |
 | `agentsplit-tunnel.service` | `cloudflared` for a remotely managed tunnel. Cloudflare holds the tunnel's routes. 128 MB at most. |
@@ -84,21 +84,21 @@ The dots side gives the VM its own VPC with no ingress rule. The VM has an inter
 
 ### Receipts on R2
 
-The host keeps the receipts in Cloudflare R2: off the VM, with 10 GB free and no charge for data out. Bun's S3 client signs with SigV4 and uses path-style URLs (`src/server/s3.ts`), which both R2 and the Garage of the end-to-end tests (`compose.coolify.yaml`) accept. Only the settings differ:
+The host keeps the receipts in Cloudflare R2: off the VM, with 10 GB free and no charge for data out. Bun's S3 client signs with SigV4 and uses path-style URLs (`src/server/s3.ts`), which both R2 and the Garage of the end-to-end tests (`scripts/e2e.sh`) accept. Only the settings differ:
 
 | Setting | R2 (the host) | Garage (end-to-end tests) |
 | --- | --- | --- |
-| `S3_UPLOAD_ENDPOINT` | `https://<account ID>.r2.cloudflarestorage.com` | `http://agentsplit-garage:3900` |
+| `S3_UPLOAD_ENDPOINT` | `https://<account ID>.r2.cloudflarestorage.com` | `http://127.0.0.1:<E2E_PORT + 1>` |
 | `S3_UPLOAD_REGION` | `auto` | `garage` |
 | `S3_UPLOAD_BUCKET` | `agentsplit-receipts` | `agentsplit-receipts` |
 | `S3_UPLOAD_KEY`, `S3_UPLOAD_SECRET` | An R2 API token with Object Read and Write on this bucket only | The Garage key |
-| `RECEIPT_DOWNLOADS` | `redirect` | empty (`stream`) |
+| `RECEIPT_DOWNLOADS` | `redirect` | `redirect` |
 
 With `redirect`, the app checks access and then sends the reader to a presigned R2 URL that works for 5 minutes, so the receipt bytes do not leave the VM, where data out over 1 GB a month is billed. The bucket needs no public access and no CORS rule: browsers load receipts only through `<img>` and links, which follow the redirect. The group ZIP download still streams through the server. `scripts/copy-receipts.ts` copies the objects between two buckets with their content types.
 
 ## Environment variables
 
-On the host, these settings are in `/etc/agentsplit/agentsplit.env` ("Secrets on the host"). Never commit, print or paste their values. `coolify.env.example` lists them with comments.
+On the host, these settings are in `/etc/agentsplit/agentsplit.env` ("Secrets on the host"). Never commit, print or paste their values. `agentsplit.env.example` lists them with comments.
 
 | Variable | Purpose |
 | --- | --- |
@@ -258,12 +258,10 @@ There is no preview deployment. Freeman approved removing the Coolify preview on
 
 ## Previous hosting: Coolify (removed)
 
-From 2026-11-05 to 2026-11-08, production ran on Coolify on the shared Oracle host, built from `compose.coolify.yaml` with the Docker Compose build pack. Freeman approved its removal on 2026-11-09, after a week of clean production on the NixOS host. On 2026-11-16 the Coolify application was deleted with its containers, volumes, networks and images. There is no rollback to Coolify. The rollback runbooks are in the Git history of this file.
+From 2026-11-05 to 2026-11-08, production ran on Coolify on the shared Oracle host, built from a Compose file with the Docker Compose build pack. Freeman approved its removal on 2026-11-09, after a week of clean production on the NixOS host. On 2026-11-16 the Coolify application was deleted with its containers, volumes, networks and images. There is no rollback to Coolify. The rollback runbooks are in the Git history of this file, and the Compose file, the Dockerfile and its environment are in the Git history of the repository.
 
 The final copy of the stack is on the dev box, in `~/backups/agentsplit/coolify-final/`. Its `README.md` says how to restore it:
 
 - A `pg_dump` of the database `agentsplit` from the PostgreSQL 18 `db2`: the data at the move to the NixOS host on 2026-11-08.
 - A `pg_dump` of the database `agentsplit` from the PostgreSQL 17 `db` of the app before v2: the data at the cutover on 2026-11-05.
 - Every receipt object of the Garage bucket, with a manifest of sizes and SHA-256 hashes. The 13 objects are the same as production's in R2.
-
-`compose.coolify.yaml` and `Dockerfile` remain only for the end-to-end tests (`scripts/e2e.sh`, and `--compose` in CI).

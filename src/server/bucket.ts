@@ -1,5 +1,5 @@
 // The receipts bucket, as receipts.ts and receipt-uploads.ts use it. The
-// server implements it on Garage's S3 API (src/server/s3.ts); the database
+// server implements it on an S3 API (src/server/s3.ts); the database
 // tests use an in-memory one (test/db/fake-bucket.ts).
 import { Unavailable } from '../shared/api'
 import { UNAVAILABLE } from '../shared/errors'

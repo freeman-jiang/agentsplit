@@ -1,4 +1,4 @@
-// The receipts bucket on an S3 API (Garage in production), with Bun's built-in
+// The receipts bucket on an S3 API (R2 in production, Garage in the end-to-end tests), with Bun's built-in
 // S3 client. It signs with SigV4, uses path-style URLs, and streams uploads.
 import { S3Client } from 'bun'
 import type { Bucket } from './bucket'
