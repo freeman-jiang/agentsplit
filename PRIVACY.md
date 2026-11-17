@@ -35,7 +35,7 @@ AgentSplit v2 runs a Bun server and PostgreSQL on the operator's own NixOS host,
 
 ## Receipts
 
-- The bucket is private: R2 has no public access, and the Garage of the previous stack routes no anonymous website endpoint. The old unauthenticated upload-signing endpoint (`/api/s3-upload`) answers 410.
+- The bucket is private: R2 has no public access. The old unauthenticated upload-signing endpoint (`/api/s3-upload`) answers 410.
 - Receipts are served only through the authenticated `/api/receipts`. It checks membership before it reads storage, on every request. It accepts a browser session, an API key or an OAuth token. Where storage is Cloudflare R2, it then redirects to a storage link for that one image, which works for 5 minutes.
 - Browsers upload through the authenticated app, from the app's own origin only.
 - Agents upload through a single-use target URL on the app that expires after 300 seconds. The server checks the real image format and size before it attaches the image. No URL can write over a stored receipt.
@@ -66,4 +66,4 @@ AgentSplit v2 runs a Bun server and PostgreSQL on the operator's own NixOS host,
 
 ## Limits
 
-Connected agent providers process the data that a user authorizes them to read. Keep API keys in private client configuration, never in prompts or group notes. The operator, Coolify, Google and agent providers each have their own administrative access and privacy rules. See [AUTH.md](AUTH.md) for the account flow.
+Connected agent providers process the data that a user authorizes them to read. Keep API keys in private client configuration, never in prompts or group notes. The operator, Google Cloud, Cloudflare, Google sign-in and agent providers each have their own administrative access and privacy rules. See [AUTH.md](AUTH.md) for the account flow.

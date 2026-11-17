@@ -14,15 +14,13 @@ Run every command inside the dev shell, from the repository root: `direnv exec .
 | Type check (after the build, which generates the route tree) | `bun run check-types` |
 | Unit and database tests | `TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:5437/agentsplit_test_<area> bun run test` |
 | End-to-end tests, built server | `./scripts/e2e.sh` |
-| End-to-end tests, the image and the Coolify stack | `./scripts/e2e.sh --compose` |
-| Image | `docker build -t agentsplit .` |
 | Apply migrations locally | `DATABASE_URL=postgresql://postgres@127.0.0.1:5437/<db> bun db/migrate.ts` |
 | Check the running balances against a recount of the payers and shares (read-only) | `DATABASE_URL=<url> bun scripts/check-balances.ts [<group-id>]` |
 | New SQL migration | `bunx drizzle-kit generate --name <name>`, or `--custom` for triggers. Declare every table and CHECK in `db/schema/`, so `drizzle-kit generate` reports no changes afterwards (CI checks it). |
 
 - The test database name must contain `test` and have at most 53 characters. Without `TEST_DATABASE_URL`, the tests use `agentsplit_test` on the dev shell's PostgreSQL. The tests migrate that database once and give each test file its own copy (`<name>__<8 hex digits>`), so the files run in parallel; the run drops the copies at the end.
-- The end-to-end tests start Garage (and, with `--compose`, the app image and PostgreSQL 18) through `docker-compose`, which needs a Docker or Podman socket (`DOCKER_HOST`). Each run uses new test-only secrets and removes its containers and volumes. Set `E2E_PORT` to run more than one suite at a time.
-- The GitHub workflow `.github/workflows/ci.yml` runs these checks in the same dev shell (`nix develop`), and three more: `scripts/check-bun-version.ts` must find one Bun version in the dev shell, the Dockerfile images and `@types/bun` (Dependabot leaves Bun alone, so bump the three together), `drizzle-kit generate` must find no change between `db/schema` and the migrations, and `scripts/gen-auth-schema.ts` must leave `db/schema/auth.ts` as it is.
+- The end-to-end tests start a single-node Garage from the dev shell, with its data in a temporary folder, as the S3 store for receipts. Each run uses new test-only secrets and removes the Garage data and its database. Set `E2E_PORT` to run more than one suite at a time.
+- The GitHub workflow `.github/workflows/ci.yml` runs these checks in the same dev shell (`nix develop`), and three more: `scripts/check-bun-version.ts` must find one Bun version in the dev shell and `@types/bun` (Dependabot leaves Bun alone, so bump the two together), `drizzle-kit generate` must find no change between `db/schema` and the migrations, and `scripts/gen-auth-schema.ts` must leave `db/schema/auth.ts` as it is.
 
 ## Local database
 
@@ -44,7 +42,7 @@ The dev server is two processes: Vite serves the client and sends the server's p
    - `BASE_URL=http://localhost:<vite-port>`
    - `BETTER_AUTH_SECRET`: a random 64-character hex string (`openssl rand -hex 32`).
    - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`: any placeholders.
-   - `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_KEY` and `S3_UPLOAD_SECRET`: a local Garage. `scripts/e2e.sh` shows how to start one from the Compose file. With placeholders the server starts too, but receipt uploads and receipt images fail.
+   - `S3_UPLOAD_ENDPOINT`, `S3_UPLOAD_KEY` and `S3_UPLOAD_SECRET`: a local Garage. `scripts/e2e.sh` shows how to start one from the dev shell. With placeholders the server starts too, but receipt uploads and receipt images fail.
 4. Start the API server: `bun run dev:server`.
 5. In a second terminal, start Vite: `API_PORT=<api-port> bun run dev -- --port <vite-port> --strictPort`.
 6. To sign in without Google, seed the dev database: `DATABASE_URL=postgresql://postgres@127.0.0.1:5437/agentsplit_dev_<area> bun scripts/seed-synthetic.ts <cookie-file>`. It adds a synthetic household with a year of expenses and writes the session cookie of `alice@example.com` to `<cookie-file>`, signed with the `BETTER_AUTH_SECRET` of `.env.local` for its `BASE_URL`. Send the file's text as the `Cookie` header, or set the cookie in the browser.

@@ -1,4 +1,4 @@
-// Receipt images in the receipts bucket (Garage), behind the membership check.
+// Receipt images in the receipts bucket, behind the membership check.
 // The ledger stores a receipt by URL (the current app's storage URL, or an r2:
 // pointer for new uploads); the object key is the URL's part after the storage prefix.
 // Rules from the current app: src/lib/receipt-storage.ts, src/app/api/receipts/route.ts.

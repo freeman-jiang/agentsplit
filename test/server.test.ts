@@ -104,7 +104,7 @@ describe('settings', () => {
     expect(() => readSettings({ ...env, RECEIPT_DOWNLOADS: 'presign' })).toThrow('Set RECEIPT_DOWNLOADS to stream or redirect')
   })
 
-  // On Coolify, browsers cannot reach Garage: a redirect there would break every receipt image.
+  // Where browsers cannot reach the storage, a redirect would break every receipt image.
   it('streams receipts unless RECEIPT_DOWNLOADS=redirect, and then allows the endpoint origin', () => {
     expect(readSettings(env).app.receiptDownloads).toEqual({ mode: 'stream' })
     const r2 = { ...env, S3_UPLOAD_ENDPOINT: 'https://account.r2.cloudflarestorage.com', RECEIPT_DOWNLOADS: 'redirect' }

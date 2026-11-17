@@ -1,4 +1,4 @@
-# The production build, as the Dockerfile makes it: the client build, the
+# The production build: the client build, the
 # server bundle and the SQL migrations, plus a launcher that runs the bundle on
 # the flake's Bun. The output holds only dist/, because the server bundle needs
 # no node_modules at run time.
@@ -75,7 +75,7 @@ let
       buildPhase = ''
         runHook preBuild
         export HOME="$TMPDIR"
-        # package.json trusts no lifecycle scripts, as in the Dockerfile.
+        # package.json trusts no lifecycle scripts.
         bun install --frozen-lockfile --ignore-scripts --no-progress \
           --cache-dir="$TMPDIR/bun-cache" --os=linux --cpu=${bunCpu.${system}}
         runHook postBuild
@@ -130,7 +130,7 @@ stdenvNoCC.mkDerivation {
     runHook preInstall
     mkdir -p "$out/share/agentsplit" "$out/bin"
     cp -R dist/server dist/client dist/migrations "$out/share/agentsplit/"
-    # The settings that the Dockerfile sets; the service adds the rest.
+    # The settings of every run; the service adds the rest.
     # --no-install: the bundle leaves optional imports to runtime, such as Better
     # Auth's import("@opentelemetry/api") in a try/catch. With no node_modules,
     # Bun would install them, and on the service's read-only file system that

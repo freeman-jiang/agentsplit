@@ -1,6 +1,6 @@
 // The platform: a long-running Bun HTTP server around the app in app.ts, with
-// a PostgreSQL pool, the receipts bucket on Garage's S3 API, the client build,
-// and the hourly job. Coolify runs it in a container (Dockerfile).
+// a PostgreSQL pool, the receipts bucket on an S3 API, the client build, and
+// the hourly job. The NixOS host runs it as agentsplit.service (nix/module.nix).
 //   bun dist/server/server.js   (after bun run build)
 import pg from 'pg'
 import { runMigrations } from '../../../db/migrate'
@@ -70,8 +70,8 @@ console.log(`AgentSplit listening on ${server.url.href} for ${publicOrigin}${con
 
 const hourly = startHourly({ minute: 7, run: (time) => app.scheduled(time) })
 
-// Docker sends SIGTERM, then SIGKILL after the stop grace period
-// (compose.coolify.yaml gives 30 seconds). Stop taking requests, let the
+// systemd sends SIGTERM, then SIGKILL after TimeoutStopSec (nix/module.nix
+// gives 30 seconds). Stop taking requests, let the
 // running ones and the job finish, then close the pool.
 const SHUTDOWN_MS = 25_000
 let stopping = false

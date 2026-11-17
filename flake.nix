@@ -3,7 +3,7 @@
 
   # The revision that ~/dots/flake.lock pinned when this was set. Dots moves its own
   # pin, so the two can differ; bump this one only on purpose. It also fixes Bun,
-  # which the Dockerfile images and @types/bun follow (scripts/check-bun-version.ts).
+  # which @types/bun follows (scripts/check-bun-version.ts).
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/7dcdd87373d72e7a2173e4db02e20d3d7f495cfd";
   # The operating system of the host (nix/host). It is locked at the same revision
   # as nixpkgs; deploy-host moves it to the head of its release branch
@@ -179,8 +179,8 @@
               pkgs.bun
               postgresql
               pkgs.chromium
-              # scripts/e2e.sh runs Garage and the app image through the Podman socket.
-              pkgs.docker-compose
+              # The S3 store of the end-to-end tests (scripts/e2e.sh).
+              pkgs.garage_2
               db-start
               db-stop
               db-reset

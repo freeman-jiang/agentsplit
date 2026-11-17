@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
-/** scripts/e2e.sh starts the server: the production build (or, with --compose, the image) on a fresh database. */
+/** scripts/e2e.sh starts the server: the production build on a fresh database, with a throwaway Garage. */
 export default defineConfig({
   testDir: './e2e',
   outputDir: './test-results',
