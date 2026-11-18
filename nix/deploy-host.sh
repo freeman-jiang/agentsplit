@@ -3,7 +3,8 @@
 #
 # Without --update, it deploys the committed HEAD of this checkout. With
 # --update (the weekly operating system update, DEPLOYMENT.md), it rebuilds
-# the commit that the host runs, and reboots the host when the kernel changed.
+# the commit that the host runs. Neither ever reboots the host: a new kernel
+# waits for the next reboot, which a person starts.
 # Both builds take nixpkgs-host at the head of its release branch, so a deploy
 # never takes the operating system back. HOST_CONFIG selects the
 # configuration (default agentsplit, the GCE host; agentsplit-ec2 for EC2).
@@ -138,16 +139,6 @@ current="$(ssh_target "readlink $system/kernel $system/initrd $system/kernel-mod
 if [ "$booted" = "$current" ]; then
   exit 0
 fi
-if [ -z "$update" ]; then
-  echo "deploy-host: the new kernel takes effect at the next boot. The weekly --update reboots for it, or run: ssh $target systemctl reboot"
-  exit 0
-fi
-
-echo "deploy-host: rebooting $target into the new kernel"
-ssh_target systemctl reboot || true
-sleep 20
-if ! wait_healthy 150; then
-  echo "deploy-host: $target is not healthy 5 minutes after the reboot. Use the serial console if Tailscale does not answer (DEPLOYMENT.md)." >&2
-  exit 1
-fi
-echo "deploy-host: $target booted the new kernel and is healthy"
+# No reboot, also for the weekly update: a reboot takes AgentSplit down for minutes, which Freeman judged too high a
+# cost for a kernel update (2026-11-18). The new kernel is the boot default, so the next reboot starts it.
+echo "deploy-host: a new kernel is staged for the next boot; $target keeps running $(ssh_target 'uname -r'). Reboot when it suits: ssh $target systemctl reboot"

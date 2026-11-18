@@ -200,6 +200,8 @@ in
           }
         ];
 
+        # As the server: a changed PostgreSQL restarts after the activation, not stopped before it.
+        systemd.services.postgresql.stopIfChanged = false;
         services.postgresql = {
           enable = true;
           # The major version fixes the data format; change it only with a dump and restore.
@@ -225,6 +227,9 @@ in
         systemd.services.agentsplit = {
           description = "AgentSplit server";
           wantedBy = [ "multi-user.target" ];
+          # A changed server restarts after the activation, not stopped before it: the gap is the restart alone
+          # (2026-11-17: stopped from 09:44:36 to 09:45:10 during an update).
+          stopIfChanged = false;
           requires = [ "postgresql.service" ];
           after = [
             "postgresql.service"
@@ -320,6 +325,8 @@ in
         systemd.services.agentsplit-tunnel = {
           description = "Cloudflare Tunnel connector for AgentSplit";
           wantedBy = [ "multi-user.target" ];
+          # As the server: restarted after the activation, not stopped before it.
+          stopIfChanged = false;
           after = [ "network-online.target" ];
           wants = [ "network-online.target" ];
           serviceConfig = hardening // {
