@@ -163,9 +163,9 @@ The host's operating system follows `nixos-26.05`, a release branch that gets on
 direnv exec . deploy-host --update
 ```
 
-`--update` reads the commit that the host runs (`nixos-version --configuration-revision`), and builds that commit with `nixpkgs-host` at the head of `nixos-26.05`. The app, its Bun and its dependencies come from the locked `nixpkgs` input, so they stay as deployed, and a commit on `main` that is not deployed does not go live. The update needs no approval, because it changes no app code. It activates the new system and checks the health as a deploy does. If the kernel changed, it reboots the host and waits up to 5 minutes for `/api/health`. If nothing changed, it stops.
+`--update` reads the commit that the host runs (`nixos-version --configuration-revision`), and builds that commit with `nixpkgs-host` at the head of `nixos-26.05`. The app, its Bun and its dependencies come from the locked `nixpkgs` input, so they stay as deployed, and a commit on `main` that is not deployed does not go live. The update needs no approval, because it changes no app code. It activates the new system and checks the health as a deploy does. It never reboots the host (Freeman, 2026-11-18: a reboot is too high a cost). A new kernel becomes the boot default and waits for the next reboot, which a person starts; the run's log says so. The server, the tunnel and PostgreSQL restart only when their units changed, and after the activation, not stopped before it (`stopIfChanged = false`). If nothing changed, it stops.
 
-The dots side runs it from a systemd timer on the dev box, once a week at a quiet time (for example Tuesday 09:20 UTC), in `~/projects/agentsplit`, and reports a failure. The checkout's own state does not matter: `--update` builds from Git.
+The dots side runs it from a systemd timer on the dev box, once a week at a quiet time (Tuesday 19:00 UTC, 03:00 in Shanghai), in `~/projects/agentsplit`, and reports a failure. The checkout's own state does not matter: `--update` builds from Git.
 
 NixOS 26.05 ends its support at the end of December 2026. Before then, move `hostNixpkgs` in `flake.nix` and the `nixpkgs-host` input to the next release, run the VM test, and deploy.
 
