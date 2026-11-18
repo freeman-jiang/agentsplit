@@ -20,10 +20,10 @@ ssh_target() {
   ssh -o ConnectTimeout=15 "$target" "$@"
 }
 
-# Wait up to $1 checks, 2 seconds apart, for the server to answer.
+# Wait up to $1 checks, 2 seconds apart, for a server to answer through the proxy.
 wait_healthy() {
   for _ in $(seq 1 "$1"); do
-    if ssh_target 'systemctl is-active --quiet agentsplit.service && curl -fsS -o /dev/null http://127.0.0.1:3000/api/health' 2>/dev/null; then
+    if ssh_target 'systemctl is-active --quiet nginx.service && curl -fsS -o /dev/null http://127.0.0.1:3000/api/health' 2>/dev/null; then
       return 0
     fi
     sleep 2
@@ -87,17 +87,18 @@ echo "deploy-host: copying $system to $target"
 # for root on the target: the dev box is the host's deploy authority anyway.
 nix copy --no-check-sigs --substitute-on-destination --to "ssh-ng://$target" "$system"
 
-# The activation runs in its own unit and writes to the journal, not to this
-# SSH session. A restart of tailscaled ends the session; with the output piped
-# into it, switch-to-configuration died on the broken pipe halfway (exit 101),
-# after it had stopped AgentSplit. So the unit starts without waiting, and this
-# script polls its state, reconnecting when the session drops.
-activate() {
+# The activation and the restarts run in their own unit and write to the
+# journal, not to this SSH session. A restart of tailscaled ends the session;
+# with the output piped into it, switch-to-configuration died on the broken
+# pipe halfway (exit 101), after it had stopped AgentSplit. So the unit starts
+# without waiting, and this script polls its state, reconnecting when the
+# session drops. run_on_host <name> <command...>
+run_on_host() {
   local unit="agentsplit-deploy-$1" state="" result="" invocation="" _
+  shift
   ssh_target "systemctl stop $unit 2>/dev/null; systemctl reset-failed $unit 2>/dev/null; true"
   ssh_target systemd-run --no-ask-password --no-block --quiet --unit="$unit" \
-    --property=Type=oneshot --property=RemainAfterExit=yes \
-    "$system/bin/switch-to-configuration" "$1"
+    --property=Type=oneshot --property=RemainAfterExit=yes "$@"
   for _ in $(seq 1 120); do
     sleep 5
     state="$(ssh_target "systemctl show --property=ActiveState --value $unit" 2>/dev/null)" || continue
@@ -109,7 +110,15 @@ activate() {
   ssh_target "systemctl stop $unit; systemctl reset-failed $unit 2>/dev/null; true"
   [ "$state" = active ] && [ "$result" = success ]
 }
+activate() {
+  run_on_host "$1" "$system/bin/switch-to-configuration" "$1"
+}
 
+# The switch leaves the running servers and tunnel connectors as they are
+# (restartIfChanged = false in nix/module.nix). agentsplit-restart then
+# restarts those whose unit changed, one at a time, each after the one
+# before it answers its own health check.
+previous="$(ssh_target readlink -f /run/current-system)"
 echo "deploy-host: activating without changing the boot default"
 activated=1
 activate test || activated=""
@@ -118,13 +127,19 @@ healthy=""
 wait_healthy 30 && healthy=1
 if [ -z "$activated" ]; then
   echo "deploy-host: the activation failed (its log is above). The boot default did not change." >&2
-  echo "deploy-host: go back with: ssh $target /nix/var/nix/profiles/system/bin/switch-to-configuration switch" >&2
+  echo "deploy-host: go back with: ssh $target '/nix/var/nix/profiles/system/bin/switch-to-configuration switch && agentsplit-restart'" >&2
   exit 1
 fi
 if [ -z "$healthy" ]; then
   echo "deploy-host: the new system runs, but AgentSplit is not healthy. It is not the boot default." >&2
-  echo "deploy-host: see: ssh $target journalctl -u agentsplit -n 100" >&2
-  echo "deploy-host: go back now with: ssh $target /nix/var/nix/profiles/system/bin/switch-to-configuration switch" >&2
+  echo "deploy-host: see: ssh $target journalctl -u 'agentsplit-*' -n 100" >&2
+  echo "deploy-host: go back now with: ssh $target '/nix/var/nix/profiles/system/bin/switch-to-configuration switch && agentsplit-restart'" >&2
+  exit 1
+fi
+echo "deploy-host: restarting the changed servers and connectors one at a time"
+if ! run_on_host restart "$system/sw/bin/agentsplit-restart" --changed-from "$previous"; then
+  echo "deploy-host: a restart failed (its log is above), and the units after it run their old version. The new system is not the boot default." >&2
+  echo "deploy-host: go back now with: ssh $target '/nix/var/nix/profiles/system/bin/switch-to-configuration switch && agentsplit-restart'" >&2
   exit 1
 fi
 

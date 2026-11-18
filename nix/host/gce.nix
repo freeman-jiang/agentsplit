@@ -123,7 +123,7 @@ in
   # free hours go to another VM. The internal IPv4 address still reaches the
   # metadata server. Without the setting, cloudflared ("auto") can take the
   # IPv4 address of the edge, which the VPC drops.
-  systemd.services.agentsplit-tunnel.environment.TUNNEL_EDGE_IP_VERSION = "6";
+  services.agentsplit.tunnel.edgeIpVersion = "6";
   # DNS: dhcpcd (the NixOS default) writes the resolver that GCE's DHCP gives,
   # which is the metadata server too. The DHCP answer also sets the VPC's MTU
   # (1460 by default), which the NixOS dhcpcd asks for.

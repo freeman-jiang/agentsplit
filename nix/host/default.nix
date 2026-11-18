@@ -1,5 +1,5 @@
 # The AgentSplit host: one small VM that runs only AgentSplit, its database and
-# its tunnel connector. It has no open inbound port. Cloudflare Tunnel brings
+# its tunnel connectors. It has no open inbound port. Cloudflare Tunnel brings
 # the public traffic in, and Tailscale SSH is the only admin path.
 #
 # The provider-specific part is one hardware profile, which the flake adds
@@ -51,9 +51,14 @@
   services.agentsplit = {
     enable = true;
     tunnel.enable = true;
-    # The server measured 94 MB idle and 134 MB at its peak in the VM test.
-    memoryHigh = "256M";
-    memoryMax = "320M";
+    # Two servers and two connectors (the defaults), so a deploy restarts one
+    # while the other serves. A server measured 213 MB resident in
+    # production, 228 MB at its peak; two at their limit leave PostgreSQL,
+    # the connectors, nginx and the system about 360 MB (DEPLOYMENT.md).
+    memoryHigh = "240M";
+    memoryMax = "288M";
+    # Each server's pool: the two pools, a dump, an admin session and the
+    # 3 superuser slots fit in max_connections = 16.
     databasePoolSize = 5;
   };
 
@@ -61,8 +66,8 @@
   # ledger is a few MB, so a small cache holds all of it. A quarter of a CPU
   # gains nothing from parallel queries.
   services.postgresql.settings = {
-    # The server's pool (databasePoolSize), the dump, an admin psql and the
-    # 3 superuser slots, with room to spare. module.nix checks the pool fits.
+    # The servers' pools (2 × databasePoolSize), the dump, an admin psql and
+    # the 3 superuser slots, with one to spare. module.nix checks the pools fit.
     max_connections = 16;
     shared_buffers = "64MB";
     effective_cache_size = "256MB";
@@ -81,7 +86,7 @@
   systemd.services.postgresql.serviceConfig = {
     MemoryHigh = "192M";
     MemoryMax = "256M";
-    # The server goes first when memory runs out (OOMScoreAdjust in
+    # A server goes first when memory runs out (OOMScoreAdjust in
     # module.nix). A killed backend restarts every connection.
     OOMScoreAdjust = -500;
   };
