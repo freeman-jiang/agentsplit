@@ -20,10 +20,11 @@ The host has no open inbound port. Cloudflare Tunnel brings the public traffic i
 
 | Unit | What it does |
 | --- | --- |
-| `agentsplit.service` | The server (`nix/package.nix`) on `127.0.0.1:3000`. It applies new migrations at start and runs the hourly job in-process at minute 7. A dynamic user `agentsplit`, a read-only file system, no capabilities, a pool of 5 database connections, 256 MB before reclaim, 320 MB at most, 1.5 CPUs, 128 tasks. It restarts on failure, at most 5 times in 10 minutes. |
+| `agentsplit-server-1.service`, `agentsplit-server-2.service` | Two servers (`nix/package.nix`) on `127.0.0.1:3001` and `127.0.0.1:3002`. Each applies new migrations at start under an advisory lock, so servers that start together migrate once. Each schedules the hourly job at minute 7; the server that takes the job's advisory lock runs it, and the other skips it. A dynamic user `agentsplit`, a read-only file system, no capabilities, a pool of 5 database connections each, 240 MB before reclaim, 288 MB at most, 1.5 CPUs, 128 tasks. A switch of the system does not restart them ("Deploy"). Each restarts on failure, at most 10 times in 10 minutes. |
+| `nginx.service` | The proxy on `127.0.0.1:3000`, where the tunnel's routes point. It sends each request to the next server, and to the other server when the connection fails. It never sends a request again after it reached a server, so a POST runs at most once. It opens a new connection for each request, passes the request on as cloudflared sent it (the `Host` and the one address in `X-Forwarded-For`), streams the responses, and keeps no access log. A change of its configuration reloads it. 64 MB at most. |
 | `postgresql.service` | PostgreSQL 18 from nixpkgs, on the Unix socket `/run/postgresql` only. The role `agentsplit` owns the database `agentsplit` and signs in by peer authentication. Tuned for 1 GB: 64 MB of shared buffers, 16 connections, no parallel queries; 256 MB at most. |
 | `agentsplit-db-dump.timer` | A `pg_dump` at minute 37 of each hour into `/var/backup/agentsplit/`, checked with `pg_restore --list`, kept 3 days. `latest.dump` links to the newest one. |
-| `agentsplit-tunnel.service` | `cloudflared` for a remotely managed tunnel. Cloudflare holds the tunnel's routes. 128 MB at most. |
+| `agentsplit-tunnel-1.service`, `agentsplit-tunnel-2.service` | Two `cloudflared` connectors of one remotely managed tunnel, with the same token. Cloudflare holds the tunnel's routes and sends each request to a connector that is connected. Each answers `/ready` on `127.0.0.1:3101` and `127.0.0.1:3102` while it has a connection to the edge. A switch of the system does not restart them. 96 MB at most each. |
 | `tailscaled.service` | Tailscale with Tailscale SSH. The tailnet policy decides who reaches the host. |
 | `agentsplit-tailscale-join.service` | On GCE: the first join to the tailnet, with the auth key from the instance metadata ("First install"). It stops once the node is logged in. |
 
@@ -33,20 +34,23 @@ The files: `nix/package.nix` (the build), `nix/module.nix` (`services.agentsplit
 
 ### Memory budget
 
-The e2-micro has 1 GB, of which the kernel leaves about 940 MB. The VM test (`nix/vm-test.nix`) boots the host's modules in a VM of 1 GB and prints the use after the migrations, a dump and a restore.
+The e2-micro has 1 GB, of which the kernel leaves about 940 MB. The VM test (`nix/vm-test.nix`) boots the host's modules in a VM of 1 GB and prints the use after the migrations, a dump, a restore, the restarts of a deploy under load and a run of the hourly job.
 
 | Part | Measured (VM test) | Limit |
 | --- | --- | --- |
-| `agentsplit.service` | 90 MiB, 134 MiB at its peak | 256 MB before reclaim, 320 MB at most, 128 MB of swap |
-| `postgresql.service` (with its page cache) | 115 MiB | 192 MB before reclaim, 256 MB at most |
-| `systemd-journald.service` | 11 MiB | 16 MB kept from reclaim |
-| `tailscaled.service` | 36 MiB (logged out) | 48 MB kept from reclaim |
-| `agentsplit-tunnel.service` | not in the test (about 30 MB) | 128 MB at most |
-| The whole VM | 307 MiB used, 631 MiB available of 939 MiB | |
+| `agentsplit-server-1.service`, `agentsplit-server-2.service` | 80 MiB and 90 MiB, 131 MiB each at its peak | 240 MB before reclaim, 288 MB at most, 128 MB of swap, each |
+| `nginx.service` | 11 MiB, 14 MiB at its peak | 64 MB at most |
+| `postgresql.service` (with its page cache) | 116 MiB | 192 MB before reclaim, 256 MB at most |
+| `systemd-journald.service` | 19 MiB | 16 MB kept from reclaim |
+| `tailscaled.service` | 37 MiB (logged out) | 48 MB kept from reclaim |
+| `agentsplit-tunnel-1.service`, `agentsplit-tunnel-2.service` | not in the test (about 30 MB each) | 96 MB at most, each |
+| The whole VM | 395 MiB used, 544 MiB available of 939 MiB | |
 
-The limits of the server, PostgreSQL and the connector add up to 704 MB, so the system, Tailscale, the page cache and a deploy keep at least 230 MB when all three are at their limits. zram adds compressed swap of up to half the memory for idle pages.
+The test VM holds no real data, so the servers use less there than in production. In production, one server used 213 MB (228 MB at its peak) on 2026-11-17, with 458 MB available. The second server, the second connector and nginx take about 250 MB of that, which leaves about 200 MB available. This is an estimate until it is measured on the host after the first deploy with two servers.
 
-When memory runs out, the kernel stops processes in this order: a deploy's `nix-daemon` (`OOMScoreAdjust` 800), a dump (600), the server (500), the connector (300); then PostgreSQL (-500), `tailscaled` and `systemd-journald` (-900) last. systemd restarts the server and the connector. The server's pool of 5 connections, the dump, an admin session and PostgreSQL's 3 superuser slots fit in `max_connections` = 16; `nix/module.nix` refuses a pool that does not fit. Do not set `DATABASE_POOL_SIZE` in `agentsplit.env`: the module sets it.
+The limits add up to 1,088 MB (two servers at 288 MB, PostgreSQL at 256 MB, two connectors at 96 MB, nginx at 64 MB), more than the host has, so not every unit can reach its limit at once. The limits stop one unit that grows: with one server at its limit and the other units at their production use, about 310 MB remain for the system, Tailscale, the page cache and a deploy. zram adds compressed swap of up to half the memory for idle pages.
+
+When memory runs out, the kernel stops processes in this order: a deploy's `nix-daemon` (`OOMScoreAdjust` 800), a dump (600), a server (500), a connector (300), nginx (-100); then PostgreSQL (-500), `tailscaled` and `systemd-journald` (-900) last. systemd restarts the servers, the connectors and nginx. The two servers' pools of 5 connections, the dump, an admin session and PostgreSQL's 3 superuser slots fit in `max_connections` = 16; `nix/module.nix` refuses pools that do not fit. Do not set `DATABASE_POOL_SIZE` in `agentsplit.env`: the module sets it.
 
 ### Secrets on the host
 
@@ -54,8 +58,8 @@ The secrets are root-only files in `/etc/agentsplit/`. They are never in the Nix
 
 | File | Holds | Read by |
 | --- | --- | --- |
-| `agentsplit.env` | The server's settings ("Environment variables" below) | `agentsplit.service` |
-| `cloudflared.env` | `TUNNEL_TOKEN=<the tunnel token>` | `agentsplit-tunnel.service` |
+| `agentsplit.env` | The servers' settings ("Environment variables" below) | `agentsplit-server-*.service` |
+| `cloudflared.env` | `TUNNEL_TOKEN=<the tunnel token>` | `agentsplit-tunnel-*.service` |
 | `root-password-hash` | Optional. A `mkpasswd` hash for the provider's serial console, the way in when Tailscale fails | the root account |
 | `tailscale-auth-key` | Only for a nixos-anywhere install (not GCE). A one-time auth key | `tailscaled-autoconnect.service`, only when the node is not logged in |
 
@@ -73,10 +77,10 @@ The source of each file is a sops file in the dots repository, which the dev box
 sops -d secrets/agentsplit.env | ssh root@agentsplit 'install -D -m 0400 /dev/stdin /etc/agentsplit/agentsplit.env'
 sops -d secrets/agentsplit-cloudflared.env | ssh root@agentsplit 'install -D -m 0400 /dev/stdin /etc/agentsplit/cloudflared.env'
 sops -d --extract '["root_password_hash"]' secrets/agentsplit-host.yaml | ssh root@agentsplit 'install -D -m 0400 /dev/stdin /etc/agentsplit/root-password-hash'
-ssh root@agentsplit systemctl restart agentsplit agentsplit-tunnel
+ssh root@agentsplit agentsplit-restart
 ```
 
-We chose a copied file over sops-nix. sops-nix needs a decryption key on the host, a recipient for each host in dots, and a new flake input. A copied file needs none of these, works on every provider, and has the same exposure on the host: a root-only file on its disk. To change a secret, change it in dots, copy the file again, and restart the service.
+We chose a copied file over sops-nix. sops-nix needs a decryption key on the host, a recipient for each host in dots, and a new flake input. A copied file needs none of these, works on every provider, and has the same exposure on the host: a root-only file on its disk. To change a secret, change it in dots, copy the file again, and run `agentsplit-restart` on the host, which restarts the servers and the connectors one at a time ("Deploy").
 
 ### Network, DNS and time on GCE
 
@@ -122,23 +126,47 @@ Do not set `DATABASE_URL`, `DATABASE_POOL_SIZE`, `HOST` or `PORT` in `agentsplit
 4. Merge the change into `main` and push it.
 5. In a clean checkout of `main` on the dev box, run `direnv exec . deploy-host`.
 
-`deploy-host` refuses a tree with uncommitted changes and a commit that is not on GitHub: the host records the deployed commit, and the weekly update rebuilds it. It builds the host on the dev box with `nixpkgs-host` at the head of `nixos-26.05`, copies it over Tailscale SSH, and activates it without making it the boot default. The host fetches what it can from the NixOS binary cache. When `agentsplit.service` runs and `/api/health` answers, it makes the new system the boot default. If the health check fails, a reboot or this command returns to the previous system:
+`deploy-host` refuses a tree with uncommitted changes and a commit that is not on GitHub: the host records the deployed commit, and the weekly update rebuilds it. It builds the host on the dev box with `nixpkgs-host` at the head of `nixos-26.05`, copies it over Tailscale SSH, and activates it without making it the boot default. The host fetches what it can from the NixOS binary cache. When nginx runs and `/api/health` answers through it, `deploy-host` restarts the servers and the connectors (below). When each of them answers its health check, it makes the new system the boot default.
+
+A deploy keeps the site up:
+
+1. The switch to the new system starts new units and reloads nginx. It does not restart a running server or connector (`restartIfChanged = false` in `nix/module.nix`).
+2. `deploy-host` runs `agentsplit-restart --changed-from <the previous system>` on the host. It restarts each server whose unit changed, then each connector whose unit changed, one at a time.
+3. Before it stops a server, `agentsplit-restart` drains it: an nftables rule refuses nginx's new connections to the server's port, and the server finishes the requests it has. nginx sends each refused request to the other server.
+4. After each restart, `agentsplit-restart` waits for that unit's own health check: `/api/health` on the server's port, or `/ready` on the connector's metrics port. It then removes the rule, and only then restarts the next unit.
+5. If a unit does not answer in 2 minutes, `agentsplit-restart` prints its log and stops. `deploy-host` then fails, and the new system does not become the boot default.
+
+The drain is necessary because nginx sends a request again only when the connection failed before nginx wrote the request. A server that stops resets the connections still in its queue, and so nginx answers 502 to a POST that it wrote to one of them. For the same reason, nginx opens a new connection for each request (`keepalive 0`): since nginx 1.29 it keeps connections to the servers open by default, and a stopping server closes those. The VM test (`nix/vm-test.nix`) runs this sequence with GET and POST requests in flight the whole time, and fails on any request that does not answer 200.
+
+The two servers run different releases during the restarts, against the database after the new migrations. So a migration must work with the release before it: add a column or a table in one release and use it in the next, and drop one only when the running release no longer reads it.
+
+If the health check or a restart fails, a reboot or this command returns to the previous system. The switch back does not restart the servers either, so `agentsplit-restart` restarts each one:
 
 ```sh
-ssh root@agentsplit /nix/var/nix/profiles/system/bin/switch-to-configuration switch
+ssh root@agentsplit '/nix/var/nix/profiles/system/bin/switch-to-configuration switch && agentsplit-restart'
 ```
 
-To go back after a completed deploy, use `nix-env --profile /nix/var/nix/profiles/system --rollback`, then the same command. A rollback does not undo migrations.
+To go back after a completed deploy, use `nix-env --profile /nix/var/nix/profiles/system --rollback`, then the same command. A rollback does not undo migrations. A system from before the two servers has no `agentsplit-restart`, and its switch restarts `agentsplit.service` itself: run only the switch.
+
+These steps stop the site for a short time, because no second unit serves:
+
+- The first deploy with two servers. It replaces `agentsplit.service` and `agentsplit-tunnel.service`, so the site is down from the stop of the old server until a new server answers.
+- A restart of PostgreSQL: a new PostgreSQL package from the weekly update, or a change of its settings. The servers need the database, and systemd restarts both with it.
+- A new nginx package from the weekly update. The switch restarts nginx, and the requests in progress at that moment fail.
+- A reboot for a new kernel.
+- A migration that locks a table holds the requests that use the table until it commits (at most 5 seconds of waiting, `lock_timeout`).
+
+The VM test cannot connect to Cloudflare's edge, so it does not restart the connectors. That a connector restart loses no request rests on cloudflared, which stops taking requests on SIGTERM and lets the running ones finish.
 
 The GCE host is x86_64 and the dev box is aarch64. Nix builds the host under emulation (`boot.binfmt.emulatedSystems` in dots), and most paths come from the binary cache; the app's build is the slow part. Without emulation, `deploy-host` stops at once with the message `this machine cannot build x86_64-linux`. A new kernel takes effect at the next boot; `deploy-host` says so, and the weekly update reboots for it.
 
-At each start, the server applies the new SQL migrations from `MIGRATIONS_DIR` before it takes requests, all of them in one transaction: a deploy that adds several migrations applies all or none, and holds their table locks until the commit. A failed migration stops the start, and so does a migration that waits more than 5 seconds for a lock (`lock_timeout`): stop the query that holds it, then start again. Then the health check (`/api/health`, which runs `SELECT 1`) must pass. `/api/health/liveness` answers without the database.
+At each start, a server applies the new SQL migrations from `MIGRATIONS_DIR` before it takes requests, all of them in one transaction, under an advisory lock that the other server waits for: a deploy that adds several migrations applies all or none, and holds their table locks until the commit. A failed migration stops the start, and so does a migration that waits more than 5 seconds for a lock (`lock_timeout`): stop the query that holds it, then start again. Then the health check (`/api/health`, which runs `SELECT 1`) must pass. `/api/health/liveness` answers without the database.
 
-On SIGTERM, the server stops taking connections, lets running requests and the hourly job finish, and exits within 25 seconds. The hourly job runs at minute 7 of each hour: it creates due recurring expenses, deletes stale receipt uploads, removes from storage the receipts that were deleted for good when that failed at once, and deletes expired DPoP replay rows.
+On SIGTERM, the server stops taking connections, lets running requests and the hourly job finish, and exits within 25 seconds. The hourly job runs at minute 7 of each hour, on the server that takes its advisory lock: it creates due recurring expenses, deletes stale receipt uploads, removes from storage the receipts that were deleted for good when that failed at once, and deletes expired DPoP replay rows.
 
 Every limit, the fair-use limits included, is a constant in `src/shared/limits.ts`. Only the daily sign-up cap has a setting.
 
-Better Auth limits sign-in and client registration per IP address from `X-Forwarded-For`. It uses the address only when the header holds exactly one, as a proxy sends it when it does not trust incoming forwarding headers. With more than one address, Better Auth counts all such requests together, so the limits still hold, for everyone at once.
+Better Auth limits sign-in and client registration per IP address from `X-Forwarded-For`. It uses the address only when the header holds exactly one, as a proxy sends it when it does not trust incoming forwarding headers. With more than one address, Better Auth counts all such requests together, so the limits still hold, for everyone at once. cloudflared sends one address, and nginx passes the header on unchanged: do not add `$proxy_add_x_forwarded_for` to its configuration, which would append `127.0.0.1` and put every person in one count.
 
 ### Receipt sizes before migration 0012
 
@@ -149,9 +177,9 @@ Migration 0012 adds `receipts.bytes`. The receipts stored before it keep 0, so t
 With `AGENTSPLIT_MAINTENANCE=1`, the server answers 503 with `Retry-After: 300` to every request except the health checks (`/api/health`, `/api/health/readiness` and `/api/health/liveness`): a maintenance page for browsers, a JSON error for other clients. The hourly job pauses. The server still starts, migrates and passes its health check, so nothing writes to the database.
 
 1. Set `AGENTSPLIT_MAINTENANCE=1` in the host's `agentsplit.env` ("Secrets on the host").
-2. Run `ssh root@agentsplit systemctl restart agentsplit`. The tunnel and the health checks stay up.
+2. Run `ssh root@agentsplit agentsplit-restart`. The tunnel and the health checks stay up.
 3. Do the work.
-4. Clear `AGENTSPLIT_MAINTENANCE`, and restart the server again.
+4. Clear `AGENTSPLIT_MAINTENANCE`, and run `agentsplit-restart` again.
 
 The variable is read at start, so each change needs a restart.
 
@@ -184,7 +212,7 @@ The nightly job `agentsplit-backup nixos` runs on the dev box from the dots flak
 ### Restore a dump on the host
 
 1. Turn on the maintenance switch on the host.
-2. Stop the server: `ssh root@agentsplit systemctl stop agentsplit`.
+2. Stop the servers: `ssh root@agentsplit "systemctl stop 'agentsplit-server-*'"`.
 3. Make an empty database: `ssh root@agentsplit 'sudo -u postgres dropdb agentsplit && sudo -u postgres createdb --owner=agentsplit agentsplit'`. This deletes the host's data, so do it only with Freeman's approval and a verified backup.
 4. Restore the dump into it as the server's role:
 
@@ -193,7 +221,7 @@ The nightly job `agentsplit-backup nixos` runs on the dev box from the dots flak
    ```
 
 5. Compare the counts of `groups`, `expenses`, `activities` and `expense_payers` on the host with the backup's log line.
-6. Clear the maintenance switch, and start the server: `ssh root@agentsplit systemctl start agentsplit`.
+6. Clear the maintenance switch, and start the servers: `ssh root@agentsplit agentsplit-restart`.
 7. Check `/api/health`, the home page, a sign-in, an old receipt, and an MCP write in the group **AgentSplit test**.
 
 ## First install
@@ -213,7 +241,7 @@ On GCE, the VM boots the host directly from an image of this flake, so nothing i
 5. Under Tailnet Lock, sign the new node key on the dev box: `sudo tailscale lock sign nodekey:<key>`.
 6. The dots side removes the `tailscale-auth-key` attribute. If the key expired before the join, set a new one; the unit still polls.
 7. Check the access and record the host key once: `ssh -o StrictHostKeyChecking=accept-new root@agentsplit true`. Tailscale has already authenticated the machine, so the first key is safe to accept.
-8. Copy `agentsplit.env`, `cloudflared.env` and `root-password-hash` ("Secrets on the host"). Set `AGENTSPLIT_MAINTENANCE=1` until the data is in. Then run `ssh root@agentsplit systemctl reset-failed agentsplit` and `ssh root@agentsplit systemctl restart agentsplit agentsplit-tunnel`. Without the files, the server failed five times at boot and hit its start limit (ten starts in ten minutes). The limit stays on purpose: it stops a crash loop on a quarter of a core and leaves a failed unit for the backup's check to report.
+8. Copy `agentsplit.env`, `cloudflared.env` and `root-password-hash` ("Secrets on the host"). Set `AGENTSPLIT_MAINTENANCE=1` until the data is in. Then run `ssh root@agentsplit "systemctl reset-failed 'agentsplit-server-*'"` and `ssh root@agentsplit agentsplit-restart`. Without the files, the server failed five times at boot and hit its start limit (ten starts in ten minutes). The limit stays on purpose: it stops a crash loop on a quarter of a core and leaves a failed unit for the backup's check to report.
 9. Run `direnv exec . deploy-host` ("Deploy"). It moves the host to the newest `nixos-26.05` and makes the commit the boot default.
 10. Check that no unit failed: `ssh root@agentsplit systemctl --failed`.
 
@@ -247,8 +275,8 @@ R2 holds the receipts, and the tunnel does not depend on an address, so a move c
 2. Get Freeman's approval, and turn on the maintenance switch on the old host.
 3. Run `systemctl start agentsplit-db-dump` on the old host, and pull the dump.
 4. Restore it on the new host, as in steps 2 to 5 of "Restore a dump on the host".
-5. Stop the tunnel on the old host: `systemctl stop agentsplit-tunnel`. Two connectors of one tunnel share the traffic, so both hosts must never serve at the same time.
-6. Clear the maintenance switch on the new host, and start its server.
+5. Stop the connectors on the old host: `systemctl stop 'agentsplit-tunnel-*'`. The connectors of one tunnel share the traffic, so both hosts must never serve at the same time.
+6. Clear the maintenance switch on the new host, and start its servers: `agentsplit-restart`.
 7. Check the app as in step 7 of "Restore a dump on the host".
 8. Delete the old VM after Freeman's approval, and rename the new node to `agentsplit` in Tailscale.
 
