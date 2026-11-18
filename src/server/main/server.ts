@@ -8,7 +8,7 @@ import { createApp } from './app'
 import { clientFiles } from '../assets'
 import { readSettings } from '../core/config'
 import { jsonError } from '../core/errors'
-import { makeDb } from '../core/db'
+import { ADVISORY_LOCKS, makeDb, unlessLocked } from '../core/db'
 import { startHourly } from '../hourly'
 import { instrumentPool } from '../perf'
 import { s3Bucket } from '../s3'
@@ -68,7 +68,13 @@ const server = Bun.serve({
 })
 console.log(`AgentSplit listening on ${server.url.href} for ${publicOrigin}${config.maintenance ? ' (maintenance: answering 503)' : ''}`)
 
-const hourly = startHourly({ minute: 7, run: (time) => app.scheduled(time) })
+// Every server of the host schedules the job, and the one that takes the lock runs it (nix/module.nix).
+const hourly = startHourly({
+  minute: 7,
+  run: async (time) => {
+    if (!(await unlessLocked({ pool, key: ADVISORY_LOCKS.hourlyJob, work: () => app.scheduled(time) }))) console.log('Hourly job: another server runs it')
+  },
+})
 
 // systemd sends SIGTERM, then SIGKILL after TimeoutStopSec (nix/module.nix
 // gives 30 seconds). Stop taking requests, let the

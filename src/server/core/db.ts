@@ -28,7 +28,26 @@ const dialect = new PgDialect({ casing: 'snake_case' })
 export const makeDb = (client: pg.Client | pg.PoolClient | pg.Pool): Db => new NodePgDatabase(dialect, new NodePgSession(client, dialect, relational), relational)
 
 /** The app's advisory lock keys (the owner bootstrap takes one key, a quota decision two), one per kind of decision; no two may be equal. */
-export const ADVISORY_LOCKS = { ownerBootstrap: 170031011, receiptQuota: 170031012 } as const
+export const ADVISORY_LOCKS = { ownerBootstrap: 170031011, receiptQuota: 170031012, migrations: 170031013, hourlyJob: 170031014 } as const
+
+/**
+ * Runs `work` unless another session holds the advisory lock `key`, and says
+ * whether it ran. The servers that share the database (nix/module.nix runs
+ * two) take the lock on one pooled connection for the length of `work`, so
+ * only one of them runs it at a time, and the others skip it instead of
+ * waiting. Closing the connection frees the lock, also when `work` fails.
+ */
+export async function unlessLocked(data: { pool: pg.Pool; key: number; work: () => Promise<void> }): Promise<boolean> {
+  const client = await data.pool.connect()
+  try {
+    const { rows } = await client.query<{ locked: boolean }>('SELECT pg_try_advisory_lock($1) AS locked', [data.key])
+    if (!rows[0]?.locked) return false
+    await data.work()
+    return true
+  } finally {
+    client.release(true)
+  }
+}
 
 /** Writes that conflict with a concurrent write (serialization failure or deadlock) are retried. */
 const RETRYABLE = new Set(['40001', '40P01'])

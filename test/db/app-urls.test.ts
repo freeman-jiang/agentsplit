@@ -6,6 +6,7 @@
 import { count, eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { expenses, groups } from '../../db/schema/app'
+import { ADVISORY_LOCKS, unlessLocked } from '~/server/core/db'
 import { createExpense } from '~/server/ledger'
 import { draft } from '../kit/drafts'
 import { principal } from '../kit/people'
@@ -113,6 +114,20 @@ describe('the hourly job', () => {
     const expenseCount = await dailySeries(h, 'running')
     await h.app.scheduled(DECEMBER)
     expect(await expenseCount()).toBeGreaterThan(1)
+  })
+
+  // The host runs two servers on one database (nix/module.nix); both schedule the job, and only one may run it at a time.
+  it('runs on one server at a time, and the other skips it without waiting', async () => {
+    let finish = () => {}
+    const running = new Promise<void>((resolve) => (finish = resolve))
+    const runs: string[] = []
+    const first = unlessLocked({ pool: h.pool, key: ADVISORY_LOCKS.hourlyJob, work: () => (runs.push('first'), running) })
+    await vi.waitFor(() => expect(runs).toEqual(['first']))
+    expect(await unlessLocked({ pool: h.pool, key: ADVISORY_LOCKS.hourlyJob, work: async () => void runs.push('second') })).toBe(false)
+    finish()
+    expect(await first).toBe(true)
+    expect(await unlessLocked({ pool: h.pool, key: ADVISORY_LOCKS.hourlyJob, work: async () => void runs.push('third') })).toBe(true)
+    expect(runs).toEqual(['first', 'third'])
   })
 })
 
