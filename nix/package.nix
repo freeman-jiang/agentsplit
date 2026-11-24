@@ -75,6 +75,8 @@ let
       buildPhase = ''
         runHook preBuild
         export HOME="$TMPDIR"
+        # As in the build below: the emulated Bun needs the system allocator.
+        export Malloc=1
         # package.json trusts no lifecycle scripts.
         bun install --frozen-lockfile --ignore-scripts --no-progress \
           --cache-dir="$TMPDIR/bun-cache" --os=linux --cpu=${bunCpu.${system}}
@@ -113,6 +115,9 @@ stdenvNoCC.mkDerivation {
   buildPhase = ''
     runHook preBuild
     export HOME="$TMPDIR"
+    # Under QEMU on the aarch64 dev box, the x86_64 Bun 1.4.4 stops at start with
+    # "MemoryExhaustion". With the system allocator it runs. Only the build needs this.
+    export Malloc=1
     cp -R ${nodeModules}/node_modules node_modules
     chmod -R u+w node_modules
     # The .bin launchers start with `#!/usr/bin/env node`, and the sandbox has
