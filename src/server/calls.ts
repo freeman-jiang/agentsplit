@@ -14,8 +14,11 @@ import { takeWrite } from './rate-limit'
 /** What a call fails with: a domain error, or Unavailable for everything else. */
 export type CallError = DomainError | Unavailable
 
-/** Queues work for after the write commits, on the request's connection. A failure is logged. */
-export type AfterCommit = (work: (db: Db) => Promise<unknown>) => void
+/** Runs short database work on a fresh pooled connection (used by after-commit callbacks). */
+export type WithDb = <A>(work: (db: Db) => Promise<A>) => Promise<A>
+
+/** Queues work for after the write commits, after the write's database connection is released. A failure is logged. */
+export type AfterCommit = (work: (withDb: WithDb) => Promise<unknown>) => void
 
 /** Names a call in the log: the procedure or tool, and the request ID when the transport has one. */
 export type CallName = { readonly name: string; readonly requestId?: string | undefined }
@@ -84,8 +87,10 @@ export async function runWrite<A>(data: {
   /** A check inside the transaction before the work, such as a live OAuth connection. */
   check?: (tx: Db) => Promise<void>
   work: (tx: Db, afterCommit: AfterCommit) => Promise<A>
+  /** When given, after-commit work is deferred to run after the caller releases its DB connection. */
+  defer?: (work: (withDb: WithDb) => Promise<unknown>, call: CallName) => void
 }): Promise<A> {
-  const after: ((db: Db) => Promise<unknown>)[] = []
+  const after: ((withDb: WithDb) => Promise<unknown>)[] = []
   let result: A
   try {
     const wait = await takeWrite(data.db, { userId: data.principal.userId })
@@ -98,7 +103,12 @@ export async function runWrite<A>(data: {
   } catch (error) {
     throw answerOf(error, data.call)
   }
-  for (const work of after)
-    await work(data.db).catch((error: unknown) => console.error(`${data.call.name}: work after the commit failed`, { requestId: data.call.requestId }, error))
+  if (data.defer) {
+    for (const work of after) data.defer(work, data.call)
+  } else {
+    const sameDb: WithDb = (w) => w(data.db)
+    for (const work of after)
+      await work(sameDb).catch((error: unknown) => console.error(`${data.call.name}: work after the commit failed`, { requestId: data.call.requestId }, error))
+  }
   return result
 }

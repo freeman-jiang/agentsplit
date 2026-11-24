@@ -10,6 +10,7 @@ import { RECEIPT_CONTENT_TYPES } from '../shared/vocabulary'
 import type { Principal } from './core/access'
 import type { Reader } from './auth/authenticate'
 import { storageUnavailable, type Bucket, type StoredObject } from './bucket'
+import { withBufferedBody } from './core/body'
 import type { Db } from './core/db'
 import { contentDisposition } from './headers'
 import { domainErrorResponse, jsonError } from './core/errors'
@@ -31,25 +32,35 @@ const ENVELOPE_BYTES = 64 * 1024
  */
 const PRESIGNED_SECONDS = 5 * 60
 
+/** How long a browser may take to send a multipart receipt upload (up to 5 MiB). */
+const UPLOAD_BODY_MS = 30_000
+
 /**
- * GET /api/receipts?groupId=&url=. `reader` is the caller (httpReader): an
- * agent's API key or OAuth token, as for MCP (P-RECEIPT-22, P-TOOL-GETEXP-06),
- * else the web session. A receipt deleted for good answers 410 Gone, with who
- * deleted it and when. After the checks, `downloads` (RECEIPT_DOWNLOADS)
- * decides: `stream` sends the image from here, `redirect` sends the reader to
- * storage.
+ * GET /api/receipts?groupId=&url=. `readerOf` authenticates the caller on a
+ * short database connection, then checks access and releases the connection
+ * BEFORE touching storage, so slow storage never ties up the database pool.
  */
-export async function downloadReceipt(data: { db: Db; bucket: Bucket; url: URL; reader: Reader; downloads: 'stream' | 'redirect' }): Promise<Response> {
+export async function downloadReceipt(data: {
+  withDb: <A>(work: (db: Db) => Promise<A>) => Promise<A>
+  bucket: Bucket
+  url: URL
+  readerOf: (db: Db) => Promise<Reader>
+  downloads: 'stream' | 'redirect'
+}): Promise<Response> {
   const groupId = data.url.searchParams.get('groupId')
   const url = data.url.searchParams.get('url')
   if (!groupId || !url) return jsonError({ status: 400, message: 'Receipt reference is required' })
-  if ('response' in data.reader) return data.reader.response
-  let receipt: Awaited<ReturnType<typeof readableReceipt>>
-  try {
-    receipt = await readableReceipt(data.db, { principal: data.reader.principal, groupId, url })
-  } catch (error) {
-    return domainErrorResponse(error)
-  }
+  const checked = await data.withDb(async (db): Promise<Response | Awaited<ReturnType<typeof readableReceipt>>> => {
+    const reader = await data.readerOf(db)
+    if ('response' in reader) return reader.response
+    try {
+      return await readableReceipt(db, { principal: reader.principal, groupId, url })
+    } catch (error) {
+      return domainErrorResponse(error)
+    }
+  })
+  if (checked instanceof Response) return checked
+  const receipt = checked
   // The current app's 410 names the UTC day of the deletion.
   if ('deleted' in receipt) return jsonError({ status: 410, message: `Receipt deleted by ${receipt.deleted.by} on ${receipt.deleted.at.slice(0, 10)}` })
   // In redirect mode only the object's metadata is read here, never its bytes.
@@ -63,15 +74,6 @@ export async function downloadReceipt(data: { db: Db; bucket: Bucket; url: URL; 
   // Only a receipt type is ever served, whatever the stored object claims.
   const contentType = RECEIPT_CONTENT_TYPES.find((type) => type === object.contentType) ?? 'image/jpeg'
   if (data.downloads === 'redirect') {
-    // The bytes go from storage (R2) to the reader, not through this server,
-    // so they cost no data out from the VM. The presigned URL is on storage's
-    // own origin, not the app's: a hostile file that a browser renders there
-    // has no access to the app's cookies, pages or API. Storage sends the
-    // allowed type and `inline` from the signed query, whatever the object
-    // holds. 307 keeps the method, which the signature covers. Clients drop
-    // Authorization and cookies on a redirect to another origin, but they send
-    // X-API-Key on to storage, which ignores it: the signature in the URL is
-    // the only credential storage reads.
     const location = data.bucket.presignGet(receipt.key, { expiresIn: PRESIGNED_SECONDS, contentType, contentDisposition: 'inline' })
     return new Response(null, { status: 307, headers: { Location: location, 'Cache-Control': 'private, no-store' } })
   }
@@ -86,41 +88,53 @@ export async function downloadReceipt(data: { db: Db; bucket: Bucket; url: URL; 
   })
 }
 
-/** POST /api/receipts, multipart with `groupId` and `file`, from a browser's session (`principal`). app.ts has checked the origin. */
-export async function uploadReceipt(data: { db: Db; bucket: Bucket; request: Request; principal: Principal | null }): Promise<Response> {
-  const { principal } = data
+/**
+ * POST /api/receipts, multipart with `groupId` and `file`, from a browser's session.
+ * app.ts has checked the origin. The session check releases its database connection
+ * before the multipart body is buffered (under the shared body timeout and memory
+ * budget) and before the image is uploaded to storage.
+ */
+export async function uploadReceipt(data: {
+  withDb: <A>(work: (db: Db) => Promise<A>) => Promise<A>
+  bucket: Bucket
+  request: Request
+  sessionOf: (db: Db) => Promise<Principal | null>
+}): Promise<Response> {
+  const principal = await data.withDb(data.sessionOf)
   if (!principal) return jsonError({ status: 401, message: 'Authentication required' })
+  const maxBytes = LIMITS.receiptBytes + ENVELOPE_BYTES
+  const tooLargeMessage = `Receipt must be at most ${mebibytes(LIMITS.receiptBytes)}`
   const length = Number(data.request.headers.get('content-length'))
-  if (!length || length > LIMITS.receiptBytes + ENVELOPE_BYTES) return jsonError({ status: 413, message: `Receipt must be at most ${mebibytes(LIMITS.receiptBytes)}` })
-  let form: FormData
-  try {
-    form = await data.request.formData()
-  } catch {
-    return jsonError({ status: 400, message: 'Group and image are required' })
-  }
-  const groupId = form.get('groupId')
-  const file = form.get('file')
-  if (typeof groupId !== 'string' || typeof file === 'string' || file === null) return jsonError({ status: 400, message: 'Group and image are required' })
-  try {
-    return Response.json(await storeReceipt(data.db, { bucket: data.bucket, principal, groupId, file }), { headers: { 'Cache-Control': 'no-store' } })
-  } catch (error) {
-    return domainErrorResponse(error)
-  }
+  if (!length || length > maxBytes) return jsonError({ status: 413, message: tooLargeMessage, headers: { Connection: 'close' } })
+  return withBufferedBody(data.request, { maxBytes, timeoutMs: UPLOAD_BODY_MS, tooLargeMessage }, async (buffered) => {
+    let form: FormData
+    try {
+      form = await buffered.formData()
+    } catch {
+      return jsonError({ status: 400, message: 'Group and image are required' })
+    }
+    const groupId = form.get('groupId')
+    const file = form.get('file')
+    if (typeof groupId !== 'string' || typeof file === 'string' || file === null) return jsonError({ status: 400, message: 'Group and image are required' })
+    try {
+      return Response.json(await storeReceipt(data.withDb, { bucket: data.bucket, principal, groupId, file }), { headers: { 'Cache-Control': 'no-store' } })
+    } catch (error) {
+      return domainErrorResponse(error)
+    }
+  })
 }
 
 /** PUT /api/receipt-uploads/<token>: an agent's upload target from create_expense or update_expense. */
-export async function putUpload(data: { db: Db; bucket: Bucket; request: Request; token: string }): Promise<Response> {
+export async function putUpload(data: {
+  withDb: <A>(work: (db: Db) => Promise<A>) => Promise<A>
+  bucket: Bucket
+  request: Request
+  token: string
+}): Promise<Response> {
   try {
-    const { etag } = await storeUpload({
-      db: data.db,
-      bucket: data.bucket,
-      token: data.token,
-      contentType: data.request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase(),
-      contentLength: data.request.headers.get('content-length'),
-      // Taken after the claim: Bun's server stored an incomplete object when the stream was taken before the claim's query.
-      body: () => data.request.body,
-    })
-    return new Response(null, { status: 200, headers: { 'Cache-Control': 'no-store', ETag: etag } })
+    const result = await storeUpload(data)
+    if (result instanceof Response) return result
+    return new Response(null, { status: 200, headers: { 'Cache-Control': 'no-store', ETag: result.etag } })
   } catch (error) {
     return domainErrorResponse(error)
   }

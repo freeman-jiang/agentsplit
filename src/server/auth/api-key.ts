@@ -51,41 +51,48 @@ async function consumeRemaining(db: Db, key: KeyRow): Promise<KeyRow | null> {
   return decremented ?? null
 }
 
+/** Maximum compare-and-swap retries under concurrent API key traffic before asking the caller to wait. */
+const RATE_LIMIT_ATTEMPTS = 8
+
 /** Guarded rate-limit use, as Better Auth's consumeRateLimit: a window counted from the latest request. */
-async function consumeRateLimit(db: Db, key: KeyRow): Promise<KeyRow | { tryAgainInMs: number } | null> {
-  const now = new Date()
-  if (key.rateLimitEnabled === false) {
-    const [row] = await db.update(apikey).set({ lastRequest: now, updatedAt: now }).where(byId(key.id)).returning()
-    return row ?? key
-  }
-  const window = key.rateLimitTimeWindow
-  const max = key.rateLimitMax
-  if (window === null || max === null) {
-    const [row] = await db.update(apikey).set({ updatedAt: now }).where(byId(key.id)).returning()
-    return row ?? null
-  }
-  if (key.lastRequest !== null) {
-    const since = now.getTime() - key.lastRequest.getTime()
-    const windowStart = new Date(now.getTime() - window)
-    if (since <= window) {
-      if ((key.requestCount ?? 0) >= max) return { tryAgainInMs: Math.ceil(window - since) }
-      const [row] = await db
-        .update(apikey)
-        .set({ requestCount: sql`${apikey.requestCount} + 1`, lastRequest: now, updatedAt: now })
-        .where(and(byId(key.id), gt(apikey.lastRequest, windowStart), lt(apikey.requestCount, max)))
-        .returning()
-      if (row) return row
-      const again = await fresh(db, key.id)
-      return again ? consumeRateLimit(db, again) : null
+async function consumeRateLimit(db: Db, initial: KeyRow): Promise<KeyRow | { tryAgainInMs: number } | null> {
+  let key: KeyRow = initial
+  for (let attempt = 0; attempt < RATE_LIMIT_ATTEMPTS; attempt++) {
+    const now = new Date()
+    if (key.rateLimitEnabled === false) {
+      const [row] = await db.update(apikey).set({ lastRequest: now, updatedAt: now }).where(byId(key.id)).returning()
+      return row ?? key
     }
-    const [row] = await db.update(apikey).set({ requestCount: 1, lastRequest: now, updatedAt: now }).where(and(byId(key.id), lte(apikey.lastRequest, windowStart))).returning()
-    if (row) return row
-  } else {
-    const [row] = await db.update(apikey).set({ requestCount: 1, lastRequest: now, updatedAt: now }).where(and(byId(key.id), isNull(apikey.lastRequest))).returning()
-    if (row) return row
+    const window = key.rateLimitTimeWindow
+    const max = key.rateLimitMax
+    if (window === null || max === null) {
+      const [row] = await db.update(apikey).set({ updatedAt: now }).where(byId(key.id)).returning()
+      return row ?? null
+    }
+    if (key.lastRequest !== null) {
+      const since = now.getTime() - key.lastRequest.getTime()
+      const windowStart = new Date(now.getTime() - window)
+      if (since <= window) {
+        if ((key.requestCount ?? 0) >= max) return { tryAgainInMs: Math.max(1, Math.ceil(window - since)) }
+        const [row] = await db
+          .update(apikey)
+          .set({ requestCount: sql`${apikey.requestCount} + 1`, lastRequest: now, updatedAt: now })
+          .where(and(byId(key.id), gt(apikey.lastRequest, windowStart), lt(apikey.requestCount, max)))
+          .returning()
+        if (row) return row
+      } else {
+        const [row] = await db.update(apikey).set({ requestCount: 1, lastRequest: now, updatedAt: now }).where(and(byId(key.id), lte(apikey.lastRequest, windowStart))).returning()
+        if (row) return row
+      }
+    } else {
+      const [row] = await db.update(apikey).set({ requestCount: 1, lastRequest: now, updatedAt: now }).where(and(byId(key.id), isNull(apikey.lastRequest))).returning()
+      if (row) return row
+    }
+    const again = await fresh(db, key.id)
+    if (!again) return null
+    key = again
   }
-  const again = await fresh(db, key.id)
-  return again ? consumeRateLimit(db, again) : null
+  return { tryAgainInMs: 1_000 }
 }
 
 /**

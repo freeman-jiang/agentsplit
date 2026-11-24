@@ -18,7 +18,8 @@ import { handleAuthRoute } from '../auth/oauth-routes'
 import { originAllowed } from '../auth/origin'
 import { requestSession } from '../auth/session'
 import type { Bucket } from '../bucket'
-import { withWholeBody } from '../core/body'
+import type { CallName, WithDb } from '../calls'
+import { withBufferedBody } from '../core/body'
 import type { AppSettings } from '../core/config'
 import { makeDb, type Db } from '../core/db'
 import { downloadExport } from '../export-routes'
@@ -48,6 +49,10 @@ import { purgeDeletedReceipts } from '../storage'
 /** The largest body of each route that reads it whole. The largest RPC call, an expense with every field full, is well below its limit. */
 const RPC_BODY_BYTES = 1024 * 1024
 const AUTH_BODY_BYTES = 256 * 1024
+/** Maximum Effect RPC calls in one HTTP batch. The web client batches calls within 5 ms (at most ~10 per screen). */
+const MAX_RPC_BATCH = 32
+/** Client-side bound on the readiness SELECT 1 so a frozen database fails readiness cleanly. */
+const HEALTH_QUERY_MS = 5_000
 
 export type Platform = {
   readonly config: AppSettings
@@ -114,11 +119,17 @@ export function createApp(platform: Platform) {
   }
 
   /**
-   * Runs `work` with one database connection for this request, and releases
-   * it after the response body is complete.
+   * Runs `work` with one database connection for this request, reads its
+   * response body before releasing the connection, then compresses the body
+   * outside the connection so synchronous gzip never holds a pool slot.
    */
-  function withConnection(request: Request, work: (db: Db) => Promise<Response>, cacheControl = 'no-store'): Promise<Response> {
-    return withDb(async (db) => complete({ request, response: await work(db), cacheControl }))
+  async function withConnection(request: Request, work: (db: Db) => Promise<Response>, cacheControl = 'no-store'): Promise<Response> {
+    const { body, status, statusText, headers } = await withDb(async (db) => {
+      const response = await work(db)
+      return { body: await response.arrayBuffer(), status: response.status, statusText: response.statusText, headers: new Headers(response.headers) }
+    })
+    headers.set('Cache-Control', cacheControl)
+    return compressed({ request, body, init: { status, statusText, headers } })
   }
 
   /**
@@ -143,20 +154,36 @@ export function createApp(platform: Platform) {
   /** The caller of a plain HTTP download on `db` (httpReader). `signIn` is the route's own 401 text, as in the current app. */
   const readerOf = (data: { request: Request; signIn: string }) => (db: Db) => httpReader(db, { ...data, baseUrl, secret })
 
-  /** SELECT 1 on a pooled connection, so a failed connect is reported as unhealthy too. */
-  const checkDatabase = () => withClient(async (client) => void (await client.query('SELECT 1')))
+  /** SELECT 1 on a pooled connection, bounded to HEALTH_QUERY_MS so a frozen database fails readiness fast and closes the client. */
+  const checkDatabase = () =>
+    withClient(async (client) => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        await Promise.race([
+          client.query('SELECT 1'),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error('Database readiness query timed out')), HEALTH_QUERY_MS)
+          }),
+        ])
+      } finally {
+        clearTimeout(timer)
+      }
+    })
 
   /** /api/receipts: a receipt image or its storage redirect, and a web upload. */
   async function receiptRoute(request: Request, url: URL): Promise<Response> {
-    // Not withConnection: the image streams from the bucket after the database work is done, with its own headers.
     if (request.method === 'GET')
-      return withDb(async (db) =>
-        downloadReceipt({ db, bucket, url, reader: await readerOf({ request, signIn: 'Authentication required' })(db), downloads: receiptDownloads.mode }),
-      )
+      return downloadReceipt({
+        withDb,
+        bucket,
+        url,
+        readerOf: readerOf({ request, signIn: 'Authentication required' }),
+        downloads: receiptDownloads.mode,
+      })
     if (request.method === 'POST') {
       // An upload is a cookie-authorized write: other origins are refused before any database work, as for RPC.
       if (!originAllowed({ request, baseUrl, cookieWrite: true })) return jsonError({ status: 403, message: 'Origin not allowed' })
-      return withDb(async (db) => uploadReceipt({ db, bucket, request, principal: await requestSession(db, { request, secret, baseUrl }) }))
+      return uploadReceipt({ withDb, bucket, request, sessionOf: (db) => requestSession(db, { request, secret, baseUrl }) })
     }
     return jsonError({ status: 405, message: 'Method not allowed' })
   }
@@ -169,13 +196,29 @@ export function createApp(platform: Platform) {
       if (!originAllowed({ request, baseUrl, cookieWrite: request.method === 'POST' })) return jsonError({ status: 403, message: 'Origin not allowed' })
       url.pathname = RPC_PATH
       const requestId = crypto.randomUUID()
-      const whole = await withWholeBody(request, { maxBytes: RPC_BODY_BYTES })
-      if (whole instanceof Response) return whole
-      const rpcRequest = whole.url === url.href ? whole : new Request(url, whole)
-      const response = await withConnection(request, (db) => rpcHandler(rpcRequest, Context.make(RpcRequest, { db, requestId })), 'private, no-store')
-      // The error page shows this ID, and the server logs each failed call with it (AuthMiddlewareLive).
-      response.headers.set(REQUEST_ID_RESPONSE_HEADER, requestId)
-      return response
+      return withBufferedBody(request, { maxBytes: RPC_BODY_BYTES }, async (whole, bytes) => {
+        if (whole.method === 'POST' && bytes.byteLength > 0) {
+          try {
+            const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes))
+            if (Array.isArray(parsed) && parsed.length > MAX_RPC_BATCH)
+              return jsonError({ status: 400, message: `Too many RPC calls in one request (max ${MAX_RPC_BATCH})` })
+          } catch {
+            // Let Effect RPC answer malformed JSON with its own error.
+          }
+        }
+        const rpcRequest = whole.url === url.href ? whole : new Request(url, whole)
+        const deferred: { work: (withDb: WithDb) => Promise<unknown>; call: CallName }[] = []
+        const response = await withConnection(
+          whole,
+          (db) => rpcHandler(rpcRequest, Context.make(RpcRequest, { db, requestId, defer: (work, call) => void deferred.push({ work, call }) })),
+          'private, no-store',
+        )
+        for (const { work, call } of deferred)
+          await work(withDb).catch((error: unknown) => console.error(`${call.name}: work after the commit failed`, { requestId: call.requestId }, error))
+        // The error page shows this ID, and the server logs each failed call with it (AuthMiddlewareLive).
+        response.headers.set(REQUEST_ID_RESPONSE_HEADER, requestId)
+        return response
+      })
     }
     if (url.pathname === MCP_PATH)
       return complete({ request, response: await handleMcp(request, { withDb, settings: mcpSettings }), cacheControl: 'no-store' })
@@ -184,8 +227,7 @@ export function createApp(platform: Platform) {
     if (METADATA_PATHS.has(url.pathname)) return protectedResourceMetadata(request, baseUrl)
     // OAuth discovery: Better Auth serves the authorization-server metadata.
     if (url.pathname.startsWith(`${AUTH_PATH}/`) || url.pathname.startsWith('/.well-known/')) {
-      const whole = await withWholeBody(request, { maxBytes: AUTH_BODY_BYTES })
-      return whole instanceof Response ? whole : authHandler(whole)
+      return withBufferedBody(request, { maxBytes: AUTH_BODY_BYTES }, (whole) => authHandler(whole))
     }
     if (HEALTH_PATHS.has(url.pathname)) return url.pathname === LIVENESS_PATH ? livenessResponse() : readinessResponse(checkDatabase)
     if (url.pathname === ROBOTS_PATH) return robotsTxt(baseUrl)
@@ -195,7 +237,7 @@ export function createApp(platform: Platform) {
     const uploadToken = receiptUploadTokenOf(url.pathname)
     if (uploadToken !== null) {
       if (request.method !== 'PUT') return asDocument(jsonError({ status: 405, message: 'Method not allowed', headers: { Allow: 'PUT' } }))
-      return asDocument(withDb((db) => putUpload({ db, bucket, request, token: uploadToken })))
+      return asDocument(putUpload({ withDb, bucket, request, token: uploadToken }))
     }
     const download = request.method === 'GET' ? exportRouteOf(url.pathname) : null
     if (download) {
@@ -241,25 +283,27 @@ export function createApp(platform: Platform) {
      */
     async scheduled(time: Date): Promise<void> {
       if (config.maintenance) return
-      const steps: readonly [string, (db: Db) => Promise<number>][] = [
+      const steps: readonly [string, () => Promise<number>][] = [
         [
           'recurring expenses created',
-          async (db) =>
-            (
-              await materializeDue(db, {
-                today: todayUtc(time),
-                onError: (error, linkId) => console.error('Recurring expense failed; its link waits for the next run', { linkId }, error),
-              })
-            ).length,
+          () =>
+            withDb(async (db) =>
+              (
+                await materializeDue(db, {
+                  today: todayUtc(time),
+                  onError: (error, linkId) => console.error('Recurring expense failed; its link waits for the next run', { linkId }, error),
+                })
+              ).length,
+            ),
         ],
-        ['stale receipt upload targets removed', (db) => removeStaleUploads({ db, bucket })],
-        ['deleted receipts removed from storage', (db) => purgeDeletedReceipts({ db, bucket })],
-        ['expired DPoP replay rows removed', removeExpiredDpopProofs],
-        ['expired idempotency keys removed', removeExpiredIdempotencyKeys],
+        ['stale receipt upload targets removed', () => removeStaleUploads({ withDb, bucket })],
+        ['deleted receipts removed from storage', () => purgeDeletedReceipts({ withDb, bucket })],
+        ['expired DPoP replay rows removed', () => withDb(removeExpiredDpopProofs)],
+        ['expired idempotency keys removed', () => withDb(removeExpiredIdempotencyKeys)],
       ]
       for (const [what, step] of steps) {
         try {
-          const count = await withDb(step)
+          const count = await step()
           if (count) console.log(`Hourly job: ${count} ${what}`)
         } catch (error) {
           console.error(`Hourly job: the step "${what}" failed; the next run tries again`, error)

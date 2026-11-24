@@ -3,7 +3,7 @@
 // receipt download. A deleted receipt keeps its row and every history
 // snapshot that names it (history is append-only); deleted_receipts records
 // the deletion, readers show a tombstone, and the object leaves storage.
-import { eq, sql, type SQL } from 'drizzle-orm'
+import { eq, inArray, sql, type SQL } from 'drizzle-orm'
 import { deletedReceipts, groups } from '../../db/schema/app'
 import { Forbidden, NotFound, type ReceiptOrder as ReceiptOrderSchema } from '../shared/api'
 import { LIMITS } from '../shared/limits'
@@ -168,40 +168,58 @@ export async function deleteReceipts(tx: Db, data: { principal: Principal; recei
  */
 export async function deleteOwnReceipts(tx: Db, data: { principal: Principal; receiptIds: readonly string[]; bucket: Bucket; afterCommit: AfterCommit }) {
   const result = await deleteReceipts(tx, data)
-  data.afterCommit((db) => purgeDeletedReceipts({ db, bucket: data.bucket, receiptIds: data.receiptIds }))
+  data.afterCommit((withDb) => purgeDeletedReceipts({ withDb, bucket: data.bucket, receiptIds: data.receiptIds }))
   return { ...result, usedBytes: await receiptUsage(tx, data.principal.userId) }
 }
+
+/** Parallel storage deletes per purge batch, outside any database connection. */
+const PURGE_CONCURRENCY = 8
 
 /**
  * Removes the objects of deleted receipts from storage and records it. Run it
  * after the deleting transaction commits; the hourly job runs it for every
  * deletion that is still open, so a failed removal is retried. An object that
- * another live receipt row still names stays. Returns the receipts purged.
+ * another live receipt row still names stays. Accepts `withDb` so storage
+ * deletes never hold a database connection, or `db` for direct callers in tests.
+ * Returns the receipts purged.
  */
-export async function purgeDeletedReceipts(data: { db: Db; bucket: Bucket; receiptIds?: readonly string[] }): Promise<number> {
+export async function purgeDeletedReceipts(
+  data: ({ db: Db } | { withDb: <A>(work: (db: Db) => Promise<A>) => Promise<A> }) & { bucket: Bucket; receiptIds?: readonly string[] },
+): Promise<number> {
   if (data.receiptIds?.length === 0) return 0
+  const run = 'withDb' in data ? data.withDb : <A>(work: (db: Db) => Promise<A>) => work(data.db)
   const only = data.receiptIds ? sql`AND d.receipt_id IN (${textList(data.receiptIds)})` : sql``
-  const open = await data.db.execute<{ id: string; url: string; shared: boolean }>(sql`
-    SELECT d.receipt_id AS id, r.url,
-      EXISTS (SELECT 1 FROM receipts o WHERE o.url = r.url AND o.id <> r.id
-        AND NOT ${deletedForGood(sql`o`)}) AS shared
-    FROM deleted_receipts d JOIN receipts r ON r.id = d.receipt_id
-    WHERE d.purged_at IS NULL ${only}
-    ORDER BY d.deleted_at LIMIT 500
-  `)
-  let purged = 0
-  for (const row of open.rows) {
-    const key = receiptKey(row.url)
-    try {
-      if (key && !row.shared) await data.bucket.delete(key)
-    } catch (error) {
-      console.error('Removing a deleted receipt from storage failed; the hourly job retries it', { receiptId: row.id }, error)
-      continue
-    }
-    await data.db.update(deletedReceipts).set({ purgedAt: sql`now()` }).where(eq(deletedReceipts.receiptId, row.id))
-    purged++
+  const open = await run((db) =>
+    db.execute<{ id: string; url: string; shared: boolean }>(sql`
+      SELECT d.receipt_id AS id, r.url,
+        EXISTS (SELECT 1 FROM receipts o WHERE o.url = r.url AND o.id <> r.id
+          AND NOT ${deletedForGood(sql`o`)}) AS shared
+      FROM deleted_receipts d JOIN receipts r ON r.id = d.receipt_id
+      WHERE d.purged_at IS NULL ${only}
+      ORDER BY d.deleted_at LIMIT 500
+    `),
+  )
+  if (open.rows.length === 0) return 0
+  const purgedIds: string[] = []
+  for (let i = 0; i < open.rows.length; i += PURGE_CONCURRENCY) {
+    const batch = open.rows.slice(i, i + PURGE_CONCURRENCY)
+    await Promise.all(
+      batch.map(async (row) => {
+        const key = receiptKey(row.url)
+        try {
+          if (key && !row.shared) await data.bucket.delete(key)
+        } catch (error) {
+          console.error('Removing a deleted receipt from storage failed; the hourly job retries it', { receiptId: row.id }, error)
+          return
+        }
+        purgedIds.push(row.id)
+      }),
+    )
   }
-  return purged
+  if (purgedIds.length > 0) {
+    await run((db) => db.update(deletedReceipts).set({ purgedAt: sql`now()` }).where(inArray(deletedReceipts.receiptId, purgedIds)))
+  }
+  return purgedIds.length
 }
 
 // ---------- the group's receipt download ----------
