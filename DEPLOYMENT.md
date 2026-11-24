@@ -20,7 +20,8 @@ The host has no open inbound port. Cloudflare Tunnel brings the public traffic i
 
 | Unit | What it does |
 | --- | --- |
-| `agentsplit.service` | The server (`nix/package.nix`) on `127.0.0.1:3000`. It applies new migrations at start and runs the hourly job in-process at minute 7. A dynamic user `agentsplit`, a read-only file system, no capabilities, a pool of 5 database connections, 256 MB before reclaim, 320 MB at most, 1.5 CPUs, 128 tasks. It restarts on failure, at most 5 times in 10 minutes. |
+| `agentsplit.service` | The server (`nix/package.nix`) on `127.0.0.1:3000`. It applies new migrations at start and runs the hourly job in-process at minute 7. A dynamic user `agentsplit`, a read-only file system, no capabilities, a pool of 5 database connections, 320 MB at most, 1.5 CPUs, 128 tasks. It restarts 5 seconds after every exit, without a limit. |
+| `agentsplit-watchdog.service`, `agentsplit-tunnel-watchdog.service` | Restart the server or the connector when it runs but does not answer: `/api/health`, or `/ready` on the connector's metrics port, 3 times in a row. A unit has 90 seconds after its start. |
 | `postgresql.service` | PostgreSQL 18 from nixpkgs, on the Unix socket `/run/postgresql` only. The role `agentsplit` owns the database `agentsplit` and signs in by peer authentication. Tuned for 1 GB: 64 MB of shared buffers, 16 connections, no parallel queries; 256 MB at most. |
 | `agentsplit-db-dump.timer` | A `pg_dump` at minute 37 of each hour into `/var/backup/agentsplit/`, checked with `pg_restore --list`, kept 3 days. `latest.dump` links to the newest one. |
 | `agentsplit-tunnel.service` | `cloudflared` for a remotely managed tunnel. Cloudflare holds the tunnel's routes. 128 MB at most. |
@@ -37,12 +38,14 @@ The e2-micro has 1 GB, of which the kernel leaves about 940 MB. The VM test (`ni
 
 | Part | Measured (VM test) | Limit |
 | --- | --- | --- |
-| `agentsplit.service` | 90 MiB, 134 MiB at its peak | 256 MB before reclaim, 320 MB at most, 128 MB of swap |
+| `agentsplit.service` | 90 MiB, 134 MiB at its peak | 320 MB at most, 32 MB of swap |
 | `postgresql.service` (with its page cache) | 115 MiB | 192 MB before reclaim, 256 MB at most |
 | `systemd-journald.service` | 11 MiB | 16 MB kept from reclaim |
 | `tailscaled.service` | 36 MiB (logged out) | 48 MB kept from reclaim |
 | `agentsplit-tunnel.service` | not in the test (about 30 MB) | 128 MB at most |
 | The whole VM | 307 MiB used, 631 MiB available of 939 MiB | |
+
+The server has no soft limit (`MemoryHigh`). On 2026-11-24 a leak held it between its soft and its hard limit: the kernel took the pages of its own code, the server read them from the disk again and again, and it did not answer for 19 minutes. At the hard limit the kernel stops it, and systemd starts it again. `nix/vm-test.nix` proves that a leak, a frozen server, a crash loop, a clean exit and a killed or stopped database heal without a person. A `MemoryMin` works only up to the `MemoryMin` of its slice, so `system.slice` has one too.
 
 The limits of the server, PostgreSQL and the connector add up to 704 MB, so the system, Tailscale, the page cache and a deploy keep at least 230 MB when all three are at their limits. zram adds compressed swap of up to half the memory for idle pages.
 

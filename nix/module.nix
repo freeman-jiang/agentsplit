@@ -92,6 +92,65 @@ let
       cat "$file"
     '';
   };
+  # Restarts a unit that runs but does not answer. systemd sees only that the
+  # process exists: on 2026-11-24 the server ran for 19 minutes without an
+  # answer, until a person restarted it. A unit gets `grace` seconds after its
+  # start, and fails after 3 checks in a row.
+  watchdogScript = pkgs.writeShellApplication {
+    name = "agentsplit-watchdog";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.curl
+      config.systemd.package
+    ];
+    text = ''
+      unit="$1"
+      url="$2"
+      grace=90
+      failures=0
+      while :; do
+        sleep 10
+        if [ "$(systemctl show --property=ActiveState --value "$unit")" != active ]; then
+          failures=0
+          continue
+        fi
+        started="$(systemctl show --property=ActiveEnterTimestampMonotonic --value "$unit")"
+        read -r uptime _ < /proc/uptime
+        if [ $((''${uptime%.*} - started / 1000000)) -lt "$grace" ]; then
+          failures=0
+          continue
+        fi
+        if curl --fail --silent --show-error --output /dev/null --max-time 10 "$url"; then
+          failures=0
+          continue
+        fi
+        failures=$((failures + 1))
+        echo "agentsplit-watchdog: $unit did not answer $url ($failures of 3)" >&2
+        if [ "$failures" -ge 3 ]; then
+          echo "agentsplit-watchdog: restarting $unit" >&2
+          failures=0
+          systemctl restart "$unit" || true
+        fi
+      done
+    '';
+  };
+  watchdog = unit: url: {
+    description = "Restart ${unit} when it does not answer";
+    wantedBy = [ "multi-user.target" ];
+    startLimitIntervalSec = 0;
+    serviceConfig = {
+      ExecStart = "${lib.getExe watchdogScript} ${unit} ${url}";
+      Restart = "always";
+      RestartSec = 5;
+      # It must still run when memory is short: that is when it is needed.
+      MemoryMin = "8M";
+      OOMScoreAdjust = -900;
+      NoNewPrivileges = true;
+      ProtectSystem = "strict";
+      ProtectHome = true;
+      PrivateTmp = true;
+    };
+  };
 in
 {
   options.services.agentsplit = {
@@ -123,12 +182,6 @@ in
       type = lib.types.str;
       default = "agentsplit";
       description = "The database and its owner role. The server connects as this role with peer authentication.";
-    };
-
-    memoryHigh = lib.mkOption {
-      type = lib.types.str;
-      default = "640M";
-      description = "The memory use of the server above which the kernel reclaims from it.";
     };
 
     memoryMax = lib.mkOption {
@@ -202,6 +255,11 @@ in
 
         # As the server: a changed PostgreSQL restarts after the activation, not stopped before it.
         systemd.services.postgresql.stopIfChanged = false;
+        # As the server: it never gives up.
+        systemd.services.postgresql.unitConfig.StartLimitIntervalSec = lib.mkForce 0;
+        systemd.services.postgresql.serviceConfig.RestartSec = lib.mkForce 1;
+
+        systemd.services.agentsplit-watchdog = watchdog "agentsplit.service" "http://127.0.0.1:${toString cfg.port}/api/health";
         services.postgresql = {
           enable = true;
           # The major version fixes the data format; change it only with a dump and restore.
@@ -230,12 +288,16 @@ in
           # A changed server restarts after the activation, not stopped before it: the gap is the restart alone
           # (2026-11-17: stopped from 09:44:36 to 09:45:10 during an update).
           stopIfChanged = false;
-          requires = [ "postgresql.service" ];
+          # Not `requires`: a database that fails to start would leave the server stopped for good.
+          # Wait for postgresql.target so postgresql-setup.service finishes creating the database and role first.
           after = [
+            "postgresql.target"
+            "network-online.target"
+          ];
+          wants = [
             "postgresql.service"
             "network-online.target"
           ];
-          wants = [ "network-online.target" ];
           environment = {
             DATABASE_URL = "postgresql://${cfg.database}@/${cfg.database}?host=/run/postgresql";
             HOST = "127.0.0.1";
@@ -244,18 +306,16 @@ in
             # Bun caches large transpiled files under the home folder; the bundle needs no cache.
             BUN_RUNTIME_TRANSPILER_CACHE_PATH = "0";
           };
-          # Ten starts in 10 minutes (a failed migration, a crash loop) stop the
-          # restarts. Five was too few: a single crash after a few deliberate
-          # restarts hit the limit and kept the site down.
-          startLimitIntervalSec = 600;
-          startLimitBurst = 10;
+          # It never gives up: after a limit on starts, the site would stay down until a person came.
+          startLimitIntervalSec = 0;
           serviceConfig = hardening // {
             Type = "exec";
             User = cfg.database;
             # The settings of the file override `environment` above.
             EnvironmentFile = cfg.environmentFile;
             ExecStart = lib.getExe cfg.package;
-            Restart = "on-failure";
+            # A clean exit too.
+            Restart = "always";
             RestartSec = 5;
             # The server stops in 25 seconds (src/server/main/server.ts).
             TimeoutStopSec = 30;
@@ -264,9 +324,10 @@ in
               "AF_INET"
               "AF_INET6"
             ];
-            MemoryHigh = cfg.memoryHigh;
+            # No MemoryHigh: below MemoryMax it slows a server that leaks instead of stopping it, and the
+            # server read its own code from the disk again and again without an answer (2026-11-24).
             MemoryMax = cfg.memoryMax;
-            MemorySwapMax = "128M";
+            MemorySwapMax = "32M";
             CPUQuota = cfg.cpuQuota;
             TasksMax = 128;
             # When memory runs out, the kernel stops the server before
@@ -322,7 +383,11 @@ in
       })
 
       (lib.mkIf cfg.tunnel.enable {
+        # /ready answers 200 while the connector has a connection to Cloudflare.
+        systemd.services.agentsplit-tunnel-watchdog = watchdog "agentsplit-tunnel.service" "http://127.0.0.1:20241/ready";
         systemd.services.agentsplit-tunnel = {
+          startLimitIntervalSec = 0;
+          environment.TUNNEL_METRICS = "127.0.0.1:20241";
           description = "Cloudflare Tunnel connector for AgentSplit";
           wantedBy = [ "multi-user.target" ];
           # As the server: restarted after the activation, not stopped before it.

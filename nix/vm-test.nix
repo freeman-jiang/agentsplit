@@ -23,6 +23,8 @@ pkgs.testers.runNixOSTest {
       services.agentsplit.tunnel.enable = lib.mkForce false;
       # The test VM's root is a whole disk without a partition to grow.
       boot.growPartition = lib.mkForce false;
+      # As in production. The test driver's default panics when a service reaches its memory limit.
+      boot.kernel.sysctl."vm.panic_on_oom" = lib.mkForce 0;
       # The e2-micro: 1 GB and 2 shared CPUs.
       virtualisation.memorySize = 1024;
       virtualisation.cores = 2;
@@ -39,15 +41,21 @@ pkgs.testers.runNixOSTest {
           S3_UPLOAD_BUCKET=agentsplit-receipts
           S3_UPLOAD_KEY=vm-test-key
           S3_UPLOAD_SECRET=vm-test-secret
+          BUN_OPTIONS=--preload=/etc/agentsplit/leak.js
         '';
       };
+      # SIGUSR2 makes the server leak, 100 MB a second.
+      environment.etc."agentsplit/leak.js".text = ''
+        const kept = []
+        process.on('SIGUSR2', () => setInterval(() => kept.push(Buffer.alloc(5e6, kept.length + 1)), 50))
+      '';
     };
 
   testScript = ''
     host.wait_for_unit("postgresql.service")
     host.wait_for_unit("agentsplit.service")
     host.wait_until_succeeds("curl -fsS http://127.0.0.1:3000/api/health", timeout=120)
-    host.succeed("journalctl -u agentsplit.service | grep -q 'Migrations applied'")
+    host.succeed("journalctl -u agentsplit.service | grep 'Migrations applied' > /dev/null")
     host.wait_for_unit("multi-user.target")
     failed = host.succeed("systemctl --failed --no-legend --plain")
     assert failed.strip() == "", failed
@@ -59,20 +67,20 @@ pkgs.testers.runNixOSTest {
     assert owner.strip() == "agentsplit", owner
 
     # The client build is served, and only on the loopback interface.
-    host.succeed("curl -fsS http://127.0.0.1:3000/ | grep -q '<div id=\"root\"'")
+    host.succeed("curl -fsS http://127.0.0.1:3000/ | grep '<div id=\"root\"' > /dev/null")
     listeners = host.succeed("ss -Htln").strip().splitlines()
     exposed = [line for line in listeners if not any(a in line for a in ["127.0.0.1:", "[::1]:", "127.0.0.53"])]
     assert exposed == [], exposed
 
     # The server runs as its dynamic user with the hardening of nix/module.nix.
-    host.succeed("systemctl show -p User -p DynamicUser -p ProtectSystem agentsplit.service | grep -c -x -e User=agentsplit -e DynamicUser=yes -e ProtectSystem=strict | grep -q 3")
+    host.succeed("systemctl show -p User -p DynamicUser -p ProtectSystem agentsplit.service | grep -c -x -e User=agentsplit -e DynamicUser=yes -e ProtectSystem=strict | grep 3 > /dev/null")
     print(host.succeed("systemd-analyze security agentsplit.service agentsplit-db-dump.service --no-pager | tail -n 3"))
 
     # A dump, read back by the backup user, who has no database access.
     host.succeed("systemctl start agentsplit-db-dump.service")
     host.succeed("sudo -u agentsplit-backup agentsplit-latest-dump > /tmp/latest.dump")
-    host.succeed("head -c 5 /tmp/latest.dump | grep -q PGDMP")
-    host.succeed("sudo -u postgres pg_restore --list /tmp/latest.dump | grep -q 'TABLE public groups'")
+    host.succeed("head -c 5 /tmp/latest.dump | grep PGDMP > /dev/null")
+    host.succeed("sudo -u postgres pg_restore --list /tmp/latest.dump | grep 'TABLE public groups' > /dev/null")
     host.fail("sudo -u agentsplit-backup psql -d agentsplit -c 'select 1'")
 
     # The restore of DEPLOYMENT.md ("Restore a dump on the host"): a dump into a
@@ -95,6 +103,41 @@ pkgs.testers.runNixOSTest {
         return int(host.succeed(f"cat /proc/{pid}/oom_score_adj"))
     server, database, journal = (oom_score_adj(u) for u in ["agentsplit", "postgresql", "systemd-journald"])
     assert server > database and server > journal, (server, database, journal)
+
+    # Every failure heals without a person.
+    import time
+    def pid(unit="agentsplit"):
+        return int(host.succeed(f"systemctl show -p MainPID --value {unit}").strip())
+    def heals(what, break_it, old, timeout):
+        start = time.time()
+        break_it()
+        host.wait_until_succeeds(f"p=$(systemctl show -p MainPID --value agentsplit); [ $p != 0 ] && [ $p != {old} ]", timeout=timeout)
+        host.wait_until_succeeds("curl -fsS -m 5 http://127.0.0.1:3000/api/health", timeout=120)
+        print(f"HEALED {what}: {time.time() - start:.0f} s")
+    with subtest("a clean exit"):
+        p = pid()
+        heals("a clean exit", lambda: host.succeed(f"kill -TERM {p}"), p, 60)
+    with subtest("a crash loop of more than ten starts"):
+        for _ in range(12):
+            p = pid()
+            if p: host.execute(f"kill -KILL {p}")
+            host.wait_until_succeeds(f"p=$(systemctl show -p MainPID --value agentsplit); [ $p != 0 ] && [ $p != {p} ]", timeout=90)
+        host.wait_until_succeeds("curl -fsS -m 5 http://127.0.0.1:3000/api/health", timeout=120)
+    with subtest("a leak to the memory limit"):
+        p = pid()
+        heals("a leak", lambda: host.succeed(f"kill -USR2 {p}"), p, 240)
+        host.succeed("systemctl is-active postgresql tailscaled")
+    with subtest("a frozen server"):
+        host.sleep(95)
+        p = pid()
+        heals("a frozen server", lambda: host.succeed(f"kill -STOP {p}"), p, 240)
+    with subtest("a killed database"):
+        host.succeed("kill -KILL $(systemctl show -p MainPID --value postgresql)")
+        host.wait_until_succeeds("curl -fsS -m 5 http://127.0.0.1:3000/api/health", timeout=120)
+    with subtest("a database that was stopped"):
+        host.succeed("systemctl stop postgresql; sleep 5; systemctl start postgresql")
+        host.wait_until_succeeds("curl -fsS -m 5 http://127.0.0.1:3000/api/health", timeout=180)
+    print(host.succeed("journalctl -b -u agentsplit-watchdog -o cat --no-pager; journalctl -b -k --no-pager | grep -i -E 'oom|killed process' | tail -n 5 || true"))
 
     # The first join (nix/host/gce.nix), with a stand-in metadata server:
     # the unit polls while Tailscale needs a login, and passes a key to
