@@ -4,7 +4,8 @@
 // the JSON-RPC call.
 import { createMcpHandler, isLegacyRequest } from '@modelcontextprotocol/server'
 import type { Db } from '../core/db'
-import { authenticate, type McpPrincipal } from '../auth/authenticate'
+import { authenticate, type Authentication, type McpPrincipal } from '../auth/authenticate'
+import { withWholeBody } from '../core/body'
 import { jsonError, noStore } from '../core/errors'
 import { challenge } from '../auth/challenge'
 import { OAUTH_WRITE_SCOPE } from '../../shared/account'
@@ -40,29 +41,37 @@ function hostAllowed(request: Request, baseUrl: string) {
   return host === new URL(baseUrl).host && originAllowed({ request, baseUrl, cookieWrite: false })
 }
 
-export async function handleMcp(request: Request, data: { db: Db; settings: McpSettings }): Promise<Response> {
-  const { db, settings } = data
+/** The caller, if the credentials and the request budget allow the request. */
+async function admit(db: Db, data: { request: Request; baseUrl: string }): Promise<Authentication> {
+  const authentication = await authenticate(db, data)
+  if ('response' in authentication) return authentication
+  let retryAfter: number
+  try {
+    retryAfter = await takeMcpRequest(db, { userId: authentication.principal.userId })
+  } catch (error) {
+    console.error('MCP rate limit failed', error)
+    return { response: jsonError({ status: 503, message: 'MCP is temporarily unavailable' }) }
+  }
+  if (retryAfter) return { response: jsonError({ status: 429, message: 'MCP request rate exceeded', headers: { 'Retry-After': String(retryAfter) } }) }
+  return authentication
+}
+
+export async function handleMcp(request: Request, data: { withDb: <A>(work: (db: Db) => Promise<A>) => Promise<A>; settings: McpSettings }): Promise<Response> {
+  const { withDb, settings } = data
   const { baseUrl } = settings
   if (!hostAllowed(request, baseUrl)) return jsonError({ status: 403, message: 'Origin or host is not allowed' })
 
-  const authentication = await authenticate(db, { request, baseUrl })
-  if ('response' in authentication) return authentication.response
-  const { principal } = authentication
+  // The caller first, so a stranger's body is never read. The connection goes back before the body is read.
+  const caller = await withDb((db) => admit(db, { request, baseUrl }))
+  if ('response' in caller) return caller.response
+  const { principal } = caller
 
-  let retryAfter: number
-  try {
-    retryAfter = await takeMcpRequest(db, { userId: principal.userId })
-  } catch (error) {
-    console.error('MCP rate limit failed', error)
-    return jsonError({ status: 503, message: 'MCP is temporarily unavailable' })
-  }
-  if (retryAfter) return jsonError({ status: 429, message: 'MCP request rate exceeded', headers: { 'Retry-After': String(retryAfter) } })
-
+  const whole = request.method === 'POST' ? await withWholeBody(request, { maxBytes: MAX_BODY }) : request
+  if (whole instanceof Response) return whole
   let text = ''
   let body: unknown
-  if (request.method === 'POST') {
-    text = await request.text()
-    if (text.length > MAX_BODY) return jsonError({ status: 413, message: 'Request body is too large' })
+  if (whole.method === 'POST') {
+    text = await whole.text()
     try {
       body = JSON.parse(text)
     } catch {
@@ -86,7 +95,7 @@ export async function handleMcp(request: Request, data: { db: Db; settings: McpS
   }
 
   // initialize, tools/list and notifications/initialized are the same for every caller (answers.ts).
-  const response = await staticAnswer({ request, body, serve: () => serve({ request, text, body, db, principal, settings }) })
+  const response = await staticAnswer({ request, body, serve: () => withDb((db) => serve({ request, text, body, db, principal, settings })) })
   const headers = new Headers(response.headers)
   headers.set('Cache-Control', 'no-store')
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers })

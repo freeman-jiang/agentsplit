@@ -27,6 +27,9 @@ const pool = new pg.Pool({
   max: settings.poolSize,
   connectionTimeoutMillis: 5_000,
   idleTimeoutMillis: 60_000,
+  // A statement or an abandoned transaction gives its connection back. Without a limit, five stuck ones stop the site.
+  statement_timeout: 30_000,
+  idle_in_transaction_session_timeout: 60_000,
 })
 // An idle connection that fails (a database restart) is removed from the pool; without a listener it would end the process.
 pool.on('error', (error) => console.error('Idle database connection failed', error))

@@ -18,6 +18,7 @@ import { handleAuthRoute } from '../auth/oauth-routes'
 import { originAllowed } from '../auth/origin'
 import { requestSession } from '../auth/session'
 import type { Bucket } from '../bucket'
+import { withWholeBody } from '../core/body'
 import type { AppSettings } from '../core/config'
 import { makeDb, type Db } from '../core/db'
 import { downloadExport } from '../export-routes'
@@ -43,6 +44,10 @@ import { removeStaleUploads } from '../receipt-uploads'
 import { materializeDue } from '../recurring'
 import { Api, AppConfig, AuthMiddlewareLive, ReceiptBucket, RpcRequest } from '../rpc'
 import { purgeDeletedReceipts } from '../storage'
+
+/** The largest body of each route that reads it whole. The largest RPC call, an expense with every field full, is well below its limit. */
+const RPC_BODY_BYTES = 1024 * 1024
+const AUTH_BODY_BYTES = 256 * 1024
 
 export type Platform = {
   readonly config: AppSettings
@@ -164,18 +169,24 @@ export function createApp(platform: Platform) {
       if (!originAllowed({ request, baseUrl, cookieWrite: request.method === 'POST' })) return jsonError({ status: 403, message: 'Origin not allowed' })
       url.pathname = RPC_PATH
       const requestId = crypto.randomUUID()
-      const rpcRequest = request.url === url.href ? request : new Request(url, { method: request.method, headers: request.headers, body: request.body })
+      const whole = await withWholeBody(request, { maxBytes: RPC_BODY_BYTES })
+      if (whole instanceof Response) return whole
+      const rpcRequest = whole.url === url.href ? whole : new Request(url, whole)
       const response = await withConnection(request, (db) => rpcHandler(rpcRequest, Context.make(RpcRequest, { db, requestId })), 'private, no-store')
       // The error page shows this ID, and the server logs each failed call with it (AuthMiddlewareLive).
       response.headers.set(REQUEST_ID_RESPONSE_HEADER, requestId)
       return response
     }
-    if (url.pathname === MCP_PATH) return withConnection(request, (db) => handleMcp(request, { db, settings: mcpSettings }))
+    if (url.pathname === MCP_PATH)
+      return complete({ request, response: await handleMcp(request, { withDb, settings: mcpSettings }), cacheControl: 'no-store' })
     // The server serves the protected-resource metadata itself: Better Auth's MCP plugin drops
     // offline_access from it, which left Claude Code without refresh tokens (docs/history/v2/OAUTH-CLAUDE-CODE.md).
     if (METADATA_PATHS.has(url.pathname)) return protectedResourceMetadata(request, baseUrl)
     // OAuth discovery: Better Auth serves the authorization-server metadata.
-    if (url.pathname.startsWith(`${AUTH_PATH}/`) || url.pathname.startsWith('/.well-known/')) return authHandler(request)
+    if (url.pathname.startsWith(`${AUTH_PATH}/`) || url.pathname.startsWith('/.well-known/')) {
+      const whole = await withWholeBody(request, { maxBytes: AUTH_BODY_BYTES })
+      return whole instanceof Response ? whole : authHandler(whole)
+    }
     if (HEALTH_PATHS.has(url.pathname)) return url.pathname === LIVENESS_PATH ? livenessResponse() : readinessResponse(checkDatabase)
     if (url.pathname === ROBOTS_PATH) return robotsTxt(baseUrl)
     if (url.pathname === SITEMAP_PATH) return sitemapXml(baseUrl)
