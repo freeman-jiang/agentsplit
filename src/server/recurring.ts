@@ -151,6 +151,8 @@ async function materialize(tx: Db, data: { link: DueLink; principal: Principal |
 
 /** The scheduled job's bound per run; the next run continues where this one stopped. */
 const MAX_OCCURRENCES_PER_RUN = 50
+/** Hard cap on loop iterations (including skipped failures and stale links) so one run always terminates promptly. */
+const MAX_STEPS_PER_RUN = MAX_OCCURRENCES_PER_RUN * 4
 
 /**
  * Creates due occurrences one by one, each opening the next link, so missed
@@ -168,7 +170,7 @@ async function createDue(data: {
 }): Promise<string[]> {
   const created: string[] = []
   const skip = new Set<string>()
-  while (created.length < MAX_OCCURRENCES_PER_RUN) {
+  for (let steps = 0; created.length < MAX_OCCURRENCES_PER_RUN && steps < MAX_STEPS_PER_RUN; steps++) {
     const attempt: { linkId: string | null } = { linkId: null }
     let step: { done: true } | { done: false; id: string | null }
     try {

@@ -52,7 +52,6 @@
     enable = true;
     tunnel.enable = true;
     # The server measured 94 MB idle and 134 MB at its peak in the VM test.
-    memoryHigh = "256M";
     memoryMax = "320M";
     databasePoolSize = 5;
   };
@@ -165,6 +164,8 @@
   };
   # Keep the admin path and the logs alive when memory runs short: the kernel
   # does not reclaim below MemoryMin, and the OOM killer takes them last.
+  # A service's MemoryMin protects nothing above what its slice has.
+  systemd.slices.system.sliceConfig.MemoryMin = "96M";
   systemd.services.tailscaled.serviceConfig = {
     MemoryMin = "48M";
     OOMScoreAdjust = -900;
@@ -173,6 +174,10 @@
     MemoryMin = "16M";
     OOMScoreAdjust = -900;
   };
+
+  # A kernel that fails reboots instead of waiting for a person.
+  boot.kernel.sysctl."kernel.panic" = 10;
+  boot.kernel.sysctl."kernel.panic_on_oops" = 1;
 
   users.mutableUsers = false;
   # Tailscale SSH needs no password or key. This optional root-only file holds

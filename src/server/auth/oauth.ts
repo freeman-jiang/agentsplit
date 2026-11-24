@@ -71,9 +71,14 @@ export async function removeExpiredDpopProofs(db: Db): Promise<number> {
   return result.rowCount ?? 0
 }
 
-/** jose's errors carry codes such as ERR_JWT_EXPIRED; PostgreSQL errors carry SQLSTATE codes. */
+/**
+ * jose's errors carry codes such as ERR_JWT_EXPIRED; PostgreSQL errors carry SQLSTATE codes. A token
+ * that is no JWT at all is a plain TypeError of jose's decodeProtectedHeader.
+ */
 const isJoseError = (error: unknown) =>
-  error instanceof Error && 'code' in error && typeof error.code === 'string' && /^ERR_J(W[STEK]|OSE)/.test(error.code)
+  error instanceof Error &&
+  (('code' in error && typeof error.code === 'string' && /^ERR_J(W[STEK]|OSE)/.test(error.code)) ||
+    (error instanceof TypeError && error.message === 'Invalid Token or Protected Header formatting'))
 
 const isScopeToken = (s: string) => /^[\x21\x23-\x5b\x5d-\x7e]+$/.test(s)
 

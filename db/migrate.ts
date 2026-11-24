@@ -19,6 +19,9 @@ export async function runMigrations(data: { pool: pg.Pool; dir?: string }): Prom
   const client = await data.pool.connect()
   try {
     await client.query(`SET lock_timeout = '5s'`)
+    // The server's pool limits each statement; a migration may take longer.
+    await client.query('SET statement_timeout = 0')
+    await client.query('SET idle_in_transaction_session_timeout = 0')
     await migrate(drizzle({ client }), { migrationsFolder: data.dir ?? MIGRATIONS_DIR })
   } finally {
     // The setting must not stay on a connection that goes back to the pool.

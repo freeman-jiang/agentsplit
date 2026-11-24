@@ -16,6 +16,7 @@ import type { ExpenseFilter } from '../../expense-read'
 import * as history from '../../history'
 import * as ledger from '../../ledger'
 import { attachUploads, prepareUploads } from '../../receipt-uploads'
+import type { ImageInfo } from '../../receipts'
 import { createUngroupedExpense } from '../../ungrouped'
 import { PAYMENT_RULES, RECORDING_RULES } from './instructions'
 import { CurrencyCodeSchema, DecimalString } from '../../../shared/money'
@@ -377,6 +378,9 @@ export const createExpense = defineTool({
   },
 })
 
+/** Reuses storage image-header reads across SERIALIZABLE retries of one update_expense call. */
+const attachImageCaches = new WeakMap<object, Map<string, ImageInfo | null>>()
+
 export const updateExpense = defineTool({
   name: 'update_expense',
   kind: 'write',
@@ -393,13 +397,18 @@ export const updateExpense = defineTool({
   output: Schema.Struct(ExpenseWrite),
   run: async ({ db, principal, baseUrl, bucket }, input) => {
     const uploadIds = input.attachUploadIds ?? []
+    let imageCache = attachImageCaches.get(input)
+    if (!imageCache) {
+      imageCache = new Map()
+      attachImageCaches.set(input, imageCache)
+    }
     const saved = await ledger.patchExpense(db, {
       principal,
       groupId: input.groupId,
       expenseId: input.expenseId,
       expectedRevision: input.expectedRevision,
       patch: patchOf(input.changes ?? {}),
-      attach: (current) => attachUploads(db, { principal, groupId: current.groupId, expenseId: current.id, uploadIds, bucket }),
+      attach: (current) => attachUploads(db, { principal, groupId: current.groupId, expenseId: current.id, uploadIds, bucket, imageCache }),
     })
     const targets = await prepareUploads(db, { principal, groupId: saved.groupId, expenseId: saved.id, requests: input.uploads, baseUrl })
     return { expenseId: saved.id, revision: saved.revision, amount: saved.amount, currencyCode: saved.currency, ...targets }

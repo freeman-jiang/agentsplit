@@ -8,7 +8,7 @@ import { ERROR_ANSWERS, errorKind, UNAVAILABLE, type DeclaredError } from '../sh
 import type { Principal } from './core/access'
 import { sessionPrincipal } from './auth/session'
 import type { Bucket } from './bucket'
-import { answerOf, readAnswerOf, runRead, runWrite, type AfterCommit, type CallName } from './calls'
+import { answerOf, readAnswerOf, runRead, runWrite, type AfterCommit, type CallName, type WithDb } from './calls'
 import type { Db } from './core/db'
 
 /** The settings that the handlers and the session check use. */
@@ -18,16 +18,22 @@ export class AppConfig extends Context.Service<AppConfig, { readonly baseUrl: st
 export class ReceiptBucket extends Context.Service<ReceiptBucket, Bucket>()('agentsplit/ReceiptBucket') {}
 
 /**
- * This request's database connection and ID. The server's request handler
- * (app.ts) puts it in the request's context; the RPC server runs every call
- * of the request with that context, so the middleware reads it from there.
+ * This request's database connection, ID, and post-release work queue. The
+ * server's request handler (app.ts) puts it in the request's context; the RPC
+ * server runs every call of the request with that context, so the middleware
+ * reads it from there. After-commit callbacks added to `defer` run once the
+ * request's database connection is back in the pool.
  */
-export class RpcRequest extends Context.Service<RpcRequest, { readonly db: Db; readonly requestId: string }>()('agentsplit/RpcRequest') {}
+export class RpcRequest extends Context.Service<
+  RpcRequest,
+  { readonly db: Db; readonly requestId: string; readonly defer?: (work: (withDb: WithDb) => Promise<unknown>, call: CallName) => void }
+>()('agentsplit/RpcRequest') {}
 
-/** One call: the request's connection, its name for the log, and the signed-in caller or null. */
-export class CurrentCall extends Context.Service<CurrentCall, { readonly db: Db; readonly call: CallName; readonly principal: Principal | null }>()(
-  'agentsplit/CurrentCall',
-) {}
+/** One call: the request's connection, its name for the log, the signed-in caller or null, and optional post-release defer hook. */
+export class CurrentCall extends Context.Service<
+  CurrentCall,
+  { readonly db: Db; readonly call: CallName; readonly principal: Principal | null; readonly defer?: (work: (withDb: WithDb) => Promise<unknown>, call: CallName) => void }
+>()('agentsplit/CurrentCall') {}
 
 export class AuthMiddleware extends RpcMiddleware.Service<AuthMiddleware, { provides: CurrentCall }>()('agentsplit/AuthMiddleware', { error: Unavailable }) {}
 
@@ -76,7 +82,7 @@ export const AuthMiddlewareLive = Layer.effect(AuthMiddleware)(
           console.error(`${call.name}: no database connection for this request`)
           return yield* Effect.fail(new Unavailable({ message: UNAVAILABLE }))
         }
-        const { db } = request.value
+        const { db, defer } = request.value
         const cookie = (headers as Record<string, string | undefined>)['cookie'] ?? null
         const principal = yield* Effect.tryPromise({
           try: () => requestPrincipal({ request: request.value, cookie, check: () => sessionPrincipal(db, { cookie, secret: config.secret, baseUrl: config.baseUrl }) }),
@@ -85,7 +91,10 @@ export const AuthMiddlewareLive = Layer.effect(AuthMiddleware)(
             return new Unavailable({ message: UNAVAILABLE })
           },
         })
-        return yield* effect.pipe(Effect.provideService(CurrentCall, { db, call, principal }), Effect.tapCause((cause) => logFailure({ call, cause })))
+        return yield* effect.pipe(
+          Effect.provideService(CurrentCall, { db, call, principal, ...(defer ? { defer } : {}) }),
+          Effect.tapCause((cause) => logFailure({ call, cause })),
+        )
       })
   }),
 )
@@ -119,9 +128,9 @@ export const read = <A>(work: (db: Db, principal: Principal) => Promise<A>) =>
 
 /** A write for a signed-in caller, with the write budget and one SERIALIZABLE transaction (calls.ts). */
 export const write = <A>(work: (db: Db, principal: Principal, afterCommit: AfterCommit) => Promise<A>) =>
-  Effect.flatMap(signedIn, ({ db, call, principal }) =>
+  Effect.flatMap(signedIn, ({ db, call, principal, defer }) =>
     Effect.tryPromise({
-      try: () => runWrite({ db, principal, call, work: (tx, afterCommit) => work(tx, principal, afterCommit) }),
+      try: () => runWrite({ db, principal, call, work: (tx, afterCommit) => work(tx, principal, afterCommit), ...(defer ? { defer } : {}) }),
       catch: (error) => answerOf(error, call),
     }),
   )

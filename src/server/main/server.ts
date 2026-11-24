@@ -19,25 +19,37 @@ const publicOrigin = new URL(config.baseUrl).origin
 // Read before the migrations, so a missing client build stops the start before it changes the database.
 const staticFiles = clientFiles({ dir: settings.clientDir, baseUrl: config.baseUrl })
 
+// The image sets MIGRATIONS_DIR, so each start applies new migrations before
+// it takes requests, as the current app's container runs prisma migrate deploy.
+// Migrations run on their own short-lived pool without query_timeout.
+if (settings.migrationsDir) {
+  const migrationPool = new pg.Pool({ connectionString: settings.databaseUrl, max: 1, connectionTimeoutMillis: 5_000 })
+  try {
+    await runMigrations({ pool: migrationPool, dir: settings.migrationsDir })
+  } finally {
+    await migrationPool.end()
+  }
+  console.log('Migrations applied')
+}
+
 // One pool for the process. RPC, MCP, receipt and export requests each take
-// one connection and return it when the response is complete. Better Auth
-// takes connections from the pool for each of its own queries.
+// one connection for their database work and return it before any slow body or
+// storage I/O. Better Auth takes connections from the pool for each of its own queries.
 const pool = new pg.Pool({
   connectionString: settings.databaseUrl,
   max: settings.poolSize,
   connectionTimeoutMillis: 5_000,
   idleTimeoutMillis: 60_000,
+  // Server-side limits free stuck SQL, locks, and abandoned transactions.
+  // query_timeout is the client-side backstop if PostgreSQL itself freezes or the socket stalls.
+  lock_timeout: 10_000,
+  statement_timeout: 30_000,
+  idle_in_transaction_session_timeout: 60_000,
+  query_timeout: 35_000,
 })
 // An idle connection that fails (a database restart) is removed from the pool; without a listener it would end the process.
 pool.on('error', (error) => console.error('Idle database connection failed', error))
 if (config.perfInstrumentation) instrumentPool(pool)
-
-// The image sets MIGRATIONS_DIR, so each start applies new migrations before
-// it takes requests, as the current app's container runs prisma migrate deploy.
-if (settings.migrationsDir) {
-  await runMigrations({ pool, dir: settings.migrationsDir })
-  console.log('Migrations applied')
-}
 
 const bucket = s3Bucket(settings.s3)
 

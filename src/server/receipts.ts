@@ -109,33 +109,47 @@ export async function readableReceipt(
 export const RECEIPT_REFUSED = `Could not upload receipt. Use a JPEG or PNG image up to ${mebibytes(LIMITS.receiptBytes)}.`
 
 /**
- * Stores an uploaded image as a receipt of the group, for a member. The object
- * is stored first and registered to the group after; if the registration
- * fails, the object is removed. The uploader's storage quota is checked before
- * the upload and again, under the uploader's quota lock, when the receipt is
- * registered; a full quota is a precondition Invalid. The answer of POST
- * /api/receipts is the stored receipt as an expense attaches it.
+ * Stores an uploaded image as a receipt of the group, for a member. The image
+ * bytes are validated before any database work; membership and soft quota run
+ * in one short `withDb`, then the object is uploaded to storage with NO
+ * database connection held, then the quota lock + receipt insert run in a
+ * second short `withDb`. If registration fails or the quota is full, the
+ * orphan object is removed after the connection is released.
  */
-export async function storeReceipt(db: Db, data: { bucket: Bucket; principal: Principal; groupId: string; file: Blob }): Promise<typeof DocumentInput.Type> {
-  const { groupId } = await requireMember(db, data)
+export async function storeReceipt(
+  withDb: <A>(work: (db: Db) => Promise<A>) => Promise<A>,
+  data: { bucket: Bucket; principal: Principal; groupId: string; file: Blob },
+): Promise<typeof DocumentInput.Type> {
   const bytes = new Uint8Array(await data.file.arrayBuffer())
   const info = bytes.length && bytes.length <= LIMITS.receiptBytes ? imageInfo(bytes) : null
-  if (!info) throw new Invalid({ message: RECEIPT_REFUSED })
   const { userId } = data.principal
-  const early = await spaceFor(db, { userId, bytes: bytes.length, lock: false, outstanding: false })
+  // Check membership first so a non-member gets 403 even on an invalid image (matches existing behavior).
+  const { groupId, early } = await withDb(async (db) => {
+    const member = await requireMember(db, data)
+    if (!info) return { groupId: member.groupId, early: null as string | null }
+    return { groupId: member.groupId, early: await spaceFor(db, { userId, bytes: bytes.length, lock: false, outstanding: false }) }
+  })
+  if (!info) throw new Invalid({ message: RECEIPT_REFUSED })
   if (early) throw new Invalid({ message: early, reason: 'precondition' })
   const contentType = receiptTypeOf(info.format)
   const key = newReceiptKey(contentType)
   const url = receiptUrl(key)
   const id = randomId()
-  let refused: string | null
   try {
     await data.bucket.put(key, bytes, { contentType })
-    refused = await db.transaction(async (tx) => {
-      const message = await spaceFor(tx, { userId, bytes: bytes.length, lock: true, outstanding: false })
-      if (!message) await tx.insert(receipts).values({ id, groupId, url, createdBy: userId, bytes: bytes.length })
-      return message
-    })
+  } catch (error) {
+    await removeOrphans(data.bucket, [key])
+    throw storageUnavailable({ what: 'Receipt upload', error })
+  }
+  let refused: string | null
+  try {
+    refused = await withDb((db) =>
+      db.transaction(async (tx) => {
+        const message = await spaceFor(tx, { userId, bytes: bytes.length, lock: true, outstanding: false })
+        if (!message) await tx.insert(receipts).values({ id, groupId, url, createdBy: userId, bytes: bytes.length })
+        return message
+      }),
+    )
   } catch (error) {
     await removeOrphans(data.bucket, [key])
     throw storageUnavailable({ what: 'Receipt upload', error })
