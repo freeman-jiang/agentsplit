@@ -26,8 +26,8 @@ let
   # reports. The x86_64 hash was taken on aarch64 with `--cpu=x64`
   # (`nix build .#agentsplit.nodeModules-x86_64`), which installs the same files.
   nodeModulesHashes = {
-    aarch64-linux = "sha256-irQfSQ6Df6qKzZ+JKcD5YnY/3FS8i4tq+hBmhw9rrGY=";
-    x86_64-linux = "sha256-8/AVv8+atfbXLJXeLm7kxNuV/b7l7X3bs+ncCRoSI3U=";
+    aarch64-linux = "sha256-YGpJa+ALzEGvbdm5zRXZblt4zRA9eNKiWtJ842KFLWg=";
+    x86_64-linux = "sha256-IAsTvSkGz+wXKjixynYFBAvh9xgYovXhqQ/vfpy0/W8=";
   };
   bunCpu = {
     aarch64-linux = "arm64";

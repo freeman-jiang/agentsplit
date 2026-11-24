@@ -4,7 +4,7 @@
   # The revision that ~/dots/flake.lock pinned when this was set. Dots moves its own
   # pin, so the two can differ; bump this one only on purpose. It also fixes Bun,
   # which @types/bun follows (scripts/check-bun-version.ts).
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/7dcdd87373d72e7a2173e4db02e20d3d7f495cfd";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/2786a2a72088ecf32aea5b3ec52099e6a7cff78f";
   # The operating system of the host (nix/host). It is locked at the same revision
   # as nixpkgs; deploy-host moves it to the head of its release branch
   # (hostNixpkgs below), while the app keeps the Bun of nixpkgs.
